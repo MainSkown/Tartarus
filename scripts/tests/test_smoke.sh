@@ -13,11 +13,11 @@ STATUS=0
 port_entry() { printf '{"mode":"ingress","host_ip":"%s","target":%s,"published":"%s","protocol":"tcp"}' "$1" "$2" "$3"; }
 
 write_prod_config() {
-    local frontend_ip=$1 backend_ports=$2
+    local frontend_ip=$1 backend_ports=$2 backend_image=${3:-tartarus-backend:latest} frontend_image=${4:-tartarus-frontend:latest}
     cat >"$STUB_DIR/config-prod.json" <<JSON
 {"services":{
-  "frontend":{"ports":[$(port_entry "$frontend_ip" 80 8080)]},
-  "backend":{"ports":[$backend_ports],"volumes":[]},
+  "frontend":{"image":"$frontend_image","build":{},"ports":[$(port_entry "$frontend_ip" 80 8080)]},
+  "backend":{"image":"$backend_image","build":{},"ports":[$backend_ports],"volumes":[]},
   "postgres":{"volumes":[{"type":"volume","source":"pg-data","target":"/var/lib/postgresql/data"}]},
   "opensearch":{"volumes":[{"type":"volume","source":"os-data","target":"/usr/share/opensearch/data"}]}
 }}
@@ -25,11 +25,11 @@ JSON
 }
 
 write_dev_config() {
-    local postgres_ip=$1 backend_volumes=$2 extra_frontend_ports=${3:-}
+    local postgres_ip=$1 backend_volumes=$2 extra_frontend_ports=${3:-} backend_image=${4:-tartarus-backend:dev} frontend_image=${5:-tartarus-frontend:dev}
     cat >"$STUB_DIR/config-dev.json" <<JSON
 {"services":{
-  "frontend":{"ports":[$(port_entry 127.0.0.1 5173 5173)${extra_frontend_ports:+,$extra_frontend_ports}]},
-  "backend":{"ports":[$(port_entry 127.0.0.1 8000 8000)],"volumes":[$backend_volumes]},
+  "frontend":{"image":"$frontend_image","build":{},"ports":[$(port_entry 127.0.0.1 5173 5173)${extra_frontend_ports:+,$extra_frontend_ports}]},
+  "backend":{"image":"$backend_image","build":{},"ports":[$(port_entry 127.0.0.1 8000 8000)],"volumes":[$backend_volumes]},
   "postgres":{"ports":[$(port_entry "$postgres_ip" 5432 5432)]},
   "opensearch":{"ports":[$(port_entry 127.0.0.1 9200 9200)]}
 }}
@@ -138,6 +138,13 @@ test_static_rejects_dev_frontend_also_publishing_prod_port() {
     write_dev_config 127.0.0.1 "" "$(port_entry 127.0.0.1 80 8080)"
     run_smoke static
     expect_fail_mentioning "8080"
+}
+
+test_static_rejects_dev_and_prod_sharing_an_image_tag() {
+    write_prod_config 127.0.0.1 "" "tartarus-backend:latest" "tartarus-frontend:latest"
+    write_dev_config 127.0.0.1 "" "" "tartarus-backend:latest" "tartarus-frontend:dev"
+    run_smoke static
+    expect_fail_mentioning "backend"
 }
 
 test_prod_passes_on_healthy_stack() {

@@ -55,6 +55,7 @@ services:
 
   backend:
     container_name: tartarus-backend
+    image: tartarus-backend:latest
     build:
       context: ./backend
       target: prod
@@ -82,6 +83,7 @@ services:
 
   frontend:
     container_name: tartarus-frontend
+    image: tartarus-frontend:latest
     build:
       context: ./frontend
       target: production-stage

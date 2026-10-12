@@ -24,7 +24,7 @@ check() {
 compose() { docker compose "${COMPOSE_FILES[@]}" "$@"; }
 
 policy_violations() {
-    python3 -I - "$1" "$2" <<'PY'
+    python3 -I - "$1" "$2" "${3:-{\}}" <<'PY'
 import json
 import sys
 
@@ -44,6 +44,17 @@ elif check == "frontend-only":
 elif check == "dev-frontend-vite-only":
     extra = [port.get("published") for name, port in published if name == "frontend" and port.get("target") != 5173]
     problems = [f"frontend also publishes {', '.join(extra)} in dev"] if extra else []
+elif check == "distinct-build-image-tags":
+    other = json.loads(sys.argv[3])
+    collisions = [
+        f"{name} is tagged {image!r} in both files"
+        for name, svc in services.items()
+        if "build" in svc
+        for image in [svc.get("image")]
+        if image and other.get("services", {}).get(name, {}).get("image") == image
+    ]
+    print("; ".join(collisions))
+    sys.exit(1 if collisions else 0)
 elif check == "no-docker-socket":
     problems = [
         f"{name} mounts {volume['source']}"
@@ -79,18 +90,25 @@ postgres_lists_database() {
 }
 
 check_static() {
-    local mode config
+    local mode config prod_config dev_config other_config
+    COMPOSE_FILES=(-f "$BASE_FILE"); prod_config=$(compose config --format json) || prod_config="{}"
+    COMPOSE_FILES=(-f "$BASE_FILE" -f "$DEV_FILE"); dev_config=$(compose config --format json) || dev_config="{}"
     for mode in prod dev; do
         COMPOSE_FILES=(-f "$BASE_FILE")
         if [[ $mode == dev ]]; then
             COMPOSE_FILES+=(-f "$DEV_FILE")
+            config=$dev_config; other_config=$prod_config
+        else
+            config=$prod_config; other_config=$dev_config
         fi
-        if ! config=$(compose config --format json); then
+        if [[ $config == "{}" ]]; then
             fail "$mode: docker compose config (is .env present?)"
             continue
         fi
         check "$mode: every published port binds 127.0.0.1" policy_violations loopback-only "$config"
         check "$mode: no service mounts the Docker socket" policy_violations no-docker-socket "$config"
+        check "$mode: built images are not shared with the other compose file" \
+            policy_violations distinct-build-image-tags "$config" "${other_config:-{\}}"
         if [[ $mode == prod ]]; then
             check "prod: only the frontend publishes a port" policy_violations frontend-only "$config"
         else

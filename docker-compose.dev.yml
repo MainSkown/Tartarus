@@ -8,6 +8,7 @@ services:
       - "127.0.0.1:9200:9200"
 
   backend:
+    image: tartarus-backend:dev
     build:
       target: dev
     environment:
@@ -28,6 +29,7 @@ services:
           path: ./backend/uv.lock
 
   frontend:
+    image: tartarus-frontend:dev
     build:
       target: dev-stage
     environment:

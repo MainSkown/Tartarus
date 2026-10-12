@@ -53,12 +53,20 @@ truth: if a subtask needs to change one, it says so in its report instead of sil
 |---|---|---|
 | Dockerfile | `backend/Dockerfile` | `frontend/Dockerfile` |
 | Build targets | `dev` (uvicorn `--reload`, dev deps), `prod` | `dev-stage` (Quasar/Vite dev server), `production-stage` (nginx) |
+| Image tags | `tartarus-backend:latest` (prod), `tartarus-backend:dev` | `tartarus-frontend:latest` (prod), `tartarus-frontend:dev` |
 | Base image | `python:3.12-slim` + uv | `node:24-alpine` (build/dev), `nginx:alpine` (prod) |
 | `WORKDIR` | `/app` | `/app` |
 | Listens on | `0.0.0.0:8000`, ASGI `app.main:app` | dev `0.0.0.0:5173`, prod `80` |
 | Dependencies location | venv at `/opt/venv` (`UV_PROJECT_ENVIRONMENT`), so syncing source into `/app` never clobbers it | `/app/node_modules` inside the image |
 | Proxy | — | `/api/` and `/ws/` → backend with WebSocket upgrade on `/ws/`; SPA fallback to `index.html`. Dev server: `API_PROXY_TARGET` (default `http://backend:8000`). Prod nginx: fixed `http://backend:8000` (nginx has no env substitution), `client_max_body_size 512m` on `/api/` |
 | `develop.watch` | sync `./backend/app` → `/app/app`, `./backend/alembic` → `/app/alembic`; rebuild on `pyproject.toml`, `uv.lock` | sync `./frontend/src` → `/app/src`, `./frontend/public` → `/app/public`; rebuild on `package.json`, `package-lock.json`, `quasar.config.ts`, `src-pwa/package.json`, `src-pwa/package-lock.json` |
+
+The explicit `image:` tags matter: without them, both compose files build into the same
+auto-named image (`<project>-<service>`), so whichever target was built most recently silently
+wins for *either* file — confirmed live: after `docker compose watch` built the `dev` target,
+a plain `docker compose up -d` (no `-f`, no `--build`) started the frontend from the dev image
+on the prod ports. `scripts/smoke.sh static`'s `distinct-build-image-tags` check catches this
+class of bug without Docker.
 
 ### Environment (`.env`, from `.env.example`)
 | Variable | Default | Used by |
