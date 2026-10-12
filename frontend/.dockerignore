@@ -1,0 +1,9 @@
+**/node_modules
+dist
+.quasar
+test-results
+playwright-report
+screenshots
+Dockerfile
+.dockerignore
+*.log

@@ -1,8 +1,8 @@
 /* ==========================================================================
    Tartarus - Core Styles (reference theme)
    Ported from Momos (red team) to Tartarus ice blue (blue team).
-   Copy into frontend/src/css/app.css; Quasar brand variables live in
-   frontend/src/css/quasar.variables.scss (see docs/design/design-system.md).
+   This file is the single source of the theme; Quasar brand variables live in
+   quasar.variables.scss next to it (see docs/design/design-system.md).
    ========================================================================== */
 
 :root {
