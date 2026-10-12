@@ -6,7 +6,10 @@ import vue from 'eslint-plugin-vue'
 
 export default tseslint.config(
   ...quasar.configs.recommended(),
-  { ignores: ['dist/**', 'node_modules/**', '.quasar/**', 'src/api/generated/**'] },
+  // src/api/ is @hey-api/openapi-ts output (F7), never hand-edited: see backend spec "API
+  // client" and the gui spec's "Frontend structure" table, which both put it at ./src/api
+  // rather than the ./src/api/generated the gui spec's intro bullet mentions.
+  { ignores: ['dist/**', 'node_modules/**', '.quasar/**', 'src/api/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...vue.configs['flat/recommended'],
