@@ -1,0 +1,45 @@
+services:
+  momos-dashboard:
+    build:
+      context: ./dashboard
+      target: dev-stage
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+    develop:
+      watch:
+        - action: sync
+          path: ./dashboard/src
+          target: /app/src
+        - action: rebuild
+          path: ./dashboard/package.json
+
+  momos-backend:
+    build:
+      context: ./backend
+      target: dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - ENVIRONMENT=development
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /app
+          ignore:
+            - "__pycache__"
+            - ".pytest_cache"
+            - ".venv"
+        - action: rebuild
+          path: ./backend/pyproject.toml
+        - action: rebuild
+          path: ./backend/uv.lock
+  db:
+    ports:
+      - "5432:5432"

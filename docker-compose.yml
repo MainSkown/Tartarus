@@ -1,0 +1,63 @@
+services:
+  momos-backend:
+    container_name: "momos-backend"
+    build: 
+      context: ./backend
+      target: prod
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock # For spawning docker containers
+    depends_on:
+      - db
+      - ollama
+    networks:
+      - momos-net
+
+  # The Frontend
+  momos-dashboard:
+    container_name: "momos-dashboard"
+    build: 
+      context: ./dashboard
+      target: production-stage
+    ports:
+      - "8080:80"
+    networks:
+      - momos-net
+
+  # The Memory & Data
+  db:
+    container_name: "momos-db"
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: momos
+      POSTGRES_PASSWORD: momos
+      POSTGRES_DB: momos_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - momos-net
+
+  # The LLM Engine
+  ollama:
+    container_name: "momos-ollama"
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - momos-net
+    # If you have an NVIDIA GPU, uncomment these lines for massive speedups:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  momos-net:
+    driver: bridge
+
+volumes:
+  db_data:
+  ollama_data:
