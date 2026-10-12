@@ -15,7 +15,8 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "quasar prepare && vue-tsc --noEmit",
     "test:unit": "vitest run",
-    "api:sync": "openapi-ts -i http://localhost:8000/openapi.json -o ./src/api -c @hey-api/client-fetch"
+    "api:sync": "openapi-ts -i http://localhost:8000/openapi.json -o ./src/api -c @hey-api/client-fetch",
+    "screenshots": "playwright test -c playwright.config.ts tests/screenshots"
   },
   "dependencies": {
     "@quasar/extras": "^2.1.0",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@hey-api/openapi-ts": "^0.99.0",
+    "@playwright/test": "^1.64.0",
     "@quasar/app-vite": "^3.10.2",
     "@quasar/vite-plugin": "^2.0.2",
     "@types/node": "^24.19.2",

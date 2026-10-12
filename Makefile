@@ -32,7 +32,7 @@ lint: ## Run ruff, mypy, eslint and the TypeScript check
 	cd frontend && npm run lint
 	cd frontend && npm run typecheck
 
-check: lint test test-integration ## Run everything: lint, unit and integration tests
+check: lint test test-integration screenshots ## Run everything: lint, unit and integration tests, and the screenshot harness
 
 api-sync: ## Regenerate the frontend API client from the running backend (make dev first)
 	cd frontend && npm run api:sync

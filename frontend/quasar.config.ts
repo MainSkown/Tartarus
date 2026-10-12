@@ -1,6 +1,10 @@
 import { defineConfig } from '#q-app'
 
 const apiProxyTarget = process.env.API_PROXY_TARGET ?? 'http://backend:8000'
+// Overridable so the Playwright screenshot harness (frontend/playwright.config.ts) can run its
+// own dev server instance on a different port than the Docker dev stack's 5173, in case both
+// are ever up on the same host at once.
+const devServerPort = Number(process.env.DEV_SERVER_PORT ?? 5173)
 
 export default defineConfig(() => ({
   boot: ['notify', 'api'],
@@ -35,7 +39,7 @@ export default defineConfig(() => ({
 
   devServer: {
     host: '0.0.0.0',
-    port: 5173,
+    port: devServerPort,
     open: false,
     proxy: {
       '/api': { target: apiProxyTarget, changeOrigin: true },
