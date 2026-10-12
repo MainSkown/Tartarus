@@ -5,8 +5,11 @@ Drop in a Windows sample, watch it detonate **live** in an isolated, hardened Wi
 with the guest desktop, then dig through processes, timeline, network and detections with a
 query bar, and export IOCs and reports.
 
-> **Status:** design phase. Nothing is implemented yet; the docs below describe what will be
-> built.
+> **Status:** the foundation is built and running: the Docker stack, a FastAPI backend with a
+> live health feed and a Settings API, and a Quasar PWA with the app shell and Settings page. The
+> sandbox itself (CAPE, the Windows guest, submitting and analysing samples) is not built yet;
+> the docs below describe it, and the [foundation plan](docs/plans/foundation.md) records what
+> exists.
 
 ## Documentation
 
@@ -23,14 +26,24 @@ query bar, and export IOCs and reports.
 | [Theme CSS](frontend/src/css/app.css) | The theme stylesheet, single source of the design tokens |
 | [Plan: foundation](docs/plans/foundation.md) | Compose stack, backend and frontend skeletons: subtasks, model tiers, dependencies |
 
-## Planned quick start (v1)
+## Quick start
+
+Needs Docker with Compose 2.24.4 or newer. Run `make preflight` first to check your host.
 
 ```bash
-# Linux host with KVM (/dev/kvm) and Docker + Compose
-cp .env.example .env
-docker compose up -d
-# put a Windows 10/11 ISO into ./data/iso, then open http://127.0.0.1:8080 → Guest VM → Build
+cp .env.example .env     # then set POSTGRES_PASSWORD and CAPE_DB_PASSWORD
+make up                  # production build at http://127.0.0.1:8080
 ```
+
+For development with hot reload, use `make dev` instead (frontend on `127.0.0.1:5173`, backend
+and its API docs on `127.0.0.1:8000`). Database migrations run when the backend starts.
+
+`make check` runs everything (lint, unit and integration tests, screenshots) and needs `uv` and
+Node 24 or newer on the host. `make smoke` checks the compose files' safety rules without
+starting anything; `make smoke MODE=prod` or `MODE=dev` checks a running stack.
+
+Submitting a sample needs the CAPE container and a Windows guest, which come in later
+milestones (see the [overview](docs/overview.md#roadmap)).
 
 ## Developing
 
