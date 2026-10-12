@@ -7,37 +7,43 @@ isolation and the tech stack. The details of each part are in the [specs](specs/
 
 ```
  ┌──────────────────────────── Linux host (any distro: KVM + Docker) ─────────────────────────────┐
- │                                                                                                 │
- │  Browser / installed PWA ──HTTP + WS──► 127.0.0.1:8080                                          │
- │                                              │                                                  │
- │  ┌─────────────── docker compose: network "tartarus-internal" ──────────────────────────────┐   │
- │  │                                           ▼                                              │   │
- │  │  ┌──────────────────────────── backend (FastAPI, Python) ───────────────────────────┐    │   │
- │  │  │ REST /api  ·  WS /ws  ·  static frontend (Quasar PWA build)                      │    │   │
- │  │  │ collector ─► normaliser (ECS) ─► Sigma matcher ─► bulk indexer ─► live pub/sub   │    │   │
- │  │  │ report ingester · query compiler (KQL→DSL) · export · guest builder · job runner │    │   │
- │  │  └───┬───────────────┬──────────────────┬───────────────────┬────────────────────────┘    │   │
- │  │      │ SQL           │ HTTP             │ apiv2 / guacd      │ read-only volume           │   │
- │  │      ▼               ▼                  ▼                    │                            │   │
- │  │  ┌──────────┐  ┌────────────┐   ┌───────────────────────────┴─────────────────────────┐  │   │
- │  │  │ postgres │  │ opensearch │   │ cape (privileged Ubuntu 24.04)                       │  │   │
- │  │  │ tartarus │  │ events     │   │ cape · cape-processor · cape-web(apiv2) · rooter    │  │   │
- │  │  │ + cape DB│  │            │   │ libvirtd + patched QEMU · suricata · inetsim · guacd│  │   │
- │  │  └──────────┘  └────────────┘   │        │ /dev/kvm     bridge "tt-guest" (isolated)   │  │   │
- │  │                                 │        ▼                                             │  │   │
- │  │                                 │   Windows 10/11 guest: capemon · agent.py · Sysmon   │  │   │
- │  │                                 └─────────────────────────────────────────────────────┘  │   │
- │  └──────────────────────────────────────────────────────────────────────────────────────────┘   │
- └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+ │                                                                                                │
+ │  Browser / installed PWA ──HTTP + WS──► 127.0.0.1:8080 (the only published port)               │
+ │                                  │                                                             │
+ │  ┌────────────────────── docker compose: network "tartarus-internal" ───────────────────────┐  │
+ │  │                                  ▼                                                       │  │
+ │  │  ┌─ frontend (nginx) ───────────────────────────────────────────┐                        │  │
+ │  │  │ Quasar PWA build · proxies /api and /ws to backend:8000      │                        │  │
+ │  │  └──────────────────────────────┬───────────────────────────────┘                        │  │
+ │  │                                 ▼                                                        │  │
+ │  │  ┌─ backend (FastAPI, Python) ────────────────────────────────────────────────┐          │  │
+ │  │  │ REST /api · WS /ws                                                         │          │  │
+ │  │  │ collector ─► normaliser (ECS) ─► Sigma matcher ─► bulk indexer ─► pub/sub  │          │  │
+ │  │  │ report ingester · query compiler · export · guest builder · job runner     │          │  │
+ │  │  └──┬────────────┬───────────────────┬────────────────────────┬───────────────┘          │  │
+ │  │     │ SQL        │ HTTP              │ apiv2 · guacd · libvirt  │ read-only              │  │
+ │  │     ▼            ▼                   ▼                        ▼ storage volume           │  │
+ │  │  ┌──────────┐ ┌────────────┐      ┌─ cape (privileged Ubuntu 24.04) ──────────────┐      │  │
+ │  │  │ postgres │ │ opensearch │      │ cape · cape-processor · cape-web (apiv2)      │      │  │
+ │  │  │ tartarus │ │ events     │      │ rooter · suricata · inetsim · guacd           │      │  │
+ │  │  │ + cape DB│ │            │      │ libvirtd + patched QEMU · /dev/kvm            │      │  │
+ │  │  └──────────┘ └────────────┘      │        │ bridge "tt-guest" (isolated)         │      │  │
+ │  │                                   │        ▼                                      │      │  │
+ │  │                                   │ Windows 10/11 guest: capemon · agent · Sysmon │      │  │
+ │  │                                   └───────────────────────────────────────────────┘      │  │
+ │  └──────────────────────────────────────────────────────────────────────────────────────────┘  │
+ │                                                                                                │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Compose services
 
 | Service | Image | Purpose | Exposed to host |
 |---|---|---|---|
-| `backend` | `tartarus/backend` (built from `backend/`, multi-stage: builds `frontend/` and serves it as static files) | API, WebSocket, collector, ingester, rules, export, jobs | `127.0.0.1:8080` only |
+| `frontend` | `tartarus/frontend` (built from `frontend/`; targets `dev-stage` = Vite dev server, `production-stage` = nginx) | Serves the Quasar PWA build and reverse-proxies `/api` and `/ws` to `backend:8000` | `127.0.0.1:8080` only (prod) |
+| `backend` | `tartarus/backend` (built from `backend/`; targets `dev` = uvicorn `--reload`, `prod`) | API, WebSocket, collector, ingester, rules, export, jobs | nothing in prod (dev: `127.0.0.1:8000`) |
 | `cape` | `tartarus/cape` (built from `cape/`) | CAPE + KVM/libvirt + rooter + Suricata + INetSim + guacd | nothing |
-| `opensearch` | `opensearchproject/opensearch:2.x` (single node, security plugin disabled, internal network only) | Event store | nothing |
+| `opensearch` | `opensearchproject/opensearch:3.9.0` (single node, security plugin disabled, internal network only) | Event store | nothing |
 | `postgres` | `postgres:16` | Two databases: `tartarus` (Tartarus metadata) and `cape` (CAPE's task DB) | nothing |
 
 CAPE's Mongo-backed report viewer is **not used**: `web.conf [web_reporting]` and
@@ -49,11 +55,24 @@ touch CAPE's SQL task DB, and the final report is read from `report.json` (writt
 `bson.objectid.ObjectId`), but nothing ever opens a connection with it.
 
 - **One command:** `docker compose up -d`. Config lives in `.env` (see `.env.example`).
+- **Development:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --watch`
+  (wrapped by `make dev`). The dev override switches `frontend` and `backend` to their dev build
+  targets, syncs source with compose `develop.watch` (rebuilding on `pyproject.toml`/`uv.lock`/
+  `package.json` changes), and publishes debug ports on `127.0.0.1` only: Vite `5173` (proxies
+  `/api` and `/ws` to the backend), backend `8000` (OpenAPI docs at `/docs`), Postgres `5432`,
+  OpenSearch `9200`.
+- **Backend → libvirt:** the backend controls the guest VM (build wizard, health checks) with
+  `libvirt-python` over `qemu+tcp://cape/system`. libvirtd in the `cape` container listens on the
+  internal compose network only. The Docker socket is **never** mounted into any container: it is
+  root on the host, and the backend handles malware artefacts and untrusted report data.
+- **Host prerequisite for OpenSearch:** `vm.max_map_count ≥ 262144` (checked by the preflight
+  script).
 - **Volumes:** `pg-data`, `os-data`, `cape-storage` (CAPE `storage/`; mounted
   read-write in `cape` and **read-only** in `backend`), `guest-images` (qcow2 disks and
   snapshots), `./data/iso` (bind mount where the user drops Windows ISOs), `./rules`
   (bind mount for Sigma rules).
-- **Only the backend is reachable from the host**, and only on `127.0.0.1`. guacd, CAPE apiv2,
+- **Only the frontend (nginx) is reachable from the host**, and only on `127.0.0.1`. The backend,
+  guacd, libvirtd, CAPE apiv2,
   OpenSearch and the databases are reachable on the internal compose network only.
 - **Resources (defaults in `.env`):** OpenSearch heap 1.5 GB, guest 2 vCPU / 4 GB RAM, CAPE
   processing 2 workers. Minimum host 16 GB RAM, 4 cores and 200 GB free disk; recommended 32 GB.
@@ -69,8 +88,7 @@ tartarus/
 │   ├── app/
 │   └── alembic/
 ├── frontend/           Quasar app, PWA mode (see specs/gui.md)
-│   ├── src/api/generated/   @hey-api/openapi-ts output (do not edit)
-│   └── openapi-ts.config.ts
+│   └── src/api/             @hey-api/openapi-ts output (do not edit; `npm run api:sync`)
 ├── cape/               Dockerfile, supervisord config, CAPE conf overrides, entrypoint
 │   └── conf/
 ├── guest/              guest-build assets: libvirt XML template, autounattend template,
@@ -144,7 +162,7 @@ aggregate events and report data.
 - The PCAP is captured on `tt-guest` by CAPE (tcpdump), so every packet is recorded no matter
   which route is used.
 - Samples are stored zipped at rest. Downloads are always zip archives with password `infected`.
-- No authentication: the backend binds `127.0.0.1:8080`. Exposing it beyond localhost is
+- No authentication: the frontend's nginx binds `127.0.0.1:8080` and is the only published port. Exposing it beyond localhost is
   explicitly unsupported in v1.
 
 ## Tech stack
@@ -154,10 +172,10 @@ aggregate events and report data.
 | Sandbox | CAPEv2 (pinned commit), KVM/QEMU patched by `kvm-qemu.sh`, libvirt | Inside privileged `cape` container |
 | Backend | Python 3.12, FastAPI, Pydantic v2, Uvicorn (1 worker; collector and pub/sub run in-process) | |
 | Backend libs | SQLAlchemy 2 + asyncpg + Alembic; opensearch-py (async); watchfiles; pySigma (rule parsing + ECS pipeline); lark (query grammar); stix2; Jinja2 + WeasyPrint (reports); pyguacamole-style tunnel | |
-| API client | `@hey-api/openapi-ts`, generated from FastAPI's `/openapi.json` into `frontend/src/api/generated` | Same setup as Momos. Regenerate with `npm run gen:api` |
+| API client | `@hey-api/openapi-ts`, generated from the running backend's `/openapi.json` into `frontend/src/api` | Same setup as Momos. Regenerate with `npm run api:sync` (or `make api-sync`); the output is committed |
 | Frontend | Vue 3 + Quasar (Vite, TypeScript), Pinia, Vue Router, PWA mode | Dark only. Theme in [design-system](design/design-system.md) |
 | Viz | Cytoscape.js + cytoscape-dagre (process graph); custom canvas timeline (d3-scale / d3-zoom); guacamole-common-js (desktop) | |
-| Stores | OpenSearch 2.x (events), PostgreSQL 16 (metadata + CAPE task DB) | No Mongo service; see Compose services above |
+| Stores | OpenSearch 3.x (events), PostgreSQL 16 (metadata + CAPE task DB) | No Mongo service; see Compose services above |
 | Packaging | Docker Compose | |
 
 ## Process model and concurrency

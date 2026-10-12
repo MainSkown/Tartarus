@@ -8,7 +8,7 @@ and the guest builder. The frontend talks **only** to this service.
 
 | Module | Responsibility |
 |---|---|
-| `main.py` | App factory, lifespan (start collector, queue runner, job runner, rule loader), static frontend mount |
+| `main.py` | App factory, lifespan (start collector, queue runner, job runner, rule loader). No static files: the frontend container serves the PWA |
 | `config.py` | Settings from env (pydantic-settings) |
 | `api/` | Routers: `analyses`, `events`, `processes`, `network`, `artifacts`, `detections`, `annotations`, `rules`, `export`, `guest`, `system`, `internal` |
 | `ws/` | WebSocket endpoints: `live`, `desktop`, `system` |
@@ -20,7 +20,7 @@ and the guest builder. The frontend talks **only** to this service.
 | `search/` | OpenSearch client, index template, bulk indexer, query helpers (search, facets, histogram) |
 | `query/` | KQL-like grammar (lark), AST → OpenSearch DSL compiler, field catalog and aliases |
 | `export/` | STIX 2.1, MISP JSON, CSV, HTML/PDF report (Jinja2 + WeasyPrint) |
-| `guest/` | Guest build pipeline steps, libvirt/virsh calls via the `cape` container, health checks |
+| `guest/` | Guest build pipeline steps and health checks, using `libvirt-python` over `qemu+tcp://cape/system` (internal network only; no Docker socket) |
 | `jobs/` | Persistent job runner, queue runner |
 | `pubsub.py` | In-process broadcast: topics `analysis:{id}` and `system` |
 | `db/` | SQLAlchemy models, session, Alembic |
@@ -29,8 +29,18 @@ and the guest builder. The frontend talks **only** to this service.
 
 Base path `/api`. JSON is served everywhere except uploads and downloads. Errors use the shape
 `{"error": {"code": "string", "message": "string", "details": {}}}` with the right HTTP status.
-All request and response bodies are Pydantic models with explicit `operation_id`s, so the
-generated client has clean function names (see [API client](#api-client)).
+- `code` is the lowercased HTTP phrase (`not_found`, `method_not_allowed`, `conflict`, …),
+  except `validation_error` (422) and `internal_error` (500, generic message, never internals).
+- For 422, `details` is `{"fields": [{"location": ["body", "timeout"], "message": "...",
+  "type": "..."}]}`, so the GUI can attach each message to its field.
+- `ErrorEnvelope` is the `default` response of every operation, so the generated client has its
+  type.
+
+All request and response bodies are Pydantic models. Operation ids are generated as
+`<tag>_<route name>` (e.g. `system_health`), so the generated client has clean function names
+(see [API client](#api-client)). Every route must have a tag; an untagged route fails at
+startup. Tests that inspect routes read `app.openapi()["paths"]`, because FastAPI ≥ 0.143 no
+longer lists included routes in `app.routes`.
 
 ### System
 | Method & path | Purpose |
@@ -43,7 +53,7 @@ generated client has clean function names (see [API client](#api-client)).
 ### Analyses
 | Method & path | Purpose |
 |---|---|
-| `POST /analyses` | multipart: `file`, `options` (JSON: `route`, `timeout` 60–1200 s, `package` (`auto` default), `memory_dump` bool, `interactive` bool, `tags[]`). Returns `201 {analysis}`. Rejected with `409` if the guest isn't ready or the disk is below the block threshold. |
+| `POST /analyses` | multipart (max 512 MB, enforced by the frontend's nginx; proposed): `file`, `options` (JSON: `route`, `timeout` 60–1200 s, `package` (`auto` default), `memory_dump` bool, `interactive` bool, `tags[]`). Returns `201 {analysis}`. Rejected with `409` if the guest isn't ready or the disk is below the block threshold. |
 | `GET /analyses` | Paged list with `q` (filename/hash substring), `status`, `tag`, and `sort` (`submitted_at` desc default) |
 | `GET /analyses/{id}` | Detail: sample, status, phase, options, score, max severity, families, counts per lane and per severity, tags, timing |
 | `POST /analyses/{id}/stop` | Stop a running task early; it proceeds to processing |
@@ -241,7 +251,7 @@ Rules:
 
 ## Configuration (`.env`)
 
-`TARTARUS_PORT=8080`, `TZ`, `OPENSEARCH_HEAP=1536m`, `GUEST_VCPUS=2`, `GUEST_RAM_MB=4096`,
+`TARTARUS_PORT=8080` (the frontend's published port; the backend listens on `8000` internally), `TZ`, `OPENSEARCH_HEAP=1536m`, `GUEST_VCPUS=2`, `GUEST_RAM_MB=4096`,
 `GUEST_SUBNET=192.168.150.0/24`, `CAPE_REF=<commit>`, `DEFAULT_ROUTE=inetsim`,
 `DEFAULT_TIMEOUT=180`, `DISK_WARN_GB=50`, `DISK_BLOCK_GB=20`, optional `VPN_*` / `WG_*` /
 `SOCKS5_*`. Secrets such as the CAPE API token and the callback token are generated on first
@@ -249,11 +259,14 @@ start into `data/secrets.env`.
 
 ## API client
 
-- FastAPI serves `/openapi.json`. The frontend generates its client with **`@hey-api/openapi-ts`**,
-  the same setup as Momos. The config is `frontend/openapi-ts.config.ts`, the output goes to
-  `src/api/generated`, and the generated types are used in Pinia stores.
-- `npm run gen:api` fetches the schema from a running backend, or from
-  `backend/openapi.json`, which is exported in CI with `python -m app.export_openapi`.
+- FastAPI generates the schema and serves it at `/openapi.json`; there is no exported or committed
+  copy. The frontend generates its client with **`@hey-api/openapi-ts`**, the same setup as
+  Momos: `"api:sync": "openapi-ts -i http://localhost:8000/openapi.json -o ./src/api"`.
+- `npm run api:sync` (or `make api-sync`) needs the dev stack running (`make dev` publishes the
+  backend on `127.0.0.1:8000`). The generated client in `frontend/src/api/` is committed, so
+  builds and CI never need a running backend, and it is only ever changed by re-running the sync.
+- The generator owns `src/api/` and may clean it on every run, so hand-written code never lives
+  there.
 - Every route sets `operation_id` (e.g. `analyses_create`, `events_search`) so the generated
   function names stay stable.
 - WebSocket message types are defined as Pydantic models too. They're exported via a dummy

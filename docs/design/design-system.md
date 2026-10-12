@@ -1,8 +1,8 @@
 # Tartarus design system
 
 Tartarus uses the cyberpunk terminal look of the developer's red-team project (Momos), recoloured
-**ice blue** for blue-team malware analysis. The reference stylesheet is
-[tartarus-theme.css](tartarus-theme.css). Copy it into the frontend as `src/css/app.css`.
+**ice blue** for blue-team malware analysis. The stylesheet is
+[app.css](../../frontend/src/css/app.css), the single source of the theme.
 
 ## Principles
 
@@ -22,7 +22,7 @@ Tartarus uses the cyberpunk terminal look of the developer's red-team project (M
 
 ## Tokens
 
-All tokens are CSS custom properties on `:root` in `tartarus-theme.css`. Only dark mode is
+All tokens are CSS custom properties on `:root` in `app.css`. Only dark mode is
 supported, and there is no light theme.
 
 ### Surfaces
@@ -134,7 +134,7 @@ Rules:
 
 ## Components
 
-Each item below is implemented in `tartarus-theme.css`. Quasar components are themed through
+Each item below is implemented in `app.css`. Quasar components are themed through
 the overrides at the bottom of that file.
 
 | Component | Look and behaviour |
@@ -199,19 +199,11 @@ $button-border-radius  : 0;
 - `framework.config.dark: true` (dark only, no toggle).
 - `framework.plugins: ['Notify', 'Dialog', 'Loading', 'LocalStorage']`.
 - `extras: ['material-icons', 'material-icons-outlined']`.
-- `css: ['app.css']`, where `app.css` is `tartarus-theme.css`.
+- `css: ['app.css']` (`frontend/src/css/app.css`, the theme stylesheet).
 
-`src/boot/notify.ts` registers the toast types:
-
-```ts
-import { Notify } from 'quasar'
-
-const base = { position: 'bottom-right', timeout: 5000, progress: true, actions: [{ icon: 'close', color: 'grey', round: true, flat: true }] } as const
-Notify.registerType('tt-info',    { ...base, icon: 'info',         classes: 'tt-toast tt-toast--info' })
-Notify.registerType('tt-success', { ...base, icon: 'check_circle', classes: 'tt-toast tt-toast--success' })
-Notify.registerType('tt-warning', { ...base, icon: 'report',       classes: 'tt-toast tt-toast--warning' })
-Notify.registerType('tt-error',   { ...base, icon: 'dangerous',    classes: 'tt-toast tt-toast--error', timeout: 0 })
-```
+`src/boot/notify.ts` registers the toast types (`tt-info`, `tt-success`, `tt-warning`,
+`tt-error`): bottom-right, 5 s timeout with a progress bar and a close action. `tt-error` never
+times out. The code in `frontend/src/boot/notify.ts` is the source; this list is a summary.
 
 Error toasts stay until dismissed.
 

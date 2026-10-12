@@ -42,9 +42,9 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 ## Changes
 
 ### Infrastructure ([architecture](../architecture.md))
-- [ ] `docker-compose.yml`: `backend`, `cape`, `opensearch`, `postgres` (DBs `tartarus` + `cape`). No `mongo` service — resolved, see Decisions.
+- [ ] `docker-compose.yml`: `frontend`, `backend`, `cape`, `opensearch`, `postgres` (DBs `tartarus` + `cape`); `docker-compose.dev.yml` override with watch and debug ports. No `mongo` service — resolved, see Decisions.
 - [ ] Volumes and bind mounts: `cape-storage` (read-only in backend), `guest-images`, `data/iso`, `rules/`
-- [ ] Only `backend` is exposed, on `127.0.0.1:8080`
+- [ ] Only `frontend` (nginx, proxying `/api` and `/ws` to the backend) is exposed, on `127.0.0.1:8080`
 - [ ] `.env.example` with all settings; secrets generated on first start
 - [ ] Host preflight script (KVM, CPU flags, RAM, disk, Docker)
 
@@ -55,7 +55,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 - [ ] Isolated guest bridge `tt-guest` inside the container namespace; INetSim as the default route
 
 ### Backend ([backend](../specs/backend.md), [data-model](../specs/data-model.md))
-- [ ] FastAPI app with operation ids; OpenAPI export for `@hey-api/openapi-ts`
+- [ ] FastAPI app with operation ids, serving the schema at `/openapi.json` for `@hey-api/openapi-ts`
 - [ ] PostgreSQL models + Alembic: sample, analysis, tag, tag_link, note, sigma_rule, guest_vm, job, setting
 - [ ] OpenSearch index template (ECS + `tartarus.*` + `api.*`), one index per analysis
 - [ ] Submission + one-at-a-time queue runner
@@ -73,7 +73,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 - [ ] Guest build pipeline and health checks
 
 ### GUI ([gui](../specs/gui.md), [design system](../design/design-system.md))
-- [ ] Quasar PWA shell: header with health, queue and disk; mini nav; theme from `tartarus-theme.css`
+- [ ] Quasar PWA shell: header with health, queue and disk; mini nav; theme from `src/css/app.css`
 - [ ] Dashboard: analyses table, queue, system, disk, empty states
 - [ ] Submit dialog
 - [ ] Workspace header, query bar + chips, event detail drawer, URL-synced state
@@ -130,6 +130,8 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | Guided auto-build of the guest from a user ISO | Guest prep is the hardest part of running CAPE |
 | Sources: capemon, Sysmon, ETW, Suricata/PCAP, Volatility3 | User's choice; Sysmon and ETW complement user-mode hooks |
 | Extra workflows: tags/notes and export/report only | User's choice |
+| Separate `frontend` container: Vite in dev, nginx in prod proxying `/api` and `/ws` | Same pattern as the user's Momos project; fast HMR; still one published port |
+| Backend controls libvirt via `qemu+tcp://cape/system`; never mount the Docker socket | The Docker socket is root on the host, and the backend processes untrusted malware data |
 | No `mongo` service | Verified from CAPE source: `tasks/create/file`, `tasks/status`, `tasks/delete`, `machines/list` and `cuckoo/status` only touch CAPE's SQL task DB; CAPE's scheduler skips the `mongodb` reporting module when it's disabled (the shipped default); `jsondump` (what Tartarus reads) has no Mongo dependency; and the one startup check that requires Mongo or Elasticsearch only fires if `web.conf [web_reporting]` is enabled, which also ships off. Keep both at their defaults. `pymongo` stays installed in the `cape` image (an unconditional import for `bson.objectid.ObjectId`), but no connection is ever opened. |
 
 ## Open questions
@@ -148,6 +150,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 7. **App icon:** design a PWA and app icon (a descending pit or gate motif in ice blue).
 8. **PDF report styling:** a print variant (white background, blue accents) is proposed instead
    of a black PDF.
+9. **Maximum sample upload size:** 512 MB is proposed (nginx `client_max_body_size` on `/api/`).
 
 ## Research references
 - CAPEv2: https://github.com/kevoreilly/CAPEv2. Docs: https://capev2.readthedocs.io/en/latest/

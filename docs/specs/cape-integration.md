@@ -11,7 +11,7 @@ How Tartarus runs, configures and drives CAPEv2, and how the Windows guest gets 
 | Install | CAPE's own `installer/kvm-qemu.sh` (patched QEMU/SeaBIOS with anti-VM strings; `<WOOT>` placeholders replaced at build time from build args) and `installer/cape2.sh` (CAPE, poetry env, Suricata, tcpdump perms) |
 | Privileges | `privileged: true`, `devices: [/dev/kvm]`. The container needs its own iptables, bridge and tun management for the rooter and libvirt. |
 | Network namespace | Its own namespace (**not** `network_mode: host`). The guest bridge `tt-guest` lives only in this namespace. |
-| Process supervisor | supervisord (no systemd): `virtlogd`, `libvirtd`, `cape-rooter`, `cape` (scheduler + ResultServer), `cape-processor`, `cape-web` (gunicorn, apiv2 only), `suricata`, `inetsim`, `guacd` |
+| Process supervisor | supervisord (no systemd): `virtlogd`, `libvirtd` (also listening on TCP `16509` for the backend's `qemu+tcp://cape/system` connection, bound to the internal compose network only), `cape-rooter`, `cape` (scheduler + ResultServer), `cape-processor`, `cape-web` (gunicorn, apiv2 only), `suricata`, `inetsim`, `guacd` |
 | Databases | `postgres` service, database `cape`. No Mongo: `web.conf [web_reporting]` and `reporting.conf [mongodb]` stay at their shipped-disabled defaults, since Tartarus reads `report.json` instead of CAPE's Mongo-backed report viewer |
 | Shared volume | `/opt/CAPEv2/storage` = `cape-storage` volume (backend mounts it read-only) |
 | Health | `HEALTHCHECK` calls `apiv2/cuckoo/status/` and `virsh list` |
@@ -35,7 +35,7 @@ Generated at container start from `.env` (Jinja templates), overriding CAPE's de
 | `auxiliary.conf` | `sysmon = yes` (Windows), ETW modules (`dns_etw`, `network_etw`, `wmi_etw`, `amsi_etw`) on, `QemuScreenshots` on |
 | `processing.conf` | `behavior`, `network`, `suricata`, `CAPE`, `procmemory`, `strings`, `trid`, `die` on; `memory` (Volatility3) on but only runs when the task has `memory=1`; `virustotal` **off** (no data leaves the host) |
 | `memory.conf` | Volatility3 plugins: pslist, pstree, malfind, netscan, handles, ldrmodules, hollowprocesses, processghosting, suspiciousthreads, unhookedsyscalls |
-| `reporting.conf` | `jsondump = on`; `mongodb = off` (default; no Mongo service exists); `callback = on, url = http://backend:8080/internal/cape/callback`; everything else off |
+| `reporting.conf` | `jsondump = on`; `mongodb = off` (default; no Mongo service exists); `callback = on, url = http://backend:8000/internal/cape/callback`; everything else off |
 | `web.conf` | `[guacamole] enabled = yes, guacd_host = 127.0.0.1` (Tartarus proxies guacd itself; CAPE's own guac web view is not exposed) |
 | `api.conf` | Token auth on (token generated at first start and shared with the backend via the env file); `[taskstatus] enabled = yes` |
 

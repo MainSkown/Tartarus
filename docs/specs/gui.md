@@ -329,13 +329,13 @@ Analysis-level notes are edited inline: a plain QInput textarea in autogrow mode
 
 | Path | Content |
 |---|---|
-| `api/generated/` | `@hey-api/openapi-ts` output |
-| `api/ws.ts` | Typed WebSocket client (reconnect with backoff, message types from the generated schema) |
+| `api/` | `@hey-api/openapi-ts` output (do not edit; `npm run api:sync`) |
+| `services/ws.ts` | Typed WebSocket client (reconnect with backoff, message types from the generated schema) |
 | `stores/` | Pinia: `system`, `analyses`, `analysis` (current workspace: detail, query state, selection), `live`, `rules`, `guest` |
 | `pages/` | One page component per route/tab |
 | `components/` | `QueryBar`, `FilterChips`, `EventTable`, `EventDetailDrawer`, `ProcessGraph`, `ProcessTree`, `Timeline` (canvas), `DesktopViewer` (guacamole-common-js), `SeverityBadge`, `LaneIcon`, `StatTile`, `AttackMatrix`, `CodeBlock`, `TerminalEmpty` |
 | `boot/` | `notify.ts` (toast types), `api.ts` (client base URL, error interceptor that raises toasts) |
-| `css/` | `app.css` (= `docs/design/tartarus-theme.css`), `quasar.variables.scss` |
+| `css/` | `app.css` (the theme stylesheet, single source of the design tokens), `quasar.variables.scss` |
 
 The PWA manifest:
 - name "Tartarus", short name "Tartarus", `display: standalone`;

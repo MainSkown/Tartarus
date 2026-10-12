@@ -20,7 +20,8 @@ query bar, and export IOCs and reports.
 | [GUI spec](docs/specs/gui.md) | Screens, layouts, interactions, states, frontend structure |
 | [CAPE integration](docs/specs/cape-integration.md) | `cape` container, CAPE config, guest build wizard, Windows-host plan |
 | [Design system](docs/design/design-system.md) | Ice-blue cyberpunk theme: tokens, components, data-viz rules |
-| [Theme CSS](docs/design/tartarus-theme.css) | Reference stylesheet (becomes `frontend/src/css/app.css`) |
+| [Theme CSS](frontend/src/css/app.css) | The theme stylesheet, single source of the design tokens |
+| [Plan: foundation](docs/plans/foundation.md) | Compose stack, backend and frontend skeletons: subtasks, model tiers, dependencies |
 
 ## Planned quick start (v1)
 
@@ -33,8 +34,11 @@ docker compose up -d
 
 ## Developing
 
-Three rules govern this codebase — self-documenting code, test-first, and no duplication — see
-[CLAUDE.md](CLAUDE.md).
+Run `make hooks` once per clone to enable the pre-commit checks.
+
+Development rules — self-documenting code, test-first, no duplication, screenshot review of
+frontend changes, and delegating work by difficulty — live in
+[.claude/CLAUDE.md](.claude/CLAUDE.md).
 
 ## Safety
 
