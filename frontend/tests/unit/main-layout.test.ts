@@ -14,6 +14,7 @@ const HEALTHY: SystemHealth = {
 
 vi.mock('@/api', () => ({
   systemHealth: vi.fn().mockResolvedValue({ data: undefined }),
+  settingsRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
 }))
 
 vi.mock('@/services/ws', () => ({
