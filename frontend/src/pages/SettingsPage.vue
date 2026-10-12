@@ -108,7 +108,7 @@ onMounted(loadSettings)
         </div>
         <p
           v-if="fieldErrors.default_route"
-          class="field-error text-mono"
+          class="field-error"
           role="alert"
         >
           {{ fieldErrors.default_route }}
@@ -143,7 +143,7 @@ onMounted(loadSettings)
         </div>
         <p
           v-if="fieldErrors.default_interactive"
-          class="field-error text-mono"
+          class="field-error"
           role="alert"
         >
           {{ fieldErrors.default_interactive }}
@@ -201,6 +201,8 @@ onMounted(loadSettings)
 .section-title {
   color: var(--blue-primary);
   font-size: 0.9rem;
+  /* Quasar's typography gives h1 a 6rem line-height, which shrinking the font doesn't undo. */
+  line-height: 1.2;
   letter-spacing: 2px;
   margin: 0 0 var(--spacing-lg);
 }
