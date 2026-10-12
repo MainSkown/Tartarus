@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
 from app.config import get_settings
+from app.db import models  # noqa: F401 - populates Base.metadata for autogenerate
 from app.db.base import Base
 
 target_metadata = Base.metadata
