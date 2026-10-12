@@ -1,0 +1,37 @@
+# Hooks call the project's own tools so versions come from backend/uv.lock and frontend/package-lock.json.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (backend)
+        language: system
+        entry: bash -c 'cd backend && uv run ruff check --force-exclude "${@#backend/}"' ruff-check
+        files: ^backend/
+        types: [python]
+      - id: ruff-format
+        name: ruff format (backend)
+        language: system
+        entry: bash -c 'cd backend && uv run ruff format --force-exclude "${@#backend/}"' ruff-format
+        files: ^backend/
+        types: [python]
+      - id: eslint
+        name: eslint (frontend)
+        language: system
+        entry: npm --prefix frontend run lint
+        pass_filenames: false
+        files: ^frontend/
+        types_or: [javascript, ts, vue]
+      - id: backend-unit-tests
+        name: backend unit tests
+        language: system
+        entry: bash -c 'cd backend && uv run pytest -m "not integration" -q'
+        pass_filenames: false
+        files: ^backend/
+        types: [python]
+      - id: frontend-unit-tests
+        name: frontend unit tests
+        language: system
+        entry: npm --prefix frontend run test:unit
+        pass_filenames: false
+        files: ^frontend/
+        types_or: [javascript, ts, vue]

@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.quasar/
+
+# Playwright output
+frontend/test-results/
+frontend/playwright-report/
+frontend/screenshots/
+
+# Local configuration and secrets
+.env
+data/secrets.env
+
+# User-supplied ISOs
+data/iso/*
+!data/iso/.gitkeep
