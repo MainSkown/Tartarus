@@ -1,45 +1,56 @@
 services:
-  momos-dashboard:
-    build:
-      context: ./dashboard
-      target: dev-stage
+  postgres:
     ports:
-      - "5173:5173"
-    volumes:
-      - ./dashboard:/app
-      - /app/node_modules
-    develop:
-      watch:
-        - action: sync
-          path: ./dashboard/src
-          target: /app/src
-        - action: rebuild
-          path: ./dashboard/package.json
+      - "127.0.0.1:5432:5432"
 
-  momos-backend:
-    build:
-      context: ./backend
-      target: dev
+  opensearch:
     ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app
-      - /var/run/docker.sock:/var/run/docker.sock
+      - "127.0.0.1:9200:9200"
+
+  backend:
+    build:
+      target: dev
     environment:
-      - ENVIRONMENT=development
+      ENVIRONMENT: development
+    ports:
+      - "127.0.0.1:8000:8000"
     develop:
       watch:
         - action: sync
-          path: ./backend
-          target: /app
-          ignore:
-            - "__pycache__"
-            - ".pytest_cache"
-            - ".venv"
+          path: ./backend/app
+          target: /app/app
+        - action: sync
+          path: ./backend/alembic
+          target: /app/alembic
         - action: rebuild
           path: ./backend/pyproject.toml
         - action: rebuild
           path: ./backend/uv.lock
-  db:
-    ports:
-      - "5432:5432"
+
+  frontend:
+    build:
+      target: dev-stage
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    ports: !override
+      - "127.0.0.1:5173:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5173/"]
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+        - action: rebuild
+          path: ./frontend/quasar.config.ts
+        - action: rebuild
+          path: ./frontend/src-pwa/package.json
+        - action: rebuild
+          path: ./frontend/src-pwa/package-lock.json

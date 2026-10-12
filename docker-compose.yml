@@ -1,63 +1,113 @@
 services:
-  momos-backend:
-    container_name: "momos-backend"
-    build: 
+  postgres:
+    container_name: tartarus-postgres
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+      POSTGRES_USER: ${POSTGRES_USER:-tartarus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env (copy .env.example)}
+      POSTGRES_DB: ${POSTGRES_DB:-tartarus}
+      CAPE_DB_USER: ${CAPE_DB_USER:-cape}
+      CAPE_DB_PASSWORD: ${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set in .env (copy .env.example)}
+      CAPE_DB_NAME: ${CAPE_DB_NAME:-cape}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - tartarus-internal
+    healthcheck:
+      # TCP, not the default socket: the temporary server that runs the init scripts only listens on the socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  opensearch:
+    container_name: tartarus-opensearch
+    image: opensearchproject/opensearch:3.9.0
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms${OPENSEARCH_HEAP:-1536m} -Xmx${OPENSEARCH_HEAP:-1536m}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - os-data:/usr/share/opensearch/data
+    networks:
+      - tartarus-internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+
+  backend:
+    container_name: tartarus-backend
+    build:
       context: ./backend
       target: prod
-    volumes:
-      - ./backend:/app
-      - /var/run/docker.sock:/var/run/docker.sock # For spawning docker containers
-    depends_on:
-      - db
-      - ollama
-    networks:
-      - momos-net
-
-  # The Frontend
-  momos-dashboard:
-    container_name: "momos-dashboard"
-    build: 
-      context: ./dashboard
-      target: production-stage
-    ports:
-      - "8080:80"
-    networks:
-      - momos-net
-
-  # The Memory & Data
-  db:
-    container_name: "momos-db"
-    image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: momos
-      POSTGRES_PASSWORD: momos
-      POSTGRES_DB: momos_db
-    volumes:
-      - db_data:/var/lib/postgresql/data
+      TZ: ${TZ:-UTC}
+      ENVIRONMENT: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tartarus}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env (copy .env.example)}@postgres:5432/${POSTGRES_DB:-tartarus}
+      OPENSEARCH_URL: http://opensearch:9200
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
     networks:
-      - momos-net
+      - tartarus-internal
+    healthcheck:
+      # No curl in the slim image.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/system/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
-  # The LLM Engine
-  ollama:
-    container_name: "momos-ollama"
-    image: ollama/ollama:latest
-    volumes:
-      - ollama_data:/root/.ollama
+  frontend:
+    container_name: tartarus-frontend
+    build:
+      context: ./frontend
+      target: production-stage
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+    ports:
+      - "127.0.0.1:${TARTARUS_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
-      - momos-net
-    # If you have an NVIDIA GPU, uncomment these lines for massive speedups:
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - tartarus-internal
+    healthcheck:
+      # 127.0.0.1, not localhost: busybox wget does not fall back to IPv4 when localhost resolves to ::1 first.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
-  momos-net:
+  tartarus-internal:
+    name: tartarus-internal
     driver: bridge
 
 volumes:
-  db_data:
-  ollama_data:
+  pg-data:
+  os-data:
