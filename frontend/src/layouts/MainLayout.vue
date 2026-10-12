@@ -50,14 +50,15 @@ const submitDisabledReason = computed(() => system.guestMessage ?? 'checking gue
 
 <template>
   <q-layout view="hHh LpR fFf">
-    <div
-      v-if="showReconnectBar"
-      class="reconnect-bar text-mono"
-    >
-      Reconnecting…
-    </div>
-
     <q-header class="app-header">
+      <!-- Inside the header, not above it: the header is fixed, so anything in the page flow
+           above it is painted over. Quasar measures the header, so the page shifts to fit. -->
+      <div
+        v-if="showReconnectBar"
+        class="reconnect-bar text-mono"
+      >
+        Reconnecting…
+      </div>
       <q-toolbar class="app-toolbar">
         <div class="wordmark text-mono">
           TARTARUS

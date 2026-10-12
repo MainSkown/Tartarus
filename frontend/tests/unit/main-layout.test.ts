@@ -88,6 +88,15 @@ describe('MainLayout', () => {
     expect(wrapper.find('.reconnect-bar').exists()).toBe(true)
   })
 
+  it('renders the reconnect bar inside the fixed header, where nothing can cover it', async () => {
+    // Outside q-header it sat in the page flow under the fixed header, which painted over it:
+    // present in the DOM, taking up space, invisible on screen.
+    const { wrapper, store } = await mountShellAt('/')
+    store.connectionState = 'reconnecting'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.q-header .reconnect-bar').exists()).toBe(true)
+  })
+
   it('hides the reconnect bar during the very first connect, but shows it once closed', async () => {
     const { wrapper, store } = await mountShellAt('/')
     store.connectionState = 'connecting'
