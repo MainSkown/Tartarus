@@ -17,6 +17,8 @@ RUN useradd --system --create-home --uid 1000 tartarus \
 WORKDIR /app
 USER tartarus
 COPY --chown=tartarus:tartarus pyproject.toml uv.lock .python-version ./
+COPY --chown=tartarus:tartarus docker-entrypoint.sh /usr/local/bin/
+ENTRYPOINT ["docker-entrypoint.sh"]
 EXPOSE 8000
 
 

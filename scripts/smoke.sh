@@ -146,12 +146,14 @@ check_prod() {
     COMPOSE_FILES=(-f "$BASE_FILE")
     check_running_stack
     check_http frontend 80 /api/system/health
+    check_http frontend 80 /api/settings
 }
 
 check_dev() {
     COMPOSE_FILES=(-f "$BASE_FILE" -f "$DEV_FILE")
     check_running_stack
     check_http backend 8000 /api/system/health
+    check_http backend 8000 /api/settings
     check_http frontend 5173 /api/system/health
 }
 

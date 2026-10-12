@@ -54,8 +54,10 @@ STUB
 #!/usr/bin/env bash
 url="${*: -1}"
 host_port="${url#http://}"
+path="/${host_port#*/}"
 host_port="${host_port%%/*}"
-cat "$STUB_DIR/http-${host_port##*:}" 2>/dev/null || printf 000
+port="${host_port##*:}"
+cat "$STUB_DIR/http-${port}${path//\//_}" 2>/dev/null || cat "$STUB_DIR/http-${port}" 2>/dev/null || printf 000
 STUB
     chmod +x "$STUB_DIR/bin/docker" "$STUB_DIR/bin/curl"
 }
@@ -174,6 +176,18 @@ test_prod_fails_when_health_endpoint_errors() {
     printf 503 >"$STUB_DIR/http-8080"
     run_smoke prod
     expect_fail_mentioning "/api/system/health"
+}
+
+test_prod_fails_when_database_is_not_migrated() {
+    printf 500 >"$STUB_DIR/http-8080_api_settings"
+    run_smoke prod
+    expect_fail_mentioning "/api/settings"
+}
+
+test_dev_fails_when_database_is_not_migrated() {
+    printf 500 >"$STUB_DIR/http-8000_api_settings"
+    run_smoke dev
+    expect_fail_mentioning "/api/settings"
 }
 
 test_prod_fails_when_stack_is_down() {
