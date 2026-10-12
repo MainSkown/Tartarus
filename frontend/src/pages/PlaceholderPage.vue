@@ -1,5 +1,7 @@
+<script setup lang="ts">
+import TerminalEmpty from '@/components/TerminalEmpty.vue'
+</script>
+
 <template>
-  <p class="text-mono q-pa-md">
-    &gt; not implemented yet
-  </p>
+  <TerminalEmpty />
 </template>
