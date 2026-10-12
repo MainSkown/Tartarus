@@ -115,10 +115,13 @@ onMounted(loadSettings)
         </p>
       </div>
 
+      <!-- hide-bottom-space on all three inputs: without it Quasar reserves 20px under each
+           for an error message, making gaps uneven. An error now pushes the form down instead. -->
       <q-input
         :model-value="form.default_timeout"
         outlined
         dense
+        hide-bottom-space
         type="number"
         label="DEFAULT TIMEOUT"
         suffix="s"
@@ -154,6 +157,7 @@ onMounted(loadSettings)
         :model-value="form.disk_warn_gb"
         outlined
         dense
+        hide-bottom-space
         type="number"
         label="DISK WARN (GB)"
         :error="Boolean(fieldErrors.disk_warn_gb)"
@@ -166,6 +170,7 @@ onMounted(loadSettings)
         :model-value="form.disk_block_gb"
         outlined
         dense
+        hide-bottom-space
         type="number"
         label="DISK BLOCK (GB)"
         :error="Boolean(fieldErrors.disk_block_gb)"

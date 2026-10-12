@@ -29,6 +29,25 @@ test('settings-loaded', async ({ page }) => {
   await page.screenshot({ path: screenshotPath('settings-loaded') })
 })
 
+test('settings form has the same gap between every pair of components', async ({ page }) => {
+  // jsdom has no layout, so this can only be checked in a real browser. Quasar reserves 20px
+  // of padding under each q-input for an error message, inside the input's own box, so the
+  // visible gaps alternated between 24px and 44px while the boxes themselves were evenly
+  // spaced. Measure what is drawn: an input's bordered control, not its padded wrapper.
+  await mockShell(page)
+  await mockSettings(page, { getBody: STORED_SETTINGS })
+  await page.goto('/settings')
+  await expect(page.locator('.save-btn')).toBeVisible()
+  const gaps = await page.locator('.settings-form > *').evaluateAll((elements) => {
+    const boxes = elements.map((element) =>
+      (element.querySelector('.q-field__control') ?? element).getBoundingClientRect(),
+    )
+    return boxes.slice(1).map((box, index) => Math.round(box.top - boxes[index]!.bottom))
+  })
+  expect(gaps).toHaveLength(5)
+  expect(new Set(gaps).size, `gaps between components were ${gaps.join(', ')}px`).toBe(1)
+})
+
 test('settings-loading', async ({ page }) => {
   await mockShell(page)
   await mockSettings(page, { getBody: STORED_SETTINGS, getDelayMs: 3000 })
