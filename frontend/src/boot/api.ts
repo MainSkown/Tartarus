@@ -4,10 +4,10 @@ import { client } from '@/api/client.gen'
 import type { ErrorEnvelope } from '@/api'
 import { validationIssues } from '@/services/validation-errors'
 
-// Both the Vite dev server (quasar.config.ts devServer.proxy) and the production nginx
-// container (see gui spec "Frontend structure") proxy /api to the backend, so the client
-// never needs an absolute origin.
-const API_BASE_URL = '/api'
+// Empty, not '/api': every generated URL in sdk.gen.ts already starts with /api (the backend
+// mounts its router at APIRouter(prefix="/api")), so a '/api' base would send /api/api/...
+// Same-origin works because the Vite dev server and production nginx both proxy /api.
+const API_BASE_URL = ''
 
 const GENERIC_ERROR_MESSAGE = 'Something went wrong talking to the backend.'
 

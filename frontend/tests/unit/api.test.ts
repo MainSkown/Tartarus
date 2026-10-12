@@ -25,9 +25,14 @@ describe('api boot', () => {
     client.interceptors.error.clear()
   })
 
-  it('sets the base URL to the same-origin /api path', () => {
+  it('builds the real request URL for a generated route without doubling /api', () => {
+    // A bare baseUrl assertion isn't enough: it previously passed with baseUrl '/api' while
+    // every real request actually went to /api/api/... and 404'd, because every URL already
+    // generated into sdk.gen.ts (e.g. '/api/system/health') already carries the backend's own
+    // APIRouter(prefix="/api"). Assert the URL the client would actually send instead.
     configureApiClient({} as Parameters<typeof configureApiClient>[0])
-    expect(client.getConfig().baseUrl).toBe('/api')
+    const url = client.buildUrl({ url: '/api/system/health' })
+    expect(url).toBe('/api/system/health')
   })
 
   it('toasts the envelope message for a 404-shaped error', async () => {
