@@ -37,9 +37,10 @@ describe('quasar.config', () => {
     })
   })
 
-  it('registers the notify boot file and the theme stylesheet', async () => {
+  it('registers the notify and api boot files and the theme stylesheet', async () => {
     const { boot, css } = await loadConfig()
     expect(boot).toContain('notify')
+    expect(boot).toContain('api')
     expect(css).toEqual(['app.css'])
   })
 

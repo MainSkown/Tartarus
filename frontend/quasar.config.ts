@@ -3,7 +3,7 @@ import { defineConfig } from '#q-app'
 const apiProxyTarget = process.env.API_PROXY_TARGET ?? 'http://backend:8000'
 
 export default defineConfig(() => ({
-  boot: ['notify'],
+  boot: ['notify', 'api'],
 
   css: ['app.css'],
 
@@ -18,6 +18,18 @@ export default defineConfig(() => ({
     typescript: {
       strict: true,
       vueShim: true,
+      // `exactOptionalPropertyTypes` fails vue-tsc on src/api/'s vendored client runtime
+      // (@hey-api/openapi-ts v0.99.0's bundled fetch-client core, not our schema-derived
+      // types or SDK functions, which both pass clean) under TypeScript ~6.0.3.
+      // `exclude` alone can't fix this: vue-tsc still type-checks any excluded file that's
+      // reachable through an import, which src/boot/api.ts's import of `client` requires.
+      // Turning the one flag off project-wide is the smallest fix available without hand-
+      // editing generator-owned output (never done per CLAUDE.md rule 3) or splitting the
+      // build into TS project references for one directory.
+      extendTsConfig(tsConfig) {
+        tsConfig.compilerOptions ??= {}
+        tsConfig.compilerOptions.exactOptionalPropertyTypes = false
+      },
     },
   },
 
