@@ -1,7 +1,7 @@
 # Development rules
 
 Three rules govern how code is written in this repo. They apply to the backend (Python/FastAPI)
-and the frontend (Vue/Quasar) equally. Specs live in [docs/](docs/); this file is about *how* to
+and the frontend (Vue/Quasar) equally. Specs live in [docs/](../docs/); this file is about *how* to
 write the code that implements them, not *what* to build.
 
 ## 1. Code is self-documenting — comment sparingly
@@ -51,7 +51,7 @@ Write the test, watch it fail, then write the minimum code to pass it, then refa
   - Backend: `pytest`. Pure logic (normalisers, query grammar, Sigma matcher) as unit tests
     with fixtures, no containers. Anything touching OpenSearch/Postgres through testcontainers.
     The collector against a fixture analysis directory written incrementally, to simulate a
-    live run (see [backend spec](docs/specs/backend.md#testing)).
+    live run (see [backend spec](../docs/specs/backend.md#testing)).
   - Frontend: `vitest` for stores and composables, `@vue/test-utils` for components,
     `playwright` for the handful of flows that must work end to end (submit → live → final).
 - **A bug fix starts with a regression test** that reproduces it and fails, then the fix.
@@ -64,12 +64,12 @@ If you're about to write logic that already exists elsewhere, extend or call tha
 
 - **One normaliser interface, one implementation per source.** Capemon, Sysmon, ETW, Suricata
   and Volatility3 mappers all implement the same `Normalizer` protocol (see
-  [data-model](docs/specs/data-model.md)); shared logic (derived-event emission, ECS field
+  [data-model](../docs/specs/data-model.md)); shared logic (derived-event emission, ECS field
   helpers, severity mapping) lives in one place they all call, not copy-pasted into each.
 - **Shared Vue pieces are components or composables, not copy-pasted templates.** The severity
   badge, lane icon, query bar, and the "filter on / filter out" action used across Events,
   Network, Artifacts and the detail drawer are each written once
-  ([gui spec](docs/specs/gui.md#frontend-structure)).
+  ([gui spec](../docs/specs/gui.md#frontend-structure)).
   - If the same markup or logic appears in two places, extract it before the third copy.
 - **One source of truth per concept.** The field catalog behind the query compiler, the
   autocomplete endpoint, and the Sigma ECS pipeline all read the same field-definition table —
@@ -88,10 +88,10 @@ screen, a new component, and any change that affects layout, spacing, color or i
 states, not to a pure logic change with no visual effect.
 
 1. **Build it for real first.** Implement the screen or component in Vue/Quasar against the
-   [design system](docs/design/design-system.md), no separate mockup step.
+   [design system](../docs/design/design-system.md), no separate mockup step.
 2. **Run it and capture it.** Launch the dev server and screenshot every state the change
    touches: default, hover/focus if relevant, loading, empty, and error — not just the happy
-   path (see "States and feedback" in the [GUI spec](docs/specs/gui.md)). Also capture any
+   path (see "States and feedback" in the [GUI spec](../docs/specs/gui.md)). Also capture any
    state likely to break layout: long filenames and paths, many tags, a wide process tree, a
    narrow window — the GUI has no fixed-width assumptions to lean on.
 3. **Check the screenshots yourself before publishing them.** Overflow, clipped text, broken
@@ -118,9 +118,9 @@ independent subtasks together, in one message, rather than one at a time.
 
 | Tier | Model | What goes here |
 |---|---|---|
-| Easy / medium | Haiku | Well-specified, low-ambiguity work with a clear template to follow: a single normaliser mapping already spelled out in [data-model](docs/specs/data-model.md), a CRUD endpoint, a Pydantic/TypeScript model, a Vue component that follows an existing pattern in the [design system](docs/design/design-system.md), writing tests for already-specified behavior, config and doc edits, mechanical refactors. |
+| Easy / medium | Haiku | Well-specified, low-ambiguity work with a clear template to follow: a single normaliser mapping already spelled out in [data-model](../docs/specs/data-model.md), a CRUD endpoint, a Pydantic/TypeScript model, a Vue component that follows an existing pattern in the [design system](../docs/design/design-system.md), writing tests for already-specified behavior, config and doc edits, mechanical refactors. |
 | Standard / hard | Sonnet | Most feature work: the query compiler, the Sigma matcher, the collector, the process graph and timeline components, most backend endpoints and Vue pages, non-trivial bug fixes, anything that requires judgment calls within an already-decided design. |
-| Extreme | Opus | Real ambiguity, cross-cutting impact, or a high cost if subtly wrong: the M0 container spike, the guest network isolation and iptables rules, designing a new core abstraction (the normaliser protocol, the query grammar), resolving an open question from [tartarus-v1](docs/features/tartarus-v1.md), or anything touching several modules at once. |
+| Extreme | Opus | Real ambiguity, cross-cutting impact, or a high cost if subtly wrong: the M0 container spike, the guest network isolation and iptables rules, designing a new core abstraction (the normaliser protocol, the query grammar), resolving an open question from [tartarus-v1](../docs/features/tartarus-v1.md), or anything touching several modules at once. |
 
 - **When difficulty is unclear, round up a tier.** A cheap model producing subtly wrong
   isolation or data-model code costs more to find later than the saved cost now.
