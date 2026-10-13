@@ -36,6 +36,14 @@ describe('confirmDestructive', () => {
     vi.restoreAllMocks()
   })
 
+  it('keeps the cancel button neutral so only the destructive action carries a colour', () => {
+    const { create } = stubDialog()
+    void confirmDestructive({ title: 'Delete #4', message: 'This cannot be undone.' })
+
+    const options = create.mock.calls[0]![0]
+    expect(options.cancel).toMatchObject({ color: 'grey' })
+  })
+
   it('resolves true when the user confirms', async () => {
     const { callbacks } = stubDialog()
     const answer = confirmDestructive({ title: 'Delete #4', message: 'This cannot be undone.' })

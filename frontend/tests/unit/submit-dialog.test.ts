@@ -238,7 +238,7 @@ describe('SubmitDialog', () => {
       await textInput(wrapper, 'TIMEOUT').find('input').setValue(value)
 
       expect(textInput(wrapper, 'TIMEOUT').props('error')).toBe(true)
-      expect(textInput(wrapper, 'TIMEOUT').props('errorMessage')).toBe('Timeout must be a whole number from 60 to 1200 seconds')
+      expect(textInput(wrapper, 'TIMEOUT').props('errorMessage')).toBe('Whole seconds, 60 to 1200')
       expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
     })
 

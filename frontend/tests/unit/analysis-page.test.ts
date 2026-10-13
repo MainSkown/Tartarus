@@ -121,7 +121,7 @@ describe('AnalysisPage states', () => {
 
   it.each(['starting', 'running', 'processing', 'ingesting'] as const)('shows progress while %s', async (status) => {
     const wrapper = await mountPage(analysisWithStatus(status, { finished_at: null }))
-    expect(wrapper.find('progress').exists()).toBe(true)
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(true)
   })
 
   it('shows the detections of a finished analysis', async () => {

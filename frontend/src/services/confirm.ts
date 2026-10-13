@@ -18,7 +18,7 @@ export function confirmDestructive({ title, message, confirmLabel = 'DELETE' }: 
       dark: true,
       // Clicking next to a destructive prompt must never answer it.
       persistent: true,
-      cancel: { label: 'CANCEL', flat: true, square: true },
+      cancel: { label: 'CANCEL', flat: true, square: true, color: 'grey' },
       ok: { label: confirmLabel, outline: true, square: true, color: 'negative' },
     })
       .onOk(() => resolve(true))

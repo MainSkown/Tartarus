@@ -180,6 +180,14 @@ td {
   text-align: right;
 }
 
+.col-actions :deep(.q-btn) {
+  color: var(--text-gray);
+}
+
+.col-actions :deep(.q-btn:hover) {
+  color: var(--blue-hover);
+}
+
 .cell-filename {
   display: block;
   max-width: min(28ch, 40vw);
@@ -200,8 +208,18 @@ td {
 }
 
 @media (max-width: 700px) {
-  .col-optional {
+  .col-optional,
+  .col-id {
     display: none;
+  }
+
+  th,
+  td {
+    padding-inline: var(--spacing-sm);
+  }
+
+  .cell-filename {
+    max-width: 12ch;
   }
 }
 </style>

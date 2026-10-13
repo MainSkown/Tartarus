@@ -123,6 +123,7 @@ async function copyHash(): Promise<void> {
 .analysis-header__title {
   display: flex;
   align-items: center;
+  min-height: 36px;
   flex-wrap: wrap;
   gap: var(--spacing-md);
 }

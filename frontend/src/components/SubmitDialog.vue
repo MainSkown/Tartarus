@@ -17,7 +17,7 @@ const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginC
 const ROUTES: Route[] = ['inetsim', 'none', 'drop', 'internet']
 const TIMEOUT_MIN_SECONDS = 60
 const TIMEOUT_MAX_SECONDS = 1200
-const TIMEOUT_ERROR = `Timeout must be a whole number from ${TIMEOUT_MIN_SECONDS} to ${TIMEOUT_MAX_SECONDS} seconds`
+const TIMEOUT_ERROR = `Whole seconds, ${TIMEOUT_MIN_SECONDS} to ${TIMEOUT_MAX_SECONDS}`
 const FORM_FIELDS = ['file', 'route', 'timeout', 'package'] as const
 type FormField = (typeof FORM_FIELDS)[number]
 
@@ -422,7 +422,15 @@ onMounted(applySettingsDefaults)
 }
 
 .timeout-input {
-  flex: 0 0 9rem;
+  flex: 0 0 12rem;
+}
+
+.timeout-input :deep(input[type='number']) {
+  appearance: textfield;
+}
+
+.timeout-input :deep(input[type='number']::-webkit-inner-spin-button) {
+  appearance: none;
 }
 
 .package-input {

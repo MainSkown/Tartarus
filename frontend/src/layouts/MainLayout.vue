@@ -112,6 +112,7 @@ const submitDisabledReason = useGuestBlockReason()
 
     <q-drawer
       :model-value="true"
+      behavior="desktop"
       :mini="!drawerExpanded"
       :width="200"
       :mini-width="56"

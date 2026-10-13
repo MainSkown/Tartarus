@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
-import { Quasar } from 'quasar'
+import { QDrawer, Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SystemHealth } from '@/api'
 
@@ -69,6 +69,11 @@ describe('MainLayout', () => {
   ])('renders %s without throwing', async (path) => {
     const { wrapper } = await mountShellAt(path)
     expect(wrapper.exists()).toBe(true)
+  })
+
+  it('keeps the nav drawer docked at every width instead of an overlay that covers the page', async () => {
+    const { wrapper } = await mountShellAt('/')
+    expect(wrapper.findComponent(QDrawer).props('behavior')).toBe('desktop')
   })
 
   it('shows the wordmark and the three health dots', async () => {

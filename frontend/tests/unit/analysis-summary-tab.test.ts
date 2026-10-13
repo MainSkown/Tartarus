@@ -19,7 +19,7 @@ describe('AnalysisSummaryTab waiting states', () => {
     const wrapper = mountTab(analysisWithStatus('queued', { started_at: null, finished_at: null }))
     expect(wrapper.text()).toContain('queued')
     expect(wrapper.text()).toContain('waiting')
-    expect(wrapper.find('progress').exists()).toBe(false)
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false)
   })
 
   it.each([
@@ -29,7 +29,7 @@ describe('AnalysisSummaryTab waiting states', () => {
     ['ingesting', 'reading the report'],
   ] as const)('shows progress and the phase for %s', (status, phase) => {
     const wrapper = mountTab(analysisWithStatus(status, { finished_at: null }))
-    expect(wrapper.find('progress').exists()).toBe(true)
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(true)
     expect(wrapper.text()).toContain(phase)
   })
 })

@@ -37,7 +37,10 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
 <template>
   <section class="analysis-summary">
     <template v-if="phase">
-      <progress
+      <q-linear-progress
+        indeterminate
+        color="primary"
+        track-color="grey-9"
         class="analysis-summary__progress"
         :aria-label="`Analysis ${analysis.status}`"
       />
@@ -122,7 +125,7 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
         <h2 class="analysis-summary__heading text-mono">
           SIGNATURES
         </h2>
-        <ul class="analysis-summary__list">
+        <ul class="analysis-summary__list analysis-summary__list--signatures">
           <li
             v-for="signature in signatures"
             :key="signature.name"
@@ -206,6 +209,27 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
 .technique__id {
   font-weight: bold;
   overflow-wrap: anywhere;
+}
+
+.analysis-summary__list--signatures {
+  display: grid;
+  grid-template-columns: max-content fit-content(24rem) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--spacing-sm) var(--spacing-md);
+}
+
+.analysis-summary__list--signatures .signature-row {
+  display: contents;
+}
+
+@media (max-width: 700px) {
+  .analysis-summary__list--signatures {
+    display: flex;
+  }
+
+  .analysis-summary__list--signatures .signature-row {
+    display: flex;
+  }
 }
 
 .signature-row__description,
