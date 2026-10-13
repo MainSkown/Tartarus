@@ -27,12 +27,12 @@ exercised on the real stack: CAPE going down mid-run (unit-tested; the real dril
 page; 344 unit tests and 58 screenshot scenarios pass). The first screenshot review found and
 fixed real layout bugs (a nav drawer that covered the page below 1024 px, empty progress bars,
 a table that hid its row actions at 600 px); the three review pages are published as Artifacts
-and wait for comments (rule 4). Known gaps carried to the next round: no queue position in the API,
+and were approved by the user after one round of comments (the header's Submit button now shares a right edge with the page content). Known gaps carried to the next round: no queue position in the API,
 a 404 on an analysis shows the generic load error, the disabled tab named in the URL is marked
 active, and the Dashboard and analysis page format dates differently. The Submit dialog's
 navigation after a successful submit (it calls `useRouter()` inside a Quasar dialog) has only been
 unit-tested; A11 drives it in a real browser.
-**Next: the review comments, then A11 (`make e2e`).**
+**Next: A11 (`make e2e`).**
 
 ## Outcome
 
