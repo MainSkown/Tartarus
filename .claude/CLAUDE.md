@@ -120,10 +120,20 @@ independent subtasks together, in one message, rather than one at a time.
 |---|---|---|
 | Easy / medium | Haiku | Well-specified, low-ambiguity work with a clear template to follow: a single normaliser mapping already spelled out in [data-model](../docs/specs/data-model.md), a CRUD endpoint, a Pydantic/TypeScript model, a Vue component that follows an existing pattern in the [design system](../docs/design/design-system.md), writing tests for already-specified behavior, config and doc edits, mechanical refactors. |
 | Standard / hard | Sonnet | Most feature work: the query compiler, the Sigma matcher, the collector, the process graph and timeline components, most backend endpoints and Vue pages, non-trivial bug fixes, anything that requires judgment calls within an already-decided design. |
-| Extreme | Opus | Real ambiguity, cross-cutting impact, or a high cost if subtly wrong: the M0 container spike, the guest network isolation and iptables rules, designing a new core abstraction (the normaliser protocol, the query grammar), resolving an open question from [tartarus-v1](../docs/features/tartarus-v1.md), or anything touching several modules at once. |
+| Extreme | Sonnet, with extra care (see below) | Real ambiguity, cross-cutting impact, or a high cost if subtly wrong: infrastructure spikes like M0, the guest network isolation and iptables rules, designing a new core abstraction (the normaliser protocol, the query grammar), resolving an open question from [tartarus-v1](../docs/features/tartarus-v1.md), or anything touching several modules at once. |
 
-- **When difficulty is unclear, round up a tier.** A cheap model producing subtly wrong
-  isolation or data-model code costs more to find later than the saved cost now.
+- **Do not use Opus.** It uses up the usage limits quickly: the M0a agent was cut off mid-run by
+  a rate limit, and the session stalled until it reset. Pass `model: "sonnet"` explicitly when
+  spawning, since an omitted model inherits the parent's. Use Opus only if the user asks for it
+  or approves it for a specific task.
+- **Extreme tasks on Sonnet get more structure instead.** Split them into steps that each end in
+  a check that can fail; have the agent keep a notes file (done, running, next) so an interrupted
+  run can be resumed instead of restarted; and have the planner re-run the agent's checks itself
+  and read its diff before committing. Agents report their own results optimistically, and a
+  few of them have been wrong (a miscounted check total, a test that passed with the code under
+  test deleted).
+- **When difficulty is unclear, round up a tier**, from Haiku to Sonnet. A cheap model producing
+  subtly wrong isolation or data-model code costs more to find later than the saved cost now.
 - **Rules 1–4 still apply no matter which model writes the code.** A Haiku-written module is
   still test-first, still self-documenting, still reviewed in the frontend screenshot loop if
   it's visual. The model tier changes who writes the first draft, not the bar it has to clear.
