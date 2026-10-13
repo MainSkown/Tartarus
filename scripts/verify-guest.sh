@@ -19,6 +19,8 @@ AGENT_TIMEOUT=${GUEST_AGENT_TIMEOUT:-300}
 ANALYSIS_TIMEOUT=${GUEST_ANALYSIS_TIMEOUT:-900}
 REGISTRATION_TIMEOUT=${GUEST_REGISTRATION_TIMEOUT:-180}
 
+source "$REPO/scripts/lib/benign-sample.sh"
+
 failed=0
 ok()   { printf '[ OK ] %s\n' "$1"; }
 fail() { printf '[FAIL] %s\n' "$1"; failed=1; }
@@ -52,18 +54,6 @@ wait_until() {
 }
 
 # --- sample and callback listener -------------------------------------------
-
-build_sample() {
-    mkdir -p "$SAMPLE_DIR"
-    [[ -f $SAMPLE_DIR/benign.exe ]] && return 0
-    docker run --rm -e OWNER="$(id -u):$(id -g)" -v "$SAMPLE_SRC:/src/benign.c:ro" -v "$SAMPLE_DIR:/out" \
-        --entrypoint "" ubuntu:24.04 \
-        sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y gcc-mingw-w64-x86-64 >/dev/null 2>&1 &&
-               x86_64-w64-mingw32-gcc -O2 -s /src/benign.c -o /out/benign.exe -lws2_32 &&
-               chown "$OWNER" /out/benign.exe' \
-        || return 1
-    [[ -f $SAMPLE_DIR/benign.exe ]]
-}
 
 start_callback_listener() {
     docker rm -f "$CALLBACK" >/dev/null 2>&1
