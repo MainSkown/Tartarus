@@ -116,6 +116,13 @@ _PROCESS = (
     ),
     FieldDefinition("process.start", FieldType.DATE, "Process start time", "2026-10-13T10:12:41Z"),
     FieldDefinition("process.integrity_level", _K, "Windows integrity level", "High"),
+    FieldDefinition(
+        "tartarus.inject.target_pid",
+        _LONG,
+        "Pid of the process an injection call acts on",
+        "4412",
+        Lane.PROCESS,
+    ),
 )
 
 _FILE = (

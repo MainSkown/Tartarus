@@ -102,7 +102,8 @@ DETECTION = [
     "related.hosts",
     "tartarus.detection.match",
 ]
-SPEC_FIELDS = COMMON + PROCESS + FILE + REGISTRY + NETWORK + API + MEMORY + DETECTION
+INJECTION = ["tartarus.inject.target_pid"]
+SPEC_FIELDS = COMMON + PROCESS + INJECTION + FILE + REGISTRY + NETWORK + API + MEMORY + DETECTION
 
 
 def test_the_catalog_holds_exactly_the_fields_of_the_data_model_spec() -> None:
@@ -138,6 +139,7 @@ def test_every_field_is_described_and_has_an_example() -> None:
         ("event.severity", FieldType.INTEGER),
         ("event.category", FieldType.KEYWORD),
         ("process.pid", FieldType.LONG),
+        ("tartarus.inject.target_pid", FieldType.LONG),
         ("process.name", FieldType.KEYWORD),
         ("process.command_line", FieldType.KEYWORD_WITH_TEXT),
         ("process.executable", FieldType.KEYWORD_WITH_TEXT),
@@ -161,6 +163,7 @@ def test_fields_carry_their_lane_only_when_the_spec_assigns_one() -> None:
     assert field_by_name("dns.question.name").lane is Lane.NETWORK
     assert field_by_name("api.name").lane is Lane.API
     assert field_by_name("tartarus.memory.plugin").lane is Lane.MEMORY
+    assert field_by_name("tartarus.inject.target_pid").lane is Lane.PROCESS
     assert field_by_name("event.id").lane is None
     assert field_by_name("rule.name").lane is None
 

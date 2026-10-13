@@ -58,7 +58,20 @@ def assert_increasing_sequence(events: list[dict[str, Any]]) -> None:
     assert sequence == sorted(set(sequence))
 
 
+JUNK_REPORTS: tuple[dict[str, Any], ...] = (
+    {},
+    {"behavior": None},
+    {"behavior": {"processes": "x"}},
+    {"behavior": []},
+    {"info": "x", "network": None},
+    {"network": []},
+    {"network": {"dns": "x", "tcp": [None, 3, {}], "udp": {"a": 1}, "http": [[]]}},
+    {"signatures": "x", "ttps": 5},
+    {"signatures": [None, 3, {}, {"name": 5, "data": "x"}], "ttps": [None, {"ttps": 5}]},
+)
+
+
 def check_tolerates_junk(normalizer: Normalizer, context: IngestContext) -> None:
-    for junk in ({}, {"behavior": None}, {"behavior": {"processes": "x"}}, {"behavior": []}):
+    for junk in JUNK_REPORTS:
         for event in normalizer.normalise(junk, context):
             check_common_fields(event, context)

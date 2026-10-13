@@ -9,7 +9,7 @@ from app.analyses.summary import SEVERITY_ORDER, severity_from_cape
 from app.ingest.protocol import IngestContext
 
 LANES = ("process", "file", "registry", "network", "memory", "api")
-RESERVED_SECTIONS = ("@timestamp", "event", "tartarus")
+RESERVED_SECTIONS = ("@timestamp", "event")
 REGISTRY_HIVES = {
     "HKEY_LOCAL_MACHINE": "HKLM",
     "HKEY_CURRENT_USER": "HKCU",
@@ -175,11 +175,22 @@ class EventFactory:
         summary: str,
         *,
         severity: int = 0,
+        tartarus: Mapping[str, Any] | None = None,
         **sections: Any,
     ) -> dict[str, Any]:
+        """`tartarus` adds fields (`inject`, `detection`) beside the common `tartarus.*` ones."""
         for name in RESERVED_SECTIONS:
             if name in sections:
                 raise ValueError(f"section {name!r} would overwrite a common field")
+        common = {
+            "analysis_id": self._context.analysis_id,
+            "lane": shape.lane,
+            "phase": "final",
+            "summary": summary,
+            "raw": record.raw,
+        }
+        if clashes := common.keys() & (tartarus or {}).keys():
+            raise ValueError(f"tartarus fields {sorted(clashes)} would overwrite a common field")
         return {
             "@timestamp": format_timestamp(record.timestamp),
             "event": {
@@ -198,12 +209,6 @@ class EventFactory:
                 "dataset": shape.dataset,
                 "severity": severity,
             },
-            "tartarus": {
-                "analysis_id": self._context.analysis_id,
-                "lane": shape.lane,
-                "phase": "final",
-                "summary": summary,
-                "raw": record.raw,
-            },
+            "tartarus": common | dict(tartarus or {}),
             **sections,
         }

@@ -1,9 +1,22 @@
 from collections.abc import Iterator, Mapping
 from typing import Any
 
-from app.ingest.capemon_calls import Call, calls_in_sequence_order, read_processes
+from app.ingest.capemon_calls import (
+    Call,
+    CapemonProcess,
+    calls_in_sequence_order,
+    read_processes,
+)
 from app.ingest.capemon_rules import DerivationRun, Derived, derive
-from app.ingest.ecs import EventFactory, EventShape, SourceRecord, process_fields, related_events
+from app.ingest.clock import guest_clock_offset
+from app.ingest.ecs import (
+    EventFactory,
+    EventShape,
+    SourceRecord,
+    event_id,
+    process_fields,
+    related_events,
+)
 from app.ingest.protocol import IngestContext
 
 SOURCE = "capemon"
@@ -24,6 +37,28 @@ API_SHAPES = {
 }
 
 
+def _read(
+    report: Mapping[str, Any], context: IngestContext
+) -> tuple[list[CapemonProcess], list[Call]]:
+    clock_offset = guest_clock_offset(report)
+    processes = read_processes(report, clock_offset)
+    return processes, calls_in_sequence_order(processes, clock_offset, context.started_at)
+
+
+def read_calls(report: Mapping[str, Any], context: IngestContext) -> list[Call]:
+    """The report's calls on the UTC clock, in the order the events are emitted."""
+    return _read(report, context)[1]
+
+
+def api_event_id(analysis_id: int, call: Call) -> str:
+    return event_id(analysis_id, SOURCE, SOURCE_FILE, call.index)
+
+
+def call_lane(call: Call) -> str:
+    """The semantic lane a call belongs to; the `api` lane only holds the raw call events."""
+    return API_CATEGORY_TO_ECS.get(call.category or "", "process")
+
+
 class CapemonNormalizer:
     """Turns the calls of `behavior.processes` into `api` events and the events derived from them.
 
@@ -35,10 +70,10 @@ class CapemonNormalizer:
     def normalise(
         self, report: Mapping[str, Any], context: IngestContext
     ) -> Iterator[dict[str, Any]]:
-        processes = read_processes(report)
+        processes, calls = _read(report, context)
         run = DerivationRun({process.identity.pid: process.identity for process in processes})
         factory = EventFactory(context, source=SOURCE, source_file=SOURCE_FILE, module=SOURCE)
-        for call in calls_in_sequence_order(processes, context.started_at):
+        for call in calls:
             api_event = _api_event(factory, call, context.analysis_id)
             yield api_event
             derived = derive(call, run)
@@ -91,4 +126,6 @@ def _derived_event(
         **derived.sections,
         "related": related_events(api_event["event"]["id"]),
     }
-    return factory.build(derived.shape, record, derived.summary, **sections)
+    return factory.build(
+        derived.shape, record, derived.summary, tartarus=derived.tartarus, **sections
+    )

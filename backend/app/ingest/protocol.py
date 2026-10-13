@@ -8,9 +8,9 @@ from typing import Any, Protocol, runtime_checkable
 class IngestContext:
     """What a normaliser knows about the analysis beyond the report itself.
 
-    `started_at` is the analysis start in UTC. CAPE's `info.started` is the host's local time, so
-    the caller converts it; a naive datetime is refused here rather than silently shifting a
-    whole timeline.
+    `started_at` is the analysis start in UTC, which is CAPE's `info.started` as it stands (the
+    host's clock is UTC); a naive datetime is refused here rather than silently shifting a whole
+    timeline.
     """
 
     analysis_id: int

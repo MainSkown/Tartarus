@@ -47,6 +47,7 @@ class Derived:
     summary: str
     sections: dict[str, Any]
     process: ProcessIdentity | None = None
+    tartarus: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -242,7 +243,8 @@ def _injection_handler(shape: EventShape, verb: str, *, needs_pid: bool = False)
         if not call.succeeded or not foreign or (needs_pid and target_pid is None):
             return None
         target = "another process" if target_pid is None else f"pid {target_pid}"
-        return Derived(shape, f"{call.label} {verb} {target}", {})
+        extra = {} if target_pid is None else {"inject": {"target_pid": target_pid}}
+        return Derived(shape, f"{call.label} {verb} {target}", {}, tartarus=extra)
 
     return derive
 

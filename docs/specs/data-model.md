@@ -80,7 +80,7 @@ Common fields on every document:
 
 | Field | Type | Notes |
 |---|---|---|
-| `@timestamp` | date (ms) | Guest event time, converted to UTC |
+| `@timestamp` | date (ms) | Event time in UTC. capemon times are shifted by the report's calibrated guest clock offset ([time in a CAPE report](#time-in-a-cape-report)) |
 | `event.id` | keyword | Deterministic: `sha1(analysis_id, source, source_file, record_index)` |
 | `event.sequence` | long | Order within the analysis |
 | `event.kind` | keyword | `event` or `alert` (detections) |
@@ -106,6 +106,7 @@ Process context (on every event that has one):
 | `process.entity_id` | keyword (`<analysis>:<pid>@<start_ts>`) |
 | `process.start` | date |
 | `process.integrity_level` | keyword (custom) |
+| `tartarus.inject.target_pid` | long: the process an `inject-*` event acts on, when the call names it (lane `process`) |
 
 Category fields:
 
@@ -189,7 +190,7 @@ nothing and never raises. "Ok" means the call's `status` is true.
 | `DnsQuery_A/W/UTF8` (spec) | `dns-query` | `Name` present | `dns.question.name` = `Name` |
 | `connect`, `WSAConnect` (spec) | `network-connection` | `ip` present (an attempt counts) | `destination.ip` = `ip`, `destination.port` = `port` |
 | `InternetOpenUrlA/W` (spec) | `http-request` | `URL` present | `url.full` |
-| `NtWriteVirtualMemory`, `WriteProcessMemory` (spec) | `inject-write-memory` | Ok and the call targets another process (below) | owning process; the summary names the target pid |
+| `NtWriteVirtualMemory`, `WriteProcessMemory` (spec) | `inject-write-memory` | Ok and the call targets another process (below) | owning process; the summary names the target pid; `tartarus.inject.target_pid` when the call carries a pid |
 | `NtCreateThreadEx`, `NtCreateThread`, `CreateRemoteThread(Ex)` (spec) | `inject-thread` | Ok and another process | as above |
 | `NtMapViewOfSection` (spec) | `inject-map-section` | Ok and another process | as above |
 | `NtQueueApcThread(Ex)`, `QueueUserAPC` (spec) | `inject-apc` | Ok and `ProcessId` names another process | as above |
@@ -207,9 +208,9 @@ Choices that differ from the mapping table above:
   `NtAllocateVirtualMemory`, ...) stay `api-call` only.
 
 Event fields on every capemon event:
-- `@timestamp` is the call's `timestamp` read as **UTC**, unchanged. `info.started` and `ended`
-  are the CAPE host's local time and are never used to shift it. A call whose timestamp cannot be
-  read takes the analysis start.
+- `@timestamp` is the call's `timestamp` plus the report's guest clock offset (below), so it is UTC.
+  A call whose timestamp cannot be read takes the analysis start, which is already UTC and is not
+  shifted. `process.start` and the `entity_id` built from it use the same shifted `first_seen`.
 - `event.sequence` numbers the events in emission order: calls sorted by timestamp, then call id,
   then report order; a derived event directly follows its call.
 - `api.arguments` maps each argument name to its `value` (the first of a repeated name); the
@@ -219,6 +220,83 @@ Event fields on every capemon event:
 - `event.severity` is 0 on every capemon event; only detections carry a higher level.
 - `event.id` is `sha1(analysis_id, "capemon", "report.json", call position)`; a derived event uses
   the file `report.json#derived`, so the two never collide.
+
+### CAPE report normalisers (as built)
+
+`cape-network` and `cape-signatures` read the same `report.json` as capemon
+(`backend/app/ingest/{cape_network,cape_signatures,attribution,clock}.py`). Every event they emit has
+`event.module: cape`, `phase: final`, and a deterministic id from `(analysis, source, list name,
+position in the list)`.
+
+#### Time in a CAPE report
+
+True UTC is the CAPE host's: `info.started`/`ended` and the epoch floats of `network.*`. capemon's
+call timestamps and `behavior.processes[].first_seen` come from the guest monitor's clock, which was
+exactly the host's UTC offset behind in all four real reports checked (2 hours, in summer). The
+offset is therefore measured per report in `app/ingest/clock.py`, never assumed:
+
+- `guest_clock_offset(report) = info.started - earliest process first_seen`, rounded to the nearest 15
+  minutes (the raw gap is the true offset minus the 13 to 23 seconds between machine start and the
+  first process). It is added to every capemon timestamp and process start.
+- A report that cannot be calibrated (no readable `info.started`, no process, a gap beyond 14 hours)
+  has offset 0; the helper never raises.
+- `IngestContext.started_at` is `info.started` read as UTC (`analysis_started(report)`); the caller
+  builds the context with it.
+- Calibration is hour-level. A residual of seconds remains: on the four real reports the pcap saw the
+  sample's own DNS lookup 4.4 to 5.7 seconds after capemon's `getaddrinfo` for it (guest clock skew or
+  resolver delay, not separable from the report). Events of different sources are never ordered
+  against each other closer than that.
+
+#### `cape-network`
+
+| Record | Event | Time |
+|---|---|---|
+| `dns[]` | `dns-query`: `dns.question.name/type`, `dns.answers.data` (every answer's `data`), `network.protocol: dns`, answers that are IP addresses also in `related.ip` | `first_seen` (epoch, UTC) |
+| `tcp[]`, `udp[]` | `network-connection`: `source.ip/port`, `destination.ip/port`, `network.transport` | `context.started_at` plus the relative `time` (below) |
+| `http[]` | `http-request`: `http.request.method`, `url.full` (`uri`), `user_agent.original`, `destination.domain` (`host`) and `port`, `network.protocol: http` | `first_seen` when present, else the `dns[]` record for the same host, else the analysis start |
+
+- A DNS answer's address is not `destination.ip`: that is the resolver. It goes to `related.ip`.
+- `domains` and `hosts` add no events: `hosts` was empty, and `domains[].ip` disagrees with the `dns[]`
+  answers for the same name in the fixture, so its provenance is unclear.
+- A record missing its essential field (`request`, `dst`, both `host` and `uri`) is skipped; a flow
+  with an unreadable `time` takes the analysis start.
+- **Relative flow time.** `tcp`/`udp` carry only `time`, seconds since the first packet of the pcap, and
+  the pcap's start is not in the report. The base is `info.started`: it is the only absolute instant the
+  report gives for the whole run, and a flow can then never be placed before the analysis or (on all
+  four real reports) after it. On those reports the pcap actually starts 1.7 to 3.2 seconds after
+  `info.started`, estimated by pairing the sample's DNS lookup with its UDP/53 flow, so flows sit up to
+  about 3 seconds early. The pairing is not reliable in general (CAPE reuses source ports, so some
+  queries have no UDP flow), which is why it is not used.
+- **Attribution.** `process.*` is added only on an exact match against the capemon-derived events of the
+  same report: a `dns-query` whose name equals (case-insensitive, trailing dot ignored) a
+  `getaddrinfo`/`DnsQuery` event's name, a flow whose destination ip and port equal a `connect` event's,
+  an `http-request` whose `url.full` equals an `InternetOpenUrl` event's. If two different processes
+  match, or none does, nothing is attributed. The capemon event is listed in `related.events`. Residual
+  risk: capemon only sees monitored processes, so a flow by an unmonitored process to an endpoint the
+  sample also contacted would be attributed to the sample.
+- **Coupling.** The network normaliser runs `CapemonNormalizer` through its public `normalise` and
+  reads the derived events it needs: no shared state and no required order between normalisers, at the
+  price of deriving capemon events twice per ingest.
+
+#### `cape-signatures`
+
+One `event.kind: alert` event (`event.action: signature-matched`, `event.dataset: cape.signature`,
+`event.category: malware`) per entry of `signatures`; an entry without a name is skipped.
+
+- `rule.name`, `rule.description`, `rule.ruleset: cape`, `rule.reference` (when the signature has
+  references); `event.severity` is the shared `severity_level` of CAPE's 1-3 scale.
+- `threat.technique.id` is the list of ids from every `ttps` entry of the same signature name, in report
+  order, deduplicated. One alert per signature, not per id, so a signature stays one row in the
+  Detections view. A `ttps` entry naming no signature is dropped.
+- `related.events`: each `data` entry `{"type": "call", "pid", "cid"}` becomes the id of the capemon
+  `api-call` event of call `cid` of process `pid`, computed by `capemon.api_event_id`, the function
+  that names that event. A reference naming no call, or a malformed one, is dropped.
+- Time and lane follow the earliest referenced call (by its calibrated timestamp): the alert happens
+  then, in the call's semantic lane (`filesystem` to `file`, `registry`, `network`, `process` and
+  `threading` to `process`; `capemon.call_lane`). The raw `api` lane is not used. With no resolvable
+  call the alert happens at `info.ended` and is in lane `process`.
+- `tartarus.detection.match` is the non-call `data` entries as `key: value` pieces (structured values as
+  compact JSON), identical pieces once, joined by `; `, cut to 300 characters with an ellipsis.
 
 ### Sigma field mapping
 Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` →

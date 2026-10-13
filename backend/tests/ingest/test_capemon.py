@@ -1,16 +1,16 @@
+import copy
 from collections import Counter
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 
-from app.ingest.capemon import CapemonNormalizer
+from app.ingest.capemon import CapemonNormalizer, api_event_id, call_lane, read_calls
 from app.ingest.protocol import IngestContext
 from tests.ingest.reports import call, process, report_of, report_with
 
 Event = dict[str, Any]
 CHILD_PATH = "C:\\Users\\Analyst\\AppData\\Local\\Temp\\tartarus-benign.txt"
-HOST_UTC_OFFSET = timezone(timedelta(hours=2))
 
 
 def normalise(report: dict[str, Any], context: IngestContext) -> list[Event]:
@@ -194,8 +194,8 @@ def test_api_events_carry_the_owning_process(events: list[Event]) -> None:
     child = next(e for e in api_events if e["process"]["pid"] == 9632)
     assert child["process"]["command_line"] == "cmd.exe /c ver"
     assert child["process"]["parent"] == {"pid": 10116, "name": "benign.exe"}
-    assert child["process"]["entity_id"] == "6:9632@2026-10-13T10:12:41.613Z"
-    assert child["process"]["start"] == "2026-10-13T10:12:41.613Z"
+    assert child["process"]["entity_id"] == "6:9632@2026-10-13T12:12:41.613Z"
+    assert child["process"]["start"] == "2026-10-13T12:12:41.613Z"
     parent = next(e for e in api_events if e["process"]["pid"] == 10116)
     assert (
         parent["process"]["command_line"]
@@ -205,26 +205,57 @@ def test_api_events_carry_the_owning_process(events: list[Event]) -> None:
     assert isinstance(parent["process"]["thread"]["id"], int)
 
 
-def test_timestamps_are_utc_and_unchanged_from_the_call(events: list[Event]) -> None:
+def test_timestamps_are_the_guest_clock_shifted_to_utc(events: list[Event]) -> None:
     first = events[0]
-    assert first["@timestamp"] == "2026-10-13T10:12:41.383Z"
+    assert first["@timestamp"] == "2026-10-13T12:12:41.383Z"
     assert first["tartarus"]["raw"]["timestamp"] == "2026-10-13 10:12:41,383"
+
+
+def analysis_window(report: dict[str, Any]) -> tuple[datetime, datetime]:
+    def utc(text: str) -> datetime:
+        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+
+    return (
+        utc(report["info"]["started"]) - timedelta(seconds=5),
+        utc(report["info"]["ended"]) + timedelta(seconds=60),
+    )
 
 
 def test_every_event_falls_inside_the_analysis_window(
     full_report: dict[str, Any], events: list[Event]
 ) -> None:
-    """Calls are UTC, `info.started` is the CAPE host's local time (UTC+2 in the fixture)."""
-
-    def host_local(text: str) -> datetime:
-        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=HOST_UTC_OFFSET)
-
-    tolerance = timedelta(seconds=60)
-    start = host_local(full_report["info"]["started"]) - tolerance
-    end = host_local(full_report["info"]["ended"]) + tolerance
+    start, end = analysis_window(full_report)
     for event in events:
-        moment = datetime.fromisoformat(event["@timestamp"])
-        assert start <= moment <= end, event["@timestamp"]
+        assert start <= datetime.fromisoformat(event["@timestamp"]) <= end, event["@timestamp"]
+
+
+def test_without_the_calibration_every_event_would_precede_the_window(
+    full_report: dict[str, Any], context: IngestContext
+) -> None:
+    uncalibrated = copy.deepcopy(full_report)
+    del uncalibrated["info"]
+    start, _ = analysis_window(full_report)
+    moments = [
+        datetime.fromisoformat(event["@timestamp"]) for event in normalise(uncalibrated, context)
+    ]
+    assert max(moments) < start - timedelta(hours=1, minutes=59)
+
+
+def test_the_winter_offset_of_one_hour_is_found_not_assumed(
+    full_report: dict[str, Any], context: IngestContext
+) -> None:
+    winter = copy.deepcopy(full_report)
+    winter["info"]["started"] = "2026-10-13 11:12:18"
+    shifted = datetime.fromisoformat(normalise(winter, context)[0]["@timestamp"])
+    assert shifted == datetime(2026, 10, 13, 11, 12, 41, 383000, tzinfo=UTC)
+
+
+def test_the_process_start_is_calibrated_like_the_calls(
+    full_report: dict[str, Any], events: list[Event]
+) -> None:
+    assert full_report["behavior"]["processes"][0]["first_seen"] == "2026-10-13 10:12:41,164"
+    parent = next(e for e in events if e["process"]["pid"] == 10116)
+    assert parent["process"]["start"] == "2026-10-13T12:12:41.164Z"
 
 
 def test_sequence_follows_timestamp_then_call_id(events: list[Event]) -> None:
@@ -243,6 +274,49 @@ def test_derived_event_directly_follows_its_api_event(events: list[Event]) -> No
     for position, event in enumerate(events):
         if event["event"]["action"] != "api-call":
             assert events[position - 1]["event"]["id"] == event["related"]["events"][0]
+
+
+# --- what other normalisers read from capemon ---------------------------------------------
+
+
+def test_api_event_id_is_the_id_the_normaliser_gave_the_call(
+    full_report: dict[str, Any], context: IngestContext, events: list[Event]
+) -> None:
+    calls = read_calls(full_report, context)
+    api_ids = [e["event"]["id"] for e in events if e["event"]["action"] == "api-call"]
+    assert [api_event_id(context.analysis_id, call) for call in calls] == api_ids
+
+
+def test_read_calls_returns_the_calibrated_calls_in_sequence_order(
+    full_report: dict[str, Any], context: IngestContext
+) -> None:
+    calls = read_calls(full_report, context)
+    assert len(calls) == 471
+    assert calls[0].timestamp == datetime(2026, 10, 13, 12, 12, 41, 383000, tzinfo=UTC)
+    assert [call.timestamp for call in calls] == sorted(call.timestamp for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("category", "lane"),
+    [
+        ("filesystem", "file"),
+        ("registry", "registry"),
+        ("network", "network"),
+        ("process", "process"),
+        ("threading", "process"),
+        ("system", "process"),
+        ("hooking", "process"),
+        (None, "process"),
+    ],
+)
+def test_a_call_belongs_to_the_semantic_lane_of_its_category(
+    category: str | None, lane: str, context: IngestContext
+) -> None:
+    raw = call("X") if category is None else call("X", category=category)
+    if category is None:
+        del raw["category"]
+    [read] = read_calls(report_with(raw), context)
+    assert call_lane(read) == lane
 
 
 # --- ordering ------------------------------------------------------------------------------
@@ -339,7 +413,16 @@ def test_a_call_without_a_timestamp_falls_back_to_the_analysis_start(
 ) -> None:
     broken = call("NtClose", timestamp="garbage")
     [event] = normalise(report_with(broken), context)
-    assert event["@timestamp"] == "2026-10-13T10:12:18.000Z"
+    assert event["@timestamp"] == "2026-10-13T12:12:18.000Z"
+
+
+def test_the_fallback_time_is_already_utc_and_is_not_shifted(
+    full_report: dict[str, Any], context: IngestContext
+) -> None:
+    report = copy.deepcopy(full_report)
+    report["behavior"]["processes"][0]["calls"][0]["timestamp"] = "garbage"
+    moments = {event["@timestamp"] for event in normalise(report, context)}
+    assert "2026-10-13T12:12:18.000Z" in moments
 
 
 def test_junk_entries_in_the_process_and_call_lists_are_skipped(context: IngestContext) -> None:
@@ -568,6 +651,7 @@ def test_injection_into_another_process_is_derived(context: IngestContext) -> No
     assert event["tartarus"]["lane"] == "process"
     assert "4242" in event["tartarus"]["summary"]
     assert event["process"]["pid"] == 100
+    assert event["tartarus"]["inject"] == {"target_pid": 4242}
 
 
 @pytest.mark.parametrize(
@@ -582,6 +666,7 @@ def test_injection_into_another_process_is_derived(context: IngestContext) -> No
 def test_injection_calls_by_handle_alone(api: str, action: str, context: IngestContext) -> None:
     event = only_derived(report_with(call(api, {"ProcessHandle": "0x2c4"})), context)
     assert event["event"]["action"] == action
+    assert "inject" not in event["tartarus"]
 
 
 @pytest.mark.parametrize("api", ["NtWriteVirtualMemory", "NtCreateThreadEx", "NtMapViewOfSection"])
@@ -604,5 +689,6 @@ def test_a_process_id_naming_the_own_process_is_not_injection(context: IngestCon
 def test_apc_injection_needs_a_foreign_process_id(context: IngestContext) -> None:
     foreign = only_derived(report_with(call("NtQueueApcThread", {"ProcessId": "4242"})), context)
     assert foreign["event"]["action"] == "inject-apc"
+    assert foreign["tartarus"]["inject"] == {"target_pid": 4242}
     own = report_with(call("NtQueueApcThread", {"ProcessId": "100"}))
     assert actions(normalise(own, context)) == ["api-call"]

@@ -20,5 +20,5 @@ def full_report() -> dict[str, Any]:
 @pytest.fixture
 def context() -> IngestContext:
     return IngestContext(
-        analysis_id=ANALYSIS_ID, started_at=datetime(2026, 10, 13, 10, 12, 18, tzinfo=UTC)
+        analysis_id=ANALYSIS_ID, started_at=datetime(2026, 10, 13, 12, 12, 18, tzinfo=UTC)
     )

@@ -220,6 +220,24 @@ def test_factory_does_not_let_a_section_overwrite_the_common_fields(factory: Eve
         build(factory, event={"id": "forged"})
 
 
+def test_factory_merges_extra_tartarus_fields_beside_the_common_ones(
+    factory: EventFactory,
+) -> None:
+    record = SourceRecord(index=0, timestamp=NOON, raw={})
+    event = factory.build(FILE_WRITTEN, record, "x", tartarus={"inject": {"target_pid": 4242}})
+    assert event["tartarus"]["inject"] == {"target_pid": 4242}  # type: ignore[index]
+    assert event["tartarus"]["lane"] == "file"  # type: ignore[index]
+
+
+@pytest.mark.parametrize("common", ["analysis_id", "lane", "phase", "summary", "raw"])
+def test_extra_tartarus_fields_cannot_overwrite_a_common_one(
+    factory: EventFactory, common: str
+) -> None:
+    record = SourceRecord(index=0, timestamp=NOON, raw={})
+    with pytest.raises(ValueError, match=common):
+        factory.build(FILE_WRITTEN, record, "x", tartarus={common: "forged"})
+
+
 def test_factory_alerts_carry_kind_and_severity(factory: EventFactory) -> None:
     alert = EventShape(
         action="signature-hit",

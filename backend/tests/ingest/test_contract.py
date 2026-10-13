@@ -2,11 +2,17 @@ from typing import Any
 
 import pytest
 
+from app.ingest.cape_network import CapeNetworkNormalizer
+from app.ingest.cape_signatures import CapeSignaturesNormalizer
 from app.ingest.capemon import CapemonNormalizer
 from app.ingest.protocol import IngestContext, Normalizer
 from tests.ingest.contract import check_normalizer_contract, check_tolerates_junk
 
-NORMALIZERS = [pytest.param(CapemonNormalizer(), id="capemon")]
+NORMALIZERS = [
+    pytest.param(CapemonNormalizer(), id="capemon"),
+    pytest.param(CapeNetworkNormalizer(), id="cape-network"),
+    pytest.param(CapeSignaturesNormalizer(), id="cape-signatures"),
+]
 
 
 @pytest.mark.parametrize("normalizer", NORMALIZERS)

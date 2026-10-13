@@ -1,37 +1,11 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timedelta
 from typing import Any
 
+from app.ingest.clock import parse_clock
 from app.ingest.ecs import ProcessIdentity
-
-
-def to_int(value: object) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if not isinstance(value, str):
-        return None
-    text = value.strip()
-    try:
-        return int(text, 16 if text.lower().startswith("0x") else 10)
-    except ValueError:
-        return None
-
-
-def text_or_none(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
-def _parse_timestamp(value: object) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(value.replace(",", "."))
-    except ValueError:
-        return None
-    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+from app.ingest.reading import mapping_list, section, text_or_none, to_int
 
 
 @dataclass(frozen=True)
@@ -76,26 +50,29 @@ class CapemonProcess:
     calls: list[Any]
 
 
-def _mapping_list(value: object) -> list[Mapping[str, Any]]:
-    return [item for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
-
-
-def read_processes(report: Mapping[str, Any]) -> list[CapemonProcess]:
-    behavior = report.get("behavior")
-    entries = _mapping_list(behavior.get("processes")) if isinstance(behavior, Mapping) else []
+def read_processes(report: Mapping[str, Any], clock_offset: timedelta) -> list[CapemonProcess]:
+    entries = mapping_list(section(report, "behavior").get("processes"))
     entries = [entry for entry in entries if to_int(entry.get("process_id")) is not None]
     names = {
         to_int(entry["process_id"]): text_or_none(entry.get("process_name")) for entry in entries
     }
     return [
         CapemonProcess(
-            _identity(entry, names), calls if isinstance(calls := entry.get("calls"), list) else []
+            _identity(entry, names, clock_offset),
+            calls if isinstance(calls := entry.get("calls"), list) else [],
         )
         for entry in entries
     ]
 
 
-def _identity(entry: Mapping[str, Any], names: Mapping[int | None, str | None]) -> ProcessIdentity:
+def _shifted(value: object, clock_offset: timedelta) -> datetime | None:
+    moment = parse_clock(value)
+    return None if moment is None else moment + clock_offset
+
+
+def _identity(
+    entry: Mapping[str, Any], names: Mapping[int | None, str | None], clock_offset: timedelta
+) -> ProcessIdentity:
     environ = entry.get("environ")
     command_line = (
         text_or_none(environ.get("CommandLine")) if isinstance(environ, Mapping) else None
@@ -107,7 +84,7 @@ def _identity(entry: Mapping[str, Any], names: Mapping[int | None, str | None]) 
         name=text_or_none(entry.get("process_name")),
         executable=text_or_none(entry.get("module_path")),
         command_line=command_line.strip() if command_line else None,
-        start=_parse_timestamp(entry.get("first_seen")),
+        start=_shifted(entry.get("first_seen"), clock_offset),
         parent_name=names.get(parent_pid),
     )
 
@@ -127,7 +104,11 @@ def _flat_arguments(raw_arguments: object) -> tuple[dict[str, str], dict[str, st
 
 
 def _read_call(
-    raw: object, index: int, process: ProcessIdentity, fallback_time: datetime
+    raw: object,
+    index: int,
+    process: ProcessIdentity,
+    clock_offset: timedelta,
+    fallback_time: datetime,
 ) -> Call | None:
     if not isinstance(raw, Mapping) or not (api := text_or_none(raw.get("api"))):
         return None
@@ -138,7 +119,7 @@ def _read_call(
         raw=raw,
         index=index,
         api=api,
-        timestamp=_parse_timestamp(raw.get("timestamp")) or fallback_time,
+        timestamp=_shifted(raw.get("timestamp"), clock_offset) or fallback_time,
         call_id=to_int(raw.get("id")) or 0,
         process=process,
         thread_id=to_int(raw.get("thread_id")),
@@ -151,12 +132,14 @@ def _read_call(
     )
 
 
-def calls_in_sequence_order(processes: list[CapemonProcess], fallback_time: datetime) -> list[Call]:
+def calls_in_sequence_order(
+    processes: list[CapemonProcess], clock_offset: timedelta, fallback_time: datetime
+) -> list[Call]:
     index = 0
     calls: list[Call] = []
     for process in processes:
         for raw in process.calls:
-            call = _read_call(raw, index, process.identity, fallback_time)
+            call = _read_call(raw, index, process.identity, clock_offset, fallback_time)
             index += 1
             if call is not None:
                 calls.append(call)
