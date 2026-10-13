@@ -24,6 +24,8 @@ const props = defineProps<{
   connection: WsConnectionState
   ended: boolean
   total: number
+  /** How many events the stream lists; fewer than `total` while a lane is hidden or the buffer is full. */
+  listed?: number
   eventsPerMinute: number
   queuePosition: number | null
 }>()
@@ -42,6 +44,9 @@ function shown(seconds: number | null | undefined, direction: 1 | -1): string {
 
 const elapsed = computed(() => shown(props.live?.elapsed_s, 1))
 const remaining = computed(() => shown(props.live?.remaining_s, -1))
+const shownLabel = computed(() =>
+  props.listed !== undefined && props.listed !== props.total ? ` (${formatCount(props.listed)} shown)` : '',
+)
 const queued = computed(() => props.status === 'queued')
 const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.connection]))
 </script>
@@ -79,7 +84,7 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
     <span
       class="live-status__item live-status__events"
       data-field="events"
-    ><strong>{{ formatCount(total) }} events</strong> · {{ formatCount(eventsPerMinute) }}/min</span>
+    ><strong>{{ formatCount(total) }} events</strong>{{ shownLabel }} · {{ formatCount(eventsPerMinute) }}/min</span>
   </div>
 </template>
 

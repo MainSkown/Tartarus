@@ -79,6 +79,20 @@ describe('LiveStatusBar', () => {
     expect(wrapper.find('[data-field="events"]').text()).toContain('3,202/min')
   })
 
+  it('says how many of the events are in the stream when the stream shows fewer', () => {
+    const wrapper = mountBar({ total: 481, listed: 8 })
+    expect(wrapper.find('[data-field="events"]').text()).toContain('481 events (8 shown)')
+    expect(wrapper.find('[data-field="events"]').text()).toContain('3,202/min')
+  })
+
+  it('formats the shown count like the total', () => {
+    expect(mountBar({ total: 12431, listed: 1204 }).find('[data-field="events"]').text()).toContain('12,431 events (1,204 shown)')
+  })
+
+  it.each([undefined, 12431])('says nothing extra when the stream shows all of them (listed: %s)', (shown) => {
+    expect(mountBar({ listed: shown }).find('[data-field="events"]').text()).not.toContain('shown')
+  })
+
   it('says where a queued analysis stands instead of timing it', () => {
     const wrapper = mountBar({ status: 'queued', live: undefined, queuePosition: 2 })
     expect(wrapper.find('.status-badge').text()).toContain('QUEUED')

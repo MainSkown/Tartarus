@@ -10,6 +10,9 @@ vi.mock('@/api', () => ({
   viewsArtifacts: vi.fn(() => Promise.resolve({ data: { screenshots: [{ n: 1, name: '1.jpg', size: 1 }] }, error: undefined })),
 }))
 
+// The desktop panel has its own tests; here it only has to be on the page, without opening a second socket.
+vi.mock('@/services/desktop-guacamole', () => ({ loadGuacamole: () => new Promise(() => undefined) }))
+
 const LiveTab = (await import('@/components/tabs/LiveTab.vue')).default
 const LiveEventStream = (await import('@/components/LiveEventStream.vue')).default
 
@@ -145,6 +148,13 @@ describe('LiveTab content', () => {
     const wrapper = await mountTab()
     await send('counts', { by_lane: { file: 3 }, by_severity: { info: 3 }, total: 12431 })
     expect(wrapper.find('[data-field="events"]').text()).toContain('12,431 events')
+  })
+
+  it('tells the total from what the stream lists when the two differ', async () => {
+    const wrapper = await mountTab()
+    await send('events', { events: [liveEvent({ id: 'a' }), liveEvent({ id: 'b' })], dropped: 0 })
+    await send('counts', { by_lane: { file: 481 }, by_severity: { info: 481 }, total: 481 })
+    expect(wrapper.find('[data-field="events"]').text()).toContain('481 events (2 shown)')
   })
 })
 

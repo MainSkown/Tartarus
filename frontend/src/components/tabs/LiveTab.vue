@@ -52,6 +52,7 @@ function selectProcess(pid: number | undefined): void {
   <section
     ref="root"
     class="live-tab"
+    :class="{ 'live-tab--desktop': interactive }"
     data-tab="live"
     :style="{ '--tab-fill-height': `${fillHeight}px` }"
   >
@@ -61,6 +62,7 @@ function selectProcess(pid: number | undefined): void {
       :connection="live.connection.value"
       :ended="finished"
       :total="total"
+      :listed="live.events.value.length"
       :events-per-minute="live.eventsPerMinute.value"
       :queue-position="queuePosition"
     />
@@ -152,6 +154,54 @@ function selectProcess(pid: number | undefined): void {
 
 .live-tab__top--desktop {
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* The guest screen is 16:10 and gets its size from the height it is given, so it takes the whole left column and the stream moves beside it. */
+@media (min-width: 901px) {
+  .live-tab--desktop {
+    display: grid;
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--spacing-sm);
+    row-gap: 0;
+  }
+
+  .live-tab--desktop > .live-tab__top {
+    display: contents;
+  }
+
+  .live-tab--desktop > [data-live='status'],
+  .live-tab--desktop > .live-tab__notices {
+    grid-column: 1 / -1;
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .live-tab--desktop > [data-live='status'] {
+    grid-row: 1;
+  }
+
+  .live-tab--desktop > .live-tab__notices {
+    grid-row: 2;
+  }
+
+  .live-tab--desktop .live-tab__top > [data-live='desktop'] {
+    grid-area: 3 / 1 / 5 / 2;
+  }
+
+  .live-tab--desktop .live-tab__top > [data-live='processes'] {
+    grid-area: 3 / 2 / 4 / 3;
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .live-tab--desktop .live-tab__top > [data-live='detections'],
+  .live-tab--desktop .live-tab__top > [data-live='finished'] {
+    grid-area: 3 / 3 / 4 / 4;
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .live-tab--desktop > .live-tab__stream {
+    grid-area: 4 / 2 / 5 / 4;
+  }
 }
 
 .live-tab__stream {

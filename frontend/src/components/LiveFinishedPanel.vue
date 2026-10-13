@@ -1,25 +1,20 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { viewsArtifacts, type AnalysisStatus, type ArtifactsView } from '@/api'
+import { ref } from 'vue'
+import type { AnalysisStatus } from '@/api'
 import PaneHeading from '@/components/PaneHeading.vue'
 import ScreenshotLightbox from '@/components/ScreenshotLightbox.vue'
 import ViewState from '@/components/ViewState.vue'
-import { useAnalysisView } from '@/composables/use-analysis-view'
+import { useLastScreenshot } from '@/composables/use-last-screenshot'
 import { analysisStatusMeta } from '@/services/analysis-status'
 import { screenshotUrl } from '@/services/screenshot-url'
 
 const props = defineProps<{ analysisId: number; status: AnalysisStatus }>()
 const emit = defineEmits<{ 'open-summary': [] }>()
 
-// Only a finished report has screenshots to read; a failed or cancelled run has none, and asking would be a needless error.
-const { data, loading, error, reload } = useAnalysisView<Pick<ArtifactsView, 'screenshots'>>(
+const { last, count, loading, error, reload } = useLastScreenshot(
   () => props.analysisId,
-  (analysis_id) =>
-    props.status === 'done' ? viewsArtifacts({ path: { analysis_id } }) : Promise.resolve({ data: { screenshots: [] } }),
+  () => props.status,
 )
-
-const screenshots = computed(() => data.value?.screenshots ?? [])
-const last = computed(() => Math.max(0, ...screenshots.value.map((screenshot) => screenshot.n)))
 const opened = ref<number | null>(null)
 </script>
 
@@ -43,7 +38,7 @@ const opened = ref<number | null>(null)
         >
           <img
             :src="screenshotUrl(analysisId, last)"
-            :alt="`Screenshot ${last} of ${screenshots.length}`"
+            :alt="`Screenshot ${last} of ${count}`"
           >
         </button>
         <div class="live-finished__text">
@@ -68,7 +63,7 @@ const opened = ref<number | null>(null)
       <ScreenshotLightbox
         v-model="opened"
         :analysis-id="analysisId"
-        :count="screenshots.length"
+        :count="count"
       />
     </ViewState>
   </section>

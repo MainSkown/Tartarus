@@ -276,26 +276,6 @@ test('live-lane-filter', async ({ page }) => {
   await snapshot(page, 'live-lane-filter')
 })
 
-test('live-interactive-desktop-slot', async ({ page }) => {
-  const live = await openLive(page, { analysis: runningAnalysis({ options: { route: 'inetsim', timeout: 180, interactive: true } }) })
-  stream(live)
-  await expect(page.locator('[data-live="desktop"]')).toContainText('desktop panel arrives in the next step')
-  await expect(page.locator('.live-process')).toHaveCount(PROCESSES.length)
-  await expectNoVerticalScroll(page)
-  await expectPanelsInsideViewport(page)
-  await expectNoHorizontalOverflow(page)
-  await snapshot(page, 'live-interactive-desktop-slot')
-})
-
-test('live-interactive-desktop-slot-narrow-600', async ({ page }) => {
-  await page.setViewportSize({ width: 600, height: 900 })
-  const live = await openLive(page, { analysis: runningAnalysis({ options: { route: 'inetsim', timeout: 180, interactive: true } }) })
-  stream(live)
-  await expect(page.locator('[data-live="desktop"]')).toBeVisible()
-  await expectNoHorizontalOverflow(page)
-  await snapshot(page, 'live-interactive-desktop-slot-narrow-600')
-})
-
 test('live-server-error-notices', async ({ page }) => {
   const live = await openLive(page)
   stream(live)

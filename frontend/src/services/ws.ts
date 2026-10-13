@@ -15,7 +15,7 @@ const ABNORMAL_CLOSE = 1006
 const MIN_BACKOFF_MS = 500
 const MAX_BACKOFF_MS = 30_000
 
-function resolveWsUrl(path: string): string {
+export function resolveWsUrl(path: string): string {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${protocol}//${location.host}${path}`
 }
