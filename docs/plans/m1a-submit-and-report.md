@@ -88,6 +88,23 @@ in its report instead of diverging.
 - `tasks/view/{id}/` carries `added_on`, `started_on`, `completed_on`, `reporting_finished_on`,
   `status`, `machine`, `route`, `package` and `timedout`; those feed the analysis timings.
 
+- **Deleting needs the task's status unless it is `reported`.** CAPE's `validate_task` refuses
+  anything else ("Task failed", "Task is still being analyzed"). To delete a failed task, call
+  `tasks/delete/{id}/{status}/` with the task's own current status; the client's
+  `delete_task(task_id, task_status=...)` does that. A running task cannot be deleted at all, so
+  `DELETE /analyses/{id}` stays `409` while running. A success carries no `error` key
+  (`{"data": "Task(s) ID(s) 6 has been deleted"}`); a refused delete says only `failed`, so it
+  cannot be told from a missing task.
+- **Task statuses** (all 11, from `ALL_DB_STATUSES` in `lib/cuckoo/core/data/task.py`, checked
+  against the image): `pending`, `running`, `completed`, `reported`, `failed_analysis`,
+  `failed_processing`, `failed_reporting`, `banned`, `recovered`, `distributed`,
+  `distributed_completed`. `app/cape/status.py` maps all of them; `done` is deliberately not in the
+  mapper because only the backend, after reading the report, can say it.
+- **The client's public interface lives in `app/cape/`** (`CapeClient`, the `CapeError` hierarchy
+  with `CapeUnreachable` for "retry later" and `CapeRejected` for "CAPE said no", `TaskView`,
+  `Machine`, `CapeProgress`, `CapeCheck`, `GuestCheck`). Read the code, not this plan, for
+  signatures. `create_file_task` returns the new CAPE task id and sends no `options` or tags.
+
 ### Analysis states
 `queued` (not yet sent to CAPE), `starting` (CAPE pending), `running`, `processing` (CAPE
 completed or reporting), `ingesting` (CAPE reported, reading the report), `done`, `failed`,
