@@ -23,7 +23,16 @@ ran; cancel and delete of a running analysis answer `409`. Deleting removed the 
 rows and the stored sample (the last one only after nothing else used it). Restarting the backend
 in the middle of a running analysis resumed the same CAPE task and finished `done`. Not yet
 exercised on the real stack: CAPE going down mid-run (unit-tested; the real drill is A11).
-**Next: Wave 3 (the frontend), then A11 (`make e2e`) and the screenshot review.**
+**Wave 3 is built and committed** (A7 to A10: store and badges, Dashboard, Submit dialog, analysis
+page; 344 unit tests and 58 screenshot scenarios pass). The first screenshot review found and
+fixed real layout bugs (a nav drawer that covered the page below 1024 px, empty progress bars,
+a table that hid its row actions at 600 px); the three review pages are published as Artifacts
+and wait for comments (rule 4). Known gaps carried to the next round: no queue position in the API,
+a 404 on an analysis shows the generic load error, the disabled tab named in the URL is marked
+active, and the Dashboard and analysis page format dates differently. The Submit dialog's
+navigation after a successful submit (it calls `useRouter()` inside a Quasar dialog) has only been
+unit-tested; A11 drives it in a real browser.
+**Next: the review comments, then A11 (`make e2e`).**
 
 ## Outcome
 
