@@ -130,7 +130,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | Guided auto-build of the guest from a user ISO | Guest prep is the hardest part of running CAPE |
 | Sources: capemon, Sysmon, ETW, Suricata/PCAP, Volatility3 | User's choice; Sysmon and ETW complement user-mode hooks |
 | Extra workflows: tags/notes and export/report only | User's choice |
-| Defender stays on in the guest until the guest wizard (M6) | Turning off Tamper Protection can't be scripted and is a manual step; it didn't block capemon or the test analysis, so it isn't worth solving before the wizard exists. Revisit at M6, with the real malware corpus the user cares about as the test. |
+| Defender in the guest is the user's choice, **on by default** (a guest-build option; off means one manual step) | Which is right depends on the malware. Known malware is detected either way, but newer samples may check whether Defender is running and behave differently when it is off, since that suggests a sandbox; and leaving it on shows how a sample gets past Defender. Turning it off helps when Defender would remove a sample before it runs. On by default also means the default build needs no manual step. Turning Tamper Protection off cannot be scripted. |
 | Separate `frontend` container: Vite in dev, nginx in prod proxying `/api` and `/ws` | Same pattern as the user's Momos project; fast HMR; still one published port |
 | The guest wizard (M6) will control libvirt via `qemu+tcp://cape/system`, off until then; never mount the Docker socket | The Docker socket is root on the host, and the backend processes untrusted malware data |
 | No `mongo` service | Verified from CAPE source: `tasks/create/file`, `tasks/status`, `tasks/delete`, `machines/list` and `cuckoo/status` only touch CAPE's SQL task DB; CAPE's scheduler skips the `mongodb` reporting module when it's disabled (the shipped default); `jsondump` (what Tartarus reads) has no Mongo dependency; and the one startup check that requires Mongo or Elasticsearch only fires if `web.conf [web_reporting]` is enabled, which also ships off. Keep both at their defaults. `pymongo` stays installed in the `cape` image (an unconditional import for `bson.objectid.ObjectId`), but no connection is ever opened. |
@@ -149,12 +149,22 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 3. **Sysmon timing:** CAPE probably collects the Sysmon EVTX only at the end of the run, so
    Sysmon events would be final-phase only. Add a live forwarder in the guest later?
 4. **Default Sigma ruleset:** ship a curated SigmaHQ subset (proposed) or start empty?
-5. **Defender Tamper Protection (postponed to M6 by decision).** It cannot be turned off by script
-   by any documented means: the policy keys and `Set-MpPreference` are silently ignored, and
-   methods that bypass Tamper Protection were not tried. Defender did not block the analysis or
-   capemon's injection, so until the wizard it stays on. For M6: either keep one manual step (the
-   user turns it off in Windows Security on the live desktop, then the wizard re-applies the
-   settings) or accept Defender on, judged by whether it interferes with real samples.
+5. **Defender: how the choice is offered (decided: optional, on by default; details for M6).**
+   Defender's state is a property of the analysis environment, so the guest wizard offers it as an
+   option, and the default build leaves it on, which needs no manual step. Turning it off cannot
+   be scripted (Tamper Protection ignores the policy keys and `Set-MpPreference`; bypass methods
+   were not tried), so choosing "off" makes the wizard pause once for the user to switch Tamper
+   Protection off in Windows Security on the live desktop, then re-apply the settings. Open for M6:
+   - **One guest, or two?** The state is baked into the snapshot, so one guest is one state. The
+     v1 proposal is one guest with the option chosen at build time. Letting the analyst pick per
+     submission needs two registered guests (two domains with their own snapshots, sharing the
+     base image as a backing file); CAPE's current one-registration-at-a-time limit (M0b) has to
+     be lifted first, so that is post-v1.
+   - **Report what Defender did.** When it is on, record its verdict: the Windows Defender
+     operational event log (detections and remediation), and whether the sample file or its
+     process was removed, so an analysis says "Defender removed the sample" instead of showing an
+     empty run. A self-test for the option with the EICAR antivirus test string (harmless, and
+     detected by design) would prove Defender is really on or really off.
 6. **Default analysis timeout:** 180 s is proposed.
 7. **App icon:** design a PWA and app icon (a descending pit or gate motif in ice blue).
 8. **PDF report styling:** a print variant (white background, blue accents) is proposed instead

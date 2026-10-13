@@ -66,7 +66,7 @@ remote access. Everything binds to `127.0.0.1`.
 ### Next up
 
 Nothing blocks M1 now. libvirt's unauthenticated TCP endpoint is switched off until the guest
-wizard needs it (question 1), and Defender's Tamper Protection stays on until the wizard too
+wizard needs it (question 1), and Defender is an option in the guest wizard, on by default
 (question 5). M1 proper: submit a sample from the UI, receive CAPE's callback, ingest
 `report.json` into OpenSearch, and the first analysis views.
 
@@ -83,6 +83,9 @@ wizard needs it (question 1), and Defender's Tamper Protection stays on until th
 - Compare two analyses (behaviour diff).
 - Search and IOC pivot across all analyses (OpenSearch alias over the per-analysis indices).
 - Parallel analyses (several guests).
+- **Two guest profiles (Defender on and off)**, picked per submission, and Defender's verdict in
+  the report (its event log, and whether it removed the sample). Needs more than one registered
+  guest.
 - Linux guests (CAPE community support via strace/Tracee).
 - Custom Tartarus rules and sequence detections. Sigma correlation rules.
 

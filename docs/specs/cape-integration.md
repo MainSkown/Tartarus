@@ -189,10 +189,14 @@ Rebuilding replaces it after the new one passes its checks.
 4. **Provision** (first-logon PowerShell, logged back to the wizard):
    - Disable Windows Update, UAC prompts, the firewall, telemetry, sleep/hibernate and
      SmartScreen.
-   - Try to disable Defender. With Tamper Protection on (the default) the documented policy keys
-     and `Set-MpPreference` are silently ignored, so this is a **manual step** the wizard pauses
-     for: the user turns Tamper Protection off in Windows Security on the live desktop, then the
-     wizard re-applies the settings (see M0b findings).
+   - Defender is **the user's choice, on by default** (a wizard option). Left on, the build needs
+     no manual step. If the user chooses off: with Tamper Protection on (the default) the
+     documented policy keys and `Set-MpPreference` are silently ignored, so the wizard pauses for
+     a **manual step**: the user turns Tamper Protection off in Windows Security on the live
+     desktop, then the wizard re-applies the settings (see M0b findings). Why it is a choice:
+     samples may check whether Defender runs and behave differently when it doesn't, and leaving
+     it on shows how a sample gets past Defender; turning it off helps when Defender would remove
+     a sample before it runs.
    - Install 32-bit Python 3.12 and Pillow.
    - Install CAPE `agent.py` as a scheduled task that starts at logon with highest privileges.
    - Install Sysmon with `guest/sysmon-config.xml`.

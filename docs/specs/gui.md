@@ -295,14 +295,15 @@ Analysis-level notes are edited inline: a plain QInput textarea in autogrow mode
   1. Choose ISO: a list from `data/iso` showing the detected edition and version. If the list is
      empty, it explains where to put the ISO. (A drag-and-drop upload is planned after v1; see
      the [overview](../overview.md#after-v1-not-designed-yet).)
-  2. Settings: edition, key (optional), locale, username, resources, decoys.
+  2. Settings: edition, key (optional), locale, username, resources, decoys, and **Defender**
+     (on by default; "off" adds one manual step in the build, explained next to the option).
   3. Review: a summary plus a warning that rebuilding replaces the current guest after it
      passes its checks.
   4. Build: per-step progress (preflight → define → install → provision → snapshot → register →
      self-test) with a live log tail in a code block. The live desktop view is available
      during install and provision. Each step has Retry and the build has Resume.
-- If the Defender Tamper Protection manual step is needed, the wizard pauses with instructions
-  and shows the live desktop.
+- Only when the user chose Defender "off": the wizard pauses for the Tamper Protection manual
+  step, with instructions and the live desktop.
 
 ## Settings (`/settings`)
 - **Defaults:** network route, timeout, interactive on/off, and the timeline aggregation
