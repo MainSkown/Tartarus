@@ -143,7 +143,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 ```
 ┌ DESKTOP (interactive) ────────────────────────────┐┌ PROCESSES ───────────────────────┐
 │                                                    ││ ▾ invoice.exe (4120)        ⚠2   │
-│                guest screen 16:9                   ││   ▾ cmd.exe (4388)               │
+│                guest screen 16:10                   ││   ▾ cmd.exe (4388)               │
 │            (mouse + keyboard captured              ││       powershell.exe (5012) ⚠1   │
 │             while hovered/focused)                 ││   ▸ svchost.exe (4410) ⇢inject   │
 │                                                    │├ DETECTIONS ───────────────────────┤

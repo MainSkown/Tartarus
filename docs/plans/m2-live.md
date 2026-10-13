@@ -26,7 +26,7 @@ While an analysis is `starting` or `running`, its page opens on a **LIVE** tab:
 - When the run ends the stream stops, the views load as in M1b, and the tab shows the last
   screenshot and a link to the finished views.
 
-Out of scope: the query language, facets and the Events/Timeline tabs (M3), Sigma rules (M4),
+Out of scope (also): ending an interactive run early (see decision 12); the query language, facets and the Events/Timeline tabs (M3), Sigma rules (M4),
 Sysmon/ETW/Suricata sources, the guest-build wizard.
 
 ## Decisions (made now so no agent has to guess)
@@ -48,7 +48,11 @@ Sysmon/ETW/Suricata sources, the guest-build wizard.
    (`capemon_rules.py`) are reused as they are: an incremental front-end feeds new calls through
    them and keeps their per-run state (created children, process identities). Event ids use the
    same inputs as the final ingest, so a live event and the final event for the same call are the
-   same document. Fed everything, the incremental path must produce exactly the events the report
+   same document, **except** where CAPE's processor merges consecutive identical calls into one
+   with a higher `repeated` count and renumbers the calls after it (C1 found this; the parser does
+   not merge, because a push parser would have to hold a call back). Live events are therefore
+   best effort: the final ingest rebuilds the index and is authoritative, and the LIVE tab does not
+   promise that an event's id survives the handover. Fed everything, the incremental path must produce exactly the events the report
    path produces for the same calls (a test over the real fixture proves it).
 4. **Clock.** capemon's timestamps are the guest monitor's clock, offset from true UTC by the host's
    UTC offset (M1b, decision 6). Live there is no `info.started`: the anchor is
@@ -77,18 +81,26 @@ Sysmon/ETW/Suricata sources, the guest-build wizard.
    only new events.
 10. **Server-side filter in `subscribe`:** `{lanes?, pids?, include_api?}`. The `query` field of the
     spec belongs to M3 and is refused with `error` code `query_unsupported`.
-11. **Interactive desktop (M2b).** The backend speaks the Guacamole protocol to `guacd`
-    (`cape:4822`, already running) and tunnels it over `WS /ws/analyses/{id}/desktop`; the browser
-    uses `guacamole-common-js`. `guacd` connects to the guest's VNC display, which libvirt binds to
-    `127.0.0.1` inside the `cape` container on a port chosen when the guest starts: **how the
-    backend learns that port is an open question**, answered by an investigation task before the
-    tunnel is built (options: CAPE already records it for its own Guacamole view; a fixed port in
-    the guest's libvirt XML; a small helper in the cape container). Clipboard, drag-and-drop and
-    file transfer are disabled at `guacd` (connection parameters), not only in the page. Input is
-    refused (`4409`) unless the analysis is `running` and was submitted interactive.
+11. **Interactive desktop (M2b), settled by the D1 investigation (see "Desktop findings").** The
+    backend speaks the Guacamole protocol to `guacd` (`cape:4822`, already running) and tunnels it
+    over `WS /ws/analyses/{id}/desktop`; the browser uses `guacamole-common-js`. **The VNC port
+    comes from CAPE:** with `[guacamole] enabled = yes` (already set) CAPE appends `vnc_port=<n>` to
+    the task's `options`, readable from `GET apiv2/tasks/view/{id}/` which the backend already
+    polls (`TaskView` gains `options`); take the last `vnc_port`, accept only 5900-5999, always
+    connect `guacd` to `127.0.0.1`. The port appears only once the guest is up, so the tunnel waits
+    for it; a task being `running` does not mean the desktop is there. `guacd` connects with
+    `disable-copy=true`, `disable-paste=true`, `read-only=false`, `color-depth=24`, `cursor=remote`,
+    `autoretry=0` (this `guacd` has no file transfer or audio at all). The guest screen is
+    1280x800 (16:10). `ready` also arrives when the guest is off, followed by an `error`: the
+    tunnel treats the first `size`/`img` as connected and an `error` as "desktop not available".
+    Input is refused (`4409`) unless the analysis is `running` and was submitted interactive.
 12. **The `interactive` option** joins the submission options (the API rejects unknown keys today):
-    a boolean, default from the `default_interactive` setting, shown in the Submit dialog; CAPE's
-    own `interactive=1` option is passed through when set.
+    a boolean, default from the `default_interactive` setting, shown in the Submit dialog. When on,
+    the backend passes **`interactive=1,nohuman=yes`** to CAPE (as CAPE's own UI does; without
+    `nohuman` the analyst fights CAPE's mouse mover and dialog closer). **An interactive run lasts
+    the whole timeout** even when the sample exits early (the analyzer does not stop on an empty
+    process list), about 3.5 minutes at the default; the Submit dialog says so beside the switch.
+    Ending an interactive run early (CAPE watches for a "complete" file in the guest) is not built.
 13. **Frontend.** The LIVE tab exists only while the analysis is active (the tab registry learns
     that availability can depend on the analysis), and an active analysis opens on it. A
     `useLiveAnalysis(id)` composable owns the WebSocket (reconnect and backoff shared with the
@@ -148,3 +160,235 @@ final index, latency from a call to its arrival).
 | Live indexing slows the run | It is best effort and off the runner's path; measured on the real stack |
 | WebSocket through nginx | `/ws/system` already works through it; the live route reuses the same location rule, checked in E1 |
 | Agents report results optimistically | The planner re-runs every gate, and `make e2e`, before committing |
+
+## Desktop findings
+
+Task D1, observed on the real stack on 2026-10-13 (CAPE in the `cape` container, libvirt 10.0.0,
+QEMU 9.2.2, `guacd` 1.6.0). Everything below was run from inside the `cape` container against CAPE's
+HTTP API and `guacd` directly; the backend was not involved. The guest was never redefined and
+`tartarus-clean` was never touched. One real run: task 79, `benign.exe`, options `interactive=1`,
+timeout 150, route `inetsim`; deleted afterwards (`tasks/list` is back to 1-6 and 45, the analysis
+folder is gone, `win` is shut off). The throwaway scripts are in the session scratchpad, not in the repo.
+
+### 1. The guest's VNC port as libvirt and CAPE see it
+
+While task 79 ran (17 s after submit):
+
+```
+$ virsh -c qemu:///system domdisplay win      -> vnc://127.0.0.1:0
+$ virsh -c qemu:///system vncdisplay win      -> 127.0.0.1:0
+$ virsh -c qemu:///system dumpxml win | grep -A2 '<graphics'
+<graphics type='vnc' port='5900' autoport='yes' listen='127.0.0.1'>
+$ ss -ltnp | grep qemu                        -> LISTEN 127.0.0.1:5900 users:(("qemu-system-x86",pid=4593,fd=30))
+```
+
+Display `:0` is TCP 5900. It is assigned at each start: `/var/log/libvirt/qemu/win.log` shows
+`-vnc 127.0.0.1:0,audiodev=audio1` on all 12 starts, and `-incoming defer` each time, because
+CAPE's start is a revert to `tartarus-clean` (a fresh QEMU process, memory loaded from
+`win-clean.mem`). `autoport` takes the first free port from 5900, and with one guest and no other
+listener in the `cape` container that is always 5900. All seven earlier tasks (1-6, 45) carry
+`vnc_port=5900` too. So it is stable in practice, but it is not guaranteed by the definition.
+
+CAPE records it, and the backend can read it. `cape/conf/web.conf` already sets
+`[guacamole] enabled = yes`. With that, `analysis_manager.run_analysis_on_guest` calls
+`KVM.store_vnc_port` (`modules/machinery/kvm.py:49`), which reads the port from the live domain
+XML and `db.set_vnc_port` (`lib/cuckoo/core/data/tasking.py:923`) appends `vnc_port=<n>` to the
+task's `options`. Observed through the API with the same token the backend uses:
+
+```
+GET /apiv2/tasks/view/79/     -> data.options = "interactive=1,vnc_port=5900"      (while running and after the run)
+GET /apiv2/tasks/machine/79/  -> {"error": false, "machine": "win", "vnc_port": 5900}   (while running)
+GET /apiv2/tasks/machine/79/  -> {"error": false, "machine": "win", "vnc_port": null}   (after the guest shut down)
+```
+
+`tasks/machine` (`web/apiv2/views.py:1155`) asks libvirt live, only answers a port for a domain in
+state running, and returns `null` otherwise. Its docstring calls it a central-mode control-plane
+read, authorised by `[api] control_plane_token` or by `is_local_admin`; with our single-tenant
+setup the backend token passed (200). Nothing about the port is written under
+`analyses/<id>/` on the `cape-storage` volume (no file there carries it); the task row is the only
+record.
+
+### 2. How the backend should learn the port: recommendation (a)
+
+**Recommended: (a), CAPE already exposes it. Read `vnc_port=<n>` from the `options` string of
+`GET /apiv2/tasks/view/{id}/`.** The backend already calls `tasks/view` while polling a task, so
+this costs one new field on `TaskView` (`options: str | None`) and a parser. No new container,
+port, file or libvirt access.
+
+- Parse it as `key=value` pairs split on commas and take the **last** `vnc_port` (CAPE appends its
+  own after the submitted options), then check it is an integer in 5900-5999. The submission API
+  whitelists option keys, so a user cannot inject one, but the check keeps `guacd` pointed at the
+  guest's display and nothing else. The `hostname` is always the constant `127.0.0.1`.
+- It is absent until CAPE has started the guest and recorded the port; the tunnel waits for it
+  while the analysis is `starting`. Task status reads `running` 2 s after submit, long before the
+  guest is up (the analyzer started about 10 s later), so the status alone does not mean the desktop is
+  there: the port appearing in `options` does.
+- Trade-offs: it depends on `[guacamole] enabled = yes` (already in `cape/conf/web.conf`; a
+  comment there says why) and on CAPE keeping the `store_vnc_port` behaviour, which is upstream
+  code with a test file. The string stays after the run, so it is a record and not proof that
+  the guest is up: the backend gates on the analysis status anyway (decision 11).
+- `tasks/machine/{id}/` is the equivalent live read and answers `null` once the guest is off. It
+  works with our token, but it is documented as a central-mode control-plane call and authorised
+  by `is_local_admin`, which a future multi-tenant setting could withhold. Use it only as a
+  fallback if `options` ever lacks the port.
+
+**(b) Fixed port in `guest/domain.xml.tpl`: not needed, and riskier than it looks.** The change would
+be `<graphics type='vnc' port='5900' autoport='no' listen='127.0.0.1'/>`. An existing guest is
+redefined without a rebuild by `virsh dumpxml --inactive win`, editing that line and
+`virsh define` while the guest is off (disks and NVRAM are untouched). The catch is
+`tartarus-clean`: its snapshot XML embeds its own copy of the domain definition, and I saw it
+carries `<graphics type='vnc' port='-1' autoport='yes' ...>`:
+
+```
+$ virsh snapshot-dumpxml win tartarus-clean | grep graphics
+      <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'>
+```
+
+Every start is a revert to that snapshot, so I expect the old definition to win until the
+snapshot XML is edited or the snapshot is retaken. That is an inference and not tested: I was not allowed to
+redefine or edit anything. I only checked that `domxml-to-native` of a throwaway copy with
+`port='5900' autoport='no'` is accepted and yields `-vnc 127.0.0.1:0`. It would also make a start fail if 5900
+were ever taken, where autoport moves on. Since the port is already 5900 on every run, (b) buys
+nothing.
+
+**(c) Read-only helper in the `cape` container: not needed.** It would be a ~30-line Python
+program under supervisord that opens `qemu:///system?readonly` and serves `{port}` on
+`CAPE_INTERNAL_IP`. It duplicates `tasks/machine`, adds a listener on the internal network and a
+process holding the libvirt socket (even read-only it can enumerate domains and read
+their XML, which has device paths and the SMBIOS serials), needs its own port,
+auth and tests. Only worth it if CAPE's two reads disappear.
+
+### 3. The `interactive=1` option
+
+Accepted: `POST /apiv2/tasks/create/file/` with form field `options=interactive=1` answered 200,
+task 79 ran. The API treats `options` as an opaque string; nothing in apiv2 adds to it (the CAPE web
+UI, `web/submission/views.py:356`, adds `interactive=1,` **and** `nohuman=yes,` together, and only when
+`[guacamole] enabled`).
+
+Where it is consumed (`analyzer/windows/analyzer.py`, in the guest):
+- Line 636: the analyzer sets `INTERACTIVE_MODE`, injects the monitor into the `explorer.exe`
+  shell, and (only with the separate `manual` option) copies the sample to the Desktop.
+  Observed in `analysis.log`: `Interactive mode enabled - injecting into explorer shell`, `Interactive desktop enabled.`,
+  and the option sent to every monitored process.
+- Line 782: when the monitored process list is empty the analyzer normally ends
+  (`Process list is empty, terminating analysis`, which analysis 45 logged). With
+  `INTERACTIVE_MODE` it `continue`s instead. **Observed:** `benign.exe` ended 27 s in
+  (`Process with pid 8332 has terminated` at 17:22:32), but the analysis stayed until the timeout
+  (`Analysis timeout hit, terminating analysis` at 17:25:00). Submit to `completed` took 201 s for
+  a 150 s timeout (boot and restore before, teardown after). So an interactive analysis always
+  lasts the full timeout, unless the analyst leaves the "complete" folder CAPE's analyzer watches for
+  (`md5("cape-<id>")` under `%TMP%` or `%SystemRoot%\Temp`), which the GUI would have to
+  offer as a "stop" action; I did not try that.
+- **Contradiction with the spec.** `docs/specs/cape-integration.md` says `interactive=1` "keeps the
+  agent from auto-closing dialogs". It does not. The human-behaviour module (`Human`,
+  `modules/auxiliary/human.py`) was started in the interactive run
+  (`Started auxiliary module modules.auxiliary.human`); it is switched off by the separate option
+  `nohuman` (`human.py:586`: `if nohuman: return`; read from the code, I did not run a second task
+  to observe it). Decision 12 should pass `interactive=1,nohuman=yes` when the switch is on, as CAPE's
+  own UI does. Without `nohuman` the analyst fights the mouse-mover and the dialog-closer.
+
+### 4. The Guacamole handshake with `guacd`
+
+`guacd` listens on `172.19.0.4:4822` (the `cape` container's address on `tartarus-internal`;
+published nowhere). `backend -> cape:4822` connects (checked with a socket from the backend
+container). `guacd` runs in the `cape` container, so the VNC target is `127.0.0.1:<port>` from
+`guacd`'s point of view, and that worked.
+
+Wire format: each instruction is `LEN.value,LEN.value,...;` with `LEN` counting Unicode
+characters, not bytes. Sequence that worked (client sends C, `guacd` sends S):
+
+```
+C select,vnc
+S args,VERSION_1_5_0,hostname,port,read-only,disable-display-resize,encodings,username,password,
+       swap-red-blue,color-depth,cursor,autoretry,clipboard-encoding,dest-host,dest-port,
+       reverse-connect,listen-timeout,recording-path,recording-name,recording-exclude-output,
+       recording-exclude-mouse,recording-include-keys,create-recording-path,recording-write-existing,
+       disable-copy,disable-paste,disable-server-input,wol-send-packet,wol-mac-addr,
+       wol-broadcast-addr,wol-udp-port,wol-wait-time,force-lossless,compress-level,quality-level
+C size,1280,800,96
+C audio,
+C video,
+C image,image/png,image/jpeg,image/webp
+C timezone,UTC
+C connect,VERSION_1_5_0,127.0.0.1,5900,false,,,,,,24,remote,0,,,,,,,,,,,,,true,true,,,,,,,,,
+S ready,$<connection id>                      (0.04 s after connect)
+S size,-2,5,5   size,0,1280,800   rect/cfill/img/blob/end/copy/cursor ... sync,<ts>
+C sync,<ts>                                   (ack every sync, or guacd stops sending frames)
+```
+
+`connect` takes one value per name in `args`, in the same order; unnamed ones are empty strings,
+and the first value, for `VERSION_1_5_0`, is that same string echoed back (it is the protocol version the
+client speaks). Build it from the `args` the server sent, so a `guacd` upgrade that adds a parameter
+does not break the backend.
+
+**Connection parameters to use** (all other `args` stay empty, i.e. their defaults):
+
+| Name | Value | Why |
+|---|---|---|
+| `hostname` | `127.0.0.1` | The guest's VNC listens on loopback in the `cape` container |
+| `port` | the `vnc_port` of the task | 5900 in practice |
+| `read-only` | `false` | The analyst needs mouse and keyboard; the backend refuses input itself unless the analysis is running and interactive (`4409`) |
+| `disable-copy` | `true` | Guest to client clipboard off |
+| `disable-paste` | `true` | Client to guest clipboard off |
+| `color-depth` | `24` | Nothing in these frames needed more |
+| `cursor` | `remote` | Draws the guest's cursor in the browser; avoids a lagging local cursor |
+| `autoretry` | `0` | A closed VNC must surface as an error (see below), not be retried silently |
+
+The client `size` is a request only: I asked for 1024x768 and the display layer came back as the
+guest's own 1280x800. Not set (untested): `disable-display-resize` (QEMU's VGA cannot resize
+from the client anyway; set it to `true` if the browser panel ever sends a size change),
+`swap-red-blue` (not needed as far as the screenshot colors go, but I did not view the Guacamole
+frames themselves), `recording-*` (`guacd` could record sessions, which this design does not want).
+
+**Clipboard and file transfer.** This `guacd` build's VNC `args` has **no** `enable-sftp`,
+`sftp-*` or `enable-audio` parameters, so SFTP, audio and file transfer do not exist in it; there
+is nothing to switch off, and the backend must still not forward `file`/`put` instructions
+(refuse them in the tunnel regardless). The `audio` and `video` instructions answered with empty
+mimetype lists are accepted. Clipboard, the two parameters above:
+
+- Client to guest (`disable-paste`), **verified both ways**: I sent
+  `clipboard,9,text/plain` then `blob,9,<base64>` and `end,9`. With `disable-paste=true`,
+  `guacd` answered `ack,9,Clipboard unsupported,256` (and `ack,9,File transfer unsupported,256` for the
+  blob that followed); with `disable-paste=false` it answered no error. So the parameter does
+  switch the handler off at `guacd`, not just in the page.
+- Guest to client (`disable-copy`): the parameter is in `args` and I set it, but I could not
+  verify the effect, because no `clipboard` instruction arrived in either run to begin with
+  (the guest's clipboard did not change while I watched), so there is no contrast case.
+  Unverified.
+- Drag-and-drop: there is no `guacd` parameter for it; in Guacamole it is the file upload over
+  SFTP, which this build lacks. Not wired in the page either.
+
+**What a frame stream looks like.** 10 s of a booted desktop, counted by opcode:
+`{'ready': 1, 'size': 2, 'rect': 32, 'cfill': 31, 'img': 135, 'blob': 144, 'end': 135, 'cursor': 1, 'sync': 88, 'copy': 87}`.
+`img`/`blob` carry PNG/JPEG tiles. The tunnel can be a plain relay; it only needs to parse
+instructions enough to refuse the client opcodes `clipboard`, `file`, `put`, `get`, `nest`
+and anything else not in an allow-list (`mouse`, `key`, `sync`, `ack`, `size`, `disconnect`, `nop`, `blob`
+and `end` for streams the server opened).
+
+**An unreachable VNC still answers `ready`.** With the guest shut off I got `ready` in 0.04 s, then
+`error,Aborted. See logs.,519` and `nop`. So `ready` does not mean the desktop is up: the tunnel
+should consider the connection good at the first `size,0,...` or `img`, and treat `error` (519 is
+`guacd`'s "upstream error") as "desktop not available" instead of a bug.
+
+### 5. Resolution
+
+The guest runs **1280x800** (16:10): the `size,0,1280,800` layer from `guacd`, and a `virsh
+screenshot win` PNG of the same task is 1280 x 800 and shows the Windows 11 desktop (taskbar, Edge
+on the INetSim page, Polish UI, clock 17:23). Request `size,1280,800,96` and let the browser scale
+the canvas to the panel (`Guacamole.Display.scale`). The GUI spec's mockup says 16:9 for the panel; the
+real screen is 16:10, so the panel needs a 16:10 box, or it letterboxes.
+
+### Unverified, and where this could differ
+
+- A fixed port in the XML plus the snapshot behaviour (b): inference only (see 2).
+- `nohuman=yes` stopping the dialog-closer: read from code, not run (one extra task would show it).
+- Keyboard and mouse reaching the guest: one `mouse` instruction was sent and accepted; no key was
+  sent and no visible effect was checked. Absolute mouse positioning should be fine as the guest
+  has a USB tablet, but I did not test it.
+- `disable-copy` (guest to client): see above.
+- Behavior with two guests at once: there is only one machine, so autoport always gave 5900. Reading
+  `vnc_port` from `options` is already per task, so it holds if more machines are added, but the 5900-5999
+  range check would need widening.
+- Whether the `complete` folder trick ends an interactive run early: not tried.
+- Frame colors and the display's behavior in a browser through `guacamole-common-js`: only the protocol
+  was exercised, not a client that draws it.

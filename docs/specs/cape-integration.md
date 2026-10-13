@@ -227,8 +227,10 @@ failed step shows its log and a Retry button.
 
 ## Interactive desktop
 
-- The analyst turns it on per submission (on by default). CAPE's `interactive=1` option keeps
-  the agent from auto-closing dialogs, so the analyst stays in control.
+- The analyst turns it on per submission (on by default). CAPE's `interactive=1` option keeps the
+  analysis running until the timeout and injects the monitor into the desktop shell; with
+  `nohuman=yes` (passed together) CAPE's mouse mover and dialog closer are switched off, so the
+  analyst stays in control.
 - The backend opens a Guacamole VNC connection through `guacd` and tunnels it over
   `WS /ws/analyses/{id}/desktop`. The GUI renders it with `guacamole-common-js`, with keyboard
   and mouse enabled.
