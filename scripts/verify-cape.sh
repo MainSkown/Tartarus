@@ -11,6 +11,7 @@ PROBE=tt-probe
 PROBE_DIR=/tmp/tt-probe
 PROBE_MAC=52:54:00:7e:57:10
 REGISTRATION_DIR=/var/lib/libvirt/tartarus/kvm.conf.d
+REGISTRATION_STASH=/var/lib/libvirt/tartarus/kvm.conf.d.verify-cape
 CIRROS_IMAGE=cirros-0.6.3-x86_64-disk.img
 CIRROS_URL=https://github.com/cirros-dev/cirros/releases/download/0.6.3/$CIRROS_IMAGE
 CIRROS_SHA256=${CIRROS_SHA256:-7d6355852aeb6dbcd191bcda7cd74f1536cfe5cbf8a10495a7283a8396e4b75b}
@@ -140,8 +141,23 @@ define_probe() { virsh_in_cape define "$PROBE_DIR/domain.xml" >/dev/null; }
 
 # CAPE's scheduler only starts once every registered machine is defined, and on start it powers
 # off any registered machine that is running; so: define, register, let CAPE load it, then boot.
+# Every registration file sets [kvm] machines and the last one read wins, so only one guest can
+# be registered at a time: a real guest (the Windows one from M0b) is set aside on the volume
+# while the probe runs, and put back by cleanup_probe.
+stash_other_registrations() {
+    in_cape sh -c "mkdir -p '$REGISTRATION_STASH' &&
+        find '$REGISTRATION_DIR' -maxdepth 1 -name '*.conf' ! -name '$PROBE.conf' -exec mv {} '$REGISTRATION_STASH/' \\;"
+}
+
+restore_other_registrations() {
+    in_cape sh -c "[ -d '$REGISTRATION_STASH' ] || exit 0
+        find '$REGISTRATION_STASH' -maxdepth 1 -name '*.conf' -exec mv {} '$REGISTRATION_DIR/' \\;
+        rmdir '$REGISTRATION_STASH'"
+}
+
 register_probe() {
-    in_cape cp "$PROBE_DIR/$PROBE.conf" "$REGISTRATION_DIR/$PROBE.conf" &&
+    stash_other_registrations &&
+        in_cape cp "$PROBE_DIR/$PROBE.conf" "$REGISTRATION_DIR/$PROBE.conf" &&
         in_cape supervisorctl restart cape >/dev/null &&
         wait_until cape_database_lists_probe
 }
@@ -199,6 +215,7 @@ cleanup_probe() {
     virsh_in_cape undefine "$PROBE" >/dev/null 2>&1
     in_cape rm -rf "$PROBE_DIR" "$REGISTRATION_DIR/$PROBE.conf"
     in_postgres sh -c "psql -U \"\$CAPE_DB_USER\" -d \"\$CAPE_DB_NAME\" -qc \"delete from machines where label = '$PROBE'\"" >/dev/null 2>&1
+    restore_other_registrations
     in_cape supervisorctl restart cape >/dev/null 2>&1
 }
 

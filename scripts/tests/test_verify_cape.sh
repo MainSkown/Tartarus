@@ -234,6 +234,18 @@ test_starts_the_probe_only_after_cape_registered_it() {
     ((define < register && register < start)) || { echo "  define@$define register@$register start@$start"; return 1; }
 }
 
+# Each registration sets [kvm] machines, so a registered Windows guest would hide the probe.
+test_sets_other_registrations_aside_while_the_probe_is_registered_and_restores_them() {
+    run_verify
+    local stash register restore cleanup
+    stash=$(grep -n 'kvm.conf.d.verify-cape' "$STUB_DIR/calls" | head -n 1 | cut -d: -f1)
+    register=$(grep -n 'cp /tmp/tt-probe/tt-probe.conf' "$STUB_DIR/calls" | head -n 1 | cut -d: -f1)
+    cleanup=$(grep -n 'undefine tt-probe' "$STUB_DIR/calls" | head -n 1 | cut -d: -f1)
+    restore=$(grep -n 'kvm.conf.d.verify-cape' "$STUB_DIR/calls" | tail -n 1 | cut -d: -f1)
+    [[ -n $stash && -n $register && -n $cleanup && -n $restore ]] && ((stash < register && cleanup < restore)) ||
+        { echo "  stash@$stash register@$register cleanup@$cleanup restore@$restore"; return 1; }
+}
+
 test_check3_fails_when_the_bridge_is_on_the_host() {
     : >"$STUB_DIR/f/host-has-tt-guest"
     run_verify
