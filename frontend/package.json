@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@quasar/extras": "^2.1.0",
+    "cytoscape": "3.34.3",
+    "cytoscape-dagre": "4.0.1",
     "pinia": "^4.0.3",
     "quasar": "^2.35.1",
     "vue": "^3.5.43",
