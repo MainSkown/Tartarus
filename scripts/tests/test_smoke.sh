@@ -12,12 +12,16 @@ STATUS=0
 
 port_entry() { printf '{"mode":"ingress","host_ip":"%s","target":%s,"published":"%s","protocol":"tcp"}' "$1" "$2" "$3"; }
 
+DEFAULT_CAPE='{"profiles":["cape"],"image":"tartarus-cape:latest","build":{},"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"networks":{"tartarus-internal":null}}'
+
 write_prod_config() {
     local frontend_ip=$1 backend_ports=$2 backend_image=${3:-tartarus-backend:latest} frontend_image=${4:-tartarus-frontend:latest}
+    local cape=${5:-$DEFAULT_CAPE} backend_extra=${6:-}
     cat >"$STUB_DIR/config-prod.json" <<JSON
 {"services":{
-  "frontend":{"image":"$frontend_image","build":{},"ports":[$(port_entry "$frontend_ip" 80 8080)]},
-  "backend":{"image":"$backend_image","build":{},"ports":[$backend_ports],"volumes":[]},
+  "frontend":{"image":"$frontend_image","build":{"target":"production-stage"},"ports":[$(port_entry "$frontend_ip" 80 8080)]},
+  "backend":{"image":"$backend_image","build":{"target":"prod"},"ports":[$backend_ports],"volumes":[]${backend_extra:+,$backend_extra}},
+  "cape":$cape,
   "postgres":{"volumes":[{"type":"volume","source":"pg-data","target":"/var/lib/postgresql/data"}]},
   "opensearch":{"volumes":[{"type":"volume","source":"os-data","target":"/usr/share/opensearch/data"}]}
 }}
@@ -26,10 +30,12 @@ JSON
 
 write_dev_config() {
     local postgres_ip=$1 backend_volumes=$2 extra_frontend_ports=${3:-} backend_image=${4:-tartarus-backend:dev} frontend_image=${5:-tartarus-frontend:dev}
+    local cape=${6:-$DEFAULT_CAPE}
     cat >"$STUB_DIR/config-dev.json" <<JSON
 {"services":{
-  "frontend":{"image":"$frontend_image","build":{},"ports":[$(port_entry 127.0.0.1 5173 5173)${extra_frontend_ports:+,$extra_frontend_ports}]},
-  "backend":{"image":"$backend_image","build":{},"ports":[$(port_entry 127.0.0.1 8000 8000)],"volumes":[$backend_volumes]},
+  "frontend":{"image":"$frontend_image","build":{"target":"dev-stage"},"ports":[$(port_entry 127.0.0.1 5173 5173)${extra_frontend_ports:+,$extra_frontend_ports}]},
+  "backend":{"image":"$backend_image","build":{"target":"dev"},"ports":[$(port_entry 127.0.0.1 8000 8000)],"volumes":[$backend_volumes]},
+  "cape":$cape,
   "postgres":{"ports":[$(port_entry "$postgres_ip" 5432 5432)]},
   "opensearch":{"ports":[$(port_entry 127.0.0.1 9200 9200)]}
 }}
@@ -39,10 +45,14 @@ JSON
 install_stubs() {
     cat >"$STUB_DIR/bin/docker" <<'STUB'
 #!/usr/bin/env bash
+without_profiled_services() {
+    python3 -I -c 'import json, sys; c = json.load(sys.stdin); c["services"] = {n: s for n, s in c["services"].items() if "profiles" not in s}; print(json.dumps(c))'
+}
 args="$*"
 case "$args" in
     *"config --format json"*)
-        if [[ $args == *docker-compose.dev.yml* ]]; then cat "$STUB_DIR/config-dev.json"; else cat "$STUB_DIR/config-prod.json"; fi ;;
+        if [[ $args == *docker-compose.dev.yml* ]]; then config="$STUB_DIR/config-dev.json"; else config="$STUB_DIR/config-prod.json"; fi
+        if [[ $args == *"--profile"* ]]; then cat "$config"; else without_profiled_services <"$config"; fi ;;
     *"exec -T postgres printenv"*) cat "$STUB_DIR/postgres-env" ;;
     *"exec -T postgres"*) cat "$STUB_DIR/postgres-databases" ;;
     *"exec -T opensearch"*) cat "$STUB_DIR/opensearch-health" ;;
@@ -147,6 +157,24 @@ test_static_rejects_dev_and_prod_sharing_an_image_tag() {
     write_dev_config 127.0.0.1 "" "" "tartarus-backend:latest" "tartarus-frontend:dev"
     run_smoke static
     expect_fail_mentioning "backend"
+}
+
+test_static_rejects_cape_publishing_a_port() {
+    write_dev_config 127.0.0.1 "" "" "" "" '{"profiles":["cape"],"privileged":true,"ports":['"$(port_entry 127.0.0.1 16509 16509)"']}'
+    run_smoke static
+    expect_fail_mentioning "cape publishes"
+}
+
+test_static_rejects_a_privileged_service_other_than_cape() {
+    write_prod_config 127.0.0.1 "" "" "" "" '"privileged":true'
+    run_smoke static
+    expect_fail_mentioning "backend is privileged"
+}
+
+test_static_rejects_host_networking() {
+    write_prod_config 127.0.0.1 "" "" "" '{"profiles":["cape"],"privileged":true,"network_mode":"host"}'
+    run_smoke static
+    expect_fail_mentioning "cape uses the host network"
 }
 
 test_prod_passes_on_healthy_stack() {

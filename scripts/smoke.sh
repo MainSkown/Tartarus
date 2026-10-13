@@ -23,6 +23,8 @@ check() {
 
 compose() { docker compose "${COMPOSE_FILES[@]}" "$@"; }
 
+compose_all_profiles_config() { compose --profile '*' config --format json; }
+
 policy_violations() {
     python3 -I - "$1" "$2" "${3:-{\}}" <<'PY'
 import json
@@ -45,16 +47,24 @@ elif check == "dev-frontend-vite-only":
     extra = [port.get("published") for name, port in published if name == "frontend" and port.get("target") != 5173]
     problems = [f"frontend also publishes {', '.join(extra)} in dev"] if extra else []
 elif check == "distinct-build-image-tags":
-    other = json.loads(sys.argv[3])
+    other = json.loads(sys.argv[3]).get("services", {})
     collisions = [
-        f"{name} is tagged {image!r} in both files"
+        f"{name} is tagged {image!r} in both files but built differently"
         for name, svc in services.items()
         if "build" in svc
         for image in [svc.get("image")]
-        if image and other.get("services", {}).get(name, {}).get("image") == image
+        if image
+        and other.get(name, {}).get("image") == image
+        and other.get(name, {}).get("build") != svc["build"]
     ]
     print("; ".join(collisions))
     sys.exit(1 if collisions else 0)
+elif check == "cape-no-ports":
+    problems = [f"cape publishes {port.get('published')}" for name, port in published if name == "cape"]
+elif check == "only-cape-privileged":
+    problems = [f"{name} is privileged" for name, svc in services.items() if svc.get("privileged") and name != "cape"]
+elif check == "no-host-network":
+    problems = [f"{name} uses the host network" for name, svc in services.items() if svc.get("network_mode") == "host"]
 elif check == "no-docker-socket":
     problems = [
         f"{name} mounts {volume['source']}"
@@ -91,8 +101,8 @@ postgres_lists_database() {
 
 check_static() {
     local mode config prod_config dev_config other_config
-    COMPOSE_FILES=(-f "$BASE_FILE"); prod_config=$(compose config --format json) || prod_config="{}"
-    COMPOSE_FILES=(-f "$BASE_FILE" -f "$DEV_FILE"); dev_config=$(compose config --format json) || dev_config="{}"
+    COMPOSE_FILES=(-f "$BASE_FILE"); prod_config=$(compose_all_profiles_config) || prod_config="{}"
+    COMPOSE_FILES=(-f "$BASE_FILE" -f "$DEV_FILE"); dev_config=$(compose_all_profiles_config) || dev_config="{}"
     for mode in prod dev; do
         COMPOSE_FILES=(-f "$BASE_FILE")
         if [[ $mode == dev ]]; then
@@ -107,6 +117,9 @@ check_static() {
         fi
         check "$mode: every published port binds 127.0.0.1" policy_violations loopback-only "$config"
         check "$mode: no service mounts the Docker socket" policy_violations no-docker-socket "$config"
+        check "$mode: cape publishes no ports" policy_violations cape-no-ports "$config"
+        check "$mode: no service other than cape is privileged" policy_violations only-cape-privileged "$config"
+        check "$mode: no service uses the host network" policy_violations no-host-network "$config"
         check "$mode: built images are not shared with the other compose file" \
             policy_violations distinct-build-image-tags "$config" "${other_config:-{\}}"
         if [[ $mode == prod ]]; then

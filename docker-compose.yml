@@ -105,6 +105,42 @@ services:
       retries: 5
       start_period: 10s
 
+  # Behind a profile until M1 wires it into the stack: `docker compose --profile cape up -d cape`.
+  cape:
+    profiles: [cape]
+    container_name: tartarus-cape
+    image: tartarus-cape:latest
+    build:
+      context: ./cape
+      args:
+        CAPE_REF: ${CAPE_REF:-9f806acd24ae23ee9a52cf4f1e82657635f07659}
+    restart: unless-stopped
+    # libvirtd, the rooter's iptables, the tt-guest bridge and QEMU's tap devices all live in this
+    # container's own network namespace; privileged grants that, and never the host's namespace.
+    privileged: true
+    devices:
+      - /dev/kvm:/dev/kvm
+    environment:
+      TZ: ${TZ:-UTC}
+      CAPE_DB_USER: ${CAPE_DB_USER:-cape}
+      CAPE_DB_PASSWORD: ${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set in .env (copy .env.example)}
+      CAPE_DB_NAME: ${CAPE_DB_NAME:-cape}
+      # Not required here: compose would then refuse to start the stack without the cape profile.
+      CAPE_API_TOKEN: ${CAPE_API_TOKEN:-}
+      GUEST_SUBNET: ${GUEST_SUBNET:-192.168.150.0/24}
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    tmpfs:
+      - /run
+    volumes:
+      - cape-storage:/opt/CAPEv2/storage
+      - guest-images:/var/lib/libvirt
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tartarus-internal
+
 networks:
   tartarus-internal:
     name: tartarus-internal
@@ -113,3 +149,5 @@ networks:
 volumes:
   pg-data:
   os-data:
+  cape-storage:
+  guest-images:

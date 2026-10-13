@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Creates the isolated tt-guest network as a transient libvirt network once libvirtd answers.
+# Transient, so it is rebuilt from GUEST_SUBNET on every start and never persisted on the volume.
+# Its DHCP range is the single guest address, so a lease left on the volume by an earlier guest
+# (another MAC) would block a new one until it expired; leases start empty instead.
+set -euo pipefail
+
+until virsh -q -c qemu:///system version >/dev/null 2>&1; do sleep 1; done
+
+if virsh -q -c qemu:///system net-info tt-guest >/dev/null 2>&1; then
+    echo "start-guest-network: tt-guest already running"
+    exit 0
+fi
+
+rm -f /var/lib/libvirt/dnsmasq/tt-guest.*
+network_xml=$(mktemp)
+envsubst '${GUEST_GATEWAY_IP} ${GUEST_IP}' </usr/local/lib/tartarus/templates/tt-guest.xml >"$network_xml"
+virsh -q -c qemu:///system net-create "$network_xml"
+rm -f "$network_xml"

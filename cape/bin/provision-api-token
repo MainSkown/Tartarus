@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Creates CAPE's Django auth tables (a SQLite file in web/) and makes apiv2 accept CAPE_API_TOKEN.
+set -euo pipefail
+cd /opt/CAPEv2/web
+../.venv/bin/python manage.py migrate --noinput
+../.venv/bin/python manage.py shell </usr/local/lib/tartarus/provision-api-token.py
+echo "provision-api-token: apiv2 accepts CAPE_API_TOKEN for user tartarus"

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Usage: wait-then-exec <condition>... -- <command> [args...]
+# Blocks until every condition holds, then execs the command. Conditions:
+#   guest-network     tt-guest carries the guest gateway address (INetSim and the ResultServer bind it)
+#   rooter            CAPE's rooter socket exists (cuckoo.py exits at start without it)
+#   registered-guest  every machine in CAPE's kvm config is defined in libvirt
+#                     (cuckoo.py exits with "No machines available" before a guest is registered)
+set -euo pipefail
+
+ROOTER_SOCKET=/tmp/cuckoo-rooter
+
+guest_network_ready() { ip -4 -o addr show dev tt-guest 2>/dev/null | grep -qF " ${GUEST_GATEWAY_IP}/"; }
+
+rooter_ready() { [[ -S $ROOTER_SOCKET ]]; }
+
+registered_machines() {
+    (cd /opt/CAPEv2 && .venv/bin/python -c \
+        'from lib.cuckoo.common.config import Config; print(Config("kvm").kvm.machines or "")') | tr ',' ' '
+}
+
+registered_guest_ready() {
+    local machines machine
+    machines=$(registered_machines)
+    [[ -n ${machines// /} ]] || return 1
+    for machine in $machines; do
+        virsh -q -c qemu:///system dominfo "$machine" >/dev/null 2>&1 || return 1
+    done
+}
+
+conditions=()
+while (($#)) && [[ $1 != -- ]]; do conditions+=("$1"); shift; done
+[[ ${1:-} == -- ]] || { echo "usage: wait-then-exec <condition>... -- <command>" >&2; exit 2; }
+shift
+
+for condition in "${conditions[@]}"; do
+    waited=0
+    until "${condition//-/_}_ready"; do
+        ((waited % 30 == 0)) && echo "wait-then-exec: waiting for ${condition} before starting $1"
+        sleep 2
+        waited=$((waited + 2))
+    done
+done
+exec "$@"
