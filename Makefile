@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-integration lint check api-sync screenshots preflight smoke hooks
+.PHONY: help dev up down logs test test-integration lint check api-sync screenshots preflight smoke verify-cape hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -45,6 +45,9 @@ preflight: ## Check host prerequisites
 
 smoke: ## Smoke-test the stack: MODE=static (default, no daemon needed), prod or dev
 	scripts/smoke.sh $(or $(MODE),static)
+
+verify-cape: ## Prove the cape container's M0 checks with a throwaway guest (slow; restarts cape, leaves it stopped)
+	scripts/verify-cape.sh
 
 hooks: ## Install the pre-commit tool and register the git hooks (once per clone)
 	uv tool install pre-commit
