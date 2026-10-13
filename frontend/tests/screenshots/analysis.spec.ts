@@ -54,6 +54,15 @@ const STATE_SCENARIOS: { name: string; analysis: AnalysisRead; text: string }[] 
   { name: 'analysis-cancelled', analysis: makeAnalysis({ id: ID, status: 'cancelled' }), text: 'cancelled before it ran' },
 ]
 
+test('the header Submit button and the page actions share a right edge', async ({ page }) => {
+  const analysis = makeDetectedAnalysis({ id: ID })
+  await openAnalysis(page, analysis)
+  await expectHeaderShowing(page, analysis)
+  const submit = await page.getByRole('button', { name: '+ SUBMIT', exact: true }).boundingBox()
+  const remove = await page.locator('.analysis-header__delete').boundingBox()
+  expect(Math.round(submit!.x + submit!.width)).toBe(Math.round(remove!.x + remove!.width))
+})
+
 for (const { name, analysis, text } of STATE_SCENARIOS) {
   test(name, async ({ page }) => {
     await openAnalysis(page, analysis)

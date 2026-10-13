@@ -175,6 +175,7 @@ const submitDisabledReason = useGuestBlockReason()
   height: 48px;
   min-height: 48px;
   gap: var(--spacing-lg);
+  padding-right: var(--spacing-lg);
 }
 
 .wordmark {

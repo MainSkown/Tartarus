@@ -117,6 +117,18 @@ test('dashboard-long-filename', async ({ page }) => {
   await page.screenshot({ path: screenshotPath('dashboard-long-filename') })
 })
 
+test('a long list scrolls under a header and nav that stay docked', async ({ page }) => {
+  const items = manyAnalyses(40)
+  await openDashboard(page, { items, total: 143 })
+  await expect(page.locator('.analysis-row')).toHaveCount(items.length)
+  await page.mouse.wheel(0, 5000)
+  await expect(page.getByText('showing 40 of 143')).toBeInViewport()
+  const [header, drawer] = await Promise.all([page.locator('.q-header').boundingBox(), page.locator('.q-drawer').boundingBox()])
+  expect(header!.y).toBe(0)
+  expect(drawer!.y).toBeLessThanOrEqual(header!.height)
+  expect(drawer!.y + drawer!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height)
+})
+
 test('dashboard-narrow-600', async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 800 })
   await openDashboard(page, { items: [...MIXED_ANALYSES, makeAnalysis({ id: 10, filename: LONG_FILENAME })] })
