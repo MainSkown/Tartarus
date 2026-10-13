@@ -141,12 +141,7 @@ class SampleStore:
     def _encrypt(plain: Path, original_name: str, incoming: Path, destination: Path) -> None:
         # Written under a temporary name and renamed, so a reader never sees a half-written zip.
         unfinished = incoming / "sample.zip"
-        with pyzipper.AESZipFile(
-            unfinished, "w", compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES
-        ) as archive:
-            archive.setpassword(ZIP_PASSWORD)
-            archive.write(plain, arcname=safe_file_name(original_name))
-        unfinished.chmod(PRIVATE_FILE)
+        write_encrypted_zip(plain, safe_file_name(original_name), unfinished)
         os.replace(unfinished, destination)
 
     @staticmethod
@@ -157,6 +152,16 @@ class SampleStore:
             fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PRIVATE_FILE)
             with archive.open(member) as packed, os.fdopen(fd, "wb") as plain:
                 shutil.copyfileobj(packed, plain, CHUNK_SIZE)
+
+
+def write_encrypted_zip(source: Path, arcname: str, destination: Path) -> None:
+    """Packs `source` into a one-file AES zip (password `infected`), readable by its owner only."""
+    with pyzipper.AESZipFile(
+        destination, "w", compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES
+    ) as archive:
+        archive.setpassword(ZIP_PASSWORD)
+        archive.write(source, arcname=arcname)
+    destination.chmod(PRIVATE_FILE)
 
 
 def _zip_name(sha256: str) -> str:

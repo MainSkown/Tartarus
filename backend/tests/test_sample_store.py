@@ -12,6 +12,7 @@ from app.samples.store import (
     EmptySampleError,
     SampleStore,
     SampleTooLargeError,
+    write_encrypted_zip,
 )
 
 PASSWORD = b"infected"
@@ -229,3 +230,21 @@ async def test_opening_a_sample_that_is_not_stored_raises_file_not_found(
     with pytest.raises(FileNotFoundError):
         async with store.open_plain("a" * 64):
             pass
+
+
+def test_write_encrypted_zip_packs_one_file_under_the_given_name_and_password(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "plain"
+    source.write_bytes(CONTENT)
+    destination = tmp_path / "out.zip"
+
+    write_encrypted_zip(source, "payload.bin", destination)
+
+    with pyzipper.AESZipFile(destination) as archive:
+        assert archive.namelist() == ["payload.bin"]
+        with pytest.raises(RuntimeError):
+            archive.read("payload.bin")
+        archive.setpassword(PASSWORD)
+        assert archive.read("payload.bin") == CONTENT
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o600
