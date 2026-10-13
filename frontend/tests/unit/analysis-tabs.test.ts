@@ -14,7 +14,7 @@ describe('AnalysisTabs', () => {
   })
 
   it('keeps SUMMARY marked, and marks no disabled tab, when the active tab is not built yet', () => {
-    const selected = mountTabs('processes').findAll('[aria-selected="true"]')
+    const selected = mountTabs('events').findAll('[aria-selected="true"]')
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
   })
 
@@ -23,24 +23,28 @@ describe('AnalysisTabs', () => {
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
   })
 
-  it('disables every tab that arrives with M1b and says why', () => {
-    const disabled = mountTabs().findAll('button[disabled]')
-    expect(disabled.map((tab) => tab.text())).toEqual([
-      'PROCESSES',
-      'TIMELINE',
-      'EVENTS',
-      'NETWORK',
-      'ARTIFACTS',
-      'DETECTIONS',
-      'NOTES',
+  it('enables the four exploring tabs and disables the ones that arrive later, saying when', () => {
+    const wrapper = mountTabs()
+    const enabled = wrapper.findAll('button:not([disabled])').map((tab) => tab.text())
+    expect(enabled).toEqual(['SUMMARY', 'PROCESSES', 'NETWORK', 'ARTIFACTS', 'DETECTIONS'])
+
+    const disabled = wrapper.findAll('button[disabled]')
+    expect(disabled.map((tab) => [tab.text(), tab.attributes('title')])).toEqual([
+      ['TIMELINE', 'Arrives with M3'],
+      ['EVENTS', 'Arrives with M3'],
+      ['NOTES', 'Arrives with M4'],
     ])
-    expect(disabled[0]!.attributes('title')).toBe('Arrives with M1b')
   })
 
-  it('emits the key of the summary tab when it is clicked', async () => {
-    const wrapper = mountTabs('processes')
-    await wrapper.find('button:not([disabled])').trigger('click')
-    expect(wrapper.emitted('select')).toEqual([['summary']])
+  it('marks an enabled tab as selected when it is the active one', () => {
+    const selected = mountTabs('network').findAll('[aria-selected="true"]')
+    expect(selected.map((tab) => tab.text())).toEqual(['NETWORK'])
+  })
+
+  it('emits the key of the tab that is clicked', async () => {
+    const wrapper = mountTabs()
+    await wrapper.findAll('button:not([disabled])')[1]!.trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['processes']])
   })
 
   it('does not emit for a disabled tab', async () => {

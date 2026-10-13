@@ -6,7 +6,8 @@ import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import AnalysisSummaryTab from '@/components/AnalysisSummaryTab.vue'
 import AnalysisTabs from '@/components/AnalysisTabs.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
-import { DEFAULT_TAB } from '@/services/analysis-tabs'
+import { TAB_VIEWS } from '@/components/tabs'
+import { DEFAULT_TAB, arrivalNote } from '@/services/analysis-tabs'
 import { confirmDestructive } from '@/services/confirm'
 import { deleteConfirmation } from '@/services/delete-confirmation'
 import { NOT_FOUND_STATUS } from '@/services/quiet-statuses'
@@ -83,9 +84,20 @@ onBeforeUnmount(store.stopPolling)
         v-if="activeTab === DEFAULT_TAB"
         :analysis="analysis"
       />
+      <template v-else-if="TAB_VIEWS[activeTab]">
+        <component
+          :is="TAB_VIEWS[activeTab]"
+          v-if="analysis.status === 'done'"
+          :analysis="analysis"
+        />
+        <TerminalEmpty
+          v-else
+          message="available once the analysis is done"
+        />
+      </template>
       <TerminalEmpty
         v-else
-        :message="`${activeTab} arrives with M1b`"
+        :message="arrivalNote(activeTab)"
       />
     </template>
 

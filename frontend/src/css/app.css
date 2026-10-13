@@ -715,3 +715,39 @@ pre,
 .q-notification.tt-toast .q-notification__progress {
   background: var(--blue-primary);
 }
+
+/* ---------- Data tables (Dashboard, analysis tabs) ---------- */
+.tt-table-scroll {
+  overflow-x: auto;
+  border: 2px solid var(--border-primary);
+}
+
+.tt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.tt-table th {
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-align: left;
+  color: var(--blue-primary);
+  font-size: 0.65rem;
+  letter-spacing: 1px;
+  border-bottom: 2px solid var(--border-primary);
+  white-space: nowrap;
+}
+
+.tt-table td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.tt-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tt-table .num {
+  text-align: right;
+}

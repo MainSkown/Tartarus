@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
 import { analysesCancel, analysesCreate, analysesDelete, analysesList, analysesRead } from '@/api'
 import type { AnalysesListData, AnalysisRead, Route } from '@/api'
+import { errorMessage } from '@/services/api-error'
 import { isTerminalStatus } from '@/services/analysis-status'
 import { NOT_FOUND_STATUS, quietOn } from '@/services/quiet-statuses'
 import { validationIssues, type ValidationIssue } from '@/services/validation-errors'
@@ -9,8 +10,6 @@ import { validationIssues, type ValidationIssue } from '@/services/validation-er
 const POLL_INTERVAL_MS = 2_000
 const BACKOFF_INTERVAL_MS = 10_000
 const FAILURES_BEFORE_BACKOFF = 3
-
-const GENERIC_ERROR_MESSAGE = 'Something went wrong talking to the backend.'
 
 export type AnalysisListQuery = NonNullable<AnalysesListData['query']>
 
@@ -38,11 +37,6 @@ interface LoadFailure {
 
 function failureOf(error: unknown, response?: Response): LoadFailure {
   return { message: errorMessage(error), status: response?.status }
-}
-
-function errorMessage(error: unknown): string {
-  const message = (error as { error?: { message?: unknown } } | undefined)?.error?.message
-  return typeof message === 'string' ? message : GENERIC_ERROR_MESSAGE
 }
 
 function isPending(analysis: AnalysisRead): boolean {

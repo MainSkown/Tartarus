@@ -21,8 +21,8 @@ function shaPrefix(sha256: string): string {
 </script>
 
 <template>
-  <div class="analyses-table-scroll">
-    <table class="analyses-table text-mono">
+  <div class="tt-table-scroll">
+    <table class="tt-table analyses-table text-mono">
       <thead>
         <tr>
           <th class="col-id">
@@ -129,33 +129,6 @@ function shaPrefix(sha256: string): string {
 </template>
 
 <style scoped>
-.analyses-table-scroll {
-  overflow-x: auto;
-  border: 2px solid var(--border-primary);
-}
-
-.analyses-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8rem;
-}
-
-th {
-  padding: var(--spacing-sm) var(--spacing-md);
-  text-align: left;
-  color: var(--blue-primary);
-  font-size: 0.65rem;
-  letter-spacing: 1px;
-  border-bottom: 2px solid var(--border-primary);
-  white-space: nowrap;
-}
-
-td {
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-bottom: 1px solid var(--border-subtle);
-  white-space: nowrap;
-}
-
 .analysis-row {
   cursor: pointer;
 }
@@ -164,10 +137,6 @@ td {
 .analysis-row:focus-visible {
   background: var(--border-subtle);
   outline: none;
-}
-
-.analysis-row:last-child td {
-  border-bottom: none;
 }
 
 .col-id,
@@ -213,8 +182,8 @@ td {
     display: none;
   }
 
-  th,
-  td {
+  .analyses-table th,
+  .analyses-table td {
     padding-inline: var(--spacing-sm);
   }
 

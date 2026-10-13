@@ -138,7 +138,7 @@ test('row actions are reachable without scrolling the table at 600px', async ({ 
   await page.setViewportSize({ width: 600, height: 800 })
   await openDashboard(page, { items: MIXED_ANALYSES })
   await expect(page.locator('.analysis-row')).toHaveCount(MIXED_ANALYSES.length)
-  const hiddenBeyondTable = await page.locator('.analyses-table-scroll').evaluate((wrapper) => wrapper.scrollWidth - wrapper.clientWidth)
+  const hiddenBeyondTable = await page.locator('.tt-table-scroll').evaluate((wrapper) => wrapper.scrollWidth - wrapper.clientWidth)
   expect(hiddenBeyondTable).toBeLessThanOrEqual(0)
 })
 

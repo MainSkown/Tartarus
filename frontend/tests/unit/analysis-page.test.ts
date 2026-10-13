@@ -163,11 +163,26 @@ describe('AnalysisPage tabs', () => {
     expect(wrapper.find('.analysis-summary').exists()).toBe(true)
   })
 
-  it('shows a placeholder for a tab that arrives with M1b', async () => {
-    route.params = { id: '42', tab: 'processes' }
+  it('shows a placeholder, saying when, for a tab that is not built yet', async () => {
+    route.params = { id: '42', tab: 'events' }
     const wrapper = await mountPage()
     expect(wrapper.find('.analysis-summary').exists()).toBe(false)
-    expect(wrapper.text()).toContain('processes arrives with M1b')
+    expect(wrapper.text()).toContain('events arrives with M3')
+  })
+
+  it.each(['processes', 'network', 'artifacts', 'detections'])('shows the %s view of a finished analysis', async (tab) => {
+    route.params = { id: '42', tab }
+    const wrapper = await mountPage()
+    await vi.waitFor(() => expect(wrapper.find(`[data-tab="${tab}"]`).exists()).toBe(true))
+    expect(wrapper.find('.analysis-summary').exists()).toBe(false)
+  })
+
+  it('holds the exploring views back until the analysis is done', async () => {
+    route.params = { id: '42', tab: 'processes' }
+    const wrapper = await mountPage(analysisWithStatus('running', { finished_at: null }))
+    await flushPromises()
+    expect(wrapper.find('[data-tab="processes"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('available once the analysis is done')
   })
 
   it('leaves SUMMARY marked, and marks nothing else, for a tab that is not built yet', async () => {
@@ -177,7 +192,7 @@ describe('AnalysisPage tabs', () => {
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
   })
 
-  it('navigates when the summary tab is selected', async () => {
+  it('navigates when a tab is selected', async () => {
     route.params = { id: '42', tab: 'processes' }
     const wrapper = await mountPage()
     await wrapper.find('.analysis-tabs button:not([disabled])').trigger('click')

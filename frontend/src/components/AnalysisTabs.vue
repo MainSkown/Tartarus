@@ -22,7 +22,7 @@ const selected = computed(() => selectableTab(props.active))
       class="analysis-tabs__tab text-mono"
       :aria-selected="tab.key === selected"
       :disabled="!tab.available"
-      :title="tab.available ? undefined : 'Arrives with M1b'"
+      :title="tab.available ? undefined : `Arrives with ${tab.arrivesWith}`"
       @click="emit('select', tab.key)"
     >
       {{ tab.label }}
