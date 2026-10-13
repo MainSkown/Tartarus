@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { copyToClipboard, Notify } from 'quasar'
 import type { AnalysisRead } from '@/api'
+import CopyButton from '@/components/CopyButton.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { isActiveStatus } from '@/services/analysis-status'
 import { formatDuration, secondsBetween } from '@/services/format-duration'
@@ -23,11 +23,6 @@ const duration = computed(() => {
   const { started_at, finished_at } = props.analysis
   return started_at && finished_at ? formatDuration(secondsBetween(started_at, finished_at)) : undefined
 })
-
-async function copyHash(): Promise<void> {
-  await copyToClipboard(props.analysis.sample_sha256)
-  Notify.create({ type: 'tt-success', message: 'SHA-256 copied' })
-}
 </script>
 
 <template>
@@ -68,17 +63,11 @@ async function copyHash(): Promise<void> {
         class="analysis-header__hash text-mono"
         :title="analysis.sample_sha256"
       >{{ analysis.sample_sha256 }}</code>
-      <button
-        type="button"
+      <CopyButton
         class="analysis-header__copy"
-        aria-label="Copy SHA-256"
-        @click="copyHash"
-      >
-        <q-icon
-          name="content_copy"
-          size="14px"
-        />
-      </button>
+        :text="analysis.sample_sha256"
+        what="SHA-256"
+      />
     </div>
 
     <dl class="analysis-header__timing text-mono">
@@ -176,19 +165,6 @@ async function copyHash(): Promise<void> {
   color: var(--text-gray);
   font-size: 0.8rem;
   overflow-wrap: anywhere;
-}
-
-.analysis-header__copy {
-  flex: none;
-  padding: 2px;
-  border: none;
-  background: transparent;
-  color: var(--text-gray);
-  cursor: pointer;
-}
-
-.analysis-header__copy:hover {
-  color: var(--blue-hover);
 }
 
 .analysis-header__timing {
