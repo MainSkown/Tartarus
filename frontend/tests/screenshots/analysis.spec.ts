@@ -17,8 +17,6 @@ import {
   type AnalysesMockOptions,
 } from './fixtures'
 
-test.use({ timezoneId: 'UTC' })
-
 const ID = 7
 const STARTED_AT = '2026-10-12T09:14:30Z'
 const LONG_FILENAME = `quarterly_financial_report_final_FINAL_v2_signed_by_the_ceo_and_cfo_${'x'.repeat(80)}.pdf.exe`
@@ -81,7 +79,9 @@ test('analysis-load-error', async ({ page }) => {
 
 test('analysis-not-found', async ({ page }) => {
   await openAnalysis(page, undefined, {}, '/analyses/999')
-  await expect(page.getByText('failed to load: Analysis 999 not found')).toBeVisible()
+  await expect(page.getByText('analysis not found')).toBeVisible()
+  await expect(page.getByRole('button', { name: '[RETRY]' })).toHaveCount(0)
+  await expect(page.locator('.q-notification')).toHaveCount(0)
   await page.screenshot({ path: screenshotPath('analysis-not-found') })
 })
 
@@ -142,7 +142,19 @@ test('analysis-unbuilt-tab', async ({ page }) => {
   const analysis = makeDetectedAnalysis({ id: ID })
   await openAnalysis(page, analysis, {}, `/analyses/${ID}/events`)
   await expect(page.getByText('events arrives with M1b')).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'SUMMARY' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: 'EVENTS' })).toHaveAttribute('aria-selected', 'false')
   await page.screenshot({ path: screenshotPath('analysis-unbuilt-tab') })
+})
+
+test('analysis-delete-confirmation', async ({ page }) => {
+  const analysis = makeDetectedAnalysis({ id: ID, disk_bytes: 48 * 1024 * 1024 })
+  await openAnalysis(page, analysis)
+  await expectHeaderShowing(page, analysis)
+  await page.locator('.analysis-header__delete').click()
+  await expect(page.getByRole('dialog')).toContainText('freeing 48 MB')
+  await waitForTransitions(page)
+  await page.screenshot({ path: screenshotPath('analysis-delete-confirmation') })
 })
 
 test('analysis tabs not built yet are disabled and say when they arrive', async ({ page }) => {

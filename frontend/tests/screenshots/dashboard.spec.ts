@@ -19,8 +19,6 @@ import {
   type AnalysesMockOptions,
 } from './fixtures'
 
-test.use({ timezoneId: 'UTC' })
-
 async function openDashboard(
   page: Page,
   analyses: AnalysesMockOptions,
@@ -145,10 +143,12 @@ test('row actions are reachable without scrolling the table at 600px', async ({ 
 })
 
 test('dashboard-delete-confirmation', async ({ page }) => {
-  await openDashboard(page, { items: MIXED_ANALYSES })
+  const items = MIXED_ANALYSES.map((analysis) => (analysis.id === 6 ? { ...analysis, disk_bytes: 48 * 1024 * 1024 } : analysis))
+  await openDashboard(page, { items })
   await expect(page.locator('.analysis-row')).toHaveCount(MIXED_ANALYSES.length)
   await page.getByRole('button', { name: 'Delete analysis 6' }).click()
   await expect(page.getByRole('dialog')).toContainText('Delete invoice_scan.exe?')
+  await expect(page.getByRole('dialog')).toContainText('freeing 48 MB')
   await waitForTransitions(page)
   await page.screenshot({ path: screenshotPath('dashboard-delete-confirmation') })
 })
