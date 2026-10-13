@@ -1,7 +1,8 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 type Environment = Literal["development", "production"]
@@ -13,6 +14,11 @@ class Settings(BaseSettings):
     opensearch_url: str
     environment: Environment = "production"
     log_level: LogLevel = "info"
+    cape_api_url: str = "http://cape:8000"
+    cape_api_token: SecretStr | None = None
+    cape_storage_path: Path = Path("/cape-storage")
+    sample_store_path: Path = Path("/data/samples")
+    guest_label: str = "win"
 
     @field_validator("log_level", mode="before")
     @classmethod
