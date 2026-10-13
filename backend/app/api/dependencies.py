@@ -1,10 +1,13 @@
-from typing import cast
+from pathlib import Path
+from typing import Annotated, cast
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analyses.ports import RunnerControl
 from app.cape.client import CapeClient
+from app.cape.control import CapeControl
+from app.config import Settings, get_settings
 from app.db.analysis_repository import get_analysis
 from app.db.models import Analysis
 from app.samples.store import SampleStore
@@ -13,6 +16,10 @@ from app.search.index import EventIndex
 
 def get_cape(request: Request) -> CapeClient:
     return cast(CapeClient, request.app.state.cape)
+
+
+def get_cape_control(request: Request) -> CapeControl:
+    return cast(CapeControl, request.app.state.cape_control)
 
 
 def get_sample_store(request: Request) -> SampleStore:
@@ -32,3 +39,7 @@ async def require_analysis(session: AsyncSession, analysis_id: int) -> Analysis:
     if analysis is None:
         raise HTTPException(404, f"Analysis {analysis_id} not found")
     return analysis
+
+
+def get_cape_storage_path(settings: Annotated[Settings, Depends(get_settings)]) -> Path:
+    return settings.cape_storage_path

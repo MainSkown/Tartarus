@@ -12,6 +12,7 @@ from app.api import api_router
 from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
 from app.cape.client import CapeClient
+from app.cape.control import CapeControl
 from app.cape.health import CapeCheck, CapeProbe, GuestCheck
 from app.config import Settings, get_settings
 from app.db.session import create_engine, create_session_factory
@@ -53,12 +54,14 @@ def _build_lifespan(
         engine = create_engine(resolved.database_url)
         opensearch = create_opensearch_client(resolved.opensearch_url)
         cape = CapeClient.from_settings(resolved)
+        cape_control = CapeControl.from_settings(resolved)
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.opensearch = opensearch
         event_index = EventIndex(opensearch)
         app.state.event_index = event_index
         app.state.cape = cape
+        app.state.cape_control = cape_control
         sample_store = SampleStore.from_settings(resolved)
         app.state.sample_store = sample_store
         app.state.health_checks = build_health_checks(
@@ -91,6 +94,7 @@ def _build_lifespan(
             await runner.stop()
             await live_collection.aclose()
             await cape.aclose()
+            await cape_control.aclose()
             await opensearch.close()
             await engine.dispose()
 

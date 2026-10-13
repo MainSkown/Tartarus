@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     environment: Environment = "production"
     log_level: LogLevel = "info"
     cape_api_url: str = "http://cape:8000"
+    cape_control_url: str = "http://cape:8001"
     cape_api_token: SecretStr | None = None
     cape_storage_path: Path = Path("/cape-storage")
     sample_store_path: Path = Path("/data/samples")

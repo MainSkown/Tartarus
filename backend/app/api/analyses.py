@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Annotated, cast
 
 from fastapi import (
@@ -22,12 +23,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.analyses.ports import RunnerControl
 from app.api.dependencies import (
     get_cape,
+    get_cape_control,
+    get_cape_storage_path,
     get_event_index,
     get_runner,
     get_sample_store,
     require_analysis,
 )
 from app.cape.client import CapeClient
+from app.cape.control import CapeControl
 from app.cape.errors import CapeError, CapeTaskNotFound
 from app.db.analysis_repository import (
     REINGESTABLE_STATUSES,
@@ -170,6 +174,38 @@ async def reingest(
     return await _read_one(session, analysis)
 
 
+@router.post("/{analysis_id}/finish")
+async def finish(
+    analysis_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    control: Annotated[CapeControl, Depends(get_cape_control)],
+    storage: Annotated[Path, Depends(get_cape_storage_path)],
+) -> AnalysisRead:
+    """Ends a running analysis early, the way an interactive run is ended.
+
+    The guest stops within about a second and the analysis then moves on to processing by itself,
+    so the status answered is still `running`. Asking again is harmless. `409` unless the analysis
+    is `running` and its monitor has started in the guest (CAPE says `running` about 25 s earlier,
+    and ending the run in that gap leaves the guest agent dead); `502` when the helper in the CAPE
+    container cannot reach the guest.
+    """
+    analysis = await require_analysis(session, analysis_id)
+    if analysis.status is not AnalysisStatus.RUNNING:
+        raise HTTPException(409, _reason_not_finishable(analysis))
+    if analysis.cape_task_id is None:
+        raise HTTPException(409, f"Analysis {analysis_id} has no CAPE task to end")
+    if not _monitor_started(storage, analysis.cape_task_id):
+        raise HTTPException(
+            409,
+            f"Analysis {analysis_id} has not started in the guest yet: wait a few seconds",
+        )
+    try:
+        await control.finish_task(analysis.cape_task_id)
+    except CapeError as error:
+        raise HTTPException(502, f"The run could not be ended: {error}") from None
+    return await _read_one(session, analysis)
+
+
 @router.delete("/{analysis_id}", status_code=204)
 async def delete(
     analysis_id: int,
@@ -197,6 +233,21 @@ def _reason_not_reingestible(analysis: Analysis) -> str:
             "only a done or report_failed analysis can be re-ingested"
         )
     return f"Analysis {analysis.id} cannot be re-ingested while another analysis is active"
+
+
+def _monitor_started(storage: Path, cape_task_id: int) -> bool:
+    """The analyzer's monitor writes one log per process as soon as it runs in the guest."""
+    logs = storage / "analyses" / str(cape_task_id) / "logs"
+    return logs.is_dir() and any(logs.glob("*.bson"))
+
+
+def _reason_not_finishable(analysis: Analysis) -> str:
+    status = analysis.status
+    if status is AnalysisStatus.QUEUED:
+        return f"Analysis {analysis.id} is queued; it has not started, cancel it instead"
+    if status is AnalysisStatus.STARTING:
+        return f"Analysis {analysis.id} is starting and not running yet; try again once it runs"
+    return f"Analysis {analysis.id} is {status.value}: its run is already over"
 
 
 async def _read_all(session: AsyncSession, analyses: Sequence[Analysis]) -> list[AnalysisRead]:

@@ -7,8 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 
-from app.api.dependencies import get_event_index, require_analysis
-from app.config import Settings, get_settings
+from app.api.dependencies import get_cape_storage_path, get_event_index, require_analysis
 from app.db.models import Analysis
 from app.db.session import get_session
 from app.schemas.views_findings import (
@@ -34,10 +33,6 @@ PCAP_MEDIA_TYPE = "application/vnd.tcpdump.pcap"
 ZIP_MEDIA_TYPE = "application/zip"
 
 router = APIRouter(prefix="/analyses", tags=["views"])
-
-
-def get_cape_storage_path(settings: Annotated[Settings, Depends(get_settings)]) -> Path:
-    return settings.cape_storage_path
 
 
 async def existing_analysis(

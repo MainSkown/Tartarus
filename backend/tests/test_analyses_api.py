@@ -15,10 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.api import analyses as analyses_api
 from app.api.analyses import router as analyses_router
-from app.api.dependencies import get_cape, get_event_index, get_runner, get_sample_store
+from app.api.dependencies import (
+    get_cape,
+    get_cape_control,
+    get_cape_storage_path,
+    get_event_index,
+    get_runner,
+    get_sample_store,
+)
 from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
-from app.cape.errors import CapeRejected, CapeTaskNotFound, CapeUnreachable
+from app.cape.errors import CapeBadResponse, CapeRejected, CapeTaskNotFound, CapeUnreachable
 from app.db import analysis_repository as repository
 from app.db.base import Base
 from app.db.models import Analysis, Sample
@@ -74,6 +81,17 @@ class FakeCape:
 
 
 @dataclass
+class FakeControl:
+    error: Exception | None = None
+    finished: list[int] = field(default_factory=list)
+
+    async def finish_task(self, task_id: int) -> None:
+        if self.error:
+            raise self.error
+        self.finished.append(task_id)
+
+
+@dataclass
 class FakeEventIndex:
     dropped: list[int] = field(default_factory=list)
     drop_error: Exception | None = None
@@ -94,6 +112,14 @@ class Harness:
     cape: FakeCape
     guest: FakeGuest
     index: FakeEventIndex
+    control: FakeControl
+    storage: Path
+
+    def start_monitor(self, cape_task_id: int = 7) -> None:
+        """Writes the first log the analyzer's monitor makes in the guest."""
+        logs = self.storage / "analyses" / str(cape_task_id) / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        (logs / "1234.bson").write_bytes(b"\x05\x00\x00\x00\x00")
 
     async def upload(
         self,
@@ -146,6 +172,7 @@ async def harness(
     factory = async_sessionmaker(engine, expire_on_commit=False)
     store = SampleStore(tmp_path / "samples")
     runner, cape, guest, index = FakeRunner(), FakeCape(), FakeGuest(), FakeEventIndex()
+    control = FakeControl()
 
     app = FastAPI(generate_unique_id_function=generate_operation_id)
     install_error_handlers(app)
@@ -155,10 +182,23 @@ async def harness(
     app.dependency_overrides[get_runner] = lambda: runner
     app.dependency_overrides[get_cape] = lambda: cape
     app.dependency_overrides[get_event_index] = lambda: index
+    app.dependency_overrides[get_cape_control] = lambda: control
+    app.dependency_overrides[get_cape_storage_path] = lambda: tmp_path / "cape-storage"
     app.dependency_overrides[analyses_api.get_guest_check] = lambda: guest
 
     async with make_client(app) as client:
-        yield Harness(client, app, factory, store, runner, cape, guest, index)
+        yield Harness(
+            client,
+            app,
+            factory,
+            store,
+            runner,
+            cape,
+            guest,
+            index,
+            control,
+            tmp_path / "cape-storage",
+        )
     await engine.dispose()
 
 
@@ -522,6 +562,144 @@ async def test_cancelling_an_unknown_analysis_is_a_404(harness: Harness) -> None
     assert (await harness.client.post("/api/analyses/999/cancel")).status_code == 404
 
 
+async def running_analysis(
+    harness: Harness, cape_task_id: int | None = 7, *, monitor_started: bool = True
+) -> int:
+    analysis_id = (await harness.upload()).json()["id"]
+    await harness.set_state(analysis_id, status=AnalysisStatus.RUNNING, cape_task_id=cape_task_id)
+    if monitor_started and cape_task_id is not None:
+        harness.start_monitor(cape_task_id)
+    return int(analysis_id)
+
+
+async def test_an_analysis_whose_monitor_has_not_started_cannot_be_finished_yet(
+    harness: Harness,
+) -> None:
+    # CAPE says `running` about 25 s before the analyzer starts in the guest. Ending the run in that
+    # gap made the guest agent stop answering, and CAPE then took minutes to give the analysis up.
+    analysis_id = await running_analysis(harness, monitor_started=False)
+
+    response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert response.status_code == 409
+    assert "not started" in response.json()["error"]["message"]
+    assert harness.control.finished == []
+
+
+async def test_finishing_works_once_the_monitor_has_started(harness: Harness) -> None:
+    analysis_id = await running_analysis(harness, monitor_started=False)
+    refused = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    harness.start_monitor()
+    accepted = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert (refused.status_code, accepted.status_code) == (409, 200)
+    assert harness.control.finished == [7]
+
+
+async def test_a_running_analysis_is_finished_by_asking_cape_to_end_its_task(
+    harness: Harness,
+) -> None:
+    analysis_id = await running_analysis(harness)
+
+    response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert response.status_code == 200
+    assert harness.control.finished == [7]
+    body = response.json()
+    assert (body["id"], body["cape_task_id"]) == (analysis_id, 7)
+
+
+async def test_finishing_leaves_the_status_to_the_runner(harness: Harness) -> None:
+    analysis_id = await running_analysis(harness)
+
+    response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert response.json()["status"] == "running"
+    assert (await harness.analysis(analysis_id)).status is AnalysisStatus.RUNNING
+
+
+async def test_finishing_twice_is_fine(harness: Harness) -> None:
+    analysis_id = await running_analysis(harness)
+
+    first = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+    second = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert harness.control.finished == [7, 7]
+
+
+@pytest.mark.parametrize(
+    ("status", "words"),
+    [
+        (AnalysisStatus.QUEUED, "queued"),
+        (AnalysisStatus.STARTING, "not running yet"),
+        (AnalysisStatus.PROCESSING, "already over"),
+        (AnalysisStatus.INGESTING, "already over"),
+        (AnalysisStatus.DONE, "already over"),
+        (AnalysisStatus.FAILED, "already over"),
+        (AnalysisStatus.REPORT_FAILED, "already over"),
+        (AnalysisStatus.CANCELLED, "already over"),
+    ],
+)
+async def test_an_analysis_that_is_not_running_cannot_be_finished_and_the_reason_is_readable(
+    harness: Harness, status: AnalysisStatus, words: str
+) -> None:
+    analysis_id = (await harness.upload()).json()["id"]
+    await harness.set_state(analysis_id, status=status, cape_task_id=7)
+
+    response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert response.status_code == 409
+    message = response.json()["error"]["message"]
+    assert words in message
+    assert status.value in message
+    assert harness.control.finished == []
+
+
+async def test_a_running_analysis_without_a_cape_task_cannot_be_finished(
+    harness: Harness,
+) -> None:
+    analysis_id = await running_analysis(harness, cape_task_id=None)
+
+    response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert response.status_code == 409
+    assert "no CAPE task" in response.json()["error"]["message"]
+    assert harness.control.finished == []
+
+
+async def test_finishing_an_unknown_analysis_is_a_404(harness: Harness) -> None:
+    response = await harness.client.post("/api/analyses/999/finish")
+
+    assert response.status_code == 404
+    assert harness.control.finished == []
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        CapeUnreachable("finish", "ConnectError"),
+        CapeRejected("finish", "the guest agent is unreachable (URLError)"),
+        CapeBadResponse("finish", "HTTP 404"),
+    ],
+    ids=["unreachable", "rejected", "bad-response"],
+)
+async def test_a_helper_that_cannot_end_the_run_is_a_502_in_the_error_envelope(
+    harness: Harness, failure: Exception
+) -> None:
+    analysis_id = await running_analysis(harness)
+    harness.control.error = failure
+
+    response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert response.status_code == 502
+    error = response.json()["error"]
+    assert error["code"] == "bad_gateway"
+    assert str(failure) in error["message"]
+    assert (await harness.analysis(analysis_id)).status is AnalysisStatus.RUNNING
+
+
 async def test_deleting_an_analysis_removes_its_row_its_sample_row_and_its_file(
     harness: Harness,
 ) -> None:
@@ -772,6 +950,7 @@ def test_the_operation_ids_are_tag_and_function_name_and_unique() -> None:
         ("post", "/api/analyses/{analysis_id}/cancel"): "analyses_cancel",
         ("delete", "/api/analyses/{analysis_id}"): "analyses_delete",
         ("post", "/api/analyses/{analysis_id}/reingest"): "analyses_reingest",
+        ("post", "/api/analyses/{analysis_id}/finish"): "analyses_finish",
     }
     assert len(set(operations.values())) == len(operations)
 

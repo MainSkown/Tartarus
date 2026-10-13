@@ -1,0 +1,136 @@
+#!/usr/bin/python3
+"""Ends a running analysis early. The one operation: POST /tasks/<task id>/finish.
+
+CAPE's analyzer in the guest stops the analysis as soon as a folder named md5("cape-<task id>")
+exists in %TMP% or %SystemRoot%\\Temp (analyzer/windows/analyzer.py, analysis_loop). The guest
+network exists only inside this container, so the backend cannot reach the guest agent that can
+create that folder; this service can, and listens on the internal network for the backend instead.
+
+Environment: CAPE_INTERNAL_IP (required), FINISH_RUN_PORT (8001), GUEST_AGENT_URL
+(http://192.168.150.10:8000), FINISH_RUN_AGENT_TIMEOUT in seconds (5).
+"""
+
+import hashlib
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+DEFAULT_PORT = 8001
+DEFAULT_AGENT_URL = "http://192.168.150.10:8000"
+DEFAULT_AGENT_TIMEOUT_SECONDS = 5.0
+GUEST_TEMP_DIRECTORY = "C:\\Windows\\Temp"
+FINISH_ROUTE = re.compile(r"/tasks/([^/]*)/finish")
+# A CAPE task id is a database integer; more digits than this is not one.
+MAX_TASK_ID_DIGITS = 18
+ERROR_MESSAGE_LIMIT = 200
+# The guest is on a local network; a proxy in the environment must never get this request.
+DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def completion_folder(task_id: int) -> str:
+    return hashlib.md5(f"cape-{task_id}".encode()).hexdigest()  # noqa: S324 - the name CAPE's analyzer looks for
+
+
+def mkdir_request(agent_url: str, task_id: int) -> urllib.request.Request:
+    # No `mode`: the agent defaults to 0o777 and Windows ignores it.
+    form = urllib.parse.urlencode({"dirpath": f"{GUEST_TEMP_DIRECTORY}\\{completion_folder(task_id)}"})
+    return urllib.request.Request(f"{agent_url}/mkdir", data=form.encode(), method="POST")
+
+
+def parse_task_id(raw: str) -> int | None:
+    if not re.fullmatch(f"[0-9]{{1,{MAX_TASK_ID_DIGITS}}}", raw):
+        return None
+    return int(raw)
+
+
+def agent_message(body: bytes) -> str:
+    # The agent's 500 carries a traceback next to its message; only the message is repeated.
+    try:
+        message = json.loads(body).get("message")
+    except (ValueError, AttributeError):
+        return ""
+    return message[:ERROR_MESSAGE_LIMIT] if isinstance(message, str) else ""
+
+
+def finish_task(task_id: int, agent_url: str, timeout: float, send=DIRECT.open) -> tuple[int, dict]:
+    """Asks the guest agent for the folder; returns the HTTP status and JSON body to answer with."""
+    try:
+        with send(mkdir_request(agent_url, task_id), timeout=timeout) as answer:
+            agent_status = answer.status
+            body = answer.read()
+    except urllib.error.HTTPError as refused:
+        detail = agent_message(refused.read())
+        return 502, {"error": f"the guest agent refused (HTTP {refused.code}){': ' + detail if detail else ''}"}
+    except (OSError, ValueError) as unreachable:
+        return 502, {"error": f"the guest agent is unreachable ({type(unreachable).__name__})"}
+    if agent_status != 200:
+        return 502, {"error": f"the guest agent answered HTTP {agent_status}"}
+    if not isinstance(_json_or_none(body), dict):
+        return 502, {"error": "the guest agent answered something that is not JSON"}
+    return 200, {"finished": True}
+
+
+def _json_or_none(body: bytes) -> object:
+    try:
+        return json.loads(body)
+    except ValueError:
+        return None
+
+
+def make_handler(agent_url: str, agent_timeout: float) -> type[BaseHTTPRequestHandler]:
+    class FinishHandler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            route = FINISH_ROUTE.fullmatch(self.path)
+            if route is None:
+                self._answer(404, {"error": "not found"})
+                return
+            task_id = parse_task_id(route.group(1))
+            if task_id is None:
+                self._answer(400, {"error": "the task id must be digits only"})
+                return
+            self._answer(*finish_task(task_id, agent_url, agent_timeout))
+
+        def do_GET(self) -> None:
+            self._answer(404, {"error": "not found"})
+
+        do_PUT = do_DELETE = do_PATCH = do_HEAD = do_GET
+
+        def _answer(self, status: int, body: dict) -> None:
+            payload = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(payload)
+            self.log_message("%s %s -> %s%s", self.command, self.path, status, _logged_error(body))
+
+        def log_message(self, format: str, *args) -> None:  # noqa: A002 - the signature of BaseHTTPRequestHandler
+            print(f"finish-run: {format % args}", flush=True)
+
+    return FinishHandler
+
+
+def _logged_error(body: dict) -> str:
+    return f" ({body['error']})" if "error" in body else ""
+
+
+def main() -> None:
+    address = os.environ.get("CAPE_INTERNAL_IP")
+    if not address:
+        sys.exit("finish-run: CAPE_INTERNAL_IP must be set")
+    port = int(os.environ.get("FINISH_RUN_PORT", DEFAULT_PORT))
+    agent_url = os.environ.get("GUEST_AGENT_URL", DEFAULT_AGENT_URL).rstrip("/")
+    agent_timeout = float(os.environ.get("FINISH_RUN_AGENT_TIMEOUT", DEFAULT_AGENT_TIMEOUT_SECONDS))
+    server = ThreadingHTTPServer((address, port), make_handler(agent_url, agent_timeout))
+    print(f"finish-run: listening on {address}:{port}, guest agent at {agent_url}", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

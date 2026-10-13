@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.analyses.runner import Runner
 from app.cape.client import CapeClient
+from app.cape.control import CapeControl
 from app.cape.health import CapeCheck, GuestCheck
 from app.db.session import get_session
 from app.health import ComponentHealth, HealthStatus, PostgresCheck, evaluate
@@ -21,6 +22,7 @@ async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAP
         assert isinstance(app.state.session_factory, async_sessionmaker)
         assert isinstance(app.state.opensearch, AsyncOpenSearch)
         assert isinstance(app.state.cape, CapeClient)
+        assert isinstance(app.state.cape_control, CapeControl)
         assert isinstance(app.state.sample_store, SampleStore)
         assert isinstance(app.state.event_index, EventIndex)
         assert isinstance(app.state.runner, Runner)
@@ -57,13 +59,17 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
     async def record_runner_stop(self: Runner) -> None:
         released.append("runner")
 
+    async def record_control_close(self: CapeControl) -> None:
+        released.append("cape_control")
+
     monkeypatch.setattr(CapeClient, "aclose", record_cape_close)
+    monkeypatch.setattr(CapeControl, "aclose", record_control_close)
     monkeypatch.setattr(Runner, "stop", record_runner_stop)
 
     async with app.router.lifespan_context(app):
         assert released == []
 
-    assert sorted(released) == ["cape", "engine", "opensearch", "runner"]
+    assert sorted(released) == ["cape", "cape_control", "engine", "opensearch", "runner"]
     # A tick in progress still uses the CAPE client and the database, so it must end first.
     assert released.index("runner") < released.index("cape")
     assert released.index("runner") < released.index("engine")
