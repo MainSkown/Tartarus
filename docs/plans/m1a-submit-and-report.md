@@ -49,7 +49,10 @@ With `make up`:
    `/ws/analyses/{id}/live` feed is M2.
 5. **Deferred options.** The Submit dialog's "interactive desktop" and "full memory dump +
    Volatility3" are left out: guacd's desktop proxy is M2, and Volatility3 and its symbol tables
-   are not installed. Route, timeout, package and tags are in.
+   are not installed. Route, timeout and package are in.
+   **Tags are out of M1a too**: they live in the annotation tables (`tag`, `tag_link`), which belong
+   to M5, so there is nowhere to store them yet. The Dashboard has no tags column and
+   `GET /analyses` has no `tag` filter.
 6. **Samples are stored encrypted at rest** (an AES zip, password `infected`, via `pyzipper`) in a
    backend-only volume. Downloads in M1b reuse the same zip. The upload is streamed to a temp file,
    hashed, forwarded to CAPE, then zipped; it is never held in memory.
@@ -103,7 +106,21 @@ in its report instead of diverging.
 - **The client's public interface lives in `app/cape/`** (`CapeClient`, the `CapeError` hierarchy
   with `CapeUnreachable` for "retry later" and `CapeRejected` for "CAPE said no", `TaskView`,
   `Machine`, `CapeProgress`, `CapeCheck`, `GuestCheck`). Read the code, not this plan, for
-  signatures. `create_file_task` returns the new CAPE task id and sends no `options` or tags.
+  signatures. `create_file_task` returns the new CAPE task id and sends no `options` and no tags.
+
+### The tables as built (`app/db/models/`, `app/db/analysis_repository.py`)
+- Import `AnalysisStatus`, `AnalysisPhase`, `Severity` and `ACTIVE_STATUSES` from
+  `app.db.models.analysis`, never copy the lists. Statuses are stored as text with a CHECK
+  constraint (not native enums, which are painful to migrate); `phase` defaults to `live`.
+- `create_analysis(session, *, sample_sha256, filename, options)` always creates `queued`;
+  `update_analysis(session, id, **changes)` raises `TypeError` on an unknown field; each write
+  commits. `get_active_analysis` and `get_oldest_queued_analysis` are for the tracker. Deleting an
+  analysis never deletes its sample (`delete_sample_if_unreferenced` does, when nothing refers to it).
+- **`add_sample_if_new` is get-then-insert**, so two identical uploads at the same moment can race
+  and raise `IntegrityError`. The submission path catches it and reads the existing sample.
+- `analysis.summary` is JSON with **no schema yet**: A5 defines it as a Pydantic model next to
+  the report reader, stores `model_dump()`, and exposes it in the API schema.
+- `AnalysisFilter.tag` exists and is a documented no-op (tags are M5); the API does not expose it.
 
 ### Analysis states
 `queued` (not yet sent to CAPE), `starting` (CAPE pending), `running`, `processing` (CAPE
@@ -116,8 +133,8 @@ status mapper), whose list is checked against CAPE's source (`TASK_*` in
 ### Endpoints (shapes follow [backend](../specs/backend.md); only these exist in M1a)
 | Method and path | Notes |
 |---|---|
-| `POST /api/analyses` | multipart: `file`, `options` JSON (`route`, `timeout` 60 to 1200, `package` default `auto`, `tags`). `201` with the analysis. `409` if the guest is not ready |
-| `GET /api/analyses` | Paged, newest first; `q` (name or hash substring), `status`, `tag` |
+| `POST /api/analyses` | multipart: `file`, `options` JSON (`route`, `timeout` 60 to 1200, `package` default `auto`). `201` with the analysis. `409` if the guest is not ready |
+| `GET /api/analyses` | Paged, newest first; `q` (name or hash substring), `status` |
 | `GET /api/analyses/{id}` | Detail, including `summary` once known |
 | `POST /api/analyses/{id}/cancel` | Only while `queued`; otherwise `409` |
 | `DELETE /api/analyses/{id}` | `409` while running; otherwise removes the CAPE task, the sample if unreferenced, and the rows |
@@ -154,7 +171,7 @@ Models are the cheapest tier that can do the job. Each agent gets only the spec 
 
 | ID | Task | Model | Depends | Deliverables | Tests first |
 |---|---|---|---|---|---|
-| **A4** | Status tracker and queue | Sonnet, extra care | A1, A2 | `app/analyses/runner.py`: submits the next `queued` analysis when none is active, polls CAPE every 2 seconds, moves states, persists them so a backend restart resumes tracking, ends an analysis as `failed` (with a message) when CAPE disappears or reports failure. Starts from the app lifespan | Pure state-machine tests over a fake CAPE client for every path (happy path; CAPE fails; CAPE unreachable for a while then back; backend restart mid-run; cancel while queued; two queued run in order); one integration test against Postgres |
+| **A4** | Status tracker and queue | Sonnet, extra care | A1, A2 | `app/analyses/runner.py`: submits the next `queued` analysis when none is active, polls CAPE every 2 seconds, moves states, persists them so a backend restart resumes tracking, ends an analysis as `failed` (with a message) when CAPE disappears or reports failure. Starts from the app lifespan | A test that every `CapeProgress` value except `unknown` is a valid `AnalysisStatus` (the two lists must not drift); pure state-machine tests over a fake CAPE client for every path (happy path; CAPE fails; CAPE unreachable for a while then back; backend restart mid-run; cancel while queued; two queued run in order); one integration test against Postgres |
 | **A5** | Submission, callback and report summary | Sonnet | A1, A2 | `POST /analyses`, `GET /analyses`, `GET /analyses/{id}`, cancel and delete; the sample store (stream, hash, forward, encrypted zip); `POST /internal/cape/callback`; the summary reader that turns `report.json` into `analysis.summary` and `score` and `max_severity` | Validation (size, timeout range, route list), `409` when the guest is not ready, a callback for an unknown task is ignored, a callback never causes a read before CAPE confirms `reported`; the summary reader runs against a trimmed real `report.json` fixture (about 600 KB untrimmed, from task 6 on the volume: keep signatures, TTPs, counts and a few calls, drop the rest) |
 | **A6** | Real CAPE and guest health | Haiku | A2 | Replace `NotConfiguredCheck` for `cape` and `guest` with checks through the client, reusing `collect_health`'s timeouts, so `/ws/system` and the REST route both report them | `ok`, `degraded` (CAPE up, guest not listed) and `down` cases with the fake client; the old "not set up yet" assertions updated |
 | **A7** | Frontend API client and stores | Sonnet | A5 (contract only; regenerated by the planner once A5 lands) | `analyses` Pinia store (list, detail, submit, cancel, delete, 2-second polling while an analysis is not finished); the Submit button enabled from `system.guestReady` | Store tests against a mocked client for each action and for polling start and stop |
@@ -166,8 +183,8 @@ The planner wires the shared files (`app/api/__init__.py`, `app/main.py` lifespa
 
 | ID | Task | Model | Deliverables | Tests first |
 |---|---|---|---|---|
-| **A8** | Dashboard | Sonnet | The analyses table (name, SHA256 prefix, submitted, status badge, score, severity badge, tags), search and status filter, the empty states from the GUI spec (no analyses yet; guest not ready), row actions, delete with a confirmation dialog | Component tests for rows, filters, empty states and the delete confirmation |
-| **A9** | Submit dialog | Sonnet | The dialog from the GUI spec without the deferred options: drop zone, route (segmented radio), timeout, package, tags; shows the hash after selection; disabled with the reason when the guest is not ready; navigates to the new analysis | Component tests for validation, the disabled reason, and the submit call; 422 messages shown inline as on the Settings page |
+| **A8** | Dashboard | Sonnet | The analyses table (name, SHA256 prefix, submitted, status badge, score, severity badge), search and status filter, the empty states from the GUI spec (no analyses yet; guest not ready), row actions, delete with a confirmation dialog | Component tests for rows, filters, empty states and the delete confirmation |
+| **A9** | Submit dialog | Sonnet | The dialog from the GUI spec without the deferred options: drop zone, route (segmented radio), timeout, package; shows the hash after selection; disabled with the reason when the guest is not ready; navigates to the new analysis | Component tests for validation, the disabled reason, and the submit call; 422 messages shown inline as on the Settings page |
 | **A10** | Analysis page and summary tab | Sonnet | Header (id, name, hash, status, timing), the summary tab (score, severity, signatures, ATT&CK techniques, counts), a queued position, failure banners, cancel and delete | Component tests for each state: queued, running, processing, done with and without detections, failed, report failed |
 
 ### Wave 4 (planner, with one agent)
