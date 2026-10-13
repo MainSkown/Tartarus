@@ -74,7 +74,7 @@ describe('DetectionsTab states', () => {
 describe('DetectionsTab list', () => {
   it('groups the detections by ruleset, sigma first, only the rulesets that exist', async () => {
     const wrapper = await mountTab()
-    expect(wrapper.findAll('.detection-group__name').map((name) => name.text())).toEqual(['SIGMA', 'CAPE', 'SURICATA'])
+    expect(wrapper.findAll('.detection-list .ruleset-heading').map((name) => name.text())).toEqual(['SIGMA', 'CAPE', 'SURICATA'])
   })
 
   it('shows the severity, the name and the technique ids of an entry', async () => {

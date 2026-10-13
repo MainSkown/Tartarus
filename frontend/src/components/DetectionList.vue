@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DetectionGroup } from '@/api'
 import SeverityBadge from '@/components/SeverityBadge.vue'
-import { rulesetLabel } from '@/services/detection-groups'
+import RulesetHeading from '@/components/RulesetHeading.vue'
 
 defineProps<{ groups: DetectionGroup[]; selectedId: string | undefined }>()
 const emit = defineEmits<{ select: [id: string] }>()
@@ -14,9 +14,7 @@ const emit = defineEmits<{ select: [id: string] }>()
       :key="group.ruleset"
       class="detection-group"
     >
-      <h3 class="detection-group__name text-mono">
-        {{ rulesetLabel(group.ruleset) }}
-      </h3>
+      <RulesetHeading :ruleset="group.ruleset" />
       <button
         v-for="detection in group.detections"
         :key="detection.id"
@@ -52,16 +50,6 @@ const emit = defineEmits<{ select: [id: string] }>()
   display: flex;
   flex-direction: column;
   min-width: 0;
-}
-
-.detection-group__name {
-  margin: 0 0 var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 2px solid var(--border-primary);
-  color: var(--blue-primary);
-  font-size: 0.75rem;
-  line-height: 1.2;
-  letter-spacing: 2px;
 }
 
 .detection-entry {

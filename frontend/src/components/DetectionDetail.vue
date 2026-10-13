@@ -2,10 +2,10 @@
 import { computed } from 'vue'
 import type { Detection } from '@/api'
 import ProcessChip from '@/components/ProcessChip.vue'
+import RulesetHeading from '@/components/RulesetHeading.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import { formatTimestamp } from '@/services/format-time'
 import { laneMeta } from '@/services/lanes'
-import { rulesetLabel } from '@/services/detection-groups'
 
 const props = defineProps<{ detection: Detection }>()
 
@@ -21,10 +21,11 @@ const eventsCount = computed(() => {
 
 <template>
   <article class="detection-detail">
-    <header class="detection-detail__header">
-      <SeverityBadge :severity="detection.severity" />
-      <span class="detection-detail__ruleset text-mono text-gray">{{ rulesetLabel(detection.ruleset) }}</span>
-    </header>
+    <RulesetHeading :ruleset="detection.ruleset" />
+    <SeverityBadge
+      class="detection-detail__severity"
+      :severity="detection.severity"
+    />
     <h2 class="detection-detail__name text-mono">
       {{ detection.name }}
     </h2>
@@ -129,15 +130,9 @@ const eventsCount = computed(() => {
   min-width: 0;
 }
 
-.detection-detail__header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-}
-
-.detection-detail__ruleset {
-  font-size: 0.75rem;
-  letter-spacing: 2px;
+.detection-detail__severity {
+  /* The list's entries have this much padding above their badge; matching it puts both badges on one line. */
+  margin: var(--spacing-sm) 0 0;
 }
 
 .detection-detail__name {
