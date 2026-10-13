@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import event, text
+from sqlalchemy import event, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -374,6 +374,80 @@ async def test_running_analyses_are_skipped_when_looking_for_the_next_queued_one
 
 async def test_no_queued_analysis_when_the_queue_is_empty(session: AsyncSession) -> None:
     assert await repository.get_oldest_queued_analysis(session) is None
+
+
+async def queue_of_three_with_a_running_and_a_done_one(
+    session: AsyncSession,
+) -> tuple[list[Analysis], Analysis, Analysis]:
+    queued = [await seeded_analysis(session, f"queued{n}.exe") for n in range(3)]
+    running = await seeded_analysis(session, "running.exe")
+    done = await seeded_analysis(session, "done.exe")
+    await repository.update_analysis(session, running.id, status=AnalysisStatus.RUNNING)
+    await repository.update_analysis(session, done.id, status=AnalysisStatus.DONE)
+    return queued, running, done
+
+
+async def test_queued_analyses_are_numbered_from_one_in_the_order_the_runner_serves_them(
+    session: AsyncSession,
+) -> None:
+    queued, running, done = await queue_of_three_with_a_running_and_a_done_one(session)
+
+    positions = await repository.queue_positions(
+        session, [done.id, queued[2].id, running.id, queued[0].id, queued[1].id]
+    )
+
+    assert positions == {queued[0].id: 1, queued[1].id: 2, queued[2].id: 3}
+
+
+async def test_a_position_counts_queued_analyses_outside_the_requested_ids(
+    session: AsyncSession,
+) -> None:
+    queued, _, _ = await queue_of_three_with_a_running_and_a_done_one(session)
+
+    assert await repository.queue_positions(session, [queued[2].id]) == {queued[2].id: 3}
+
+
+async def test_no_ids_means_no_positions_and_no_query(session: AsyncSession) -> None:
+    await seeded_analysis(session)
+
+    assert await repository.queue_positions(session, []) == {}
+
+
+async def test_a_position_moves_up_when_an_earlier_queued_analysis_is_cancelled(
+    session: AsyncSession,
+) -> None:
+    queued, _, _ = await queue_of_three_with_a_running_and_a_done_one(session)
+
+    await repository.cancel_if_queued(session, queued[0].id)
+    positions = await repository.queue_positions(session, [row.id for row in queued])
+
+    assert positions == {queued[1].id: 1, queued[2].id: 2}
+
+
+async def test_positions_for_a_whole_page_cost_one_statement(session: AsyncSession) -> None:
+    queued, _, _ = await queue_of_three_with_a_running_and_a_done_one(session)
+    statements: list[str] = []
+    engine = session.bind.sync_engine  # type: ignore[union-attr]
+    event.listen(engine, "before_cursor_execute", lambda *args: statements.append(args[2]))
+
+    await repository.queue_positions(session, [row.id for row in queued])
+
+    assert len(statements) == 1
+
+
+async def test_the_analysis_at_position_one_is_the_one_the_runner_takes_next(
+    session: AsyncSession,
+) -> None:
+    queued, _, _ = await queue_of_three_with_a_running_and_a_done_one(session)
+    same_moment = datetime(2026, 10, 13, tzinfo=UTC)
+    await session.execute(update(Analysis).values(submitted_at=same_moment))
+    await session.commit()
+
+    positions = await repository.queue_positions(session, [row.id for row in queued])
+    next_up = await repository.get_oldest_queued_analysis(session)
+
+    assert next_up is not None
+    assert positions[next_up.id] == 1
 
 
 async def test_status_is_stored_as_its_plain_value(session: AsyncSession) -> None:

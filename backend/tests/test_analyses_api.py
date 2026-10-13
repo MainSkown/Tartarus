@@ -412,6 +412,51 @@ async def test_an_analysis_is_read_with_its_summary(harness: Harness) -> None:
     assert body["summary"]["process_count"] == 2
 
 
+async def test_a_submission_reports_its_place_in_the_queue(harness: Harness) -> None:
+    first = (await harness.upload(name="a.exe")).json()
+    second = (await harness.upload(content=OTHER_CONTENT, name="b.exe")).json()
+
+    assert (first["queue_position"], second["queue_position"]) == (1, 2)
+
+
+async def test_a_read_analysis_reports_its_queue_position_only_while_queued(
+    harness: Harness,
+) -> None:
+    first = (await harness.upload(name="a.exe")).json()
+    second = (await harness.upload(content=OTHER_CONTENT, name="b.exe")).json()
+    await harness.set_state(first["id"], status=AnalysisStatus.RUNNING)
+
+    running = (await harness.client.get(f"/api/analyses/{first['id']}")).json()
+    waiting = (await harness.client.get(f"/api/analyses/{second['id']}")).json()
+
+    assert running["queue_position"] is None
+    assert waiting["queue_position"] == 1
+
+
+async def test_the_listing_reports_a_queue_position_on_every_queued_item(
+    harness: Harness,
+) -> None:
+    ids = [(await harness.upload(name=f"{n}.exe")).json()["id"] for n in range(4)]
+    await harness.set_state(ids[0], status=AnalysisStatus.DONE)
+
+    items = (await harness.client.get("/api/analyses", params={"limit": 2})).json()["items"]
+
+    assert [(item["id"], item["queue_position"]) for item in items] == [(ids[3], 3), (ids[2], 2)]
+
+
+async def test_a_cancelled_analysis_has_no_queue_position_and_the_next_one_moves_up(
+    harness: Harness,
+) -> None:
+    first = (await harness.upload(name="a.exe")).json()
+    second = (await harness.upload(content=OTHER_CONTENT, name="b.exe")).json()
+
+    cancelled = (await harness.client.post(f"/api/analyses/{first['id']}/cancel")).json()
+    waiting = (await harness.client.get(f"/api/analyses/{second['id']}")).json()
+
+    assert cancelled["queue_position"] is None
+    assert waiting["queue_position"] == 1
+
+
 async def test_reading_an_unknown_analysis_is_a_404_in_the_error_envelope(
     harness: Harness,
 ) -> None:
@@ -596,3 +641,12 @@ def test_the_openapi_schema_describes_the_summary_and_the_upload() -> None:
 
     assert "ReportSummary" in schemas
     assert set(schemas["Body_analyses_create"]["properties"]) == {"file", "options"}
+
+
+def test_the_openapi_schema_always_lists_the_queue_position_of_an_analysis() -> None:
+    app = FastAPI(generate_unique_id_function=generate_operation_id)
+    app.include_router(analyses_router, prefix="/api")
+
+    read = app.openapi()["components"]["schemas"]["AnalysisRead"]
+
+    assert "queue_position" in read["required"]

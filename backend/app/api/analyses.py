@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from typing import Annotated, cast
 
 from fastapi import (
@@ -32,6 +33,7 @@ from app.db.analysis_repository import (
     get_analysis,
     get_sample,
     list_analyses,
+    queue_positions,
 )
 from app.db.models import Analysis, Sample
 from app.db.models.analysis import ACTIVE_STATUSES, AnalysisStatus
@@ -97,7 +99,7 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
         await _discard_unreferenced_sample(session, store, stored.sha256)
         raise
     runner.nudge()
-    return AnalysisRead.model_validate(analysis)
+    return await _read_one(session, analysis)
 
 
 @router.get("", name="list")
@@ -112,7 +114,7 @@ async def list_all(
     filters = AnalysisFilter(q=q, status=status)
     items = await list_analyses(session, filters, limit=limit, offset=offset)
     return AnalysisPage(
-        items=[AnalysisRead.model_validate(item) for item in items],
+        items=await _read_all(session, items),
         total=await count_analyses(session, filters),
     )
 
@@ -121,7 +123,7 @@ async def list_all(
 async def read(
     analysis_id: int, session: Annotated[AsyncSession, Depends(get_session)]
 ) -> AnalysisRead:
-    return AnalysisRead.model_validate(await _existing(session, analysis_id))
+    return await _read_one(session, await _existing(session, analysis_id))
 
 
 @router.post("/{analysis_id}/cancel")
@@ -133,7 +135,7 @@ async def cancel(
     if not await cancel_if_queued(session, analysis_id):
         raise HTTPException(409, f"Analysis {analysis_id} is no longer queued")
     await session.refresh(analysis)
-    return AnalysisRead.model_validate(analysis)
+    return await _read_one(session, analysis)
 
 
 @router.delete("/{analysis_id}", status_code=204)
@@ -159,6 +161,20 @@ async def _existing(session: AsyncSession, analysis_id: int) -> Analysis:
     if analysis is None:
         raise HTTPException(404, f"Analysis {analysis_id} not found")
     return analysis
+
+
+async def _read_all(session: AsyncSession, analyses: Sequence[Analysis]) -> list[AnalysisRead]:
+    positions = await queue_positions(session, [analysis.id for analysis in analyses])
+    return [
+        AnalysisRead.model_validate(analysis).model_copy(
+            update={"queue_position": positions.get(analysis.id)}
+        )
+        for analysis in analyses
+    ]
+
+
+async def _read_one(session: AsyncSession, analysis: Analysis) -> AnalysisRead:
+    return (await _read_all(session, [analysis]))[0]
 
 
 async def _require_ready_guest(guest: HealthCheck) -> None:

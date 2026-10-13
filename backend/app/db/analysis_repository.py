@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, TypedDict, Unpack
@@ -8,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utc_now
 from app.db.models import Analysis, Sample
 from app.db.models.analysis import ACTIVE_STATUSES, AnalysisPhase, AnalysisStatus, Severity
+
+# The one definition of "who goes next", shared by the runner and the position shown to users.
+_QUEUE_ORDER = (Analysis.submitted_at, Analysis.id)
 
 
 class AnalysisChanges(TypedDict, total=False):
@@ -155,10 +159,23 @@ async def get_oldest_queued_analysis(session: AsyncSession) -> Analysis | None:
     statement = (
         select(Analysis)
         .where(Analysis.status == AnalysisStatus.QUEUED)
-        .order_by(Analysis.submitted_at, Analysis.id)
+        .order_by(*_QUEUE_ORDER)
         .limit(1)
     )
     return await session.scalar(statement)
+
+
+async def queue_positions(session: AsyncSession, analysis_ids: Collection[int]) -> dict[int, int]:
+    """Maps each queued analysis among `analysis_ids` to its place in line (1 is served next)."""
+    if not analysis_ids:
+        return {}
+    numbered = (
+        select(Analysis.id, func.row_number().over(order_by=_QUEUE_ORDER).label("position"))
+        .where(Analysis.status == AnalysisStatus.QUEUED)
+        .subquery()
+    )
+    statement = select(numbered.c.id, numbered.c.position).where(numbered.c.id.in_(analysis_ids))
+    return {row.id: row.position for row in await session.execute(statement)}
 
 
 async def _transition_if_queued(session: AsyncSession, analysis_id: int, **changes: Any) -> bool:

@@ -105,5 +105,18 @@ async def exercise_repository(engine: AsyncEngine) -> None:
         assert reloaded.score == 7.5
         assert reloaded.max_severity is Severity.HIGH
         assert reloaded.summary == {"signatures": [{"name": "persistence", "severity": 3}]}
+        waiting = [
+            await repository.create_analysis(
+                session, sample_sha256=SHA, filename=f"queued{n}.exe", options={}
+            )
+            for n in range(2)
+        ]
+        assert await repository.queue_positions(session, [row.id for row in waiting]) == {
+            waiting[0].id: 1,
+            waiting[1].id: 2,
+        }
+        assert await repository.queue_positions(session, [created.id]) == {}
+        for row in waiting:
+            assert await repository.delete_analysis(session, row.id) is True
         assert await repository.delete_analysis(session, created.id) is True
         assert await repository.delete_sample_if_unreferenced(session, SHA) is True
