@@ -293,7 +293,8 @@ Analysis-level notes are edited inline: a plain QInput textarea in autogrow mode
   - Last self-test result, including the pafish summary (info only).
 - **Build wizard** (QStepper, vertical):
   1. Choose ISO: a list from `data/iso` showing the detected edition and version. If the list is
-     empty, it explains where to put the ISO.
+     empty, it explains where to put the ISO. (A drag-and-drop upload is planned after v1; see
+     the [overview](../overview.md#after-v1-not-designed-yet).)
   2. Settings: edition, key (optional), locale, username, resources, decoys.
   3. Review: a summary plus a warning that rebuilding replaces the current guest after it
      passes its checks.

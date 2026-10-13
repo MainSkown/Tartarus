@@ -66,6 +66,12 @@ remote access. Everything binds to `127.0.0.1`.
 ### After v1 (not designed yet)
 - **Windows hosts (experimental):** the same compose stack inside WSL2 with nested KVM (see
   [cape-integration](specs/cape-integration.md#windows-hosts-post-v1-experimental)).
+- **ISO drop zone:** drag a Windows ISO onto the Guest VM page instead of copying it into
+  `data/iso` by hand. Needs a chunked, resumable upload (an ISO is about 5 GB, and the nginx
+  limit set for samples is 512 MB), a disk-space check first, and validation on arrival: read
+  the edition and build from `sources/install.wim` and, for evaluation ISOs, compare the SHA256
+  against Microsoft's published hashes. Until then the wizard lists `data/iso` and explains where
+  to put the file. Windows itself is never bundled or downloaded for the user (licence).
 - URL and archive submission, PCAP and memory-image import.
 - Compare two analyses (behaviour diff).
 - Search and IOC pivot across all analyses (OpenSearch alias over the per-analysis indices).
