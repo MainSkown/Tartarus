@@ -430,3 +430,60 @@ def test_analysis_read_is_built_from_an_orm_row() -> None:
     assert read.id == 7
     assert read.status is AnalysisStatus.RUNNING
     assert read.summary is None
+
+
+async def test_claiming_a_queued_analysis_moves_it_to_starting_exactly_once(
+    session: AsyncSession,
+) -> None:
+    analysis = await seeded_analysis(session)
+
+    first = await repository.claim_queued(session, analysis.id)
+    second = await repository.claim_queued(session, analysis.id)
+
+    await session.refresh(analysis)
+    stored: Analysis | None = analysis
+    assert (first, second) == (True, False)
+    assert stored is not None
+    assert stored.status is AnalysisStatus.STARTING
+
+
+async def test_a_cancelled_analysis_can_no_longer_be_claimed(session: AsyncSession) -> None:
+    analysis = await seeded_analysis(session)
+    await repository.cancel_if_queued(session, analysis.id)
+
+    assert await repository.claim_queued(session, analysis.id) is False
+
+
+async def test_cancelling_a_queued_analysis_ends_it_as_cancelled_with_a_finish_time(
+    session: AsyncSession,
+) -> None:
+    analysis = await seeded_analysis(session)
+
+    cancelled = await repository.cancel_if_queued(session, analysis.id)
+
+    await session.refresh(analysis)
+    stored: Analysis | None = analysis
+    assert cancelled is True
+    assert stored is not None
+    assert stored.status is AnalysisStatus.CANCELLED
+    assert stored.finished_at is not None
+
+
+async def test_an_analysis_that_has_started_cannot_be_cancelled(session: AsyncSession) -> None:
+    analysis = await seeded_analysis(session)
+    await repository.claim_queued(session, analysis.id)
+
+    assert await repository.cancel_if_queued(session, analysis.id) is False
+
+    await session.refresh(analysis)
+    stored: Analysis | None = analysis
+    assert stored is not None
+    assert stored.status is AnalysisStatus.STARTING
+    assert stored.finished_at is None
+
+
+async def test_claiming_or_cancelling_an_unknown_analysis_changes_nothing(
+    session: AsyncSession,
+) -> None:
+    assert await repository.claim_queued(session, 999) is False
+    assert await repository.cancel_if_queued(session, 999) is False

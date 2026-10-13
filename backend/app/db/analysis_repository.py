@@ -2,9 +2,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, TypedDict, Unpack
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.base import utc_now
 from app.db.models import Analysis, Sample
 from app.db.models.analysis import ACTIVE_STATUSES, AnalysisPhase, AnalysisStatus, Severity
 
@@ -158,3 +159,31 @@ async def get_oldest_queued_analysis(session: AsyncSession) -> Analysis | None:
         .limit(1)
     )
     return await session.scalar(statement)
+
+
+async def _transition_if_queued(session: AsyncSession, analysis_id: int, **changes: Any) -> bool:
+    # One UPDATE with the status in its WHERE clause: whoever gets here first wins, so a cancel
+    # and a claim made at the same moment cannot both succeed. Callers hold no stale copy that
+    # matters (they re-read after), so the session's cached objects are not synchronised.
+    statement = (
+        update(Analysis)
+        .where(Analysis.id == analysis_id, Analysis.status == AnalysisStatus.QUEUED)
+        .values(**changes)
+        .returning(Analysis.id)
+        .execution_options(synchronize_session=False)
+    )
+    changed = await session.scalar(statement)
+    await session.commit()
+    return changed is not None
+
+
+async def claim_queued(session: AsyncSession, analysis_id: int) -> bool:
+    """Moves a queued analysis to `starting`; False if it is no longer queued."""
+    return await _transition_if_queued(session, analysis_id, status=AnalysisStatus.STARTING)
+
+
+async def cancel_if_queued(session: AsyncSession, analysis_id: int) -> bool:
+    """Ends a queued analysis as `cancelled`; False if it has already started or ended."""
+    return await _transition_if_queued(
+        session, analysis_id, status=AnalysisStatus.CANCELLED, finished_at=utc_now()
+    )
