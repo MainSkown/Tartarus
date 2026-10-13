@@ -65,11 +65,10 @@ remote access. Everything binds to `127.0.0.1`.
 
 ### Next up
 
-One decision comes before M1 touches the sandbox: what to do about Defender's Tamper Protection
-(question 5 in [tartarus-v1](features/tartarus-v1.md#open-questions)); it can wait until the guest
-wizard if M1 leaves Defender on. libvirt's unauthenticated TCP endpoint is already switched off
-until the wizard needs it (question 1). Then M1 proper: submit a sample from the UI, receive
-CAPE's callback, ingest `report.json` into OpenSearch, and the first analysis views.
+Nothing blocks M1 now. libvirt's unauthenticated TCP endpoint is switched off until the guest
+wizard needs it (question 1), and Defender's Tamper Protection stays on until the wizard too
+(question 5). M1 proper: submit a sample from the UI, receive CAPE's callback, ingest
+`report.json` into OpenSearch, and the first analysis views.
 
 ### After v1 (not designed yet)
 - **Windows hosts (experimental):** the same compose stack inside WSL2 with nested KVM (see

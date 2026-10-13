@@ -130,6 +130,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | Guided auto-build of the guest from a user ISO | Guest prep is the hardest part of running CAPE |
 | Sources: capemon, Sysmon, ETW, Suricata/PCAP, Volatility3 | User's choice; Sysmon and ETW complement user-mode hooks |
 | Extra workflows: tags/notes and export/report only | User's choice |
+| Defender stays on in the guest until the guest wizard (M6) | Turning off Tamper Protection can't be scripted and is a manual step; it didn't block capemon or the test analysis, so it isn't worth solving before the wizard exists. Revisit at M6, with the real malware corpus the user cares about as the test. |
 | Separate `frontend` container: Vite in dev, nginx in prod proxying `/api` and `/ws` | Same pattern as the user's Momos project; fast HMR; still one published port |
 | The guest wizard (M6) will control libvirt via `qemu+tcp://cape/system`, off until then; never mount the Docker socket | The Docker socket is root on the host, and the backend processes untrusted malware data |
 | No `mongo` service | Verified from CAPE source: `tasks/create/file`, `tasks/status`, `tasks/delete`, `machines/list` and `cuckoo/status` only touch CAPE's SQL task DB; CAPE's scheduler skips the `mongodb` reporting module when it's disabled (the shipped default); `jsondump` (what Tartarus reads) has no Mongo dependency; and the one startup check that requires Mongo or Elasticsearch only fires if `web.conf [web_reporting]` is enabled, which also ships off. Keep both at their defaults. `pymongo` stays installed in the `cape` image (an unconditional import for `bson.objectid.ObjectId`), but no connection is ever opened. |
@@ -148,11 +149,12 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 3. **Sysmon timing:** CAPE probably collects the Sysmon EVTX only at the end of the run, so
    Sysmon events would be final-phase only. Add a live forwarder in the guest later?
 4. **Default Sigma ruleset:** ship a curated SigmaHQ subset (proposed) or start empty?
-5. **Defender Tamper Protection (answered by M0b, decision needed).** It cannot be turned off by
-   script by any documented means: the policy keys and `Set-MpPreference` are silently ignored.
-   Defender did not block the analysis or capemon's injection. Either accept the one manual step
-   (the user turns it off in Windows Security on the live desktop, then the wizard re-applies the
-   settings), or accept Defender staying on. Methods that bypass Tamper Protection were not tried.
+5. **Defender Tamper Protection (postponed to M6 by decision).** It cannot be turned off by script
+   by any documented means: the policy keys and `Set-MpPreference` are silently ignored, and
+   methods that bypass Tamper Protection were not tried. Defender did not block the analysis or
+   capemon's injection, so until the wizard it stays on. For M6: either keep one manual step (the
+   user turns it off in Windows Security on the live desktop, then the wizard re-applies the
+   settings) or accept Defender on, judged by whether it interferes with real samples.
 6. **Default analysis timeout:** 180 s is proposed.
 7. **App icon:** design a PWA and app icon (a descending pit or gate motif in ice blue).
 8. **PDF report styling:** a print variant (white background, blue accents) is proposed instead
