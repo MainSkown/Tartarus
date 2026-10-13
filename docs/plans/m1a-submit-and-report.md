@@ -35,8 +35,10 @@ With `make up`:
 ## Decisions in this plan (change them before work starts, not during)
 
 1. **`cape` is part of the default stack**, so `make up` and `make dev` give a working sandbox. The
-   service loses its compose profile. A machine without `/dev/kvm` can still run the UI work with
-   `docker compose up postgres opensearch backend frontend`; `make preflight` already warns.
+   service loses its compose profile. Because `backend` depends on `cape` being healthy, a machine
+   without `/dev/kvm` starts the rest with
+   `docker compose up -d --no-deps postgres opensearch backend frontend` (in the README);
+   `make preflight` already warns.
 2. **The callback is a hint, not a fact.** CAPE's `callback` module posts `{"task_id": N}` and
    cannot send a secret. The backend never trusts it: on a callback it asks CAPE's API for the
    task's state and reads the report only if CAPE says `reported`. A callback for an unknown task
@@ -91,6 +93,8 @@ in its report instead of diverging.
 - `tasks/view/{id}/` carries `added_on`, `started_on`, `completed_on`, `reporting_finished_on`,
   `status`, `machine`, `route`, `package` and `timedout`; those feed the analysis timings.
 
+- **A failed or missing delete has no `error_value`**: `{"error": true, "failed": "Task(s) ID(s)
+  999999 failed to remove"}`, and a success has no `error` key. The client already handles both.
 - **Deleting needs the task's status unless it is `reported`.** CAPE's `validate_task` refuses
   anything else ("Task failed", "Task is still being analyzed"). To delete a failed task, call
   `tasks/delete/{id}/{status}/` with the task's own current status; the client's

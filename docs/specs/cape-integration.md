@@ -21,7 +21,7 @@ with `make verify-cape`.
 | INetSim | Ubuntu's 1.3.2, patched at build time because its DNS service dies with the Net::DNS in Ubuntu 24.04 (`main_loop` becomes `loop_once`); the build fails if the patch stops applying. |
 | Databases | The `cape` database on the `postgres` service. No Mongo: `web.conf [web_reporting]` and `reporting.conf [mongodb]` stay disabled. `pymongo` stays installed because CAPE imports `bson` unconditionally. The entrypoint creates the schema once before any process starts, because CAPE's processes race on `CREATE TYPE`. |
 | Volumes | `cape-storage` at `/opt/CAPEv2/storage` (the backend mounts it read-only). `guest-images` at `/var/lib/libvirt`, with `/etc/libvirt/qemu` symlinked into it, so domain XML, snapshots and the guest's registration survive recreating the container. |
-| Compose | Behind the `cape` profile until M1: `docker compose --profile cape up -d cape`. Publishes no ports. |
+| Compose | Part of the default stack (`make up`, `make dev`); `backend` waits for its health check. Publishes no ports. Without `/dev/kvm`, start the rest with `docker compose up -d --no-deps postgres opensearch backend frontend`. |
 | Idle cost | About 1 GiB of memory and 63 processes with no guest running; image 3.08 GB; a full build takes about 10 minutes (QEMU 7), a config-only rebuild about 17 seconds. |
 
 ## CAPE configuration
@@ -38,14 +38,14 @@ the entrypoint exports.
 | `cuckoo.conf` | `machinery = kvm`; ResultServer on `192.168.150.1:2042`; timeouts; database connection to the `cape` database. |
 | `kvm.conf` | Holds **no machine**. Registering a guest writes `/var/lib/libvirt/tartarus/kvm.conf.d/<label>.conf` (a `[kvm] machines = <label>` section plus a `[<label>]` section with `platform`, `ip`, `snapshot`, `arch`, `interface = tt-guest`, `tags`) and restarts `cape`. The `cape` program waits until a registered machine is defined, because `cuckoo.py` exits with "No machines available". |
 | `routing.conf` | `route = inetsim`; `no_local_routing = no` (`yes` needs a VRF and the host's `vrf` module); `internet = eth0`; RFC1918 and Docker `reject_segments`. Only the inetsim route is verified; `internet` is configured but unexercised. |
-| `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
+| `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `[taskdelete] enabled = yes`, because `tasks/delete` answers "Task Deletion API is Disabled" by default; `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
 | `web.conf` | `[guacamole] enabled = yes` so CAPE records each guest's VNC port. `guacd` binds the internal address only. The backend uses `cape:4822` itself; CAPE's own Guacamole view is unused. |
 | `auxiliary.conf` | Sysmon, ETW modules and `QemuScreenshots`: **deferred to M0b/M1**, they need a Windows guest. |
 | `processing.conf`, `memory.conf` | **Deferred.** Volatility3 and its symbol tables are not installed yet. `virustotal` stays off (no data leaves the host). |
-| `reporting.conf` | **Deferred.** `jsondump` on, `mongodb` off, plus the `callback` module pointing at the backend (M1). |
+| `reporting.conf` | `jsondump` on (its default), `mongodb` off, and the `callback` module enabled with `url = http://backend:8000/internal/cape/callback`. The module runs after the report is written, sets the task to `reported` itself, and catches its own failures: an unreachable backend is logged and changes neither the task nor the report (checked with the backend stopped and with a 404). `scripts/verify-guest.sh` layers a temporary listener over it through `reporting.conf.d/callback.conf`; CAPE loads that later, and the script removes only that file. |
 
 **API token.** `CAPE_API_TOKEN` comes from `.env`; the entrypoint refuses to start without one,
-while compose doesn't require it, so `make up` works without the `cape` profile. On every start
+and compose requires it too (`make up` fails with a message if `.env` lacks it). On every start
 it is provisioned into CAPE's `ApiKey` model (which stores a SHA-256 hash) for the Django user
 `tartarus`, in a container-local SQLite file, so rotating the token revokes the old one.
 

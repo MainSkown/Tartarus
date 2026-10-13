@@ -59,7 +59,7 @@ including the silent Setup failures the wizard must handle, are in
 **Where things are left.** The working guest lives in the Docker volumes `guest-images` (22.5 GB),
 `cape-storage` and `pg-data`; all containers are stopped. The git-ignored `.env` holds their
 passwords and must not be regenerated, because the Postgres volume keeps the first password. To
-use it again: `docker compose --profile cape up -d`, then `make verify-guest`. To rebuild the
+use it again: `docker compose up -d`, then `make verify-guest`. To rebuild the
 guest from nothing: `make build-guest`.
 
 The ISO is the user's own `Win11_25H2_Polish_x64_v2.iso` in `./data/iso`: genuine Microsoft retail
