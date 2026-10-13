@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     cape_storage_path: Path = Path("/cape-storage")
     sample_store_path: Path = Path("/data/samples")
     guest_label: str = "win"
+    runner_poll_interval_seconds: float = 2.0
+    runner_unreachable_grace_seconds: float = 120.0
 
     @field_validator("log_level", mode="before")
     @classmethod
