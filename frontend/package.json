@@ -16,7 +16,8 @@
     "typecheck": "quasar prepare && vue-tsc --noEmit",
     "test:unit": "vitest run",
     "api:sync": "openapi-ts -i http://localhost:8000/openapi.json -o ./src/api -c @hey-api/client-fetch",
-    "screenshots": "playwright test -c playwright.config.ts tests/screenshots"
+    "screenshots": "playwright test -c playwright.config.ts tests/screenshots",
+    "e2e": "playwright test -c playwright.e2e.config.ts"
   },
   "dependencies": {
     "@quasar/extras": "^2.1.0",

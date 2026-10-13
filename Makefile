@@ -1,10 +1,10 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest hooks
+.PHONY: help dev up down logs test test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
 help: ## List the available targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
 
 dev: ## Run the stack with hot reload (compose watch)
 	$(COMPOSE_DEV) up --build --watch
@@ -54,6 +54,9 @@ build-guest: ## Build the Windows analysis guest unattended and register it with
 
 verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; needs make build-guest first)
 	scripts/verify-guest.sh
+
+e2e: ## End-to-end check against the running stack (slow, needs the built guest); DRILLS=1 adds the failure drills
+	E2E_DRILLS=$(or $(DRILLS),0) scripts/e2e.sh
 
 hooks: ## Install the pre-commit tool and register the git hooks (once per clone)
 	uv tool install pre-commit
