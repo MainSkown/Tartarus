@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-integration lint check api-sync screenshots preflight smoke verify-cape hooks
+.PHONY: help dev up down logs test test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -48,6 +48,12 @@ smoke: ## Smoke-test the stack: MODE=static (default, no daemon needed), prod or
 
 verify-cape: ## Prove the cape container's M0 checks with a throwaway guest (slow; restarts cape, leaves it stopped)
 	scripts/verify-cape.sh
+
+build-guest: ## Build the Windows analysis guest unattended and register it with CAPE (very slow)
+	scripts/build-guest.sh
+
+verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; needs make build-guest first)
+	scripts/verify-guest.sh
 
 hooks: ## Install the pre-commit tool and register the git hooks (once per clone)
 	uv tool install pre-commit
