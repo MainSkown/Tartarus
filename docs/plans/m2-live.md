@@ -29,6 +29,21 @@ While an analysis is `starting` or `running`, its page opens on a **LIVE** tab:
 Out of scope (also): ending an interactive run early (see decision 12); the query language, facets and the Events/Timeline tabs (M3), Sigma rules (M4),
 Sysmon/ETW/Suricata sources, the guest-build wizard.
 
+**Backend done and checked on the real stack (2026-10-13)**, before any frontend: BSON parser (C1),
+live events (C2), collector, hub, live WebSocket and runner hooks (C3), and the desktop tunnel's
+backend (D2) are committed (1308 unit, 133 container tests). On real analyses of the benign sample:
+the socket sees the status run starting, running, processing, ingesting, done and then `phase: final`;
+the process tree gets its adds and ends; **the live events equal the final index exactly** in two of
+three full comparisons (480 against 480, no difference in any field of any shared id); in the third,
+three events differed, which is the documented case of CAPE merging identical consecutive calls.
+**Pipeline delay** (log bytes written to events received by a client) is **under half a second**,
+measured by sampling the log sizes every ~0.3 s beside the client. The call timestamps themselves
+show about 7 s behind the client's clock because **the guest's clock runs behind the host's by
+about 5 to 8 s** (an earlier comparison against the pcap gave 4 to 6 s): live and final events
+carry the guest's time, so against pcap-derived network events they sit that much earlier. Not
+corrected (the offset calibration rounds to a quarter hour, as designed); to be revisited when the
+timeline (M3) puts both sources on one axis.
+
 ## Decisions (made now so no agent has to guess)
 
 1. **The BSON log parser is written from the format, not copied.** CAPE's `netlog.py` is the
