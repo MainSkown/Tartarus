@@ -47,10 +47,11 @@ class ReportSummary(BaseModel):
     files_written: int = 0
     registry_keys_written: int = 0
     sample: SampleSummary = SampleSummary()
+    lane_counts: dict[str, int] = {}
 
 
 def read_report(path: Path) -> ReportOutcome:
-    report = _load(path)
+    report = load_report(path)
     signatures = _signatures(report)
     return ReportOutcome(
         score=_number(report.get("malscore")),
@@ -62,7 +63,7 @@ def read_report(path: Path) -> ReportOutcome:
     )
 
 
-def _load(path: Path) -> dict[str, Any]:
+def load_report(path: Path) -> dict[str, Any]:
     try:
         report = json.loads(path.read_bytes())
     except FileNotFoundError:

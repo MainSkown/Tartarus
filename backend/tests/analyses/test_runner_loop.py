@@ -9,7 +9,7 @@ from app.analyses import runner as runner_module
 from app.analyses.runner import Runner, RunnerConfig, build_runner
 from app.config import Settings
 from app.db.models.analysis import AnalysisStatus
-from tests.analyses.fakes import FakeCape, FakeReports, FakeSamples
+from tests.analyses.fakes import FakeCape, FakeIngester, FakeReports, FakeSamples
 from tests.analyses.helpers import adopt_by_cape, enqueue, load
 
 type Factory = async_sessionmaker[AsyncSession]
@@ -147,15 +147,21 @@ async def test_stop_lets_a_submission_in_flight_save_its_task_id(
     assert (await load(session_factory, analysis_id)).cape_task_id == 100
 
 
-async def test_stop_gives_up_on_a_tick_that_does_not_finish(
+async def test_stop_gives_up_on_a_tick_that_does_not_finish(  # noqa: PLR0913, PLR0917
     session_factory: Factory,
     cape: FakeCape,
     samples: FakeSamples,
     reports: FakeReports,
+    ingester: FakeIngester,
     config: RunnerConfig,
 ) -> None:
     impatient = Runner(
-        session_factory, cape, samples, reports, replace(config, shutdown_patience=0.01)
+        session_factory,
+        cape,
+        samples,
+        reports,
+        ingester,
+        replace(config, shutdown_patience=0.01),
     )
     cape.create_gate = asyncio.Event()
     await enqueue(session_factory)
@@ -174,18 +180,20 @@ async def test_starting_a_running_runner_again_is_an_error(runner: Runner) -> No
         await runner.stop()
 
 
-async def test_the_builder_wires_the_settings_into_a_runner(
+async def test_the_builder_wires_the_settings_into_a_runner(  # noqa: PLR0913, PLR0917
     settings: Settings,
     session_factory: Factory,
     cape: FakeCape,
     samples: FakeSamples,
     reports: FakeReports,
+    ingester: FakeIngester,
 ) -> None:
     built = build_runner(
         session_factory,
         cape,
         samples,
         reports,
+        ingester,
         settings.model_copy(update={"guest_label": "lab-win"}),
     )
     await enqueue(session_factory)

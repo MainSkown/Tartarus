@@ -9,7 +9,15 @@ from typing import Protocol, Self, Unpack
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.analyses.ports import ReportOutcome, ReportReader, ReportUnreadableError, SampleSource
+from app.analyses.ports import (
+    EventIngester,
+    IngestFailedError,
+    IngestResult,
+    ReportOutcome,
+    ReportReader,
+    ReportUnreadableError,
+    SampleSource,
+)
 from app.cape.errors import (
     CapeAuthError,
     CapeError,
@@ -80,12 +88,13 @@ class Runner:
     All state lives in the database, so a new runner carries on where a dead one stopped.
     """
 
-    def __init__(  # noqa: PLR0913 - the runner's ports, injected so tests can fake each one
+    def __init__(  # noqa: PLR0913, PLR0917 - the runner's ports, injected so tests can fake each one
         self,
         session_factory: async_sessionmaker[AsyncSession],
         cape: CapeTaskApi,
         samples: SampleSource,
         read_report: ReportReader,
+        ingester: EventIngester,
         config: RunnerConfig,
         *,
         clock: Callable[[], float] = time.monotonic,
@@ -94,6 +103,7 @@ class Runner:
         self._cape = cape
         self._samples = samples
         self._read_report = read_report
+        self._ingester = ingester
         self._config = config
         self._clock = clock
         self._trouble_since: float | None = None
@@ -247,12 +257,7 @@ class Runner:
         try:
             trouble = await self._follow(session, analysis, task_id)
         except CapeTaskNotFound:
-            await self._finish(
-                session,
-                analysis.id,
-                status=AnalysisStatus.FAILED,
-                error=f"CAPE no longer knows task {task_id}",
-            )
+            await self._finish_for_forgotten_task(session, analysis, task_id)
         except (CapeAuthError, CapeNotConfigured) as refused:
             await self._finish(
                 session, analysis.id, status=AnalysisStatus.FAILED, error=str(refused)
@@ -264,6 +269,24 @@ class Runner:
                 self._trouble_since = None
             else:
                 await self._tolerate(session, analysis.id, trouble)
+
+    async def _finish_for_forgotten_task(
+        self, session: AsyncSession, analysis: Analysis, task_id: int
+    ) -> None:
+        if analysis.status is AnalysisStatus.INGESTING:
+            await self._finish(
+                session,
+                analysis.id,
+                status=AnalysisStatus.REPORT_FAILED,
+                error=f"CAPE no longer knows task {task_id}, so its report cannot be read again",
+            )
+            return
+        await self._finish(
+            session,
+            analysis.id,
+            status=AnalysisStatus.FAILED,
+            error=f"CAPE no longer knows task {task_id}",
+        )
 
     async def _tolerate(self, session: AsyncSession, analysis_id: int, trouble: str) -> None:
         """Waits out a CAPE problem, but only for the grace period."""
@@ -323,18 +346,31 @@ class Runner:
         await update_analysis(session, analysis.id, **changes)
 
     async def _ingest(self, session: AsyncSession, analysis_id: int, task_id: int) -> None:
-        report_path = self._config.cape_storage_path / "analyses" / str(task_id) / "reports"
+        report_file = self._config.cape_storage_path / "analyses" / str(task_id) / "reports"
+        report_file /= "report.json"
         try:
-            outcome = await asyncio.to_thread(self._read_report, report_path / "report.json")
+            outcome = await asyncio.to_thread(self._read_report, report_file)
         except ReportUnreadableError as unreadable:
             await self._finish(
                 session, analysis_id, status=AnalysisStatus.REPORT_FAILED, error=str(unreadable)
             )
             return
-        await self._finish_done(session, analysis_id, outcome)
+        try:
+            indexed = await self._ingester.ingest(analysis_id, report_file)
+        except IngestFailedError as failure:
+            # The ingester removes a half-built index, so no events are left to count.
+            await self._finish(
+                session,
+                analysis_id,
+                status=AnalysisStatus.REPORT_FAILED,
+                error=str(failure),
+                event_count=0,
+            )
+            return
+        await self._finish_done(session, analysis_id, outcome, indexed)
 
     async def _finish_done(
-        self, session: AsyncSession, analysis_id: int, outcome: ReportOutcome
+        self, session: AsyncSession, analysis_id: int, outcome: ReportOutcome, indexed: IngestResult
     ) -> None:
         await self._finish(
             session,
@@ -344,7 +380,8 @@ class Runner:
             score=outcome.score,
             max_severity=outcome.max_severity,
             detected_families=outcome.detected_families,
-            summary=outcome.summary,
+            summary={**outcome.summary, "lane_counts": indexed.lane_counts},
+            event_count=indexed.event_count,
         )
 
     async def _finish(
@@ -365,11 +402,14 @@ def _trouble_of(error: CapeError) -> str:
     return "unreachable" if isinstance(error, CapeUnreachable) else f"failing ({error})"
 
 
-def build_runner(
+def build_runner(  # noqa: PLR0913, PLR0917 - the runner's ports plus the settings
     session_factory: async_sessionmaker[AsyncSession],
     cape: CapeTaskApi,
     samples: SampleSource,
     read_report: ReportReader,
+    ingester: EventIngester,
     settings: Settings,
 ) -> Runner:
-    return Runner(session_factory, cape, samples, read_report, RunnerConfig.from_settings(settings))
+    return Runner(
+        session_factory, cape, samples, read_report, ingester, RunnerConfig.from_settings(settings)
+    )

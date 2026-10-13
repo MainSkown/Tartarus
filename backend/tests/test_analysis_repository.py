@@ -561,3 +561,74 @@ async def test_claiming_or_cancelling_an_unknown_analysis_changes_nothing(
 ) -> None:
     assert await repository.claim_queued(session, 999) is False
     assert await repository.cancel_if_queued(session, 999) is False
+
+
+async def finished_as(session: AsyncSession, analysis: Analysis, status: AnalysisStatus) -> None:
+    await repository.update_analysis(
+        session, analysis.id, status=status, error="old failure", finished_at=datetime.now(UTC)
+    )
+
+
+@pytest.mark.parametrize("earlier", [AnalysisStatus.DONE, AnalysisStatus.REPORT_FAILED])
+async def test_a_finished_analysis_goes_back_to_ingesting_without_its_error_or_end_time(
+    session: AsyncSession, earlier: AnalysisStatus
+) -> None:
+    analysis = await seeded_analysis(session)
+    await finished_as(session, analysis, earlier)
+
+    started = await repository.begin_reingest(session, analysis.id)
+
+    await session.refresh(analysis)
+    stored: Analysis | None = analysis
+    assert started is True
+    assert stored is not None
+    assert stored.status is AnalysisStatus.INGESTING
+    assert stored.error is None
+    assert stored.finished_at is None
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        AnalysisStatus.QUEUED,
+        AnalysisStatus.STARTING,
+        AnalysisStatus.RUNNING,
+        AnalysisStatus.PROCESSING,
+        AnalysisStatus.INGESTING,
+        AnalysisStatus.FAILED,
+        AnalysisStatus.CANCELLED,
+    ],
+)
+async def test_an_analysis_that_is_neither_done_nor_report_failed_is_not_reingested(
+    session: AsyncSession, status: AnalysisStatus
+) -> None:
+    analysis = await seeded_analysis(session)
+    await finished_as(session, analysis, status)
+
+    assert await repository.begin_reingest(session, analysis.id) is False
+
+    await session.refresh(analysis)
+    stored: Analysis | None = analysis
+    assert stored is not None
+    assert stored.status is status
+    assert stored.error == "old failure"
+
+
+async def test_an_analysis_is_not_reingested_while_another_one_is_active(
+    session: AsyncSession,
+) -> None:
+    finished = await seeded_analysis(session)
+    await finished_as(session, finished, AnalysisStatus.DONE)
+    busy = await seeded_analysis(session, filename="busy.exe")
+    await repository.update_analysis(session, busy.id, status=AnalysisStatus.RUNNING)
+
+    assert await repository.begin_reingest(session, finished.id) is False
+
+    await session.refresh(finished)
+    stored: Analysis | None = finished
+    assert stored is not None
+    assert stored.status is AnalysisStatus.DONE
+
+
+async def test_reingesting_an_unknown_analysis_changes_nothing(session: AsyncSession) -> None:
+    assert await repository.begin_reingest(session, 999) is False

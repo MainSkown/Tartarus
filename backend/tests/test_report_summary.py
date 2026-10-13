@@ -151,3 +151,9 @@ def test_json_that_is_not_a_cape_report_is_unreadable_and_says_so(
 ) -> None:
     with pytest.raises(ReportUnreadableError, match="not a CAPE report"):
         read_report(write_report(tmp_path, content))
+
+
+def test_a_summary_read_from_a_report_has_no_lane_counts_until_the_events_are_indexed() -> None:
+    summary = ReportSummary.model_validate(read_report(TRIMMED_REPORT).summary)
+
+    assert summary.lane_counts == {}

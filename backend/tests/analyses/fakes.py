@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.analyses.ports import ReportOutcome
+from app.analyses.ports import IngestFailedError, IngestResult, ReportOutcome
 from app.cape.models import TaskView
 
 FIRST_TASK_ID = 100
@@ -111,6 +111,20 @@ class FakeReports:
             raise self.outcome
         assert self.outcome is not None, "the test did not say what the report holds"
         return self.outcome
+
+
+class FakeIngester:
+    """An `EventIngester` that remembers what it was asked to index."""
+
+    def __init__(self) -> None:
+        self.result: IngestResult | IngestFailedError | Exception = IngestResult(0, {})
+        self.requests: list[tuple[int, Path]] = []
+
+    async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
+        self.requests.append((analysis_id, report_path))
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
 
 
 class FakeClock:

@@ -13,6 +13,8 @@ from app.db.models.analysis import ACTIVE_STATUSES, AnalysisPhase, AnalysisStatu
 # The one definition of "who goes next", shared by the runner and the position shown to users.
 _QUEUE_ORDER = (Analysis.submitted_at, Analysis.id)
 
+REINGESTABLE_STATUSES = (AnalysisStatus.DONE, AnalysisStatus.REPORT_FAILED)
+
 
 class AnalysisChanges(TypedDict, total=False):
     status: AnalysisStatus
@@ -204,3 +206,26 @@ async def cancel_if_queued(session: AsyncSession, analysis_id: int) -> bool:
     return await _transition_if_queued(
         session, analysis_id, status=AnalysisStatus.CANCELLED, finished_at=utc_now()
     )
+
+
+async def begin_reingest(session: AsyncSession, analysis_id: int) -> bool:
+    """Puts a `done` or `report_failed` analysis back to `ingesting`; False if it may not.
+
+    One UPDATE checks both the analysis's state and that nothing else is active, because the
+    runner follows one analysis at a time and two callers must not both get past a separate check.
+    """
+    another_is_active = select(Analysis.id).where(Analysis.status.in_(ACTIVE_STATUSES)).exists()
+    statement = (
+        update(Analysis)
+        .where(
+            Analysis.id == analysis_id,
+            Analysis.status.in_(REINGESTABLE_STATUSES),
+            ~another_is_active,
+        )
+        .values(status=AnalysisStatus.INGESTING, error=None, finished_at=None)
+        .returning(Analysis.id)
+        .execution_options(synchronize_session=False)
+    )
+    changed = await session.scalar(statement)
+    await session.commit()
+    return changed is not None

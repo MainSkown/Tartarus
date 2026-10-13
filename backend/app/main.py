@@ -17,9 +17,11 @@ from app.config import Settings, get_settings
 from app.db.session import create_engine, create_session_factory
 from app.errors import ErrorEnvelope, install_error_handlers
 from app.health import HealthCheck, OpenSearchCheck, PostgresCheck
+from app.ingest.ingester import ReportIngester
 from app.logging_config import configure_logging
 from app.samples.store import SampleStore
 from app.search.client import create_opensearch_client
+from app.search.index import EventIndex
 from app.ws.system import router as system_ws_router
 
 logger = logging.getLogger(__name__)
@@ -50,13 +52,22 @@ def _build_lifespan(
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.opensearch = opensearch
+        event_index = EventIndex(opensearch)
+        app.state.event_index = event_index
         app.state.cape = cape
         sample_store = SampleStore.from_settings(resolved)
         app.state.sample_store = sample_store
         app.state.health_checks = build_health_checks(
             engine, opensearch, cape, resolved.guest_label
         )
-        runner = build_runner(app.state.session_factory, cape, sample_store, read_report, resolved)
+        runner = build_runner(
+            app.state.session_factory,
+            cape,
+            sample_store,
+            read_report,
+            ReportIngester(event_index),
+            resolved,
+        )
         app.state.runner = runner
         runner.start()
         logger.info("Backend started (%s)", resolved.environment)

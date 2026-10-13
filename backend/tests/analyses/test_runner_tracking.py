@@ -61,7 +61,7 @@ async def test_an_analysis_goes_from_queued_to_done_through_every_state(
     assert done.cape_task_id == 100
     assert (done.score, done.max_severity) == (7.5, Severity.HIGH)
     assert done.detected_families == ["emotet"]
-    assert done.summary == OUTCOME.summary
+    assert done.summary == {**OUTCOME.summary, "lane_counts": {}}
     assert done.phase is AnalysisPhase.FINAL
     assert as_utc(done.started_at) == CAPE_STARTED_ON
     assert done.finished_at is not None

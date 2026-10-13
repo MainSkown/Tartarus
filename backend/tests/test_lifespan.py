@@ -12,6 +12,7 @@ from app.cape.health import CapeCheck, GuestCheck
 from app.db.session import get_session
 from app.health import ComponentHealth, HealthStatus, PostgresCheck, evaluate
 from app.samples.store import SampleStore
+from app.search.index import EventIndex
 
 
 async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAPI) -> None:
@@ -21,6 +22,7 @@ async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAP
         assert isinstance(app.state.opensearch, AsyncOpenSearch)
         assert isinstance(app.state.cape, CapeClient)
         assert isinstance(app.state.sample_store, SampleStore)
+        assert isinstance(app.state.event_index, EventIndex)
         assert isinstance(app.state.runner, Runner)
         assert set(app.state.health_checks) == {"postgres", "opensearch", "cape", "guest"}
         assert isinstance(app.state.health_checks["postgres"], PostgresCheck)

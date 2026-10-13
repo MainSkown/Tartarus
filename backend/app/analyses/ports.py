@@ -38,6 +38,23 @@ ReportReader = Callable[[Path], ReportOutcome]
 """Reads a CAPE `report.json`; raises `ReportUnreadableError` instead of returning partial data."""
 
 
+class IngestFailedError(Exception):
+    """The events could not be indexed; the message says why. The analysis ends `report_failed`."""
+
+
+@dataclass(frozen=True)
+class IngestResult:
+    event_count: int
+    lane_counts: dict[str, int]
+
+
+class EventIngester(Protocol):
+    """Indexes a finished report's events for one analysis, replacing any earlier index."""
+
+    async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
+        """Raises `IngestFailedError`, leaving no index behind, when the events cannot be stored."""
+
+
 class RunnerControl(Protocol):
     """What the API may ask of the runner."""
 

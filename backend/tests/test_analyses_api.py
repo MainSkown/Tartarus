@@ -8,13 +8,14 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
+from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api import analyses as analyses_api
 from app.api.analyses import router as analyses_router
-from app.api.dependencies import get_cape, get_runner, get_sample_store
+from app.api.dependencies import get_cape, get_event_index, get_runner, get_sample_store
 from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
 from app.cape.errors import CapeRejected, CapeTaskNotFound, CapeUnreachable
@@ -68,6 +69,17 @@ class FakeCape:
 
 
 @dataclass
+class FakeEventIndex:
+    dropped: list[int] = field(default_factory=list)
+    drop_error: Exception | None = None
+
+    async def drop(self, analysis_id: int) -> None:
+        if self.drop_error:
+            raise self.drop_error
+        self.dropped.append(analysis_id)
+
+
+@dataclass
 class Harness:
     client: httpx.AsyncClient
     app: FastAPI
@@ -76,6 +88,7 @@ class Harness:
     runner: FakeRunner
     cape: FakeCape
     guest: FakeGuest
+    index: FakeEventIndex
 
     async def upload(
         self,
@@ -127,7 +140,7 @@ async def harness(
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     store = SampleStore(tmp_path / "samples")
-    runner, cape, guest = FakeRunner(), FakeCape(), FakeGuest()
+    runner, cape, guest, index = FakeRunner(), FakeCape(), FakeGuest(), FakeEventIndex()
 
     app = FastAPI(generate_unique_id_function=generate_operation_id)
     install_error_handlers(app)
@@ -136,10 +149,11 @@ async def harness(
     app.dependency_overrides[get_sample_store] = lambda: store
     app.dependency_overrides[get_runner] = lambda: runner
     app.dependency_overrides[get_cape] = lambda: cape
+    app.dependency_overrides[get_event_index] = lambda: index
     app.dependency_overrides[analyses_api.get_guest_check] = lambda: guest
 
     async with make_client(app) as client:
-        yield Harness(client, app, factory, store, runner, cape, guest)
+        yield Harness(client, app, factory, store, runner, cape, guest, index)
     await engine.dispose()
 
 
@@ -612,6 +626,128 @@ async def test_a_cape_task_that_cannot_be_deleted_never_blocks_deleting_the_anal
     assert bool(caplog.records) is not already_gone
 
 
+async def test_deleting_an_analysis_drops_its_event_index(harness: Harness) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=AnalysisStatus.DONE, cape_task_id=7)
+
+    response = await harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert response.status_code == 204
+    assert harness.index.dropped == [created["id"]]
+
+
+async def test_the_event_index_goes_after_the_cape_task_and_before_the_rows(
+    harness: Harness,
+) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=AnalysisStatus.DONE, cape_task_id=7)
+    seen: dict[str, Any] = {}
+    real_drop = harness.index.drop
+
+    async def watching_drop(analysis_id: int) -> None:
+        seen["cape_deleted"] = list(harness.cape.deleted)
+        seen["rows"] = len(await harness.rows(Analysis))
+        await real_drop(analysis_id)
+
+    harness.index.drop = watching_drop  # type: ignore[method-assign]
+
+    await harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert seen == {"cape_deleted": [(7, "reported")], "rows": 1}
+
+
+async def test_an_active_analysis_keeps_its_event_index(harness: Harness) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=AnalysisStatus.INGESTING, cape_task_id=7)
+
+    await harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert harness.index.dropped == []
+
+
+async def test_an_event_index_that_cannot_be_dropped_never_blocks_deleting_the_analysis(
+    harness: Harness, caplog: pytest.LogCaptureFixture
+) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=AnalysisStatus.DONE)
+    harness.index.drop_error = OpenSearchConnectionError("N/A", "opensearch is down", OSError())
+
+    with caplog.at_level(logging.WARNING):
+        response = await harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert response.status_code == 204
+    assert await harness.rows(Analysis) == []
+    assert harness.stored_files() == []
+    assert any("index" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.parametrize("earlier", [AnalysisStatus.DONE, AnalysisStatus.REPORT_FAILED])
+async def test_a_finished_analysis_is_reingested(harness: Harness, earlier: AnalysisStatus) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(
+        created["id"], status=earlier, cape_task_id=7, error="indexing failed", score=6.0
+    )
+    nudges_before = harness.runner.nudges
+
+    response = await harness.client.post(f"/api/analyses/{created['id']}/reingest")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["status"], body["error"], body["finished_at"]) == ("ingesting", None, None)
+    assert body["score"] == 6.0
+    assert (await harness.analysis(created["id"])).status is AnalysisStatus.INGESTING
+    assert harness.runner.nudges == nudges_before + 1
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        AnalysisStatus.QUEUED,
+        AnalysisStatus.STARTING,
+        AnalysisStatus.RUNNING,
+        AnalysisStatus.PROCESSING,
+        AnalysisStatus.INGESTING,
+        AnalysisStatus.FAILED,
+        AnalysisStatus.CANCELLED,
+    ],
+)
+async def test_an_analysis_that_is_not_done_or_report_failed_cannot_be_reingested(
+    harness: Harness, status: AnalysisStatus
+) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=status, cape_task_id=7)
+    nudges_before = harness.runner.nudges
+
+    response = await harness.client.post(f"/api/analyses/{created['id']}/reingest")
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["code"] == "conflict"
+    assert status.value in error["message"]
+    assert (await harness.analysis(created["id"])).status is status
+    assert harness.runner.nudges == nudges_before
+
+
+async def test_nothing_is_reingested_while_another_analysis_is_active(harness: Harness) -> None:
+    finished = (await harness.upload()).json()
+    await harness.set_state(finished["id"], status=AnalysisStatus.DONE, cape_task_id=7)
+    busy = (await harness.upload(content=OTHER_CONTENT)).json()
+    await harness.set_state(busy["id"], status=AnalysisStatus.RUNNING, cape_task_id=8)
+
+    response = await harness.client.post(f"/api/analyses/{finished['id']}/reingest")
+
+    assert response.status_code == 409
+    assert "another analysis" in response.json()["error"]["message"]
+    assert (await harness.analysis(finished["id"])).status is AnalysisStatus.DONE
+
+
+async def test_reingesting_an_unknown_analysis_is_a_404(harness: Harness) -> None:
+    response = await harness.client.post("/api/analyses/999/reingest")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
+
+
 def test_the_operation_ids_are_tag_and_function_name_and_unique() -> None:
     app = FastAPI(generate_unique_id_function=generate_operation_id)
     app.include_router(analyses_router, prefix="/api")
@@ -629,6 +765,7 @@ def test_the_operation_ids_are_tag_and_function_name_and_unique() -> None:
         ("get", "/api/analyses/{analysis_id}"): "analyses_read",
         ("post", "/api/analyses/{analysis_id}/cancel"): "analyses_cancel",
         ("delete", "/api/analyses/{analysis_id}"): "analyses_delete",
+        ("post", "/api/analyses/{analysis_id}/reingest"): "analyses_reingest",
     }
     assert len(set(operations.values())) == len(operations)
 
@@ -640,6 +777,7 @@ def test_the_openapi_schema_describes_the_summary_and_the_upload() -> None:
     schemas = app.openapi()["components"]["schemas"]
 
     assert "ReportSummary" in schemas
+    assert "lane_counts" in schemas["ReportSummary"]["properties"]
     assert set(schemas["Body_analyses_create"]["properties"]) == {"file", "options"}
 
 

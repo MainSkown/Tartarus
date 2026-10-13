@@ -1,18 +1,13 @@
-from collections.abc import AsyncIterator
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
-from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.analyses.ports import ReportOutcome
 from app.analyses.runner import Runner, RunnerConfig
 from app.db import analysis_repository as repository
-from app.db.base import Base
 from app.db.models.analysis import AnalysisPhase, AnalysisStatus, Severity
-from tests.analyses.fakes import CAPE_STARTED_ON, FakeCape, FakeReports, FakeSamples
+from tests.analyses.fakes import CAPE_STARTED_ON, FakeCape, FakeIngester, FakeReports, FakeSamples
 from tests.test_analysis_repository import OPTIONS, SHA_A, make_sample
 
 pytestmark = pytest.mark.integration
@@ -23,22 +18,6 @@ OUTCOME = ReportOutcome(
     detected_families=["emotet", "trickbot"],
     summary={"signatures": [{"name": "persistence", "severity": 3}], "process_count": 4},
 )
-
-
-@pytest.fixture
-async def session_factory(postgres_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    """A database of its own, built from the models, so the runner meets real Postgres types."""
-    name = f"runner_{uuid4().hex[:12]}"
-    admin = create_async_engine(postgres_url, isolation_level="AUTOCOMMIT")
-    async with admin.connect() as connection:
-        await connection.execute(text(f'CREATE DATABASE "{name}"'))
-    await admin.dispose()
-    url = make_url(postgres_url).set(database=name).render_as_string(hide_password=False)
-    engine = create_async_engine(url)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
-    await engine.dispose()
 
 
 async def test_an_analysis_goes_from_queued_to_done_on_postgres(
@@ -55,6 +34,7 @@ async def test_an_analysis_goes_from_queued_to_done_on_postgres(
         cape,
         FakeSamples(plain),
         reports,
+        FakeIngester(),
         RunnerConfig(
             cape_storage_path=tmp_path,
             guest_label="win",
@@ -79,7 +59,7 @@ async def test_an_analysis_goes_from_queued_to_done_on_postgres(
     assert done.cape_task_id == 100
     assert (done.score, done.max_severity) == (7.5, Severity.HIGH)
     assert done.detected_families == ["emotet", "trickbot"]
-    assert done.summary == OUTCOME.summary
+    assert done.summary == {**OUTCOME.summary, "lane_counts": {}}
     assert done.started_at == CAPE_STARTED_ON
     assert done.finished_at is not None
     assert reports.paths == [tmp_path / "analyses" / "100" / "reports" / "report.json"]

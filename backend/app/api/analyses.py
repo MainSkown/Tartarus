@@ -14,17 +14,20 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.exceptions import RequestValidationError
+from opensearchpy.exceptions import OpenSearchException
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analyses.ports import RunnerControl
-from app.api.dependencies import get_cape, get_runner, get_sample_store
+from app.api.dependencies import get_cape, get_event_index, get_runner, get_sample_store
 from app.cape.client import CapeClient
 from app.cape.errors import CapeError, CapeTaskNotFound
 from app.db.analysis_repository import (
+    REINGESTABLE_STATUSES,
     AnalysisFilter,
     add_sample_if_new,
+    begin_reingest,
     cancel_if_queued,
     count_analyses,
     create_analysis,
@@ -48,6 +51,7 @@ from app.samples.store import (
 )
 from app.schemas.analysis import AnalysisRead
 from app.schemas.analysis_requests import AnalysisOptions, AnalysisPage
+from app.search.index import EventIndex
 
 logger = logging.getLogger(__name__)
 
@@ -138,22 +142,51 @@ async def cancel(
     return await _read_one(session, analysis)
 
 
+@router.post("/{analysis_id}/reingest")
+async def reingest(
+    analysis_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    runner: Annotated[RunnerControl, Depends(get_runner)],
+) -> AnalysisRead:
+    """Indexes a finished analysis's report again. `409` unless it is `done` or `report_failed`,
+    or while another analysis is active.
+    """
+    analysis = await _existing(session, analysis_id)
+    started = await begin_reingest(session, analysis_id)
+    await session.refresh(analysis)
+    if not started:
+        raise HTTPException(409, _reason_not_reingestible(analysis))
+    runner.nudge()
+    return await _read_one(session, analysis)
+
+
 @router.delete("/{analysis_id}", status_code=204)
 async def delete(
     analysis_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
     cape: Annotated[CapeClient, Depends(get_cape)],
+    index: Annotated[EventIndex, Depends(get_event_index)],
     store: Annotated[SampleStore, Depends(get_sample_store)],
 ) -> Response:
-    """Removes the analysis, its CAPE task, and its sample once nothing else uses it."""
+    """Removes the analysis, its CAPE task, its event index, and its sample once unused."""
     analysis = await _existing(session, analysis_id)
     if analysis.status in ACTIVE_STATUSES:
         raise HTTPException(409, f"Analysis {analysis_id} is still {analysis.status.value}")
     if analysis.cape_task_id is not None:
         await _delete_cape_task(cape, analysis.cape_task_id)
+    await _drop_event_index(index, analysis_id)
     await delete_analysis(session, analysis_id)
     await _discard_unreferenced_sample(session, store, analysis.sample_sha256)
     return Response(status_code=204)
+
+
+def _reason_not_reingestible(analysis: Analysis) -> str:
+    if analysis.status not in REINGESTABLE_STATUSES:
+        return (
+            f"Analysis {analysis.id} is {analysis.status.value}; "
+            "only a done or report_failed analysis can be re-ingested"
+        )
+    return f"Analysis {analysis.id} cannot be re-ingested while another analysis is active"
 
 
 async def _existing(session: AsyncSession, analysis_id: int) -> Analysis:
@@ -238,3 +271,11 @@ async def _delete_cape_task(cape: CapeClient, task_id: int) -> None:
         return
     except CapeError as error:
         logger.warning("CAPE task %s was left behind: %s", task_id, error)
+
+
+async def _drop_event_index(index: EventIndex, analysis_id: int) -> None:
+    # An index that cannot be removed must not make the analysis undeletable.
+    try:
+        await index.drop(analysis_id)
+    except OpenSearchException as error:
+        logger.warning("The event index of analysis %s was left behind: %s", analysis_id, error)
