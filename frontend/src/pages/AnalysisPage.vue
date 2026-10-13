@@ -62,11 +62,10 @@ function selectTab(tab: string): void {
 }
 
 watch(analysisId, () => (liveSession.value = false), { flush: 'sync' })
-watch(
-  [analysis, requestedTab],
-  ([current, tab]) => (liveSession.value = nextLiveSession(liveSession.value, tab, current)),
-  { immediate: true, flush: 'sync' },
-)
+watch(analysis, (current) => (liveSession.value = nextLiveSession(liveSession.value, current)), {
+  immediate: true,
+  flush: 'sync',
+})
 watch(analysisId, load)
 onMounted(load)
 onBeforeUnmount(store.stopPolling)

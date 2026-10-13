@@ -119,14 +119,14 @@ export interface StreamContext {
 export function streamEmptyMessage({ status, processCount, queuePosition, filtered }: StreamContext): string {
   if (status === 'queued') return queuePosition === null ? 'queued, waiting for the guest' : `queued, position ${queuePosition}`
   if (filtered) return 'no events match the filter'
-  if (isTerminalStatus(status)) return 'the run is over, no events were streamed'
+  if (isTerminalStatus(status)) return 'the run is over; this view shows only what it streamed while open, see the other tabs'
   if (processCount === 0) return 'starting the guest...'
   return 'connected, no events yet'
 }
 
 export function processesEmptyMessage({ status, queuePosition }: Pick<StreamContext, 'status' | 'queuePosition'>): string {
   if (status === 'queued') return streamEmptyMessage({ status, processCount: 0, queuePosition, filtered: false })
-  return isTerminalStatus(status) ? 'no process was seen before the run ended' : 'starting the guest...'
+  return isTerminalStatus(status) ? 'the run is over; this view saw no process, see the PROCESSES tab' : 'starting the guest...'
 }
 
 const FINAL_REPORT_UNAFFECTED = 'the final report is not affected'

@@ -41,18 +41,13 @@ export function selectableTab(key: string, liveSession = false): string {
 }
 
 /**
- * Whether the LIVE tab is listed. It starts when an active analysis is opened on no tab or on
- * LIVE, survives the analysis finishing (so the user is not thrown out of the tab they are on),
- * and ends when they pick another tab.
+ * Whether the LIVE tab is listed. It starts as soon as the analysis is seen active, on whatever
+ * tab the page was opened, and stays for the rest of the page session: the user can leave it for
+ * another tab and come back, also after the run has finished. An analysis opened already finished
+ * never gets it.
  */
-export function nextLiveSession(
-  wasLive: boolean,
-  requestedTab: string | undefined,
-  analysis: AnalysisRead | undefined,
-): boolean {
-  if (requestedTab !== undefined && requestedTab !== LIVE_TAB) return false
-  if (analysis === undefined) return wasLive
-  return wasLive || isLiveStatus(analysis.status)
+export function nextLiveSession(wasLive: boolean, analysis: AnalysisRead | undefined): boolean {
+  return wasLive || (analysis !== undefined && isLiveStatus(analysis.status))
 }
 
 export function arrivalNote(key: string): string {

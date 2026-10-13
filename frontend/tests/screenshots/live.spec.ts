@@ -358,8 +358,44 @@ test('live-finished-handover', async ({ page }) => {
 
   await page.getByRole('button', { name: '[SUMMARY]' }).click()
   await expect(page).toHaveURL(/\/analyses\/45\/summary$/)
-  await expect(page.locator('.analysis-tabs button', { hasText: 'LIVE' })).toHaveCount(0)
   await expect(page.locator('.analysis-summary')).toBeVisible()
+  await expect(page.locator('.analysis-tabs button', { hasText: 'LIVE' }), 'LIVE stays listed after leaving it').toHaveCount(1)
+
+  await page.locator('.analysis-tabs button', { hasText: 'LIVE' }).click()
+  await expect(page).toHaveURL(/\/analyses\/45\/live$/)
+  await live.connected(2)
+  live.send('status', { status: 'done', phase: 'final', elapsed_s: 180, remaining_s: 0 })
+  live.send('phase', { phase: 'final' })
+  live.close(1000)
+  await expect(page.locator('[data-tab="live"]')).toBeVisible()
+  await expect(page.locator('[data-live="finished"] img'), 'the finished panel is back').toBeVisible()
+  await expect(page.locator('.analysis-tabs [aria-selected="true"]')).toHaveText('LIVE')
+  await expectNoVerticalScroll(page)
+  await snapshot(page, 'live-returned-after-the-run')
+})
+
+test('live-leave-and-return-while-running', async ({ page }) => {
+  await mockShell(page, GUEST_READY_SYSTEM)
+  await mockAnalyses(page, { items: [runningAnalysis()] })
+  await mockEvolvingAnalysis(page, () => runningAnalysis())
+  await mockViews(page)
+  const live = await mockLiveSocket(page, ID)
+  await page.goto(ROUTE)
+  await live.connected()
+  stream(live)
+  await expect(page.locator('.live-event').first()).toBeVisible()
+
+  await page.locator('.analysis-tabs button', { hasText: 'SUMMARY' }).click()
+  await expect(page.locator('.analysis-summary')).toBeVisible()
+  await expect(page.locator('.analysis-tabs button', { hasText: 'LIVE' }), 'LIVE stays listed').toHaveCount(1)
+
+  await page.locator('.analysis-tabs button', { hasText: 'LIVE' }).click()
+  await live.connected(2)
+  stream(live)
+  await expect(page.locator('[data-tab="live"]')).toBeVisible()
+  await expect(page.locator('.live-event').first()).toBeVisible()
+  await expect(page.locator('.analysis-tabs [aria-selected="true"]')).toHaveText('LIVE')
+  await expectNoVerticalScroll(page)
 })
 
 test('live-finished-narrow-600', async ({ page }) => {

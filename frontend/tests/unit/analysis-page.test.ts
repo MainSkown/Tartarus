@@ -252,11 +252,25 @@ describe('AnalysisPage live tab', () => {
     expect(wrapper.find('[data-tab="live"]').attributes('data-analysis')).toBe('42')
   })
 
-  it('opens an active analysis on another tab when the URL names one, and lists no LIVE tab then', async () => {
+  it('opens an active analysis on the tab the URL names, and still lists LIVE', async () => {
     route.params = { id: '42', tab: 'summary' }
     const wrapper = await mountPage(active())
     expect(wrapper.find('.analysis-summary').exists()).toBe(true)
-    expect(tabLabels(wrapper)).not.toContain('LIVE')
+    expect(tabLabels(wrapper)[0]).toBe('LIVE')
+    expect(selectedTabs(wrapper)).toEqual(['SUMMARY'])
+  })
+
+  it('lets the user leave LIVE for another tab and come back to it while the analysis runs', async () => {
+    const wrapper = await mountPage(active())
+    route.params = { id: '42', tab: 'processes' }
+    await flushPromises()
+    expect(tabLabels(wrapper)[0]).toBe('LIVE')
+    expect(wrapper.find('[data-tab="live"]').exists()).toBe(false)
+
+    route.params = { id: '42', tab: 'live' }
+    await flushPromises()
+    expect(wrapper.find('[data-tab="live"]').exists()).toBe(true)
+    expect(selectedTabs(wrapper)).toEqual(['LIVE'])
   })
 
   it('opens a finished analysis on SUMMARY with no LIVE tab', async () => {
@@ -286,20 +300,20 @@ describe('AnalysisPage live tab', () => {
     expect(wrapper.find('.analysis-summary').exists()).toBe(false)
   })
 
-  it('removes the LIVE tab once the user leaves it after the analysis finished', async () => {
+  it('keeps the LIVE tab listed after the analysis finished, so the user can come back to it', async () => {
     const wrapper = await mountPage(active())
     analysesReadMock.mockResolvedValue(succeeded(analysisWithStatus('done', { summary: NO_DETECTIONS_SUMMARY })))
     await vi.advanceTimersByTimeAsync(POLL_MS)
 
     route.params = { id: '42', tab: 'summary' }
     await flushPromises()
-    expect(tabLabels(wrapper)).not.toContain('LIVE')
+    expect(tabLabels(wrapper)[0]).toBe('LIVE')
     expect(wrapper.find('.analysis-summary').exists()).toBe(true)
 
     route.params = { id: '42', tab: 'live' }
     await flushPromises()
-    expect(tabLabels(wrapper)).not.toContain('LIVE')
-    expect(wrapper.find('.analysis-summary').exists()).toBe(true)
+    expect(wrapper.find('[data-tab="live"]').exists()).toBe(true)
+    expect(selectedTabs(wrapper)).toEqual(['LIVE'])
   })
 
   it('goes to the tab the live view asks for', async () => {

@@ -61,36 +61,24 @@ describe('nextLiveSession', () => {
   const running = analysisWithStatus('running')
   const done = analysisWithStatus('done')
 
-  it('starts when an active analysis is opened with no tab or on LIVE', () => {
-    expect(nextLiveSession(false, undefined, running)).toBe(true)
-    expect(nextLiveSession(false, LIVE_TAB, running)).toBe(true)
-  })
-
-  it('starts for a queued analysis as well', () => {
-    expect(nextLiveSession(false, undefined, analysisWithStatus('queued'))).toBe(true)
-  })
+  it.each(['queued', 'starting', 'running', 'processing', 'ingesting'] as const)(
+    'starts for an analysis that is %s',
+    (status) => {
+      expect(nextLiveSession(false, analysisWithStatus(status))).toBe(true)
+    },
+  )
 
   it('never starts for an analysis opened already finished', () => {
-    expect(nextLiveSession(false, undefined, done)).toBe(false)
-    expect(nextLiveSession(false, LIVE_TAB, done)).toBe(false)
+    expect(nextLiveSession(false, done)).toBe(false)
   })
 
-  it('stays on when the analysis finishes during the session', () => {
-    expect(nextLiveSession(true, undefined, done)).toBe(true)
-    expect(nextLiveSession(true, LIVE_TAB, done)).toBe(true)
+  it('stays on when the analysis finishes during the session, so the user can come back to it', () => {
+    expect(nextLiveSession(true, done)).toBe(true)
+    expect(nextLiveSession(true, running)).toBe(true)
   })
 
-  it('ends when the user picks another tab', () => {
-    expect(nextLiveSession(true, 'summary', running)).toBe(false)
-    expect(nextLiveSession(true, 'processes', done)).toBe(false)
-  })
-
-  it('does not start on an active analysis when the user opened another tab', () => {
-    expect(nextLiveSession(false, 'summary', running)).toBe(false)
-  })
-
-  it('waits for the analysis to load', () => {
-    expect(nextLiveSession(false, undefined, undefined)).toBe(false)
-    expect(nextLiveSession(true, undefined, undefined)).toBe(true)
+  it('keeps its state until the analysis has loaded', () => {
+    expect(nextLiveSession(true, undefined)).toBe(true)
+    expect(nextLiveSession(false, undefined)).toBe(false)
   })
 })

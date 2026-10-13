@@ -191,7 +191,7 @@ describe('streamEmptyMessage', () => {
   })
 
   it('says the run is over for a finished analysis', () => {
-    expect(streamEmptyMessage({ ...base, status: 'done', processCount: 1 })).toBe('the run is over, no events were streamed')
+    expect(streamEmptyMessage({ ...base, status: 'done', processCount: 1 })).toBe('the run is over; this view shows only what it streamed while open, see the other tabs')
   })
 })
 
@@ -199,7 +199,7 @@ describe('processesEmptyMessage', () => {
   it('follows the run: queued, starting, then over', () => {
     expect(processesEmptyMessage({ status: 'queued', queuePosition: 1 })).toBe('queued, position 1')
     expect(processesEmptyMessage({ status: 'running', queuePosition: null })).toBe('starting the guest...')
-    expect(processesEmptyMessage({ status: 'failed', queuePosition: null })).toBe('no process was seen before the run ended')
+    expect(processesEmptyMessage({ status: 'failed', queuePosition: null })).toBe('the run is over; this view saw no process, see the PROCESSES tab')
   })
 })
 
