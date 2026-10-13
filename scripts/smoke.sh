@@ -61,6 +61,13 @@ elif check == "distinct-build-image-tags":
     sys.exit(1 if collisions else 0)
 elif check == "cape-no-ports":
     problems = [f"cape publishes {port.get('published')}" for name, port in published if name == "cape"]
+elif check == "cape-iso-readonly":
+    cape = services.get("cape", {})
+    iso_mounts = [v for v in cape.get("volumes", []) if v.get("target") == "/data/iso"]
+    if not iso_mounts:
+        problems = ["cape does not mount /data/iso"]
+    else:
+        problems = ["cape mounts /data/iso read-write" for v in iso_mounts if not v.get("read_only")]
 elif check == "only-cape-privileged":
     problems = [f"{name} is privileged" for name, svc in services.items() if svc.get("privileged") and name != "cape"]
 elif check == "no-host-network":
@@ -118,6 +125,7 @@ check_static() {
         check "$mode: every published port binds 127.0.0.1" policy_violations loopback-only "$config"
         check "$mode: no service mounts the Docker socket" policy_violations no-docker-socket "$config"
         check "$mode: cape publishes no ports" policy_violations cape-no-ports "$config"
+        check "$mode: cape mounts ./data/iso read-only" policy_violations cape-iso-readonly "$config"
         check "$mode: no service other than cape is privileged" policy_violations only-cape-privileged "$config"
         check "$mode: no service uses the host network" policy_violations no-host-network "$config"
         check "$mode: built images are not shared with the other compose file" \

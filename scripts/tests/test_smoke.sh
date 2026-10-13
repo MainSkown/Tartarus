@@ -12,7 +12,7 @@ STATUS=0
 
 port_entry() { printf '{"mode":"ingress","host_ip":"%s","target":%s,"published":"%s","protocol":"tcp"}' "$1" "$2" "$3"; }
 
-DEFAULT_CAPE='{"profiles":["cape"],"image":"tartarus-cape:latest","build":{},"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"networks":{"tartarus-internal":null}}'
+DEFAULT_CAPE='{"profiles":["cape"],"image":"tartarus-cape:latest","build":{},"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"volumes":[{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":true}],"networks":{"tartarus-internal":null}}'
 
 write_prod_config() {
     local frontend_ip=$1 backend_ports=$2 backend_image=${3:-tartarus-backend:latest} frontend_image=${4:-tartarus-frontend:latest}
@@ -169,6 +169,18 @@ test_static_rejects_a_privileged_service_other_than_cape() {
     write_prod_config 127.0.0.1 "" "" "" "" '"privileged":true'
     run_smoke static
     expect_fail_mentioning "backend is privileged"
+}
+
+test_static_rejects_cape_mounting_the_iso_read_write() {
+    write_prod_config 127.0.0.1 "" "" "" '{"profiles":["cape"],"privileged":true,"volumes":[{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":false}],"networks":{"tartarus-internal":null}}'
+    run_smoke static
+    expect_fail_mentioning "read-write"
+}
+
+test_static_rejects_cape_not_mounting_the_iso() {
+    write_prod_config 127.0.0.1 "" "" "" '{"profiles":["cape"],"privileged":true,"networks":{"tartarus-internal":null}}'
+    run_smoke static
+    expect_fail_mentioning "does not mount /data/iso"
 }
 
 test_static_rejects_host_networking() {

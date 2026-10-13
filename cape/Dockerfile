@@ -86,7 +86,7 @@ COPY --from=cape-build /build/venv-runtime-packages /tmp/cape/
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl cron dnsmasq-base gettext-base iproute2 iptables libvirt-clients \
         libvirt-daemon-system lsb-release nftables p7zip-full procps python3 software-properties-common \
-        sudo supervisor tcpdump unzip upx-ucl inetsim \
+        sudo supervisor swtpm swtpm-tools tcpdump unzip upx-ucl xorriso inetsim \
         $(cat /tmp/qemu/runtime-packages /tmp/guacd/runtime-packages /tmp/cape/venv-runtime-packages) \
         /tmp/qemu/qemu.deb \
     && rm -rf /tmp/qemu /tmp/guacd /tmp/cape
@@ -98,6 +98,18 @@ RUN sed -i 's/\$server->main_loop;/$server->loop_once(10) while 1;/' /usr/share/
 COPY --from=qemu-build /out/bios.bin /out/bios-256k.bin /usr/share/qemu/
 COPY --from=guacd-build /out/root/usr/local /usr/local
 RUN ldconfig
+# Windows 11 needs Secure Boot with Microsoft keys enrolled. Ubuntu's ovmf package ships exactly
+# that (OVMF_*_4M.ms.fd), but installing the package collides with the custom qemu.deb over a
+# firmware JSON descriptor, so take only the two firmware images from it instead.
+RUN cd /tmp && apt-get download ovmf \
+    && dpkg-deb -x ovmf_*.deb /tmp/ovmf \
+    && mkdir -p /usr/share/OVMF \
+    && cp /tmp/ovmf/usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_CODE_4M.ms.fd \
+    && cp /tmp/ovmf/usr/share/OVMF/OVMF_VARS_4M.ms.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd \
+    && rm -rf /tmp/ovmf /tmp/ovmf_*.deb
+# libvirt 10.0 aborts every firmware lookup on the loongarch64 descriptor QEMU 9.2 installs
+# ("unknown architecture"), so keep only the x86_64 descriptors.
+RUN find /usr/share/qemu/firmware -name '*.json' ! -name '*x86_64*' -delete
 
 RUN groupadd --system cape \
     && useradd --system --gid cape --home-dir /home/cape --create-home --shell /bin/bash cape \
