@@ -1,0 +1,1 @@
+{"error":[],"data":{"version":"2.5","hostname":"c2fed6f25013","machines":{"total":1,"available":1},"tasks":{"total":6,"pending":0,"running":0,"completed":0,"reported":6},"server":{"storage":{"free":501,"total":1874,"used":1277,"used_by":"71.8%"},"ram":{"free":0,"total":30,"used":7}}}}

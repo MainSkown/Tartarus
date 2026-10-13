@@ -1,0 +1,1 @@
+{"data":[{"id":25,"name":"win","label":"win","arch":"x64","ip":"192.168.150.10","platform":"windows","interface":"tt-guest","snapshot":"tartarus-clean","locked":false,"locked_changed_on":null,"status":"poweroff","status_changed_on":"2026-10-13 12:24:18","resultserver_ip":"192.168.150.1","resultserver_port":"2042","reserved":false,"tags":["win11","windows"]}],"error":[]}

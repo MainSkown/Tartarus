@@ -72,6 +72,22 @@ in its report instead of diverging.
 | CAPE config | `callback` reporting enabled in `cape/conf/reporting.conf`. `verify-guest.sh` overrides it temporarily through `reporting.conf.d/callback.conf` and removes only that file |
 | API token | The backend sends `Authorization: Token $CAPE_API_TOKEN` |
 
+### CAPE API behaviour (captured from the real container, fixtures in `backend/tests/fixtures/cape/`)
+- **Errors come back as HTTP 200** with `{"error": true, "error_value": "..."}`; only a missing or
+  wrong token gives a real 401 (`{"detail": "Authentication credentials were not provided."}`).
+  Success spells the field two ways: `{"error": false, "data": ...}` for task calls and
+  `{"error": [], "data": ...}` for `cuckoo/status` and `machines/list`. The client treats any
+  truthy `error` (true or a non-empty list) as a failure, and an unreadable body as one too.
+- `tasks/status/{id}/` returns `{"error": false, "data": "reported"}`; an unknown task returns
+  `{"error": true, "error_value": "Task does not exist"}`.
+- **`tasks/delete/{id}/` is disabled by default** ("Task Deletion API is Disabled"). A3 enables
+  it in `cape/conf/api.conf` (the `[taskdelete]` section; confirm the name in CAPE's source) and
+  the client's delete relies on that.
+- `machines/list/` shows an idle guest as `status: "poweroff"`, `locked: false`, `reserved: false`:
+  the guest is **ready when it is listed under `GUEST_LABEL` and not locked**, not when it runs.
+- `tasks/view/{id}/` carries `added_on`, `started_on`, `completed_on`, `reporting_finished_on`,
+  `status`, `machine`, `route`, `package` and `timedout`; those feed the analysis timings.
+
 ### Analysis states
 `queued` (not yet sent to CAPE), `starting` (CAPE pending), `running`, `processing` (CAPE
 completed or reporting), `ingesting` (CAPE reported, reading the report), `done`, `failed`,
@@ -114,8 +130,8 @@ Models are the cheapest tier that can do the job. Each agent gets only the spec 
 | ID | Task | Model | Deliverables | Tests first |
 |---|---|---|---|---|
 | **A1** | `sample` and `analysis` tables | Haiku | Models, schemas, repository functions, Alembic migration `0002` (applies cleanly on a database that already has `0001`) | Create, read, list with filters and paging, delete cascades; migration upgrade and downgrade on a real Postgres (testcontainers) |
-| **A2** | CAPE client | Sonnet | `app/cape/`: async client for `tasks/create/file` (with `machine`, `route`, `timeout`, `package`), `tasks/status`, `tasks/delete`, `cuckoo/status`, `machines/list`; token auth; typed results; one status mapper onto the analysis states; errors that name the failing call without leaking the token | Against a fake HTTP transport using responses captured from the real CAPE (401 without token, status progression, a failed task); the mapper covers every `TASK_*` value from CAPE's source |
-| **A3** | Compose and CAPE wiring | Sonnet | `cape` without a profile, `backend` env and mounts, `sample-store` volume, the callback in `cape/conf/reporting.conf`, `.env.example`, `verify-guest.sh` adjusted so its temporary callback leaves the permanent one alone, `make preflight` and README notes | `smoke.sh static` cases first (cape-storage mounted read-only into backend; only `cape` privileged; no new published ports; both compose files agree on image tags); then `make up` healthy and `make verify-guest` still 12 of 12 |
+| **A2** | CAPE client | Sonnet | Owns the new backend settings and the `httpx` runtime dependency. `app/cape/`: async client for `tasks/create/file` (with `machine`, `route`, `timeout`, `package`), `tasks/status`, `tasks/delete`, `cuckoo/status`, `machines/list`; token auth; typed results; one status mapper onto the analysis states; errors that name the failing call without leaking the token | Against a fake HTTP transport serving the captured fixtures (401 without a token, `error: true` on HTTP 200, both spellings of `error`, status progression, a failed task); the mapper covers every `TASK_*` value from CAPE's source |
+| **A3** | Compose and CAPE wiring | Sonnet | `cape` without a profile, `[taskdelete]` enabled in `cape/conf/api.conf`, `backend` env and mounts, `sample-store` volume, the callback in `cape/conf/reporting.conf`, `.env.example`, `verify-guest.sh` adjusted so its temporary callback leaves the permanent one alone, `make preflight` and README notes | `smoke.sh static` cases first (cape-storage mounted read-only into backend; only `cape` privileged; no new published ports; both compose files agree on image tags); then `make up` healthy and `make verify-guest` still 12 of 12 |
 
 ### Wave 2 (after Wave 1; four agents, disjoint files)
 
