@@ -152,10 +152,6 @@ async def test_bulk_index_rejects_an_event_without_an_id(events_index: EventInde
         await events_index.bulk_index(ANALYSIS_ID, [{"process": {"pid": 1}}])
 
 
-async def test_bulk_index_accepts_dotted_field_names(
-    client: AsyncOpenSearch, events_index: EventIndex
-) -> None:
-    await events_index.bulk_index(ANALYSIS_ID, [{"event.id": "dotted-1", "process.pid": 9}])
-    await events_index.refresh(ANALYSIS_ID)
-
-    assert await count_where(client, {"term": {"process.pid": 9}}) == 1
+async def test_bulk_index_takes_only_nested_events(events_index: EventIndex) -> None:
+    with pytest.raises(IndexingError, match=r"event\.id"):
+        await events_index.bulk_index(ANALYSIS_ID, [{"event.id": "dotted-1", "process.pid": 9}])

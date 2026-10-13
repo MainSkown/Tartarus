@@ -20,8 +20,6 @@ def index_name(analysis_id: int) -> str:
 
 
 def _event_id(event: dict[str, Any]) -> str:
-    if "event.id" in event:
-        return str(event["event.id"])
     try:
         return str(event["event"]["id"])
     except (KeyError, TypeError):

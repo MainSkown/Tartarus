@@ -103,7 +103,7 @@ def _signatures(report: dict[str, Any]) -> list[SignatureSummary]:
     parsed = [
         SignatureSummary(
             name=str(item.get("name", "")),
-            severity=_severity(item.get("severity")),
+            severity=severity_from_cape(item.get("severity")),
             description=str(item.get("description", "")),
         )
         for item in (raw if isinstance(raw, list) else [])
@@ -112,7 +112,7 @@ def _signatures(report: dict[str, Any]) -> list[SignatureSummary]:
     return sorted(parsed, key=lambda item: SEVERITY_ORDER.index(item.severity), reverse=True)
 
 
-def _severity(cape_severity: object) -> Severity:
+def severity_from_cape(cape_severity: object) -> Severity:
     level = _integer(cape_severity) or 0
     if level >= CRITICAL_FROM_CAPE_SEVERITY:
         return Severity.CRITICAL
