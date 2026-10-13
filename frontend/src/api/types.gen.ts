@@ -5,6 +5,128 @@ export type ClientOptions = {
 };
 
 /**
+ * AnalysisPage
+ */
+export type AnalysisPage = {
+    /**
+     * Items
+     */
+    items: Array<AnalysisRead>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * AnalysisPhase
+ */
+export type AnalysisPhase = 'live' | 'final';
+
+/**
+ * AnalysisRead
+ */
+export type AnalysisRead = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Sample Sha256
+     */
+    sample_sha256: string;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Cape Task Id
+     */
+    cape_task_id: number | null;
+    status: AnalysisStatus;
+    phase: AnalysisPhase;
+    /**
+     * Options
+     */
+    options: {
+        [key: string]: unknown;
+    };
+    /**
+     * Score
+     */
+    score: number | null;
+    max_severity: Severity | null;
+    /**
+     * Detected Families
+     */
+    detected_families: Array<string>;
+    /**
+     * Event Count
+     */
+    event_count: number;
+    /**
+     * Disk Bytes
+     */
+    disk_bytes: number;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Submitted At
+     */
+    submitted_at: string;
+    /**
+     * Started At
+     */
+    started_at: string | null;
+    /**
+     * Finished At
+     */
+    finished_at: string | null;
+    summary: ReportSummary | null;
+};
+
+/**
+ * AnalysisStatus
+ */
+export type AnalysisStatus = 'queued' | 'starting' | 'running' | 'processing' | 'ingesting' | 'done' | 'failed' | 'report_failed' | 'cancelled';
+
+/**
+ * AttackTechnique
+ *
+ * CAPE gives technique ids without names; the signatures that raised one say what it means.
+ */
+export type AttackTechnique = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Signatures
+     */
+    signatures: Array<string>;
+};
+
+/**
+ * Body_analyses_create
+ */
+export type BodyAnalysesCreate = {
+    /**
+     * File
+     *
+     * The sample to detonate.
+     */
+    file: Blob | File;
+    /**
+     * Options
+     *
+     * JSON object: `route`, `timeout` (60 to 1200 seconds) and `package`.
+     */
+    options?: string;
+};
+
+/**
  * ComponentHealth
  */
 export type ComponentHealth = {
@@ -66,7 +188,73 @@ export type HealthMessage = {
  */
 export type HealthStatus = 'ok' | 'degraded' | 'down';
 
+/**
+ * NetworkCounts
+ */
+export type NetworkCounts = {
+    /**
+     * Dns
+     */
+    dns?: number;
+    /**
+     * Hosts
+     */
+    hosts?: number;
+    /**
+     * Tcp
+     */
+    tcp?: number;
+};
+
+/**
+ * ReportSummary
+ *
+ * What the Dashboard and the analysis summary tab show; stored as `analysis.summary`.
+ */
+export type ReportSummary = {
+    /**
+     * Duration S
+     */
+    duration_s?: number | null;
+    /**
+     * Process Count
+     */
+    process_count?: number;
+    /**
+     * Signatures
+     */
+    signatures?: Array<SignatureSummary>;
+    /**
+     * Techniques
+     */
+    techniques?: Array<AttackTechnique>;
+    network?: NetworkCounts;
+    /**
+     * Files Written
+     */
+    files_written?: number;
+    /**
+     * Registry Keys Written
+     */
+    registry_keys_written?: number;
+    sample?: SampleSummary;
+};
+
 export type Route = 'none' | 'drop' | 'internet' | 'inetsim' | 'tor' | 'vpn' | 'wireguard' | 'socks5';
+
+/**
+ * SampleSummary
+ */
+export type SampleSummary = {
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Type
+     */
+    type?: string | null;
+};
 
 /**
  * SettingsBody
@@ -89,6 +277,26 @@ export type SettingsBody = {
      * Disk Warn Gb
      */
     disk_warn_gb?: number;
+};
+
+/**
+ * Severity
+ */
+export type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+
+/**
+ * SignatureSummary
+ */
+export type SignatureSummary = {
+    /**
+     * Name
+     */
+    name: string;
+    severity: Severity;
+    /**
+     * Description
+     */
+    description: string;
 };
 
 /**
@@ -175,6 +383,165 @@ export type SettingsReplaceResponses = {
 };
 
 export type SettingsReplaceResponse = SettingsReplaceResponses[keyof SettingsReplaceResponses];
+
+export type AnalysesListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Q
+         *
+         * Substring of the file name or the SHA256.
+         */
+        q?: string | null;
+        /**
+         * Status
+         */
+        status?: AnalysisStatus | null;
+    };
+    url: '/api/analyses';
+};
+
+export type AnalysesListErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesListError = AnalysesListErrors[keyof AnalysesListErrors];
+
+export type AnalysesListResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisPage;
+};
+
+export type AnalysesListResponse = AnalysesListResponses[keyof AnalysesListResponses];
+
+export type AnalysesCreateData = {
+    body: BodyAnalysesCreate;
+    path?: never;
+    query?: never;
+    url: '/api/analyses';
+};
+
+export type AnalysesCreateErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesCreateError = AnalysesCreateErrors[keyof AnalysesCreateErrors];
+
+export type AnalysesCreateResponses = {
+    /**
+     * Successful Response
+     */
+    201: AnalysisRead;
+};
+
+export type AnalysesCreateResponse = AnalysesCreateResponses[keyof AnalysesCreateResponses];
+
+export type AnalysesDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}';
+};
+
+export type AnalysesDeleteErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesDeleteError = AnalysesDeleteErrors[keyof AnalysesDeleteErrors];
+
+export type AnalysesDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AnalysesDeleteResponse = AnalysesDeleteResponses[keyof AnalysesDeleteResponses];
+
+export type AnalysesReadData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}';
+};
+
+export type AnalysesReadErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesReadError = AnalysesReadErrors[keyof AnalysesReadErrors];
+
+export type AnalysesReadResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisRead;
+};
+
+export type AnalysesReadResponse = AnalysesReadResponses[keyof AnalysesReadResponses];
+
+export type AnalysesCancelData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/cancel';
+};
+
+export type AnalysesCancelErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesCancelError = AnalysesCancelErrors[keyof AnalysesCancelErrors];
+
+export type AnalysesCancelResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisRead;
+};
+
+export type AnalysesCancelResponse = AnalysesCancelResponses[keyof AnalysesCancelResponses];
 
 export type SystemWsMessageSchemasData = {
     body?: never;
