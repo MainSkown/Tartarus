@@ -2,20 +2,12 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
-
 from app.db.models.analysis import Severity
+from app.schemas.base import ApiModel
 from app.schemas.views_events import ProcessRef
 
 
-class _Finding(BaseModel):
-    """Lists and nullable fields are required in the OpenAPI schema, so the client never
-    has to guess whether a missing key means empty."""
-
-    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
-
-
-class RelatedEvent(_Finding):
+class RelatedEvent(ApiModel):
     id: str
     time: datetime
     lane: str
@@ -24,7 +16,7 @@ class RelatedEvent(_Finding):
     process: ProcessRef | None
 
 
-class Detection(_Finding):
+class Detection(ApiModel):
     id: str
     name: str
     description: str | None
@@ -39,17 +31,17 @@ class Detection(_Finding):
     related_event_total: int
 
 
-class DetectionGroup(_Finding):
+class DetectionGroup(ApiModel):
     ruleset: str
     detections: list[Detection]
 
 
-class DetectionsView(_Finding):
+class DetectionsView(ApiModel):
     groups: list[DetectionGroup]
     total: int
 
 
-class AttackTechniqueHit(_Finding):
+class AttackTechniqueHit(ApiModel):
     id: str
     name: str | None
     hit_count: int
@@ -57,13 +49,13 @@ class AttackTechniqueHit(_Finding):
     detection_ids: list[str]
 
 
-class AttackTactic(_Finding):
+class AttackTactic(ApiModel):
     id: str
     name: str
     techniques: list[AttackTechniqueHit]
 
 
-class AttackMatrix(_Finding):
+class AttackMatrix(ApiModel):
     tactics: list[AttackTactic]
     attack_version: str
 
@@ -78,7 +70,7 @@ class IocType(StrEnum):
     FILE = "file"
 
 
-class Ioc(_Finding):
+class Ioc(ApiModel):
     type: IocType
     value: str
     count: int
@@ -87,12 +79,12 @@ class Ioc(_Finding):
     process: ProcessRef | None
 
 
-class IocsView(_Finding):
+class IocsView(ApiModel):
     iocs: list[Ioc]
     truncated_types: list[IocType]
 
 
-class Artifact(_Finding):
+class Artifact(ApiModel):
     id: str
     name: str
     size: int | None
@@ -106,19 +98,19 @@ class Artifact(_Finding):
     downloadable: bool
 
 
-class Screenshot(_Finding):
+class Screenshot(ApiModel):
     n: int
     name: str
     size: int
 
 
-class ExtractedConfig(_Finding):
+class ExtractedConfig(ApiModel):
     id: str
     family: str
     data: dict[str, Any]
 
 
-class ArtifactsView(_Finding):
+class ArtifactsView(ApiModel):
     dropped: list[Artifact]
     payloads: list[Artifact]
     procdumps: list[Artifact]

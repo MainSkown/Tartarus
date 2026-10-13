@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 
-from app.api.dependencies import get_event_index
+from app.api.dependencies import get_event_index, require_analysis
 from app.config import Settings, get_settings
 from app.db.models import Analysis
 from app.db.session import get_session
@@ -29,7 +29,6 @@ from app.views.attack import attack_matrix
 from app.views.attack_table import AttackTable, load_attack_table
 from app.views.detections import list_detections
 from app.views.iocs import collect_iocs
-from app.views.lookup import require_analysis
 
 PCAP_MEDIA_TYPE = "application/vnd.tcpdump.pcap"
 ZIP_MEDIA_TYPE = "application/zip"

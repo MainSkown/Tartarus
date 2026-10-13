@@ -20,7 +20,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analyses.ports import RunnerControl
-from app.api.dependencies import get_cape, get_event_index, get_runner, get_sample_store
+from app.api.dependencies import (
+    get_cape,
+    get_event_index,
+    get_runner,
+    get_sample_store,
+    require_analysis,
+)
 from app.cape.client import CapeClient
 from app.cape.errors import CapeError, CapeTaskNotFound
 from app.db.analysis_repository import (
@@ -33,7 +39,6 @@ from app.db.analysis_repository import (
     create_analysis,
     delete_analysis,
     delete_sample_if_unreferenced,
-    get_analysis,
     get_sample,
     list_analyses,
     queue_positions,
@@ -127,7 +132,7 @@ async def list_all(
 async def read(
     analysis_id: int, session: Annotated[AsyncSession, Depends(get_session)]
 ) -> AnalysisRead:
-    return await _read_one(session, await _existing(session, analysis_id))
+    return await _read_one(session, await require_analysis(session, analysis_id))
 
 
 @router.post("/{analysis_id}/cancel")
@@ -135,7 +140,7 @@ async def cancel(
     analysis_id: int, session: Annotated[AsyncSession, Depends(get_session)]
 ) -> AnalysisRead:
     """Only a queued analysis can be cancelled; once it has started, `409`."""
-    analysis = await _existing(session, analysis_id)
+    analysis = await require_analysis(session, analysis_id)
     if not await cancel_if_queued(session, analysis_id):
         raise HTTPException(409, f"Analysis {analysis_id} is no longer queued")
     await session.refresh(analysis)
@@ -151,7 +156,7 @@ async def reingest(
     """Indexes a finished analysis's report again. `409` unless it is `done` or `report_failed`,
     or while another analysis is active.
     """
-    analysis = await _existing(session, analysis_id)
+    analysis = await require_analysis(session, analysis_id)
     started = await begin_reingest(session, analysis_id)
     await session.refresh(analysis)
     if not started:
@@ -169,7 +174,7 @@ async def delete(
     store: Annotated[SampleStore, Depends(get_sample_store)],
 ) -> Response:
     """Removes the analysis, its CAPE task, its event index, and its sample once unused."""
-    analysis = await _existing(session, analysis_id)
+    analysis = await require_analysis(session, analysis_id)
     if analysis.status in ACTIVE_STATUSES:
         raise HTTPException(409, f"Analysis {analysis_id} is still {analysis.status.value}")
     if analysis.cape_task_id is not None:
@@ -187,13 +192,6 @@ def _reason_not_reingestible(analysis: Analysis) -> str:
             "only a done or report_failed analysis can be re-ingested"
         )
     return f"Analysis {analysis.id} cannot be re-ingested while another analysis is active"
-
-
-async def _existing(session: AsyncSession, analysis_id: int) -> Analysis:
-    analysis = await get_analysis(session, analysis_id)
-    if analysis is None:
-        raise HTTPException(404, f"Analysis {analysis_id} not found")
-    return analysis
 
 
 async def _read_all(session: AsyncSession, analyses: Sequence[Analysis]) -> list[AnalysisRead]:

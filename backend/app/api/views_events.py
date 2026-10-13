@@ -3,11 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_event_index
+from app.api.dependencies import get_event_index, require_analysis
 from app.db.session import get_session
 from app.schemas.views_events import NetworkView, ProcessDetail, ProcessTree, RegistryView
 from app.search.index import EventIndex
-from app.views.lookup import require_analysis
 from app.views.network import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, network_view
 from app.views.processes import process_detail, process_tree
 from app.views.registry import registry_view

@@ -1,16 +1,15 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from app.analyses.summary import ReportSummary
 from app.db.models.analysis import AnalysisPhase, AnalysisStatus, Severity
+from app.schemas.base import ApiModel
 
 
-class AnalysisRead(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True, json_schema_serialization_defaults_required=True
-    )
+class AnalysisRead(ApiModel):
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     sample_sha256: str

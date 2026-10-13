@@ -2,24 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
-
 from app.db.models.analysis import Severity
+from app.schemas.base import ApiModel
 
 
-class _View(BaseModel):
-    """Lists and nullable fields are required in the OpenAPI schema, so the client never
-    has to guess whether a missing key means empty."""
-
-    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
-
-
-class ProcessRef(_View):
+class ProcessRef(ApiModel):
     pid: int
     name: str | None
 
 
-class ProcessSummary(_View):
+class ProcessSummary(ApiModel):
     entity_id: str
     pid: int
     ppid: int | None
@@ -40,24 +32,24 @@ class ProcessNode(ProcessSummary):
     children: list[ProcessNode]
 
 
-class ProcessTree(_View):
+class ProcessTree(ApiModel):
     roots: list[ProcessNode]
     total: int
 
 
-class LoadedModule(_View):
+class LoadedModule(ApiModel):
     name: str
     path: str | None
     base_address: str | None
     loaded_at: datetime
 
 
-class ApiCount(_View):
+class ApiCount(ApiModel):
     name: str
     count: int
 
 
-class ProcessEventRow(_View):
+class ProcessEventRow(ApiModel):
     time: datetime
     action: str
     summary: str
@@ -72,7 +64,7 @@ class ProcessDetail(ProcessSummary):
     event_total: int
 
 
-class DnsRow(_View):
+class DnsRow(ApiModel):
     event_id: str
     time: datetime
     query: str
@@ -81,7 +73,7 @@ class DnsRow(_View):
     process: ProcessRef | None
 
 
-class HttpRow(_View):
+class HttpRow(ApiModel):
     event_id: str
     time: datetime
     method: str | None
@@ -92,7 +84,7 @@ class HttpRow(_View):
     process: ProcessRef | None
 
 
-class TlsRow(_View):
+class TlsRow(ApiModel):
     event_id: str
     time: datetime
     server_name: str | None
@@ -101,7 +93,7 @@ class TlsRow(_View):
     process: ProcessRef | None
 
 
-class FlowRow(_View):
+class FlowRow(ApiModel):
     event_id: str
     time: datetime
     transport: str | None
@@ -112,7 +104,7 @@ class FlowRow(_View):
     process: ProcessRef | None
 
 
-class NetworkAlertRow(_View):
+class NetworkAlertRow(ApiModel):
     event_id: str
     time: datetime
     signature: str
@@ -120,21 +112,21 @@ class NetworkAlertRow(_View):
     process: ProcessRef | None
 
 
-class HostRow(_View):
+class HostRow(ApiModel):
     host: str
     kind: str
     count: int
     related: list[str]
 
 
-class Listing[T](_View):
+class Listing[T](ApiModel):
     """The first `items` of a list; `total` counts every row, so a capped list can say so."""
 
     items: list[T]
     total: int
 
 
-class NetworkView(_View):
+class NetworkView(ApiModel):
     dns: Listing[DnsRow]
     http: Listing[HttpRow]
     tls: Listing[TlsRow]
@@ -144,7 +136,7 @@ class NetworkView(_View):
     simulated: bool
 
 
-class RegistryChange(_View):
+class RegistryChange(ApiModel):
     event_id: str
     time: datetime
     action: str
@@ -154,12 +146,12 @@ class RegistryChange(_View):
     process: ProcessRef | None
 
 
-class RegistryKeyGroup(_View):
+class RegistryKeyGroup(ApiModel):
     key: str
     hive: str | None
     changes: list[RegistryChange]
 
 
-class RegistryView(_View):
+class RegistryView(ApiModel):
     keys: list[RegistryKeyGroup]
     total: int
