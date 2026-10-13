@@ -1460,6 +1460,36 @@ export type AnalysesReingestResponses = {
 
 export type AnalysesReingestResponse = AnalysesReingestResponses[keyof AnalysesReingestResponses];
 
+export type AnalysesFinishData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/finish';
+};
+
+export type AnalysesFinishErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesFinishError = AnalysesFinishErrors[keyof AnalysesFinishErrors];
+
+export type AnalysesFinishResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisRead;
+};
+
+export type AnalysesFinishResponse = AnalysesFinishResponses[keyof AnalysesFinishResponses];
+
 export type ViewsProcessesData = {
     body?: never;
     path: {

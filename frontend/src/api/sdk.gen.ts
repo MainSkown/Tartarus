@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
+import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -94,6 +94,19 @@ export const analysesCancel = <ThrowOnError extends boolean = false>(options: Op
  * or while another analysis is active.
  */
 export const analysesReingest = <ThrowOnError extends boolean = false>(options: Options<AnalysesReingestData, ThrowOnError>): RequestResult<AnalysesReingestResponses, AnalysesReingestErrors, ThrowOnError> => (options.client ?? client).post<AnalysesReingestResponses, AnalysesReingestErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/reingest', ...options });
+
+/**
+ * Finish
+ *
+ * Ends a running analysis early, the way an interactive run is ended.
+ *
+ * The guest stops within about a second and the analysis then moves on to processing by itself,
+ * so the status answered is still `running`. Asking again is harmless. `409` unless the analysis
+ * is `running` and its monitor has started in the guest (CAPE says `running` about 25 s earlier,
+ * and ending the run in that gap leaves the guest agent dead); `502` when the helper in the CAPE
+ * container cannot reach the guest.
+ */
+export const analysesFinish = <ThrowOnError extends boolean = false>(options: Options<AnalysesFinishData, ThrowOnError>): RequestResult<AnalysesFinishResponses, AnalysesFinishErrors, ThrowOnError> => (options.client ?? client).post<AnalysesFinishResponses, AnalysesFinishErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/finish', ...options });
 
 /**
  * Processes
