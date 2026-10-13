@@ -16,6 +16,7 @@ class AnalysisOptions(BaseModel):
     route: Route = "inetsim"
     timeout: int = Field(default=180, ge=60, le=1200)
     package: PackageName = "auto"
+    interactive: bool = False
 
 
 class AnalysisPage(BaseModel):

@@ -73,7 +73,12 @@ def get_guest_check(request: Request) -> HealthCheck:
 def parse_options(
     options: Annotated[
         str,
-        Form(description="JSON object: `route`, `timeout` (60 to 1200 seconds) and `package`."),
+        Form(
+            description=(
+                "JSON object: `route`, `timeout` (60 to 1200 seconds), `package` and "
+                "`interactive` (a desktop to drive; the run then lasts the whole timeout)."
+            )
+        ),
     ] = DEFAULT_OPTIONS_JSON,
 ) -> AnalysisOptions:
     try:

@@ -178,3 +178,19 @@ async def test_search_on_an_analysis_without_an_index_finds_nothing(
     assert response["hits"]["total"]["value"] == 0
     assert response["hits"]["hits"] == []
     assert response["aggregations"] == {}
+
+
+async def test_ensure_index_creates_a_missing_index_and_leaves_an_existing_one_alone(
+    client: AsyncOpenSearch,
+) -> None:
+    events_index = EventIndex(client)
+    await events_index.ensure_template()
+    await events_index.drop(ANALYSIS_ID)
+
+    await events_index.ensure_index(ANALYSIS_ID)
+    await events_index.bulk_index(ANALYSIS_ID, [make_event(1)])
+    await events_index.ensure_index(ANALYSIS_ID)
+    await events_index.refresh(ANALYSIS_ID)
+
+    assert await count_where(client, {"match_all": {}}) == 1
+    await events_index.drop(ANALYSIS_ID)

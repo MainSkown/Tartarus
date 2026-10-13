@@ -20,6 +20,9 @@ from app.config import Settings
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 API_PREFIX = "/apiv2"
 AUTO_PACKAGE = "auto"
+# `nohuman` as well, as CAPE's own submission page does: without it CAPE's mouse mover and
+# dialog closer fight the analyst.
+INTERACTIVE_OPTIONS = "interactive=1,nohuman=yes"
 # CAPE answers a missing task differently on `tasks/status` and on `tasks/view`.
 MISSING_TASK_MESSAGES = frozenset({"Task does not exist", "Task not found in database"})
 # `tasks/delete` reports its failures under these keys instead of `error_value`.
@@ -77,12 +80,15 @@ class CapeClient:
         route: str,
         timeout: int,  # noqa: ASYNC109 - CAPE's analysis timeout, not an asyncio one
         package: str = AUTO_PACKAGE,
+        interactive: bool = False,
     ) -> int:
         """Submit a file to CAPE and return the id of the task it created."""
         call = "tasks/create/file"
         fields = {"machine": machine, "route": route, "timeout": str(timeout)}
         if package != AUTO_PACKAGE:
             fields["package"] = package
+        if interactive:
+            fields["options"] = INTERACTIVE_OPTIONS
         if isinstance(source, Path):
             with source.open("rb") as stream:
                 body = await self._send(call, "POST", f"{call}/", fields, (filename, stream))

@@ -7,6 +7,7 @@ fakes, and the sample store and the report reader implement them without importi
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -60,3 +61,23 @@ class RunnerControl(Protocol):
 
     def nudge(self) -> None:
         """Check for work now instead of at the next poll. Never blocks and never raises."""
+
+
+class LiveCollection(Protocol):
+    """Follows a running analysis's logs for live viewing; the runner starts and stops it."""
+
+    def start(self, analysis_id: int, cape_task_id: int, started_at: datetime) -> None:
+        """Begins collecting; calling it again for the same analysis changes nothing."""
+
+    async def stop(self, analysis_id: int) -> None:
+        """Collects what is still unread and ends, so the final ingest sees a finished stream."""
+
+
+class NoLiveCollection:
+    """The port when nothing watches live."""
+
+    def start(self, analysis_id: int, cape_task_id: int, started_at: datetime) -> None:
+        pass
+
+    async def stop(self, analysis_id: int) -> None:
+        pass

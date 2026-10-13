@@ -248,6 +248,14 @@ async def test_task_status_returns_capes_status_string(cape_client: ClientFactor
     assert await cape_client(cape, TOKEN).task_status(6) == "reported"
 
 
+async def test_task_view_exposes_the_options_string_cape_keeps(cape_client: ClientFactory) -> None:
+    cape = RecordingCape({"/apiv2/tasks/view/6/": captured_response("task_view_reported.json")})
+
+    view = await cape_client(cape, TOKEN).task_view(6)
+
+    assert view.options == "vnc_port=5900"
+
+
 async def test_task_view_exposes_the_timings_as_utc_datetimes(cape_client: ClientFactory) -> None:
     cape = RecordingCape({"/apiv2/tasks/view/6/": captured_response("task_view_reported.json")})
 
@@ -392,6 +400,35 @@ async def test_create_file_task_omits_package_when_it_is_auto(cape_client: Clien
     )
 
     assert "package" not in parse_multipart(cape.requests[0])
+
+
+async def test_create_file_task_asks_capes_interactive_desktop_with_the_human_module_off(
+    cape_client: ClientFactory,
+) -> None:
+    cape = RecordingCape({"/apiv2/tasks/create/file/": json_response(SUBMITTED)})
+
+    await cape_client(cape, TOKEN).create_file_task(
+        io.BytesIO(b"x"),
+        "a.bin",
+        machine="win",
+        route="none",
+        timeout=60,
+        interactive=True,
+    )
+
+    assert parse_multipart(cape.requests[0])["options"] == b"interactive=1,nohuman=yes"
+
+
+async def test_create_file_task_sends_no_options_unless_interactive(
+    cape_client: ClientFactory,
+) -> None:
+    cape = RecordingCape({"/apiv2/tasks/create/file/": json_response(SUBMITTED)})
+
+    await cape_client(cape, TOKEN).create_file_task(
+        io.BytesIO(b"x"), "a.bin", machine="win", route="none", timeout=60
+    )
+
+    assert "options" not in parse_multipart(cape.requests[0])
 
 
 async def test_create_file_task_reads_a_file_from_a_path(

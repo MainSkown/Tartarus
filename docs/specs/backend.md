@@ -53,7 +53,7 @@ longer lists included routes in `app.routes`.
 ### Analyses
 | Method & path | Purpose |
 |---|---|
-| `POST /analyses` | **Built (M1a).** multipart: `file` and `options` (a JSON string: `route`, `timeout` 60 to 1200 s default 180, `package` default `auto`; unknown keys are rejected; `memory_dump`, `interactive` and tags are not in M1a). `201` with the analysis, always `queued`. Checked in this order: the form (`422` with field locations, including an empty file at `["body","file"]`), then the guest is ready (`409`, nothing stored), then the upload (`413` past 512 MiB). Two identical uploads at once are fine; a failed submission leaves no file or row. |
+| `POST /analyses` | **Built (M1a).** multipart: `file` and `options` (a JSON string: `route`, `timeout` 60 to 1200 s default 180, `package` default `auto`, `interactive` default `false`; unknown keys are rejected; `memory_dump` and tags are not in M1a). `interactive` is stored in `analysis.options` and makes the backend submit the CAPE task with `interactive=1,nohuman=yes`; the run then lasts the whole timeout (see the desktop tunnel below). `201` with the analysis, always `queued`. Checked in this order: the form (`422` with field locations, including an empty file at `["body","file"]`), then the guest is ready (`409`, nothing stored), then the upload (`413` past 512 MiB). Two identical uploads at once are fine; a failed submission leaves no file or row. |
 | `GET /analyses` | **Built.** `{items, total}`, newest first; `limit`, `offset`, `q` (filename or hash substring) and `status`; each item carries `queue_position`, computed for the page in one query. (`tag` and `sort` come with M5 and later.) |
 | `GET /analyses/{id}` | **Built.** The analysis with its typed `summary` (duration, process count, signatures with severity, ATT&CK ids with the signatures that raised them, network counts, files and registry keys written, the sample's name and type) once the report is read; `queue_position` (1 is served next, `null` unless `queued`; also on every item of the list and on the `POST` response); `404` in the error envelope when unknown. `summary.lane_counts` maps each lane to its number of indexed events once the analysis is `done`. The process tree comes with M1b. |
 | `POST /analyses/{id}/stop` | Stop a running task early; it proceeds to processing |
@@ -176,9 +176,19 @@ streams new events. The GUI backfills the latest events through REST, so the liv
 replays history.
 
 ### `WS /ws/analyses/{id}/desktop`
-A Guacamole protocol tunnel (text frames, Guacamole instruction format) between
-`guacamole-common-js` and `guacd`. The server rejects it with code `4409` if the task isn't
-running or isn't interactive.
+A Guacamole protocol tunnel (text frames, one instruction each) between `guacamole-common-js`
+and `guacd` (`GUACD_HOST`, default `cape`, and `GUACD_PORT`, default `4822`). The socket is
+accepted with the `guacamole` subprotocol, then closed with a code when refused: `4404` for an
+unknown analysis, `4409` unless the analysis is `starting` or `running` and was submitted
+`interactive`, and `4408` ("desktop not available yet") when CAPE has not recorded the guest's VNC
+port in the task's `options` within 90 s (polled every second through `tasks/view`). The first
+frame is the tunnel's internal instruction (`0.,36.<uuid>;`) and internal `ping`s are echoed.
+`guacd` is always told to connect to `127.0.0.1` at the recorded port, with clipboard off in both
+directions; of the browser's instructions only `mouse`, `key`, `size`, `sync`, `ack`, `blob`,
+`end` and `nop` reach `guacd`. An `error` from `guacd` (it follows `ready` when the guest is off)
+is forwarded and then the tunnel closes, as it does when `guacd` hangs up or the analysis leaves
+`starting`/`running` (checked every 2 s). There is no authentication: one local analyst, bound to
+127.0.0.1.
 
 ### `WS /ws/system`
 Pushes `health`, `queue`, `disk` and `job` (progress and step for guest builds and exports).

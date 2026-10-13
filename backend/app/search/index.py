@@ -3,12 +3,13 @@ from collections.abc import Iterable, Iterator
 from itertools import islice
 from typing import Any
 
-from opensearchpy import AsyncOpenSearch, NotFoundError
+from opensearchpy import AsyncOpenSearch, NotFoundError, RequestError
 from opensearchpy.helpers import BulkIndexError, async_bulk
 
 from app.search.template import INDEX_PREFIX, TEMPLATE_NAME, build_index_template
 
 REPORTED_FAILURES = 3
+INDEX_EXISTS = "resource_already_exists_exception"
 
 
 class IndexingError(Exception):
@@ -51,6 +52,14 @@ class EventIndex:
 
     async def create(self, analysis_id: int) -> None:
         await self._client.indices.create(index=index_name(analysis_id))
+
+    async def ensure_index(self, analysis_id: int) -> None:
+        """Creates the analysis's index unless it exists already."""
+        try:
+            await self.create(analysis_id)
+        except RequestError as error:
+            if error.error != INDEX_EXISTS:
+                raise
 
     async def drop(self, analysis_id: int) -> None:
         await self._client.indices.delete(index=index_name(analysis_id), ignore_unavailable=True)

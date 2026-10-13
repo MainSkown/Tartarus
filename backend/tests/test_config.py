@@ -18,6 +18,8 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CAPE_STORAGE_PATH",
         "SAMPLE_STORE_PATH",
         "GUEST_LABEL",
+        "GUACD_HOST",
+        "GUACD_PORT",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -111,3 +113,25 @@ def test_cape_token_is_not_shown_in_the_settings_repr(monkeypatch: pytest.Monkey
     monkeypatch.setenv("CAPE_API_TOKEN", "s3cret")
 
     assert "s3cret" not in repr(Settings())
+
+
+def test_guacd_is_the_one_in_the_cape_container_unless_told_otherwise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@db/tartarus")
+    monkeypatch.setenv("OPENSEARCH_URL", "http://opensearch:9200")
+
+    settings = Settings()
+
+    assert (settings.guacd_host, settings.guacd_port) == ("cape", 4822)
+
+
+def test_guacd_address_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@db/tartarus")
+    monkeypatch.setenv("OPENSEARCH_URL", "http://opensearch:9200")
+    monkeypatch.setenv("GUACD_HOST", "guacd.internal")
+    monkeypatch.setenv("GUACD_PORT", "4999")
+
+    settings = Settings()
+
+    assert (settings.guacd_host, settings.guacd_port) == ("guacd.internal", 4999)

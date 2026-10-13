@@ -18,10 +18,14 @@ from app.db.session import create_engine, create_session_factory
 from app.errors import ErrorEnvelope, install_error_handlers
 from app.health import HealthCheck, OpenSearchCheck, PostgresCheck
 from app.ingest.ingester import ReportIngester
+from app.live.hub import LiveHub
+from app.live.manager import LiveCollectionManager
 from app.logging_config import configure_logging
 from app.samples.store import SampleStore
 from app.search.client import create_opensearch_client
 from app.search.index import EventIndex
+from app.ws.desktop import router as desktop_ws_router
+from app.ws.live import router as live_ws_router
 from app.ws.system import router as system_ws_router
 
 logger = logging.getLogger(__name__)
@@ -60,6 +64,15 @@ def _build_lifespan(
         app.state.health_checks = build_health_checks(
             engine, opensearch, cape, resolved.guest_label
         )
+        live_hub = LiveHub()
+        live_collection = LiveCollectionManager(
+            storage_path=resolved.cape_storage_path,
+            poll_interval_s=resolved.live_poll_interval_seconds,
+            store=event_index,
+            hub=live_hub,
+        )
+        app.state.live_hub = live_hub
+        app.state.live_collection = live_collection
         runner = build_runner(
             app.state.session_factory,
             cape,
@@ -67,6 +80,7 @@ def _build_lifespan(
             read_report,
             ReportIngester(event_index),
             resolved,
+            live_collection,
         )
         app.state.runner = runner
         runner.start()
@@ -75,6 +89,7 @@ def _build_lifespan(
             yield
         finally:
             await runner.stop()
+            await live_collection.aclose()
             await cape.aclose()
             await opensearch.close()
             await engine.dispose()
@@ -93,6 +108,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_router)
     app.include_router(internal_router)
     app.include_router(system_ws_router)
+    app.include_router(desktop_ws_router)
+    app.include_router(live_ws_router)
     return app
 
 

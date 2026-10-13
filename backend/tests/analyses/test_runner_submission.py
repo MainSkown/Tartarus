@@ -35,6 +35,7 @@ async def test_the_oldest_queued_analysis_is_uploaded_with_its_options(
             "route": "none",
             "timeout": 300,
             "package": "exe",
+            "interactive": False,
         }
     ]
     assert samples.opened == [SHA_B]
@@ -53,6 +54,27 @@ async def test_the_package_defaults_to_auto(
     await runner.run_once()
 
     assert cape.created[0]["package"] == "auto"
+
+
+async def test_an_interactive_analysis_is_submitted_interactive(
+    runner: Runner, session_factory: Factory, cape: FakeCape
+) -> None:
+    options = {"route": "inetsim", "timeout": 120, "interactive": True}
+    await enqueue(session_factory, options=options)
+
+    await runner.run_once()
+
+    assert cape.created[0]["interactive"] is True
+
+
+async def test_an_analysis_without_the_interactive_option_is_not_interactive(
+    runner: Runner, session_factory: Factory, cape: FakeCape
+) -> None:
+    await enqueue(session_factory, options={"route": "inetsim", "timeout": 120})
+
+    await runner.run_once()
+
+    assert cape.created[0]["interactive"] is False
 
 
 async def test_two_queued_analyses_run_one_after_the_other_in_order(

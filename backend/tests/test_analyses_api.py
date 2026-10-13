@@ -29,7 +29,12 @@ from app.samples.store import SampleStore
 
 CONTENT = b"MZ\x90\x00 a pretend executable"
 OTHER_CONTENT = b"MZ\x90\x00 another pretend executable"
-OPTIONS: dict[str, Any] = {"route": "inetsim", "timeout": 180, "package": "auto"}
+OPTIONS: dict[str, Any] = {
+    "route": "inetsim",
+    "timeout": 180,
+    "package": "auto",
+    "interactive": False,
+}
 
 
 @dataclass
@@ -187,7 +192,7 @@ async def test_a_submission_stores_the_sample_and_wakes_the_runner(harness: Harn
 
 
 async def test_submitted_options_are_kept(harness: Harness) -> None:
-    options = {"route": "none", "timeout": 600, "package": "dll"}
+    options = {"route": "none", "timeout": 600, "package": "dll", "interactive": True}
 
     body = (await harness.upload(options=options)).json()
 
@@ -208,6 +213,7 @@ async def test_a_file_name_with_a_path_is_shortened_to_its_last_part(harness: Ha
         ({"timeout": 1201}, ["body", "options", "timeout"]),
         ({"package": ""}, ["body", "options", "package"]),
         ({"package": "../exe"}, ["body", "options", "package"]),
+        ({"interactive": "maybe"}, ["body", "options", "interactive"]),
         ("{not json", ["body", "options"]),
         ("[]", ["body", "options"]),
     ],
@@ -779,6 +785,17 @@ def test_the_openapi_schema_describes_the_summary_and_the_upload() -> None:
     assert "ReportSummary" in schemas
     assert "lane_counts" in schemas["ReportSummary"]["properties"]
     assert set(schemas["Body_analyses_create"]["properties"]) == {"file", "options"}
+
+
+def test_the_openapi_schema_tells_the_upload_form_about_the_interactive_option() -> None:
+    app = FastAPI(generate_unique_id_function=generate_operation_id)
+    app.include_router(analyses_router, prefix="/api")
+
+    schemas = app.openapi()["components"]["schemas"]
+
+    assert (
+        "`interactive`" in schemas["Body_analyses_create"]["properties"]["options"]["description"]
+    )
 
 
 def test_the_openapi_schema_always_lists_the_queue_position_of_an_analysis() -> None:

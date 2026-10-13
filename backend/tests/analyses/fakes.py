@@ -1,6 +1,6 @@
 import asyncio
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +37,7 @@ class FakeCape:
         route: str,
         timeout: int,  # noqa: ASYNC109
         package: str = "auto",
+        interactive: bool = False,
     ) -> int:
         self.calls.append(("create", filename))
         if self.create_gate is not None:
@@ -55,6 +56,7 @@ class FakeCape:
                 "route": route,
                 "timeout": timeout,
                 "package": package,
+                "interactive": interactive,
             }
         )
         return task_id
@@ -136,3 +138,32 @@ class FakeClock:
 
     def advance(self, seconds: float) -> None:
         self.now += seconds
+
+
+class FakeLive:
+    """A `LiveCollection` that remembers what it was asked and can be made to fail or hang."""
+
+    def __init__(self) -> None:
+        self.journal: list[tuple[str, int]] = []
+        self.started: list[tuple[int, int, datetime]] = []
+        self.stopped: list[int] = []
+        self.start_errors: list[Exception] = []
+        self.stop_error: Exception | None = None
+        self.hang_on_stop = False
+        self.on_stop: Callable[[int], Awaitable[None]] | None = None
+
+    def start(self, analysis_id: int, cape_task_id: int, started_at: datetime) -> None:
+        self.journal.append(("start", analysis_id))
+        if self.start_errors:
+            raise self.start_errors.pop(0)
+        self.started.append((analysis_id, cape_task_id, started_at))
+
+    async def stop(self, analysis_id: int) -> None:
+        self.journal.append(("stop", analysis_id))
+        self.stopped.append(analysis_id)
+        if self.on_stop is not None:
+            await self.on_stop(analysis_id)
+        if self.hang_on_stop:
+            await asyncio.Event().wait()
+        if self.stop_error is not None:
+            raise self.stop_error

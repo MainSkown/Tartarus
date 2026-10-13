@@ -13,6 +13,8 @@ from app.analyses.ports import (
     EventIngester,
     IngestFailedError,
     IngestResult,
+    LiveCollection,
+    NoLiveCollection,
     ReportOutcome,
     ReportReader,
     ReportUnreadableError,
@@ -57,6 +59,7 @@ class CapeTaskApi(Protocol):
         route: str,
         timeout: int,  # noqa: ASYNC109 - CAPE's analysis timeout, not an asyncio one
         package: str = "auto",
+        interactive: bool = False,
     ) -> int: ...
 
     async def task_status(self, task_id: int) -> str: ...
@@ -71,6 +74,7 @@ class RunnerConfig:
     poll_interval: float
     unreachable_grace: float
     shutdown_patience: float = 10.0
+    live_stop_timeout: float = 10.0
 
     @classmethod
     def from_settings(cls, settings: Settings) -> Self:
@@ -98,6 +102,7 @@ class Runner:
         config: RunnerConfig,
         *,
         clock: Callable[[], float] = time.monotonic,
+        live: LiveCollection | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._cape = cape
@@ -106,6 +111,8 @@ class Runner:
         self._ingester = ingester
         self._config = config
         self._clock = clock
+        self._live = live or NoLiveCollection()
+        self._collecting: int | None = None
         self._trouble_since: float | None = None
         self._consecutive_errors: dict[int, int] = {}
         self._nudged = asyncio.Event()
@@ -216,6 +223,7 @@ class Runner:
                 route=options["route"],
                 timeout=options["timeout"],
                 package=options.get("package", "auto"),
+                interactive=options.get("interactive") is True,
             )
 
     async def _track_guarded(self, session: AsyncSession, analysis: Analysis) -> None:
@@ -331,6 +339,7 @@ class Runner:
             )
             return
         await self._advance(session, analysis, task_id, AnalysisStatus(progress.value))
+        self._start_live_if_running(analysis, task_id)
         if progress is CapeProgress.INGESTING:
             await self._ingest(session, analysis.id, task_id)
 
@@ -339,6 +348,8 @@ class Runner:
     ) -> None:
         if _stage(target) <= _stage(analysis.status):
             return
+        if _stage(target) > _stage(AnalysisStatus.RUNNING):
+            await self._stop_live(analysis.id)
         changes: AnalysisChanges = {"status": target}
         if analysis.started_at is None and _stage(target) >= _stage(AnalysisStatus.RUNNING):
             view = await self._cape.task_view(task_id)
@@ -384,9 +395,35 @@ class Runner:
             event_count=indexed.event_count,
         )
 
+    def _start_live_if_running(self, analysis: Analysis, task_id: int) -> None:
+        if (
+            analysis.status is not AnalysisStatus.RUNNING
+            or analysis.started_at is None
+            or self._collecting == analysis.id
+        ):
+            return
+        try:
+            self._live.start(analysis.id, task_id, analysis.started_at)
+        except Exception:
+            logger.exception("Starting the live collection of analysis %s failed", analysis.id)
+        else:
+            self._collecting = analysis.id
+
+    async def _stop_live(self, analysis_id: int) -> None:
+        """Drains and ends the collection before the status moves on, so the final ingest never
+        races the collector; a collector that fails or hangs is abandoned, never fatal."""
+        if self._collecting != analysis_id:
+            return
+        self._collecting = None
+        try:
+            await asyncio.wait_for(self._live.stop(analysis_id), self._config.live_stop_timeout)
+        except Exception:
+            logger.exception("Stopping the live collection of analysis %s failed", analysis_id)
+
     async def _finish(
         self, session: AsyncSession, analysis_id: int, **changes: Unpack[AnalysisChanges]
     ) -> None:
+        await self._stop_live(analysis_id)
         ended: AnalysisChanges = {**changes, "finished_at": utc_now()}
         await update_analysis(session, analysis_id, **ended)
         self._trouble_since = None
@@ -409,7 +446,14 @@ def build_runner(  # noqa: PLR0913, PLR0917 - the runner's ports plus the settin
     read_report: ReportReader,
     ingester: EventIngester,
     settings: Settings,
+    live: LiveCollection | None = None,
 ) -> Runner:
     return Runner(
-        session_factory, cape, samples, read_report, ingester, RunnerConfig.from_settings(settings)
+        session_factory,
+        cape,
+        samples,
+        read_report,
+        ingester,
+        RunnerConfig.from_settings(settings),
+        live=live,
     )

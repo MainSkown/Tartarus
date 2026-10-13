@@ -48,6 +48,7 @@ class TaskView(BaseModel):
     machine: str | None = None
     route: str | None = None
     package: str | None = None
+    options: str | None = None
     timedout: bool = False
     added_on: UtcDatetime | None = None
     started_on: UtcDatetime | None = None
