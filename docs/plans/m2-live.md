@@ -7,7 +7,7 @@ describes and the LIVE tab of the [GUI spec](../specs/gui.md).
 
 ## Status
 
-Planned 2026-10-13, after M1b was approved. Nothing built yet. Fixtures exist: the real BSON logs of
+Planned 2026-10-13, after M1b was approved. **Built, committed and verified on the real stack the same day; the LIVE, desktop and Submit-dialog screens were reviewed and approved by the user.** Fixtures exist: the real BSON logs of
 analysis 45 (`backend/tests/fixtures/cape/live_logs_45/*.bson`) and the calls CAPE's own processor
 made of the same logs (`report_calls.json` beside them), which is exact ground truth for the parser.
 
@@ -441,3 +441,18 @@ real screen is 16:10, so the panel needs a 16:10 box, or it letterboxes.
 - Whether the `complete` folder trick ends an interactive run early: not tried.
 - Frame colors and the display's behavior in a browser through `guacamole-common-js`: only the protocol
   was exercised, not a client that draws it.
+
+## After the review
+
+- **Reported by the user:** after leaving the LIVE tab there was no way back to it. The tab ended its
+  "live session" when another tab was picked; it now starts when the analysis is seen active (on
+  whatever tab the page was opened) and stays for the page session, also after the run ended, where it
+  shows the finished panel. Covered by a unit rule, page tests and two Playwright scenarios.
+- **Found by my own end-to-end run:** the live-versus-final check compared ids, and CAPE's merging of
+  identical consecutive calls shifts ids after the merge (the live path does not merge), so 6 live ids
+  were missing in one run and none in four others. The check now compares the call (process, time,
+  action, API). Making the live path merge like CAPE (one held-back call per process) would remove the
+  divergence at the cost of showing the newest call late; not done.
+- **Open:** a failed browser end-to-end test leaves its analysis behind (cleanup cannot delete a running
+  one), which then blocks the next run's precondition; `default_interactive` is on, so a plain submit
+  holds the guest for the whole timeout; the guest's clock runs 5 to 8 s behind the host's.
