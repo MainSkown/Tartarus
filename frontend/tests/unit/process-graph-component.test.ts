@@ -21,6 +21,7 @@ function mountGraph(processes: ProcessNode[] = roots, selected: string | undefin
     attachTo: document.body,
     global: { plugins: [Quasar] },
     props: { roots: processes, selectedId: selected },
+    slots: { 'toolbar-end': '<span class="extra">in the toolbar</span>' },
   })
 }
 
@@ -79,6 +80,34 @@ describe('ProcessGraph lifecycle', () => {
     expect(graph().current).toHaveLength(1)
     expect(graph().layouts.length).toBe(layouts + 1)
     expect(instances).toHaveLength(1)
+  })
+})
+
+describe('ProcessGraph layout', () => {
+  it('puts what the owner slots in at the end of the toolbar row', () => {
+    const wrapper = mountGraph()
+
+    expect(wrapper.get('.process-graph__toolbar .extra').text()).toBe('in the toolbar')
+  })
+
+  it('tells the graph when its canvas changes size', () => {
+    const observed: { callback: () => void; element: Element }[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private callback: () => void) {}
+        observe(element: Element) {
+          observed.push({ callback: this.callback, element })
+        }
+        disconnect() {}
+      },
+    )
+    const wrapper = mountGraph()
+
+    observed.find((entry) => entry.element === wrapper.get('.process-graph__canvas').element)!.callback()
+
+    expect(graph().resize).toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })
 

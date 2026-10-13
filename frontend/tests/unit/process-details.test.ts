@@ -27,6 +27,11 @@ async function mountDetails({ node = benign, injectedInto = [], injectedFrom = [
   return wrapper
 }
 
+async function openTab(wrapper: Awaited<ReturnType<typeof mountDetails>>, label: string) {
+  const tab = wrapper.findAll('[role="tab"]').find((candidate) => candidate.text().startsWith(label))
+  await tab!.trigger('click')
+}
+
 function field(wrapper: Awaited<ReturnType<typeof mountDetails>>, label: string): string {
   const term = wrapper.findAll('dt').find((dt) => dt.text() === label)
   if (!term) throw new Error(`no field ${label}`)
@@ -46,8 +51,9 @@ describe('ProcessDetails fields', () => {
     expect(field(wrapper, 'PATH')).toContain('Temp\\proc9708.exe')
     expect(field(wrapper, 'PID')).toBe('9708')
     expect(field(wrapper, 'PPID')).toBe('4336')
-    expect(field(wrapper, 'START')).toBe('2026-10-13 15:39:50 UTC')
-    expect(field(wrapper, 'END')).toBe('2026-10-13 15:39:51 UTC')
+    expect(field(wrapper, 'START (UTC)')).toBe('15:39:50.393')
+    expect(field(wrapper, 'END (UTC)')).toBe('15:39:51.706')
+    expect(wrapper.findAll('dd').find((dd) => dd.text() === '15:39:50.393')!.attributes('title')).toBe('2026-10-13 15:39:50 UTC')
     expect(field(wrapper, 'DURATION')).toBe('1.3s')
   })
 
@@ -56,7 +62,7 @@ describe('ProcessDetails fields', () => {
     viewsProcessMock.mockResolvedValue({ data: processDetail(node) })
     const wrapper = await mountDetails({ node })
 
-    for (const label of ['INTEGRITY', 'COMMAND LINE', 'PATH', 'PPID', 'START', 'END', 'DURATION']) {
+    for (const label of ['INTEGRITY', 'COMMAND LINE', 'PATH', 'PPID', 'START (UTC)', 'END (UTC)', 'DURATION']) {
       expect(field(wrapper, label)).toBe('–')
     }
   })
@@ -68,19 +74,19 @@ describe('ProcessDetails fields', () => {
     expect(field(await mountDetails({ node }), 'INTEGRITY')).toBe('High')
   })
 
-  it('counts the events per lane in lane order', async () => {
+  it('counts the events per lane in lane order, as one row of chips', async () => {
     const wrapper = await mountDetails()
 
-    const lanes = wrapper.findAll('.lane-bar').map((lane) => [lane.get('.lane-bar__label').text(), lane.get('.lane-bar__count').text()])
-    expect(lanes).toEqual([['PROCESS', '1'], ['FILE', '2'], ['REGISTRY', '2'], ['NETWORK', '2'], ['API', '248']])
+    const chips = wrapper.findAll('.process-details__lane').map((chip) => chip.text())
+    expect(chips).toEqual(['PROCESS 1', 'FILE 2', 'REGISTRY 2', 'NETWORK 2', 'API 248'])
   })
 
   it('shows the detections with their worst severity, or none', async () => {
     const wrapper = await mountDetails()
-    expect(wrapper.findComponent(SeverityBadge).props()).toEqual({ severity: 'high', count: 5 })
+    expect(wrapper.get('.process-details__header').findComponent(SeverityBadge).props()).toEqual({ severity: 'high', count: 5 })
 
     const quiet = await mountDetails({ node: processNode(7) })
-    expect(field(quiet, 'DETECTIONS')).toBe('none')
+    expect(quiet.get('.process-details__header').text()).toContain('no detections')
   })
 
   it('lists the network hosts', async () => {
@@ -125,39 +131,52 @@ describe('ProcessDetails loaded detail', () => {
     expect(field(wrapper, 'PID')).toBe('9708')
   })
 
-  it('shows the top APIs with their counts', async () => {
+  it('has a sub-tab each for the top APIs, the modules and the events, labelled with their counts', async () => {
     const wrapper = await mountDetails()
 
-    const rows = wrapper.findAll('.process-details__apis tbody tr').map((row) => row.text())
-    expect(rows).toEqual(['NtClose40', 'NtWriteFile29'])
+    const tabs = wrapper.findAll('[role="tab"]').map((tab) => tab.text())
+    expect(tabs).toEqual(['TOP APIS 2', 'MODULES 2', 'EVENTS 7'])
   })
 
-  it('shows the recent events and how many there are in total', async () => {
+  it('opens on the top APIs with their counts', async () => {
     const wrapper = await mountDetails()
+
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toContain('TOP APIS')
+    const rows = wrapper.findAll('.process-details__apis tbody tr').map((row) => row.text())
+    expect(rows).toEqual(['NtClose40', 'NtWriteFile29'])
+    expect(wrapper.find('.process-details__events').exists()).toBe(false)
+  })
+
+  it('shows the events, and how many of the total, under the events sub-tab', async () => {
+    const wrapper = await mountDetails()
+
+    await openTab(wrapper, 'EVENTS')
 
     expect(wrapper.get('.process-details__events').text()).toContain('DNS query for tartarus-selftest.example')
     expect(wrapper.text()).toContain('1 of 7')
+    expect(wrapper.find('.process-details__apis').exists()).toBe(false)
   })
 
-  it('collapses the modules until they are asked for', async () => {
+  it('shows the modules with their base address and path under the modules sub-tab', async () => {
     const wrapper = await mountDetails()
-    const header = wrapper.get('.process-details__modules .q-item')
-    expect(header.attributes('aria-expanded')).toBe('false')
-    expect(header.text()).toContain('MODULES')
-    expect(header.text()).toContain('2')
 
-    await header.trigger('click')
+    await openTab(wrapper, 'MODULES')
 
-    expect(header.attributes('aria-expanded')).toBe('true')
-    expect(wrapper.get('.process-details__modules').text()).toContain('0x7ffd9ae50000')
-    expect(wrapper.get('.process-details__modules').text()).toContain('C:\\WINDOWS\\SYSTEM32\\DNSAPI')
+    const modules = wrapper.get('.process-details__modules').text()
+    expect(modules).toContain('0x7ffd9ae50000')
+    expect(modules).toContain('C:\\WINDOWS\\SYSTEM32\\DNSAPI')
   })
 
   it('says so when there is nothing recorded for the process', async () => {
     viewsProcessMock.mockResolvedValue({ data: processDetail(benign, { modules: [], top_apis: [], events: [], event_total: 0 }) })
     const wrapper = await mountDetails()
 
+    await openTab(wrapper, 'EVENTS')
     expect(wrapper.text()).toContain('> no events recorded')
+    await openTab(wrapper, 'MODULES')
+    expect(wrapper.text()).toContain('> no modules recorded')
+    await openTab(wrapper, 'TOP APIS')
+    expect(wrapper.text()).toContain('> no API calls recorded')
   })
 
   it('shows its own error with a retry that loads again', async () => {

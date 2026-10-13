@@ -4,16 +4,16 @@ import { viewsProcesses, type AnalysisRead } from '@/api'
 import ProcessDetails from '@/components/ProcessDetails.vue'
 import ProcessGraph from '@/components/ProcessGraph.vue'
 import ProcessTreeList from '@/components/ProcessTreeList.vue'
+import ProcessViewSwitch from '@/components/ProcessViewSwitch.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { useViewportFill } from '@/composables/use-viewport-fill'
 import { flattenProcesses, injectionPeers, resolveSelection } from '@/services/process-graph'
 
 type Mode = 'graph' | 'tree'
 
-const MODES = [
-  { label: 'GRAPH', value: 'graph' },
-  { label: 'TREE', value: 'tree' },
-]
+// The tab's own top and bottom padding (2 x spacing-sm), measured from the section top, so the page itself never scrolls.
+const BOTTOM_GAP = 16
 
 const props = defineProps<{ analysis: AnalysisRead }>()
 
@@ -22,6 +22,8 @@ const view = useAnalysisView(
   (id) => viewsProcesses({ path: { analysis_id: id } }),
 )
 
+const root = ref<HTMLElement>()
+const { height: fillHeight } = useViewportFill(root, BOTTOM_GAP)
 const mode = ref<Mode>('graph')
 const chosenId = ref<string>()
 
@@ -33,8 +35,10 @@ const peers = computed(() => (selected.value ? injectionPeers(roots.value, selec
 
 <template>
   <section
+    ref="root"
     class="processes-tab"
     data-tab="processes"
+    :style="{ '--tab-fill-height': `${fillHeight}px` }"
   >
     <ViewState
       :loading="view.loading.value"
@@ -43,18 +47,6 @@ const peers = computed(() => (selected.value ? injectionPeers(roots.value, selec
       empty-message="no processes recorded"
       @retry="view.reload"
     >
-      <div class="processes-tab__bar">
-        <span class="processes-tab__count text-mono">{{ view.data.value?.total }} PROCESSES</span>
-        <q-btn-toggle
-          v-model="mode"
-          :options="MODES"
-          unelevated
-          square
-          no-caps
-          class="processes-tab__mode text-mono"
-          aria-label="Process view"
-        />
-      </div>
       <div class="processes-tab__body">
         <div class="processes-tab__main">
           <ProcessGraph
@@ -62,13 +54,27 @@ const peers = computed(() => (selected.value ? injectionPeers(roots.value, selec
             :roots="roots"
             :selected-id="selectedId"
             @select="chosenId = $event"
-          />
-          <ProcessTreeList
-            v-else
-            :roots="roots"
-            :selected-id="selectedId"
-            @select="chosenId = $event"
-          />
+          >
+            <template #toolbar-end>
+              <ProcessViewSwitch
+                v-model="mode"
+                :total="view.data.value?.total ?? 0"
+              />
+            </template>
+          </ProcessGraph>
+          <template v-else>
+            <div class="processes-tab__bar">
+              <ProcessViewSwitch
+                v-model="mode"
+                :total="view.data.value?.total ?? 0"
+              />
+            </div>
+            <ProcessTreeList
+              :roots="roots"
+              :selected-id="selectedId"
+              @select="chosenId = $event"
+            />
+          </template>
         </div>
         <ProcessDetails
           v-if="selected"
@@ -87,42 +93,40 @@ const peers = computed(() => (selected.value ? injectionPeers(roots.value, selec
 <style scoped>
 .processes-tab {
   min-width: 0;
-  padding: var(--spacing-lg);
-}
-
-.processes-tab__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-md);
-}
-
-.processes-tab__count {
-  color: var(--blue-primary);
-  font-size: 0.75rem;
-  letter-spacing: 2px;
-}
-
-.processes-tab__mode {
-  border: 2px solid var(--border-primary);
+  padding: var(--spacing-sm) var(--spacing-lg);
 }
 
 .processes-tab__body {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: var(--spacing-md);
-  align-items: start;
+  height: max(400px, var(--tab-fill-height));
 }
 
 .processes-tab__main {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+}
+
+.processes-tab__bar {
+  display: flex;
+  padding-bottom: var(--spacing-sm);
+}
+
+.processes-tab__details {
+  min-height: 0;
 }
 
 @media (max-width: 900px) {
   .processes-tab__body {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .processes-tab__main {
+    height: 30rem;
   }
 }
 </style>

@@ -158,6 +158,11 @@ export function processLifetime(node: ProcessNode): string | null {
   return seconds < SUB_MINUTE_SECONDS ? `${seconds.toFixed(1)}s` : formatDuration(seconds)
 }
 
+export function processClock(iso: string | null): string {
+  if (iso === null) return '–'
+  return new Date(iso).toISOString().slice(11, 23)
+}
+
 export function toTreeNodes(roots: ProcessNode[]): TreeNode[] {
   return roots.map((process) => ({
     key: process.entity_id,

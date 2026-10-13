@@ -43,6 +43,29 @@ async function expectGraphDrawn(page: Page): Promise<void> {
   await waitForTransitions(page)
 }
 
+/** The default 1280x720 window: the tab must fill it exactly, with nothing pushed below the fold. */
+async function expectFitsViewport(page: Page): Promise<void> {
+  const { scrollHeight, innerHeight } = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    innerHeight: window.innerHeight,
+  }))
+  expect(scrollHeight, `page scrolls vertically: ${scrollHeight}px of content in a ${innerHeight}px window`).toBeLessThanOrEqual(innerHeight)
+  for (const selector of ['.processes-tab__body > :first-child', '.process-details']) {
+    const box = (await page.locator(selector).boundingBox())!
+    expect(box.y + box.height, `${selector} reaches below the window`).toBeLessThanOrEqual(innerHeight)
+  }
+  const canvas = page.locator('.process-graph__canvas, .process-tree-list')
+  const canvasBox = (await canvas.boundingBox())!
+  const panelBox = (await page.locator('.process-details').boundingBox())!
+  expect(Math.abs(canvasBox.y + canvasBox.height - (panelBox.y + panelBox.height)), 'canvas and panel end at the same height').toBeLessThanOrEqual(1)
+}
+
+async function openSubTab(page: Page, label: string): Promise<void> {
+  const tab = page.locator('.process-details').getByRole('tab', { name: label })
+  await tab.click()
+  await expect(tab).toHaveAttribute('aria-selected', 'true')
+}
+
 async function snapshot(page: Page, name: string): Promise<Buffer> {
   // A page scrolled by an earlier click would be captured with its fixed header in the middle.
   await page.evaluate(() => window.scrollTo(0, 0))
@@ -103,16 +126,26 @@ function treeOf(...roots: ProcessNode[]): ProcessTree {
 test('processes-default', async ({ page }) => {
   await openProcesses(page)
   await expectGraphDrawn(page)
+  await expectFitsViewport(page)
   await snapshot(page, 'processes-default')
 })
 
-test('processes-modules-open', async ({ page }) => {
+test('processes-modules', async ({ page }) => {
   await openProcesses(page)
   await expectGraphDrawn(page)
-  await page.getByText('MODULES').click()
+  await openSubTab(page, 'MODULES')
   await expect(page.getByText('0x7ffd9d790000')).toBeVisible()
-  await waitForTransitions(page)
-  await snapshot(page, 'processes-modules-open')
+  await expectFitsViewport(page)
+  await snapshot(page, 'processes-modules')
+})
+
+test('processes-events', async ({ page }) => {
+  await openProcesses(page)
+  await expectGraphDrawn(page)
+  await openSubTab(page, 'EVENTS')
+  await expect(page.getByText('DNS query for tartarus-selftest.example')).toBeVisible()
+  await expectFitsViewport(page)
+  await snapshot(page, 'processes-events')
 })
 
 test('processes-second-process-selected', async ({ page }) => {
@@ -124,6 +157,7 @@ test('processes-second-process-selected', async ({ page }) => {
   await page.getByRole('button', { name: 'GRAPH' }).click()
   await expect(page.locator('.process-graph__canvas canvas').first()).toBeAttached()
   await waitForTransitions(page)
+  await expectFitsViewport(page)
   await snapshot(page, 'processes-second-process-selected')
 })
 
@@ -133,6 +167,7 @@ test('processes-tree', async ({ page }) => {
   await page.getByRole('button', { name: 'TREE' }).click()
   await expect(page.locator('.q-tree__node-header')).toHaveCount(2)
   await waitForTransitions(page)
+  await expectFitsViewport(page)
   await snapshot(page, 'processes-tree')
 })
 
@@ -159,6 +194,7 @@ test('processes-detail-loading', async ({ page }) => {
   await openProcesses(page, undefined, () => ({ delayMs: 30_000 }))
   await expect(page.locator('.process-details .loader')).toBeVisible()
   await expect(page.locator('.process-graph__canvas canvas').first()).toBeAttached()
+  await expectFitsViewport(page)
   await snapshot(page, 'processes-detail-loading')
 })
 
@@ -166,6 +202,7 @@ test('processes-detail-error', async ({ page }) => {
   await openProcesses(page, undefined, () => ({ status: 500, body: errorEnvelope('internal_error', 'process lookup timed out') }))
   await expect(page.locator('.process-details').getByText('failed to load: process lookup timed out')).toBeVisible()
   await expect(page.locator('.process-graph__canvas canvas').first()).toBeAttached()
+  await expectFitsViewport(page)
   await snapshot(page, 'processes-detail-error')
 })
 
@@ -184,6 +221,7 @@ test('processes-injection-and-hosts', async ({ page }) => {
   await expectGraphDrawn(page)
   await page.getByText('HOSTS', { exact: true }).click()
   await expect(page.locator('.process-details__apis')).toBeVisible()
+  await expectFitsViewport(page)
   await snapshot(page, 'processes-injection-and-hosts')
 })
 
@@ -193,6 +231,7 @@ test('processes-wide-tree-pan-zoom', async ({ page }) => {
   await openProcesses(page, { body: treeOf(root) }, detailFor(all))
   await expectGraphDrawn(page)
   await expectNoHorizontalOverflow(page)
+  await expectFitsViewport(page)
   const canvas = page.locator('.process-graph__canvas')
   const box = (await canvas.boundingBox())!
   await snapshot(page, 'processes-wide-tree-fit')
@@ -214,6 +253,7 @@ test('processes-wide-tree-as-tree', async ({ page }) => {
   await page.getByRole('button', { name: 'TREE' }).click()
   await expect(page.locator('.q-tree__node-header').first()).toBeVisible()
   await expectNoHorizontalOverflow(page)
+  await expectFitsViewport(page)
   await snapshot(page, 'processes-wide-tree-as-tree')
 })
 
@@ -235,6 +275,7 @@ test('processes-long-command-line', async ({ page }) => {
   await openProcesses(page, { body: processes }, detailFor(flatten(processes.roots[0]!)))
   await expectGraphDrawn(page)
   await expectNoHorizontalOverflow(page)
+  await expectFitsViewport(page)
   await snapshot(page, 'processes-long-command-line')
 })
 

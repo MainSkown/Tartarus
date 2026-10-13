@@ -5,6 +5,7 @@ import {
   injectionPeers,
   nodeLabel,
   nodeSize,
+  processClock,
   processLifetime,
   readGraphColors,
   resolveSelection,
@@ -200,6 +201,16 @@ describe('processLifetime', () => {
   it('is unknown without both ends', () => {
     expect(processLifetime(processNode(1, { end: null }))).toBeNull()
     expect(processLifetime(processNode(1, { start: null }))).toBeNull()
+  })
+})
+
+describe('processClock', () => {
+  it('is the UTC time of day with milliseconds, to tell apart processes started in the same second', () => {
+    expect(processClock('2026-10-13T15:39:50.393000Z')).toBe('15:39:50.393')
+  })
+
+  it('is a dash for no time', () => {
+    expect(processClock(null)).toBe('–')
   })
 })
 

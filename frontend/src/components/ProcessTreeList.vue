@@ -42,11 +42,12 @@ function select(key: string | null): void {
 
 <style scoped>
 .process-tree-list {
+  flex: 1 1 0;
   min-width: 0;
+  min-height: 360px;
   padding: var(--spacing-sm);
   border: 2px solid var(--border-primary);
   background: var(--dark-bg);
-  max-height: clamp(420px, 65vh, 720px);
   overflow: auto;
 }
 

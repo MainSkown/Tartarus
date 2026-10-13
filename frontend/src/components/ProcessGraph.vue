@@ -30,6 +30,7 @@ const showHosts = ref(false)
 
 let graph: Core | undefined
 let colors: GraphColors | undefined
+let resizeObserver: ResizeObserver | undefined
 
 function elements() {
   return toGraphElements(props.roots, { injection: showInjection.value, hosts: showHosts.value })
@@ -98,9 +99,14 @@ onMounted(() => {
   })
   applySelection()
   layOut()
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => graph?.resize())
+    resizeObserver.observe(canvas.value!)
+  }
 })
 
 onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
   graph?.destroy()
   graph = undefined
 })
@@ -169,6 +175,7 @@ watch([() => props.roots, showInjection, showHosts], redraw)
         label="HOSTS"
         class="process-graph__toggle text-mono"
       />
+      <slot name="toolbar-end" />
     </div>
     <div
       ref="canvas"
@@ -183,7 +190,9 @@ watch([() => props.roots, showInjection, showHosts], redraw)
 .process-graph {
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
   min-width: 0;
+  min-height: 0;
 }
 
 .process-graph__toolbar {
@@ -201,8 +210,9 @@ watch([() => props.roots, showInjection, showHosts], redraw)
 }
 
 .process-graph__canvas {
-  height: clamp(420px, 65vh, 720px);
+  flex: 1 1 0;
   min-width: 0;
+  min-height: 360px;
   overflow: hidden;
   border: 2px solid var(--border-primary);
   background: var(--dark-bg);

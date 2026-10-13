@@ -14,6 +14,7 @@ export class FakeCytoscape {
     this.level = fitting.zoom
   })
   readonly center = vi.fn()
+  readonly resize = vi.fn()
   readonly destroy = vi.fn()
   readonly png = vi.fn<(options: unknown) => string>(() => 'data:image/png;base64,AAAA')
 

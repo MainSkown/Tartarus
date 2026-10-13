@@ -104,8 +104,28 @@ describe('ProcessesTab loaded', () => {
     expect(viewsProcessMock).toHaveBeenCalledWith({ path: { analysis_id: 45, pid: 9708 } })
   })
 
-  it('shows how many processes were recorded', async () => {
-    expect((await mountTab()).text()).toContain('2 PROCESSES')
+  it('shows how many processes were recorded in the same row as the graph controls and the switch', async () => {
+    const wrapper = await mountTab()
+
+    const toolbar = wrapper.get('.process-graph__toolbar')
+    expect(toolbar.text()).toContain('2 processes')
+    expect(toolbar.find('.q-btn-toggle').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('2 PROCESSES')
+  })
+
+  it('keeps the count and the switch in a row of their own in tree mode', async () => {
+    const wrapper = await mountTab()
+
+    await wrapper.findAll('.q-btn-toggle button').find((button) => button.text() === 'TREE')!.trigger('click')
+
+    expect(wrapper.get('.processes-tab__bar').text()).toContain('2 processes')
+    expect(wrapper.findAll('.q-btn-toggle')).toHaveLength(1)
+  })
+
+  it('sizes itself to the viewport height left under the header', async () => {
+    const wrapper = await mountTab()
+
+    expect(wrapper.get('[data-tab="processes"]').attributes('style')).toContain('--tab-fill-height')
   })
 
   it('shows the details of a process selected in the graph, and loads its detail', async () => {
