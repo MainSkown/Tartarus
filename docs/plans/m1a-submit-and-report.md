@@ -12,6 +12,19 @@ Delegation follows rule 5 of [.claude/CLAUDE.md](../../.claude/CLAUDE.md): Haiku
 never Opus. Every subtask is test-first, and every agent keeps a notes file so an interrupted run
 can resume. Waves are at most four agents, because usage limits have already interrupted a long run.
 
+## Status
+
+**Waves 1 and 2 are done and verified against the real stack** (2026-10-13): the guest and CAPE
+show as ok in the header's health, and a real analysis was driven through the API with no manual
+step. Submitting `benign.exe` ran `starting`, `running`, `processing`, `done` in about 72 seconds
+with a score of 6.0, a `high` highest severity, 12 signatures and 10 ATT&CK ids; CAPE's callback
+reached the backend. Three submissions at once ran strictly in order and a cancelled one never
+ran; cancel and delete of a running analysis answer `409`. Deleting removed the CAPE task, the
+rows and the stored sample (the last one only after nothing else used it). Restarting the backend
+in the middle of a running analysis resumed the same CAPE task and finished `done`. Not yet
+exercised on the real stack: CAPE going down mid-run (unit-tested; the real drill is A11).
+**Next: Wave 3 (the frontend), then A11 (`make e2e`) and the screenshot review.**
+
 ## Outcome
 
 With `make up`:

@@ -53,14 +53,14 @@ longer lists included routes in `app.routes`.
 ### Analyses
 | Method & path | Purpose |
 |---|---|
-| `POST /analyses` | multipart (max 512 MB, enforced by the frontend's nginx; proposed): `file`, `options` (JSON: `route`, `timeout` 60–1200 s, `package` (`auto` default), `memory_dump` bool, `interactive` bool, `tags[]`). Returns `201 {analysis}`. Rejected with `409` if the guest isn't ready or the disk is below the block threshold. |
-| `GET /analyses` | Paged list with `q` (filename/hash substring), `status`, `tag`, and `sort` (`submitted_at` desc default) |
-| `GET /analyses/{id}` | Detail: sample, status, phase, options, score, max severity, families, counts per lane and per severity, tags, timing |
+| `POST /analyses` | **Built (M1a).** multipart: `file` and `options` (a JSON string: `route`, `timeout` 60 to 1200 s default 180, `package` default `auto`; unknown keys are rejected; `memory_dump`, `interactive` and tags are not in M1a). `201` with the analysis, always `queued`. Checked in this order: the form (`422` with field locations, including an empty file at `["body","file"]`), then the guest is ready (`409`, nothing stored), then the upload (`413` past 512 MiB). Two identical uploads at once are fine; a failed submission leaves no file or row. |
+| `GET /analyses` | **Built.** `{items, total}`, newest first; `limit`, `offset`, `q` (filename or hash substring) and `status`. (`tag` and `sort` come with M5 and later.) |
+| `GET /analyses/{id}` | **Built.** The analysis with its typed `summary` (duration, process count, signatures with severity, ATT&CK ids with the signatures that raised them, network counts, files and registry keys written, the sample's name and type) once the report is read; `404` in the error envelope when unknown. Lane counts and the process tree come with M1b. |
 | `POST /analyses/{id}/stop` | Stop a running task early; it proceeds to processing |
 | `POST /analyses/{id}/extend` | `{seconds}`. Only while running and interactive (see the open question in cape-integration) |
-| `POST /analyses/{id}/cancel` | Remove a queued analysis |
+| `POST /analyses/{id}/cancel` | **Built.** Only while `queued`: `200` with the cancelled analysis; `409` once it has started or ended; `404` when unknown. |
 | `POST /analyses/{id}/reingest` | Re-run ingestion from CAPE storage (job) |
-| `DELETE /analyses/{id}` | `409` if running. Otherwise starts a delete job |
+| `DELETE /analyses/{id}` | **Built.** `409` while active (starting, running, processing, ingesting). Otherwise deletes the CAPE task (asking CAPE for its status first, because CAPE deletes only reported tasks unless given the task's own status), then our rows, then the stored sample only if no other analysis uses it; `204`. A missing CAPE task counts as already gone, and an unreachable CAPE does not make the analysis undeletable. |
 
 ### Events and query
 | Method & path | Purpose |
