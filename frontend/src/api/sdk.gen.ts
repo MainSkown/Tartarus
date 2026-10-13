@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses } from './types.gen';
+import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -71,7 +71,7 @@ export const analysesCreate = <ThrowOnError extends boolean = false>(options: Op
 /**
  * Delete
  *
- * Removes the analysis, its CAPE task, and its sample once nothing else uses it.
+ * Removes the analysis, its CAPE task, its event index, and its sample once unused.
  */
 export const analysesDelete = <ThrowOnError extends boolean = false>(options: Options<AnalysesDeleteData, ThrowOnError>): RequestResult<AnalysesDeleteResponses, AnalysesDeleteErrors, ThrowOnError> => (options.client ?? client).delete<AnalysesDeleteResponses, AnalysesDeleteErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}', ...options });
 
@@ -86,6 +86,108 @@ export const analysesRead = <ThrowOnError extends boolean = false>(options: Opti
  * Only a queued analysis can be cancelled; once it has started, `409`.
  */
 export const analysesCancel = <ThrowOnError extends boolean = false>(options: Options<AnalysesCancelData, ThrowOnError>): RequestResult<AnalysesCancelResponses, AnalysesCancelErrors, ThrowOnError> => (options.client ?? client).post<AnalysesCancelResponses, AnalysesCancelErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/cancel', ...options });
+
+/**
+ * Reingest
+ *
+ * Indexes a finished analysis's report again. `409` unless it is `done` or `report_failed`,
+ * or while another analysis is active.
+ */
+export const analysesReingest = <ThrowOnError extends boolean = false>(options: Options<AnalysesReingestData, ThrowOnError>): RequestResult<AnalysesReingestResponses, AnalysesReingestErrors, ThrowOnError> => (options.client ?? client).post<AnalysesReingestResponses, AnalysesReingestErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/reingest', ...options });
+
+/**
+ * Processes
+ *
+ * The process tree as nested roots. A process whose parent is not in the analysis is a root.
+ *
+ * Each node carries its lifetime, detections, injection targets, network hosts and event counts
+ * per lane. `integrity` is null: no source reports it yet.
+ */
+export const viewsProcesses = <ThrowOnError extends boolean = false>(options: Options<ViewsProcessesData, ThrowOnError>): RequestResult<ViewsProcessesResponses, ViewsProcessesErrors, ThrowOnError> => (options.client ?? client).get<ViewsProcessesResponses, ViewsProcessesErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/processes', ...options });
+
+/**
+ * Process
+ *
+ * One process (the first, if the pid was reused) with its loaded modules, its 15 most called
+ * APIs, and its 200 most recent file, registry, network and process events (newest first) with
+ * the total. `404` for a pid the analysis never saw.
+ */
+export const viewsProcess = <ThrowOnError extends boolean = false>(options: Options<ViewsProcessData, ThrowOnError>): RequestResult<ViewsProcessResponses, ViewsProcessErrors, ThrowOnError> => (options.client ?? client).get<ViewsProcessResponses, ViewsProcessErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/processes/{pid}', ...options });
+
+/**
+ * Network
+ *
+ * DNS, HTTP, TLS, flows, alerts and contacted hosts, each as `{items, total}`.
+ *
+ * Each list holds its first `limit` rows by time; `total` counts them all. A row names its
+ * process only where the report attributed it exactly. `tls` and `alerts` stay empty until
+ * Suricata is a source. `simulated` is true when the analysis was routed through INetSim.
+ */
+export const viewsNetwork = <ThrowOnError extends boolean = false>(options: Options<ViewsNetworkData, ThrowOnError>): RequestResult<ViewsNetworkResponses, ViewsNetworkErrors, ThrowOnError> => (options.client ?? client).get<ViewsNetworkResponses, ViewsNetworkErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/network', ...options });
+
+/**
+ * Registry
+ *
+ * Registry changes grouped by hive and key, groups ordered by their first change.
+ */
+export const viewsRegistry = <ThrowOnError extends boolean = false>(options: Options<ViewsRegistryData, ThrowOnError>): RequestResult<ViewsRegistryResponses, ViewsRegistryErrors, ThrowOnError> => (options.client ?? client).get<ViewsRegistryResponses, ViewsRegistryErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/registry', ...options });
+
+/**
+ * Detections
+ *
+ * Every detection of the analysis grouped by ruleset (Sigma, CAPE, YARA, Suricata, then
+ * any other), most severe first and by name within a severity. Each detection lists up to 50 of
+ * the events that triggered it and the total.
+ */
+export const viewsDetections = <ThrowOnError extends boolean = false>(options: Options<ViewsDetectionsData, ThrowOnError>): RequestResult<ViewsDetectionsResponses, ViewsDetectionsErrors, ThrowOnError> => (options.client ?? client).get<ViewsDetectionsResponses, ViewsDetectionsErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/detections', ...options });
+
+/**
+ * Attack
+ *
+ * The ATT&CK techniques the detections raised, by tactic in kill-chain order. A technique of
+ * several tactics appears under each; one the bundled ATT&CK table does not know goes under the
+ * tactic `unknown` with no name. Tactics without a hit are left out.
+ */
+export const viewsAttack = <ThrowOnError extends boolean = false>(options: Options<ViewsAttackData, ThrowOnError>): RequestResult<ViewsAttackResponses, ViewsAttackErrors, ThrowOnError> => (options.client ?? client).get<ViewsAttackResponses, ViewsAttackErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/attack', ...options });
+
+/**
+ * Iocs
+ *
+ * Deduplicated indicators from the events and the report: hashes, domains, IPs (not the
+ * sandbox network), URLs, mutexes, registry paths and file paths. `truncated_types` lists
+ * types that had more distinct values than are returned.
+ */
+export const viewsIocs = <ThrowOnError extends boolean = false>(options: Options<ViewsIocsData, ThrowOnError>): RequestResult<ViewsIocsResponses, ViewsIocsErrors, ThrowOnError> => (options.client ?? client).get<ViewsIocsResponses, ViewsIocsErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/iocs', ...options });
+
+/**
+ * Artifacts
+ *
+ * What the run produced, computed from CAPE's `report.json` and the analysis folder. An
+ * analysis without a readable report lists nothing.
+ */
+export const viewsArtifacts = <ThrowOnError extends boolean = false>(options: Options<ViewsArtifactsData, ThrowOnError>): RequestResult<ViewsArtifactsResponses, ViewsArtifactsErrors, ThrowOnError> => (options.client ?? client).get<ViewsArtifactsResponses, ViewsArtifactsErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/artifacts', ...options });
+
+/**
+ * Download Artifact
+ *
+ * The artifact as an AES-encrypted zip, password `infected`. `404` for an id the artifact
+ * list does not hold or whose file is gone.
+ */
+export const viewsDownloadArtifact = <ThrowOnError extends boolean = false>(options: Options<ViewsDownloadArtifactData, ThrowOnError>): RequestResult<ViewsDownloadArtifactResponses, ViewsDownloadArtifactErrors, ThrowOnError> => (options.client ?? client).get<ViewsDownloadArtifactResponses, ViewsDownloadArtifactErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/artifacts/{artifact_id}/download', ...options });
+
+/**
+ * Screenshot
+ *
+ * Screenshot `n`, counted from 1 as in the artifact list, as the raw image.
+ */
+export const viewsScreenshot = <ThrowOnError extends boolean = false>(options: Options<ViewsScreenshotData, ThrowOnError>): RequestResult<ViewsScreenshotResponses, ViewsScreenshotErrors, ThrowOnError> => (options.client ?? client).get<ViewsScreenshotResponses, ViewsScreenshotErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/artifacts/screenshots/{n}', ...options });
+
+/**
+ * Pcap
+ *
+ * The guest's network capture, raw.
+ */
+export const viewsPcap = <ThrowOnError extends boolean = false>(options: Options<ViewsPcapData, ThrowOnError>): RequestResult<ViewsPcapResponses, ViewsPcapErrors, ThrowOnError> => (options.client ?? client).get<ViewsPcapResponses, ViewsPcapErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/pcap', ...options });
 
 /**
  * Ws Message Schemas

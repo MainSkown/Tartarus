@@ -99,6 +99,127 @@ export type AnalysisRead = {
 export type AnalysisStatus = 'queued' | 'starting' | 'running' | 'processing' | 'ingesting' | 'done' | 'failed' | 'report_failed' | 'cancelled';
 
 /**
+ * ApiCount
+ */
+export type ApiCount = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Count
+     */
+    count: number;
+};
+
+/**
+ * Artifact
+ */
+export type Artifact = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Size
+     */
+    size: number | null;
+    /**
+     * Sha256
+     */
+    sha256: string | null;
+    /**
+     * Md5
+     */
+    md5: string | null;
+    /**
+     * Type
+     */
+    type: string | null;
+    /**
+     * Cape Type
+     */
+    cape_type: string | null;
+    /**
+     * Yara
+     */
+    yara: Array<string>;
+    source_process: ProcessRef | null;
+    /**
+     * Guest Path
+     */
+    guest_path: string | null;
+    /**
+     * Downloadable
+     */
+    downloadable: boolean;
+};
+
+/**
+ * ArtifactsView
+ */
+export type ArtifactsView = {
+    /**
+     * Dropped
+     */
+    dropped: Array<Artifact>;
+    /**
+     * Payloads
+     */
+    payloads: Array<Artifact>;
+    /**
+     * Procdumps
+     */
+    procdumps: Array<Artifact>;
+    memory_dump: Artifact | null;
+    pcap: Artifact | null;
+    /**
+     * Screenshots
+     */
+    screenshots: Array<Screenshot>;
+    /**
+     * Configs
+     */
+    configs: Array<ExtractedConfig>;
+};
+
+/**
+ * AttackMatrix
+ */
+export type AttackMatrix = {
+    /**
+     * Tactics
+     */
+    tactics: Array<AttackTactic>;
+    /**
+     * Attack Version
+     */
+    attack_version: string;
+};
+
+/**
+ * AttackTactic
+ */
+export type AttackTactic = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Techniques
+     */
+    techniques: Array<AttackTechniqueHit>;
+};
+
+/**
  * AttackTechnique
  *
  * CAPE gives technique ids without names; the signatures that raised one say what it means.
@@ -112,6 +233,29 @@ export type AttackTechnique = {
      * Signatures
      */
     signatures: Array<string>;
+};
+
+/**
+ * AttackTechniqueHit
+ */
+export type AttackTechniqueHit = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string | null;
+    /**
+     * Hit Count
+     */
+    hit_count: number;
+    severity: Severity;
+    /**
+     * Detection Ids
+     */
+    detection_ids: Array<string>;
 };
 
 /**
@@ -144,6 +288,109 @@ export type ComponentHealth = {
 };
 
 /**
+ * Detection
+ */
+export type Detection = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string | null;
+    severity: Severity;
+    /**
+     * Ruleset
+     */
+    ruleset: string;
+    /**
+     * Techniques
+     */
+    techniques: Array<string>;
+    /**
+     * Match
+     */
+    match: string | null;
+    /**
+     * References
+     */
+    references: Array<string>;
+    /**
+     * Time
+     */
+    time: string;
+    process: ProcessRef | null;
+    /**
+     * Related Events
+     */
+    related_events: Array<RelatedEvent>;
+    /**
+     * Related Event Total
+     */
+    related_event_total: number;
+};
+
+/**
+ * DetectionGroup
+ */
+export type DetectionGroup = {
+    /**
+     * Ruleset
+     */
+    ruleset: string;
+    /**
+     * Detections
+     */
+    detections: Array<Detection>;
+};
+
+/**
+ * DetectionsView
+ */
+export type DetectionsView = {
+    /**
+     * Groups
+     */
+    groups: Array<DetectionGroup>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * DnsRow
+ */
+export type DnsRow = {
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Query
+     */
+    query: string;
+    /**
+     * Type
+     */
+    type: string | null;
+    /**
+     * Answers
+     */
+    answers: Array<string>;
+    process: ProcessRef | null;
+};
+
+/**
  * ErrorBody
  */
 export type ErrorBody = {
@@ -171,6 +418,61 @@ export type ErrorEnvelope = {
 };
 
 /**
+ * ExtractedConfig
+ */
+export type ExtractedConfig = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Family
+     */
+    family: string;
+    /**
+     * Data
+     */
+    data: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * FlowRow
+ */
+export type FlowRow = {
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Transport
+     */
+    transport: string | null;
+    /**
+     * Source Ip
+     */
+    source_ip: string | null;
+    /**
+     * Source Port
+     */
+    source_port: number | null;
+    /**
+     * Destination Ip
+     */
+    destination_ip: string | null;
+    /**
+     * Destination Port
+     */
+    destination_port: number | null;
+    process: ProcessRef | null;
+};
+
+/**
  * HealthMessage
  *
  * `/ws/system`'s `health` push: the envelope `{type, ts, data}` from the backend spec's
@@ -195,6 +497,232 @@ export type HealthMessage = {
 export type HealthStatus = 'ok' | 'degraded' | 'down';
 
 /**
+ * HostRow
+ */
+export type HostRow = {
+    /**
+     * Host
+     */
+    host: string;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Related
+     */
+    related: Array<string>;
+};
+
+/**
+ * HttpRow
+ */
+export type HttpRow = {
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Method
+     */
+    method: string | null;
+    /**
+     * Url
+     */
+    url: string;
+    /**
+     * Host
+     */
+    host: string | null;
+    /**
+     * Status
+     */
+    status: number | null;
+    /**
+     * User Agent
+     */
+    user_agent: string | null;
+    process: ProcessRef | null;
+};
+
+/**
+ * Ioc
+ */
+export type Ioc = {
+    type: IocType;
+    /**
+     * Value
+     */
+    value: string;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Context
+     */
+    context: string;
+    /**
+     * Source Event Ids
+     */
+    source_event_ids: Array<string>;
+    process: ProcessRef | null;
+};
+
+/**
+ * IocType
+ */
+export type IocType = 'hash' | 'domain' | 'ip' | 'url' | 'mutex' | 'registry' | 'file';
+
+/**
+ * IocsView
+ */
+export type IocsView = {
+    /**
+     * Iocs
+     */
+    iocs: Array<Ioc>;
+    /**
+     * Truncated Types
+     */
+    truncated_types: Array<IocType>;
+};
+
+/**
+ * Listing[DnsRow]
+ */
+export type ListingDnsRow = {
+    /**
+     * Items
+     */
+    items: Array<DnsRow>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Listing[FlowRow]
+ */
+export type ListingFlowRow = {
+    /**
+     * Items
+     */
+    items: Array<FlowRow>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Listing[HostRow]
+ */
+export type ListingHostRow = {
+    /**
+     * Items
+     */
+    items: Array<HostRow>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Listing[HttpRow]
+ */
+export type ListingHttpRow = {
+    /**
+     * Items
+     */
+    items: Array<HttpRow>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Listing[NetworkAlertRow]
+ */
+export type ListingNetworkAlertRow = {
+    /**
+     * Items
+     */
+    items: Array<NetworkAlertRow>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Listing[TlsRow]
+ */
+export type ListingTlsRow = {
+    /**
+     * Items
+     */
+    items: Array<TlsRow>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * LoadedModule
+ */
+export type LoadedModule = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Path
+     */
+    path: string | null;
+    /**
+     * Base Address
+     */
+    base_address: string | null;
+    /**
+     * Loaded At
+     */
+    loaded_at: string;
+};
+
+/**
+ * NetworkAlertRow
+ */
+export type NetworkAlertRow = {
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Signature
+     */
+    signature: string;
+    severity: Severity;
+    process: ProcessRef | null;
+};
+
+/**
  * NetworkCounts
  */
 export type NetworkCounts = {
@@ -210,6 +738,308 @@ export type NetworkCounts = {
      * Tcp
      */
     tcp?: number;
+};
+
+/**
+ * NetworkView
+ */
+export type NetworkView = {
+    dns: ListingDnsRow;
+    http: ListingHttpRow;
+    tls: ListingTlsRow;
+    flows: ListingFlowRow;
+    alerts: ListingNetworkAlertRow;
+    hosts: ListingHostRow;
+    /**
+     * Simulated
+     */
+    simulated: boolean;
+};
+
+/**
+ * ProcessDetail
+ */
+export type ProcessDetail = {
+    /**
+     * Entity Id
+     */
+    entity_id: string;
+    /**
+     * Pid
+     */
+    pid: number;
+    /**
+     * Ppid
+     */
+    ppid: number | null;
+    /**
+     * Name
+     */
+    name: string | null;
+    /**
+     * Executable
+     */
+    executable: string | null;
+    /**
+     * Command Line
+     */
+    command_line: string | null;
+    /**
+     * Start
+     */
+    start: string | null;
+    /**
+     * End
+     */
+    end: string | null;
+    /**
+     * Integrity
+     */
+    integrity: string | null;
+    max_severity: Severity | null;
+    /**
+     * Detection Count
+     */
+    detection_count: number;
+    /**
+     * Injected Into
+     */
+    injected_into: Array<number>;
+    /**
+     * Network Hosts
+     */
+    network_hosts: Array<string>;
+    /**
+     * Event Counts By Lane
+     */
+    event_counts_by_lane: {
+        [key: string]: number;
+    };
+    /**
+     * Modules
+     */
+    modules: Array<LoadedModule>;
+    /**
+     * Top Apis
+     */
+    top_apis: Array<ApiCount>;
+    /**
+     * Events
+     */
+    events: Array<ProcessEventRow>;
+    /**
+     * Event Total
+     */
+    event_total: number;
+};
+
+/**
+ * ProcessEventRow
+ */
+export type ProcessEventRow = {
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Summary
+     */
+    summary: string;
+    /**
+     * Lane
+     */
+    lane: string;
+    /**
+     * Event Id
+     */
+    event_id: string;
+};
+
+/**
+ * ProcessNode
+ */
+export type ProcessNode = {
+    /**
+     * Entity Id
+     */
+    entity_id: string;
+    /**
+     * Pid
+     */
+    pid: number;
+    /**
+     * Ppid
+     */
+    ppid: number | null;
+    /**
+     * Name
+     */
+    name: string | null;
+    /**
+     * Executable
+     */
+    executable: string | null;
+    /**
+     * Command Line
+     */
+    command_line: string | null;
+    /**
+     * Start
+     */
+    start: string | null;
+    /**
+     * End
+     */
+    end: string | null;
+    /**
+     * Integrity
+     */
+    integrity: string | null;
+    max_severity: Severity | null;
+    /**
+     * Detection Count
+     */
+    detection_count: number;
+    /**
+     * Injected Into
+     */
+    injected_into: Array<number>;
+    /**
+     * Network Hosts
+     */
+    network_hosts: Array<string>;
+    /**
+     * Event Counts By Lane
+     */
+    event_counts_by_lane: {
+        [key: string]: number;
+    };
+    /**
+     * Children
+     */
+    children: Array<ProcessNode>;
+};
+
+/**
+ * ProcessRef
+ */
+export type ProcessRef = {
+    /**
+     * Pid
+     */
+    pid: number;
+    /**
+     * Name
+     */
+    name: string | null;
+};
+
+/**
+ * ProcessTree
+ */
+export type ProcessTree = {
+    /**
+     * Roots
+     */
+    roots: Array<ProcessNode>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * RegistryChange
+ */
+export type RegistryChange = {
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Value Name
+     */
+    value_name: string | null;
+    /**
+     * Data Type
+     */
+    data_type: string | null;
+    /**
+     * Data
+     */
+    data: Array<string>;
+    process: ProcessRef | null;
+};
+
+/**
+ * RegistryKeyGroup
+ */
+export type RegistryKeyGroup = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Hive
+     */
+    hive: string | null;
+    /**
+     * Changes
+     */
+    changes: Array<RegistryChange>;
+};
+
+/**
+ * RegistryView
+ */
+export type RegistryView = {
+    /**
+     * Keys
+     */
+    keys: Array<RegistryKeyGroup>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * RelatedEvent
+ */
+export type RelatedEvent = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Lane
+     */
+    lane: string;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Summary
+     */
+    summary: string;
+    process: ProcessRef | null;
 };
 
 /**
@@ -244,6 +1074,12 @@ export type ReportSummary = {
      */
     registry_keys_written?: number;
     sample?: SampleSummary;
+    /**
+     * Lane Counts
+     */
+    lane_counts?: {
+        [key: string]: number;
+    };
 };
 
 export type Route = 'none' | 'drop' | 'internet' | 'inetsim' | 'tor' | 'vpn' | 'wireguard' | 'socks5';
@@ -260,6 +1096,24 @@ export type SampleSummary = {
      * Type
      */
     type?: string | null;
+};
+
+/**
+ * Screenshot
+ */
+export type Screenshot = {
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Size
+     */
+    size: number;
 };
 
 /**
@@ -313,6 +1167,33 @@ export type SystemHealth = {
     opensearch: ComponentHealth;
     cape: ComponentHealth;
     guest: ComponentHealth;
+};
+
+/**
+ * TlsRow
+ */
+export type TlsRow = {
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Server Name
+     */
+    server_name: string | null;
+    /**
+     * Ja3
+     */
+    ja3: string | null;
+    /**
+     * Ja3S
+     */
+    ja3s: string | null;
+    process: ProcessRef | null;
 };
 
 export type SystemHealthData = {
@@ -548,6 +1429,381 @@ export type AnalysesCancelResponses = {
 };
 
 export type AnalysesCancelResponse = AnalysesCancelResponses[keyof AnalysesCancelResponses];
+
+export type AnalysesReingestData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/reingest';
+};
+
+export type AnalysesReingestErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesReingestError = AnalysesReingestErrors[keyof AnalysesReingestErrors];
+
+export type AnalysesReingestResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisRead;
+};
+
+export type AnalysesReingestResponse = AnalysesReingestResponses[keyof AnalysesReingestResponses];
+
+export type ViewsProcessesData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/processes';
+};
+
+export type ViewsProcessesErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsProcessesError = ViewsProcessesErrors[keyof ViewsProcessesErrors];
+
+export type ViewsProcessesResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProcessTree;
+};
+
+export type ViewsProcessesResponse = ViewsProcessesResponses[keyof ViewsProcessesResponses];
+
+export type ViewsProcessData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+        /**
+         * Pid
+         */
+        pid: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/processes/{pid}';
+};
+
+export type ViewsProcessErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsProcessError = ViewsProcessErrors[keyof ViewsProcessErrors];
+
+export type ViewsProcessResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProcessDetail;
+};
+
+export type ViewsProcessResponse = ViewsProcessResponses[keyof ViewsProcessResponses];
+
+export type ViewsNetworkData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: {
+        /**
+         * Limit
+         *
+         * Rows kept in each list.
+         */
+        limit?: number;
+    };
+    url: '/api/analyses/{analysis_id}/network';
+};
+
+export type ViewsNetworkErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsNetworkError = ViewsNetworkErrors[keyof ViewsNetworkErrors];
+
+export type ViewsNetworkResponses = {
+    /**
+     * Successful Response
+     */
+    200: NetworkView;
+};
+
+export type ViewsNetworkResponse = ViewsNetworkResponses[keyof ViewsNetworkResponses];
+
+export type ViewsRegistryData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/registry';
+};
+
+export type ViewsRegistryErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsRegistryError = ViewsRegistryErrors[keyof ViewsRegistryErrors];
+
+export type ViewsRegistryResponses = {
+    /**
+     * Successful Response
+     */
+    200: RegistryView;
+};
+
+export type ViewsRegistryResponse = ViewsRegistryResponses[keyof ViewsRegistryResponses];
+
+export type ViewsDetectionsData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/detections';
+};
+
+export type ViewsDetectionsErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsDetectionsError = ViewsDetectionsErrors[keyof ViewsDetectionsErrors];
+
+export type ViewsDetectionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: DetectionsView;
+};
+
+export type ViewsDetectionsResponse = ViewsDetectionsResponses[keyof ViewsDetectionsResponses];
+
+export type ViewsAttackData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/attack';
+};
+
+export type ViewsAttackErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsAttackError = ViewsAttackErrors[keyof ViewsAttackErrors];
+
+export type ViewsAttackResponses = {
+    /**
+     * Successful Response
+     */
+    200: AttackMatrix;
+};
+
+export type ViewsAttackResponse = ViewsAttackResponses[keyof ViewsAttackResponses];
+
+export type ViewsIocsData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/iocs';
+};
+
+export type ViewsIocsErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsIocsError = ViewsIocsErrors[keyof ViewsIocsErrors];
+
+export type ViewsIocsResponses = {
+    /**
+     * Successful Response
+     */
+    200: IocsView;
+};
+
+export type ViewsIocsResponse = ViewsIocsResponses[keyof ViewsIocsResponses];
+
+export type ViewsArtifactsData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/artifacts';
+};
+
+export type ViewsArtifactsErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsArtifactsError = ViewsArtifactsErrors[keyof ViewsArtifactsErrors];
+
+export type ViewsArtifactsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ArtifactsView;
+};
+
+export type ViewsArtifactsResponse = ViewsArtifactsResponses[keyof ViewsArtifactsResponses];
+
+export type ViewsDownloadArtifactData = {
+    body?: never;
+    path: {
+        /**
+         * Artifact Id
+         */
+        artifact_id: string;
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/artifacts/{artifact_id}/download';
+};
+
+export type ViewsDownloadArtifactErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsDownloadArtifactError = ViewsDownloadArtifactErrors[keyof ViewsDownloadArtifactErrors];
+
+export type ViewsDownloadArtifactResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type ViewsDownloadArtifactResponse = ViewsDownloadArtifactResponses[keyof ViewsDownloadArtifactResponses];
+
+export type ViewsScreenshotData = {
+    body?: never;
+    path: {
+        /**
+         * N
+         */
+        n: number;
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/artifacts/screenshots/{n}';
+};
+
+export type ViewsScreenshotErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsScreenshotError = ViewsScreenshotErrors[keyof ViewsScreenshotErrors];
+
+export type ViewsScreenshotResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ViewsPcapData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/pcap';
+};
+
+export type ViewsPcapErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ViewsPcapError = ViewsPcapErrors[keyof ViewsPcapErrors];
+
+export type ViewsPcapResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type SystemWsMessageSchemasData = {
     body?: never;
