@@ -35,10 +35,13 @@ async function expectHeaderShowing(page: Page, analysis: AnalysisRead): Promise<
   await waitForTransitions(page)
 }
 
-const STATE_SCENARIOS: { name: string; analysis: AnalysisRead; text: string }[] = [
-  { name: 'analysis-queued', analysis: makeAnalysis({ id: ID, status: 'queued', queue_position: 2 }), text: 'position 2 in the queue' },
-  { name: 'analysis-running', analysis: makeAnalysis({ id: ID, status: 'running', started_at: STARTED_AT }), text: 'detonating in the guest' },
-  { name: 'analysis-processing', analysis: makeAnalysis({ id: ID, status: 'processing', started_at: STARTED_AT }), text: 'CAPE is processing the results' },
+// An active analysis opens on LIVE; these scenarios are about what the SUMMARY tab says of it.
+const SUMMARY_PATH = `/analyses/${ID}/summary`
+
+const STATE_SCENARIOS: { name: string; analysis: AnalysisRead; text: string; path?: string }[] = [
+  { name: 'analysis-queued', analysis: makeAnalysis({ id: ID, status: 'queued', queue_position: 2 }), text: 'position 2 in the queue', path: SUMMARY_PATH },
+  { name: 'analysis-running', analysis: makeAnalysis({ id: ID, status: 'running', started_at: STARTED_AT }), text: 'detonating in the guest', path: SUMMARY_PATH },
+  { name: 'analysis-processing', analysis: makeAnalysis({ id: ID, status: 'processing', started_at: STARTED_AT }), text: 'CAPE is processing the results', path: SUMMARY_PATH },
   { name: 'analysis-done-detections', analysis: makeDetectedAnalysis({ id: ID }), text: 'SIGNATURES' },
   { name: 'analysis-done-clean', analysis: makeCleanAnalysis({ id: ID }), text: 'no detections: CAPE raised no signatures' },
   {
@@ -63,9 +66,9 @@ test('the header Submit button and the page actions share a right edge', async (
   expect(Math.round(submit!.x + submit!.width)).toBe(Math.round(remove!.x + remove!.width))
 })
 
-for (const { name, analysis, text } of STATE_SCENARIOS) {
+for (const { name, analysis, text, path } of STATE_SCENARIOS) {
   test(name, async ({ page }) => {
-    await openAnalysis(page, analysis)
+    await openAnalysis(page, analysis, {}, path)
     await expectHeaderShowing(page, analysis)
     await expect(page.getByText(text, { exact: false }).first()).toBeVisible()
     await page.screenshot({ path: screenshotPath(name), fullPage: true })

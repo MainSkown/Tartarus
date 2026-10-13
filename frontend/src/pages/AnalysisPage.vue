@@ -7,7 +7,7 @@ import AnalysisSummaryTab from '@/components/AnalysisSummaryTab.vue'
 import AnalysisTabs from '@/components/AnalysisTabs.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { TAB_VIEWS } from '@/components/tabs'
-import { DEFAULT_TAB, arrivalNote } from '@/services/analysis-tabs'
+import { DEFAULT_TAB, LIVE_TAB, arrivalNote, nextLiveSession } from '@/services/analysis-tabs'
 import { confirmDestructive } from '@/services/confirm'
 import { deleteConfirmation } from '@/services/delete-confirmation'
 import { NOT_FOUND_STATUS } from '@/services/quiet-statuses'
@@ -20,8 +20,12 @@ const store = useAnalysesStore()
 const acting = ref(false)
 
 const analysisId = computed(() => (/^\d+$/.test(String(route.params.id)) ? Number(route.params.id) : undefined))
-const activeTab = computed(() => (typeof route.params.tab === 'string' && route.params.tab) || DEFAULT_TAB)
+const requestedTab = computed(() => (typeof route.params.tab === 'string' && route.params.tab) || undefined)
 const analysis = computed(() => (store.current?.id === analysisId.value ? store.current : undefined))
+const liveSession = ref(false)
+const activeTab = computed(() => requestedTab.value ?? (liveSession.value ? LIVE_TAB : DEFAULT_TAB))
+// LIVE asked for outside a live session (an analysis opened already finished) is not offered: SUMMARY shows instead.
+const viewTab = computed(() => (activeTab.value === LIVE_TAB && !liveSession.value ? DEFAULT_TAB : activeTab.value))
 const loadFailed = computed(() => store.loadError !== undefined && !store.loading)
 const notFound = computed(
   () => analysisId.value === undefined || (loadFailed.value && store.loadErrorStatus === NOT_FOUND_STATUS),
@@ -57,6 +61,12 @@ function selectTab(tab: string): void {
   void router.push({ name: 'analysis-workspace', params: { id: String(analysisId.value), tab } })
 }
 
+watch(analysisId, () => (liveSession.value = false), { flush: 'sync' })
+watch(
+  [analysis, requestedTab],
+  ([current, tab]) => (liveSession.value = nextLiveSession(liveSession.value, tab, current)),
+  { immediate: true, flush: 'sync' },
+)
 watch(analysisId, load)
 onMounted(load)
 onBeforeUnmount(store.stopPolling)
@@ -78,15 +88,23 @@ onBeforeUnmount(store.stopPolling)
       />
       <AnalysisTabs
         :active="activeTab"
+        :live="liveSession"
         @select="selectTab"
       />
       <AnalysisSummaryTab
-        v-if="activeTab === DEFAULT_TAB"
+        v-if="viewTab === DEFAULT_TAB"
         :analysis="analysis"
       />
-      <template v-else-if="TAB_VIEWS[activeTab]">
+      <component
+        :is="TAB_VIEWS[LIVE_TAB]"
+        v-else-if="viewTab === LIVE_TAB"
+        :key="analysis.id"
+        :analysis="analysis"
+        @open-tab="selectTab"
+      />
+      <template v-else-if="TAB_VIEWS[viewTab]">
         <component
-          :is="TAB_VIEWS[activeTab]"
+          :is="TAB_VIEWS[viewTab]"
           v-if="analysis.status === 'done'"
           :analysis="analysis"
         />
@@ -97,7 +115,7 @@ onBeforeUnmount(store.stopPolling)
       </template>
       <TerminalEmpty
         v-else
-        :message="arrivalNote(activeTab)"
+        :message="arrivalNote(viewTab)"
       />
     </template>
 

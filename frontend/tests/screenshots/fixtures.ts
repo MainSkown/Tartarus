@@ -418,3 +418,88 @@ export async function mockViews(page: Page, overrides: Partial<Record<ViewName, 
     },
   )
 }
+
+// ---------- The live tab: a scripted WebSocket and an analysis that changes under the page ----------
+
+/** The 1280x720 window must hold the page exactly: nothing pushed below the fold, no vertical scroll. */
+export async function expectNoVerticalScroll(page: Page): Promise<void> {
+  const { scrollHeight, innerHeight } = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    innerHeight: window.innerHeight,
+  }))
+  expect(scrollHeight, `page scrolls vertically: ${scrollHeight}px of content in a ${innerHeight}px window`).toBeLessThanOrEqual(innerHeight)
+}
+
+interface LiveSubscription {
+  lanes?: string[]
+  pids?: number[]
+  include_api?: boolean
+}
+
+export interface LiveEventDoc {
+  tartarus: { lane: string }
+  process?: { pid?: number }
+}
+
+// The server's own rule (backend hub.py), written again here so the mock filters like the real thing.
+function passesSubscription(event: LiveEventDoc, subscription: LiveSubscription): boolean {
+  const lane = event.tartarus.lane
+  const namesApi = subscription.lanes?.includes('api') ?? false
+  if (lane === 'api' && !subscription.include_api && !namesApi) return false
+  if (subscription.lanes && !subscription.lanes.includes(lane)) return false
+  return !subscription.pids || (event.process?.pid !== undefined && subscription.pids.includes(event.process.pid))
+}
+
+export interface LiveSocketMock {
+  /** Resolves once the page has opened its `n`th connection. */
+  connected(n?: number): Promise<void>
+  /** One server message to the newest connection. */
+  send(type: string, data: unknown): void
+  /** An `events` message holding only the events the client's last `subscribe` asks for, as the server sends them. */
+  sendEvents(events: LiveEventDoc[], dropped?: number): void
+  close(code: number): void
+  /** The `subscribe` payloads the page sent, oldest first. */
+  subscriptions(): LiveSubscription[]
+}
+
+/** Mocks `WS /ws/analyses/{id}/live`; the test plays the server, message by message. */
+export async function mockLiveSocket(page: Page, analysisId: number): Promise<LiveSocketMock> {
+  const sockets: { send(message: string): void; close(options: { code: number; reason: string }): void }[] = []
+  const subscriptions: LiveSubscription[] = []
+
+  await page.routeWebSocket(atPath(`/ws/analyses/${analysisId}/live`), (ws) => {
+    sockets.push(ws)
+    ws.onMessage((message) => {
+      const parsed = JSON.parse(String(message)) as { type: string; data: LiveSubscription }
+      if (parsed.type === 'subscribe') subscriptions.push(parsed.data)
+    })
+  })
+
+  const newest = () => sockets[sockets.length - 1]!
+  const mock: LiveSocketMock = {
+    async connected(n = 1) {
+      await expect.poll(() => sockets.length, { message: `waiting for live connection ${n}` }).toBeGreaterThanOrEqual(n)
+      await expect.poll(() => subscriptions.length, { message: 'waiting for the first subscribe' }).toBeGreaterThanOrEqual(n)
+    },
+    send(type, data) {
+      newest().send(JSON.stringify({ type, ts: new Date().toISOString(), data }))
+    },
+    sendEvents(events, dropped = 0) {
+      const subscription = subscriptions[subscriptions.length - 1] ?? {}
+      mock.send('events', { events: events.filter((event) => passesSubscription(event, subscription)), dropped })
+    },
+    close(code) {
+      newest().close({ code, reason: '' })
+    },
+    subscriptions: () => subscriptions,
+  }
+  return mock
+}
+
+/** Serves `GET /api/analyses/{id}` from `current()` on every call, so a test can finish the analysis between two polls. */
+export async function mockEvolvingAnalysis(page: Page, current: () => AnalysisRead): Promise<void> {
+  await page.route(ANALYSIS_URL, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({ json: current() })
+  })
+}

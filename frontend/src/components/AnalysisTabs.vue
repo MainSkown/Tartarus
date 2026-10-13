@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ANALYSIS_TABS, selectableTab } from '@/services/analysis-tabs'
+import { listedTabs, selectableTab } from '@/services/analysis-tabs'
 
-const props = defineProps<{ active: string }>()
+const props = withDefaults(defineProps<{ active: string; live?: boolean }>(), { live: false })
 const emit = defineEmits<{ select: [tab: string] }>()
 
-const selected = computed(() => selectableTab(props.active))
+const tabs = computed(() => listedTabs(props.live))
+const selected = computed(() => selectableTab(props.active, props.live))
 </script>
 
 <template>
@@ -15,7 +16,7 @@ const selected = computed(() => selectableTab(props.active))
     aria-label="Analysis views"
   >
     <button
-      v-for="tab in ANALYSIS_TABS"
+      v-for="tab in tabs"
       :key="tab.key"
       type="button"
       role="tab"

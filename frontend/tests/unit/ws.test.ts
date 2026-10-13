@@ -5,19 +5,31 @@ import type { HealthMessage } from '@/api'
 class FakeWebSocket {
   static instances: FakeWebSocket[] = []
   onopen: (() => void) | null = null
-  onclose: (() => void) | null = null
+  onclose: ((event?: { code: number }) => void) | null = null
   onmessage: ((event: { data: string }) => void) | null = null
   onerror: (() => void) | null = null
   closed = false
+  readyState = 0
+  sent: string[] = []
 
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this)
   }
 
-  close(): void {
+  open(): void {
+    this.readyState = 1
+    this.onopen?.()
+  }
+
+  send(data: string): void {
+    this.sent.push(data)
+  }
+
+  close(code?: number): void {
     if (this.closed) return
     this.closed = true
-    this.onclose?.()
+    this.readyState = 3
+    this.onclose?.(code === undefined ? undefined : { code })
   }
 
   serverPush(payload: unknown): void {
@@ -148,5 +160,63 @@ describe('createSystemHealthClient', () => {
 
     vi.advanceTimersByTime(60000)
     expect(FakeWebSocket.instances).toHaveLength(1)
+  })
+})
+
+describe('ReconnectingWebSocketClient sending', () => {
+  it('writes a JSON message to an open socket', () => {
+    const client = createSystemHealthClient(fakeFactory())
+    client.connect()
+    FakeWebSocket.instances[0]!.open()
+
+    expect(client.send({ type: 'ping' })).toBe(true)
+    expect(FakeWebSocket.instances[0]!.sent).toEqual(['{"type":"ping"}'])
+  })
+
+  it('sends nothing, and says so, while the socket is not open', () => {
+    const client = createSystemHealthClient(fakeFactory())
+    expect(client.send({ type: 'ping' })).toBe(false)
+
+    client.connect()
+    expect(client.send({ type: 'ping' })).toBe(false)
+    expect(FakeWebSocket.instances[0]!.sent).toEqual([])
+  })
+})
+
+describe('ReconnectingWebSocketClient close handlers', () => {
+  it('tells a handler the close code and still reconnects', () => {
+    const client = createSystemHealthClient(fakeFactory())
+    const codes: number[] = []
+    client.onClose((code) => codes.push(code))
+    client.connect()
+
+    FakeWebSocket.instances[0]!.close(1012)
+    expect(codes).toEqual([1012])
+
+    vi.advanceTimersByTime(5000)
+    expect(FakeWebSocket.instances).toHaveLength(2)
+  })
+
+  it('stops reconnecting when a handler disconnects the client', () => {
+    const client = createSystemHealthClient(fakeFactory())
+    client.onClose(() => client.disconnect())
+    client.connect()
+
+    FakeWebSocket.instances[0]!.close(4404)
+    expect(client.state.value).toBe('closed')
+
+    vi.advanceTimersByTime(60000)
+    expect(FakeWebSocket.instances).toHaveLength(1)
+  })
+
+  it('stops calling a handler that unsubscribed', () => {
+    const client = createSystemHealthClient(fakeFactory())
+    const codes: number[] = []
+    const unsubscribe = client.onClose((code) => codes.push(code))
+    unsubscribe()
+    client.connect()
+
+    FakeWebSocket.instances[0]!.close(1000)
+    expect(codes).toEqual([])
   })
 })

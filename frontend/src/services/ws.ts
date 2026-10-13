@@ -5,7 +5,12 @@ export type WsConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed
 
 type MessageParser<T> = (raw: unknown) => T | undefined
 type MessageHandler<T> = (message: T) => void
+type CloseHandler = (code: number) => void
 type WebSocketFactory = (url: string) => WebSocket
+
+const SOCKET_OPEN = 1
+// What a browser reports for a socket that died without a close frame.
+const ABNORMAL_CLOSE = 1006
 
 const MIN_BACKOFF_MS = 500
 const MAX_BACKOFF_MS = 30_000
@@ -36,6 +41,7 @@ export class ReconnectingWebSocketClient<T> {
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined
   private explicitlyDisconnected = false
   private readonly subscribers = new Set<MessageHandler<T>>()
+  private readonly closeHandlers = new Set<CloseHandler>()
 
   constructor(
     private readonly path: string,
@@ -60,6 +66,19 @@ export class ReconnectingWebSocketClient<T> {
     return () => this.subscribers.delete(handler)
   }
 
+  /** Calls `handler` with the close code each time the socket closes; it may `disconnect()` to stop the reconnect. */
+  onClose(handler: CloseHandler): () => void {
+    this.closeHandlers.add(handler)
+    return () => this.closeHandlers.delete(handler)
+  }
+
+  /** Writes `payload` as JSON; false when there is no open socket, in which case nothing is queued. */
+  send(payload: unknown): boolean {
+    if (this.socket?.readyState !== SOCKET_OPEN) return false
+    this.socket.send(JSON.stringify(payload))
+    return true
+  }
+
   private open(): void {
     this.state.value = this.attempt === 0 ? 'connecting' : 'reconnecting'
     const socket = this.webSocketFactory(resolveWsUrl(this.path))
@@ -69,7 +88,10 @@ export class ReconnectingWebSocketClient<T> {
       this.state.value = 'open'
     }
     socket.onmessage = (event: MessageEvent) => this.handleRawMessage(event.data)
-    socket.onclose = () => this.scheduleReconnect()
+    socket.onclose = (event?: CloseEvent) => {
+      this.scheduleReconnect()
+      for (const handler of this.closeHandlers) handler(event?.code ?? ABNORMAL_CLOSE)
+    }
     // The close event that follows carries the failure; nothing further to do here.
     socket.onerror = () => undefined
   }

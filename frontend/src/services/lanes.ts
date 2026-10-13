@@ -23,7 +23,7 @@ const LANE_META: Record<string, LaneMeta> = {
   api: { label: 'API', color: '--cat-api', icon: 'functions' },
 }
 
-const LANE_ORDER = Object.keys(LANE_META)
+export const LANE_ORDER = Object.keys(LANE_META)
 
 export function laneMeta(lane: string): LaneMeta {
   return LANE_META[lane] ?? { ...LANE_META.api!, label: lane.toUpperCase() }

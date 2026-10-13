@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { Notify, Quasar } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { reactive } from 'vue'
+import { reactive, type PropType } from 'vue'
 import type { AnalysisRead, ErrorEnvelope } from '@/api'
 import {
   analysisWithStatus,
@@ -24,12 +24,21 @@ vi.mock('@/api', () => ({
 
 // The tabs are tested on their own; here only that the page renders the one that was asked for.
 vi.mock('@/components/tabs', async () => {
-  const { h } = await import('vue')
+  const { defineComponent, h } = await import('vue')
   const stub = (tab: string) => ({ render: () => h('section', { 'data-tab': tab }) })
+  const live = defineComponent({
+    props: { analysis: { type: Object as PropType<AnalysisRead>, required: true } },
+    emits: ['open-tab'],
+    setup: (props, { emit }) => () =>
+      h('section', { 'data-tab': 'live', 'data-analysis': props.analysis.id }, [
+        h('button', { class: 'live-stub__summary', onClick: () => emit('open-tab', 'summary') }),
+      ]),
+  })
   return {
-    TAB_VIEWS: Object.fromEntries(
-      ['processes', 'network', 'artifacts', 'detections'].map((tab) => [tab, stub(tab)]),
-    ),
+    TAB_VIEWS: {
+      live,
+      ...Object.fromEntries(['processes', 'network', 'artifacts', 'detections'].map((tab) => [tab, stub(tab)])),
+    },
   }
 })
 
@@ -136,12 +145,14 @@ describe('AnalysisPage loading', () => {
 
 describe('AnalysisPage states', () => {
   it('shows a queued analysis as waiting', async () => {
+    route.params = { id: '42', tab: 'summary' }
     const wrapper = await mountPage(analysisWithStatus('queued', { started_at: null, finished_at: null }))
     expect(wrapper.find('.analysis-header').text()).toContain('QUEUED')
     expect(wrapper.text()).toContain('waiting')
   })
 
   it.each(['starting', 'running', 'processing', 'ingesting'] as const)('shows progress while %s', async (status) => {
+    route.params = { id: '42', tab: 'summary' }
     const wrapper = await mountPage(analysisWithStatus(status, { finished_at: null }))
     expect(wrapper.find('[role="progressbar"]').exists()).toBe(true)
   })
@@ -209,6 +220,101 @@ describe('AnalysisPage tabs', () => {
     const wrapper = await mountPage()
     await wrapper.find('.analysis-tabs button:not([disabled])').trigger('click')
     expect(push).toHaveBeenCalledWith({ name: 'analysis-workspace', params: { id: '42', tab: 'summary' } })
+  })
+})
+
+describe('AnalysisPage live tab', () => {
+  const active = () => analysisWithStatus('running', { finished_at: null })
+  const tabLabels = (wrapper: Awaited<ReturnType<typeof mountPage>>) =>
+    wrapper.findAll('.analysis-tabs button').map((tab) => tab.text())
+  const selectedTabs = (wrapper: Awaited<ReturnType<typeof mountPage>>) =>
+    wrapper.findAll('.analysis-tabs [aria-selected="true"]').map((tab) => tab.text())
+
+  it.each(['queued', 'starting', 'running', 'processing', 'ingesting'] as const)(
+    'opens an analysis that is %s on LIVE when no tab is in the URL',
+    async (status) => {
+      const wrapper = await mountPage(analysisWithStatus(status, { finished_at: null }))
+      await vi.waitFor(() => expect(wrapper.find('[data-tab="live"]').exists()).toBe(true))
+      expect(tabLabels(wrapper)[0]).toBe('LIVE')
+      expect(selectedTabs(wrapper)).toEqual(['LIVE'])
+      expect(wrapper.find('.analysis-summary').exists()).toBe(false)
+    },
+  )
+
+  it('shows LIVE for an active analysis opened on the live tab', async () => {
+    route.params = { id: '42', tab: 'live' }
+    const wrapper = await mountPage(active())
+    expect(wrapper.find('[data-tab="live"]').exists()).toBe(true)
+  })
+
+  it('gives the live tab the analysis it is about', async () => {
+    const wrapper = await mountPage(active())
+    expect(wrapper.find('[data-tab="live"]').attributes('data-analysis')).toBe('42')
+  })
+
+  it('opens an active analysis on another tab when the URL names one, and lists no LIVE tab then', async () => {
+    route.params = { id: '42', tab: 'summary' }
+    const wrapper = await mountPage(active())
+    expect(wrapper.find('.analysis-summary').exists()).toBe(true)
+    expect(tabLabels(wrapper)).not.toContain('LIVE')
+  })
+
+  it('opens a finished analysis on SUMMARY with no LIVE tab', async () => {
+    const wrapper = await mountPage()
+    expect(wrapper.find('.analysis-summary').exists()).toBe(true)
+    expect(tabLabels(wrapper)).not.toContain('LIVE')
+  })
+
+  it('never offers LIVE for an analysis opened already finished, even by its URL', async () => {
+    route.params = { id: '42', tab: 'live' }
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-tab="live"]').exists()).toBe(false)
+    expect(wrapper.find('.analysis-summary').exists()).toBe(true)
+    expect(tabLabels(wrapper)).not.toContain('LIVE')
+  })
+
+  it('keeps the user on LIVE, and keeps the tab, when the analysis finishes meanwhile', async () => {
+    const wrapper = await mountPage(active())
+    const liveView = wrapper.find('[data-tab="live"]').element
+
+    analysesReadMock.mockResolvedValue(succeeded(analysisWithStatus('done', { summary: NO_DETECTIONS_SUMMARY })))
+    await vi.advanceTimersByTimeAsync(POLL_MS)
+
+    expect(wrapper.find('.analysis-header').text()).toContain('DONE')
+    expect(wrapper.find('[data-tab="live"]').element).toBe(liveView)
+    expect(selectedTabs(wrapper)).toEqual(['LIVE'])
+    expect(wrapper.find('.analysis-summary').exists()).toBe(false)
+  })
+
+  it('removes the LIVE tab once the user leaves it after the analysis finished', async () => {
+    const wrapper = await mountPage(active())
+    analysesReadMock.mockResolvedValue(succeeded(analysisWithStatus('done', { summary: NO_DETECTIONS_SUMMARY })))
+    await vi.advanceTimersByTimeAsync(POLL_MS)
+
+    route.params = { id: '42', tab: 'summary' }
+    await flushPromises()
+    expect(tabLabels(wrapper)).not.toContain('LIVE')
+    expect(wrapper.find('.analysis-summary').exists()).toBe(true)
+
+    route.params = { id: '42', tab: 'live' }
+    await flushPromises()
+    expect(tabLabels(wrapper)).not.toContain('LIVE')
+    expect(wrapper.find('.analysis-summary').exists()).toBe(true)
+  })
+
+  it('goes to the tab the live view asks for', async () => {
+    const wrapper = await mountPage(active())
+    await wrapper.find('.live-stub__summary').trigger('click')
+    expect(push).toHaveBeenCalledWith({ name: 'analysis-workspace', params: { id: '42', tab: 'summary' } })
+  })
+
+  it('selects LIVE through the tab bar', async () => {
+    route.params = { id: '42', tab: 'summary' }
+    const wrapper = await mountPage(active())
+    route.params = { id: '42', tab: 'live' }
+    await flushPromises()
+    expect(tabLabels(wrapper)[0]).toBe('LIVE')
+    expect(selectedTabs(wrapper)).toEqual(['LIVE'])
   })
 })
 

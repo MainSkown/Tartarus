@@ -2,8 +2,8 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import AnalysisTabs from '@/components/AnalysisTabs.vue'
 
-function mountTabs(active = 'summary') {
-  return mount(AnalysisTabs, { props: { active } })
+function mountTabs(active = 'summary', live = false) {
+  return mount(AnalysisTabs, { props: { active, live } })
 }
 
 describe('AnalysisTabs', () => {
@@ -51,5 +51,31 @@ describe('AnalysisTabs', () => {
     const wrapper = mountTabs()
     await wrapper.find('button[disabled]').trigger('click')
     expect(wrapper.emitted('select')).toBeUndefined()
+  })
+
+  it('has no LIVE tab outside a live session', () => {
+    expect(mountTabs().findAll('button').map((tab) => tab.text())).not.toContain('LIVE')
+  })
+
+  it('lists LIVE first, enabled, during a live session', () => {
+    const tabs = mountTabs('summary', true).findAll('button')
+    expect(tabs[0]!.text()).toBe('LIVE')
+    expect(tabs[0]!.attributes('disabled')).toBeUndefined()
+  })
+
+  it('marks LIVE selected when it is the active tab of a live session', () => {
+    const selected = mountTabs('live', true).findAll('[aria-selected="true"]')
+    expect(selected.map((tab) => tab.text())).toEqual(['LIVE'])
+  })
+
+  it('marks SUMMARY, not LIVE, when LIVE is asked for outside a live session', () => {
+    const selected = mountTabs('live', false).findAll('[aria-selected="true"]')
+    expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
+  })
+
+  it('emits live when LIVE is clicked', async () => {
+    const wrapper = mountTabs('summary', true)
+    await wrapper.findAll('button')[0]!.trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['live']])
   })
 })

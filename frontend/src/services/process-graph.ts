@@ -152,7 +152,7 @@ export function injectionPeers(roots: ProcessNode[], node: ProcessNode): { into:
   }
 }
 
-export function processLifetime(node: ProcessNode): string | null {
+export function processLifetime(node: Pick<ProcessNode, 'start' | 'end'>): string | null {
   if (node.start === null || node.end === null) return null
   const seconds = secondsBetween(node.start, node.end)
   return seconds < SUB_MINUTE_SECONDS ? `${seconds.toFixed(1)}s` : formatDuration(seconds)
