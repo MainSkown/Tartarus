@@ -6,7 +6,10 @@ const props = defineProps<{ phase: DesktopPhase; reason?: string; screenshot?: s
 const emit = defineEmits<{ retry: [] }>()
 
 const text = computed(() => phaseMessage(props.phase, props.reason))
-const detail = computed(() => (props.reason && props.reason !== text.value ? props.reason : undefined))
+// The server's reason for a run that ended is its own bookkeeping ("analysis is no longer running"), not news.
+const detail = computed(() =>
+  props.reason && props.reason !== text.value && props.phase !== 'run-ended' ? props.reason : undefined,
+)
 const busy = computed(() => props.phase === 'connecting' || props.phase === 'waiting')
 </script>
 

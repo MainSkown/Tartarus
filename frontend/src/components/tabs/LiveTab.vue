@@ -3,11 +3,13 @@ import { computed, ref } from 'vue'
 import type { AnalysisRead } from '@/api'
 import LiveDesktopSlot from '@/components/LiveDesktopSlot.vue'
 import LiveDetectionsPanel from '@/components/LiveDetectionsPanel.vue'
+import LiveEndRunButton from '@/components/LiveEndRunButton.vue'
 import LiveEventStream from '@/components/LiveEventStream.vue'
 import LiveFinishedPanel from '@/components/LiveFinishedPanel.vue'
 import LiveNotice from '@/components/LiveNotice.vue'
 import LiveProcessTree from '@/components/LiveProcessTree.vue'
 import LiveStatusBar from '@/components/LiveStatusBar.vue'
+import { useEndRun } from '@/composables/use-end-run'
 import { useLiveAnalysis } from '@/composables/use-live-analysis'
 import { useViewportFill } from '@/composables/use-viewport-fill'
 import { isTerminalStatus } from '@/services/analysis-status'
@@ -29,6 +31,11 @@ const interactive = computed(() => props.analysis.options.interactive === true)
 const status = computed(() =>
   isTerminalStatus(props.analysis.status) ? props.analysis.status : (live.status.value?.status ?? props.analysis.status),
 )
+const endRun = useEndRun({
+  analysisId: () => props.analysis.id,
+  status: () => status.value,
+  monitorUp: () => live.monitorStarted.value,
+})
 const finished = computed(() => live.finished.value || isTerminalStatus(props.analysis.status))
 const selectedPid = computed(() => live.filter.value.pids[0])
 const filtered = computed(() => live.filter.value.lanes.length > 0 || live.filter.value.pids.length > 0)
@@ -65,7 +72,16 @@ function selectProcess(pid: number | undefined): void {
       :listed="live.events.value.length"
       :events-per-minute="live.eventsPerMinute.value"
       :queue-position="queuePosition"
-    />
+    >
+      <template #actions>
+        <LiveEndRunButton
+          :phase="endRun.phase.value"
+          :label="endRun.label.value"
+          :title="endRun.title.value"
+          @press="endRun.press"
+        />
+      </template>
+    </LiveStatusBar>
 
     <div
       v-if="live.errors.value.length > 0 || live.notFound.value"
@@ -93,6 +109,7 @@ function selectProcess(pid: number | undefined): void {
       <LiveDesktopSlot
         v-if="interactive"
         :analysis="analysis"
+        :end-requested="endRun.requested.value"
       />
       <LiveProcessTree
         :roots="live.roots.value"

@@ -280,7 +280,7 @@ describe('SubmitDialog', () => {
       storedSettings({ default_interactive: true })
       const { wrapper } = await mountDialog()
       expect(wrapper.find('.interactive-note').text()).toBe(
-        'Drive the guest yourself. The run lasts the full timeout (3 min) even if the sample exits earlier.',
+        'Drive the guest yourself. The run lasts the full timeout (3 min) unless you press END RUN on the live page.',
       )
 
       await textInput(wrapper, 'TIMEOUT').find('input').setValue('1200')
@@ -297,7 +297,7 @@ describe('SubmitDialog', () => {
       await textInput(wrapper, 'TIMEOUT').find('input').setValue('5')
 
       expect(wrapper.find('.interactive-note').text()).toBe(
-        'Drive the guest yourself. The run lasts the full timeout even if the sample exits earlier.',
+        'Drive the guest yourself. The run lasts the full timeout unless you press END RUN on the live page.',
       )
     })
 

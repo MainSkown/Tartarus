@@ -126,6 +126,32 @@ describe('useLiveAnalysis process tree', () => {
   })
 })
 
+describe('useLiveAnalysis monitorStarted', () => {
+  it('is false until the feed shows a process or an event', () => {
+    const live = connect()
+    socket().serverSends('status', STATUS)
+    expect(live.monitorStarted.value).toBe(false)
+  })
+
+  it('turns true with the first process', () => {
+    const live = connect()
+    socket().serverSends('process', { op: 'add', node: liveProcess(1) })
+    expect(live.monitorStarted.value).toBe(true)
+  })
+
+  it('turns true with the first event', () => {
+    const live = connect()
+    sendEvents([liveEvent({ id: 'a' })])
+    expect(live.monitorStarted.value).toBe(true)
+  })
+
+  it('stays true when the events were all skipped by the server', () => {
+    const live = connect()
+    sendEvents([], 40)
+    expect(live.monitorStarted.value).toBe(true)
+  })
+})
+
 describe('useLiveAnalysis event buffer', () => {
   it('shows events in arrival order and counts them', () => {
     const live = connect()

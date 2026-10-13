@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vue'
 import type { AnalysisPhase } from '@/api'
 import { isTerminalStatus } from '@/services/analysis-status'
 import {
@@ -48,6 +48,8 @@ export interface LiveAnalysis {
   finished: Ref<boolean>
   roots: Ref<ProcessTreeNode[]>
   processCount: Ref<number>
+  /** The first process or event has arrived, so the monitor is running in the guest. */
+  monitorStarted: ComputedRef<boolean>
   /** What the list shows: the buffer through the filter, frozen while paused. */
   events: Ref<LiveEvent[]>
   received: Ref<number>
@@ -97,6 +99,7 @@ export function useLiveAnalysis(analysisId: number, options: LiveAnalysisOptions
   const finished = computed(() => status.value !== undefined && isTerminalStatus(status.value.status))
   const roots = computed(() => processRoots(processes.value))
   const processCount = computed(() => processes.value.size)
+  const monitorStarted = computed(() => processCount.value > 0 || received.value > 0 || dropped.value > 0)
   const events = computed(() => {
     const subscription = subscriptionOf(filter.value)
     return (paused.value ? frozen.value : buffer.value).filter((event) => matchesSubscription(event, subscription))
@@ -203,6 +206,7 @@ export function useLiveAnalysis(analysisId: number, options: LiveAnalysisOptions
     finished,
     roots,
     processCount,
+    monitorStarted,
     events,
     received,
     trimmed,

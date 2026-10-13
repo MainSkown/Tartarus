@@ -53,7 +53,7 @@ const timeoutError = computed(() => {
 const interactiveNote = computed(() => {
   if (!interactive.value) return 'The run ends once the sample has exited, or at the timeout.'
   const minutes = timeoutError.value ? '' : ` (${formatMinutes(Number(timeoutText.value))})`
-  return `Drive the guest yourself. The run lasts the full timeout${minutes} even if the sample exits earlier.`
+  return `Drive the guest yourself. The run lasts the full timeout${minutes} unless you press END RUN on the live page.`
 })
 
 const blockReason = computed(() => guestBlockReason.value ?? (file.value ? undefined : 'Choose a sample to analyse'))

@@ -18,7 +18,18 @@ import {
   waitForTransitions,
   type LiveSocketMock,
 } from './fixtures'
-import { NON_API_EVENTS, PROCESSES, RUNNING_STATUS, SESSION_EVENTS, countsMessage } from './live-session'
+import {
+  NON_API_EVENTS,
+  PROCESSES,
+  RUNNING_STATUS,
+  SESSION_EVENTS,
+  countsMessage,
+  endRunButton,
+  expectEndRunInsideStatusBar,
+  mockFinish,
+  pressEndRun,
+} from './live-session'
+const RUN_ENDED = 'The run has ended. CAPE is processing the results.'
 
 const ID = 45
 const ROUTE = `/analyses/${ID}`
@@ -235,13 +246,25 @@ test('live-desktop-ctrl-alt-del-button', async ({ page }) => {
   ])
 })
 
-test('live-desktop-disconnected-reconnects', async ({ page }) => {
+test('live-desktop-run-ended', async ({ page }) => {
   const opened = await openDesktop(page)
   await connectToGuest(opened, page)
   opened.desktop.close(1000, 'analysis is no longer running')
-  await expect(message(page)).toContainText('the desktop has closed')
-  await expect(message(page)).toContainText('analysis is no longer running')
+  await expect(message(page)).toContainText(RUN_ENDED)
+  await expect(message(page)).not.toContainText('analysis is no longer running')
   await expect(message(page)).not.toContainText('NaN')
+  await expect(page.locator('[data-desktop="retry"]'), 'a run that ended cannot be reconnected').toHaveCount(0)
+  await expect(page.locator('[data-desktop="ctrl-alt-del"]')).toBeDisabled()
+  await expectNoVerticalScroll(page)
+  await snapshot(page, 'live-desktop-run-ended')
+})
+
+test('live-desktop-dropped-connection-reconnects', async ({ page }) => {
+  const opened = await openDesktop(page)
+  await connectToGuest(opened, page)
+  opened.desktop.close(1006, '')
+  await expect(message(page)).toContainText('the desktop connection was lost')
+  await expect(message(page)).not.toContainText('The run has ended')
   await expect(page.locator('[data-desktop="retry"]')).toHaveText('[RECONNECT]')
   await expect(page.locator('[data-desktop="ctrl-alt-del"]')).toBeDisabled()
   await expectNoVerticalScroll(page)
@@ -250,6 +273,38 @@ test('live-desktop-disconnected-reconnects', async ({ page }) => {
   await page.locator('[data-desktop="retry"]').click()
   await opened.desktop.connected(2)
   await expect(message(page)).toContainText('connecting to the desktop')
+})
+
+test('live-desktop-end-run-ends-the-desktop-calmly', async ({ page }) => {
+  const opened = await openDesktop(page)
+  stream(opened.live)
+  await connectToGuest(opened, page)
+  const finish = await mockFinish(page, ID, () => ({ status: 200, json: interactiveAnalysis() }))
+  await expect(endRunButton(page)).toBeEnabled()
+  await expectEndRunInsideStatusBar(page)
+  await pressEndRun(page)
+  await expect(endRunButton(page)).toContainText('ENDING...')
+  expect(finish.requests()).toBe(1)
+  await expect(message(page), 'the picture stays while the guest is still stopping').toHaveCount(0)
+
+  opened.desktop.send(instruction('error', 'Aborted. See logs.', 519))
+  opened.desktop.close(1000, 'desktop reported an error')
+  await expect(message(page)).toContainText(RUN_ENDED)
+  await expect(page.locator('[data-desktop="retry"]')).toHaveCount(0)
+  await expectNoVerticalScroll(page)
+  await expectPanelsInsideViewport(page)
+  await snapshot(page, 'live-desktop-end-run-ended')
+})
+
+test('live-desktop-end-run-then-a-dropped-socket-is-still-the-end', async ({ page }) => {
+  const opened = await openDesktop(page)
+  stream(opened.live)
+  await connectToGuest(opened, page)
+  await mockFinish(page, ID, () => ({ status: 200, json: interactiveAnalysis() }))
+  await pressEndRun(page)
+  opened.desktop.close(1006, '')
+  await expect(message(page)).toContainText(RUN_ENDED)
+  await expect(page.locator('[data-desktop="retry"]')).toHaveCount(0)
 })
 
 test('live-desktop-guest-is-off', async ({ page }) => {
@@ -312,7 +367,8 @@ test('live-desktop-finished-shows-the-last-screenshot', async ({ page }) => {
   live.close(1000)
 
   await expect(page.locator('[data-desktop="last-screenshot"]')).toBeVisible()
-  await expect(message(page)).toContainText('only available while the analysis runs')
+  await expect(message(page)).toContainText(RUN_ENDED)
+  await expect(message(page)).not.toContainText('only available while')
   await expect(page.locator('[data-live="finished"] img')).toBeVisible()
   await expectNoVerticalScroll(page)
   await expectPanelsInsideViewport(page)
@@ -341,6 +397,7 @@ test('live-desktop-interactive-tab-1280x720', async ({ page }) => {
   await connectToGuest(opened, page)
   await expect(page.locator('.live-event').first()).toBeVisible()
   await expectDisplayInsideScreen(page)
+  await expectEndRunInsideStatusBar(page)
   await expectNoHorizontalOverflow(page)
   await expectNoVerticalScroll(page)
   await expectPanelsInsideViewport(page)
@@ -353,6 +410,7 @@ test('live-desktop-interactive-tab-narrow-600', async ({ page }) => {
   stream(opened.live)
   await connectToGuest(opened, page)
   await expectDisplayInsideScreen(page)
+  await expectEndRunInsideStatusBar(page)
   await expectNoHorizontalOverflow(page)
   await snapshot(page, 'live-desktop-tab-narrow-600')
 })

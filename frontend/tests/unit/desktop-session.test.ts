@@ -291,10 +291,10 @@ describe('DesktopSession closes', () => {
     expect(phases.at(-1)).toEqual({ phase, reason })
   })
 
-  it('reads a normal close with a prose reason as the end of the desktop once it was shown', () => {
+  it('reads a normal close with a prose reason as the end of the run once the desktop was shown', () => {
     connectToGuest()
     FakeDesktopSocket.latest.serverCloses(1000, 'analysis is no longer running')
-    expect(phases.at(-1)).toEqual({ phase: 'ended', reason: 'analysis is no longer running' })
+    expect(phases.at(-1)).toEqual({ phase: 'run-ended', reason: 'analysis is no longer running' })
   })
 
   it('reads guacd reporting an error before any picture as a desktop that is not there', () => {

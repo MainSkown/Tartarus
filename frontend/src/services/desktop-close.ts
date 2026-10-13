@@ -4,7 +4,7 @@ export type DesktopPhase =
   | 'connecting'
   | 'waiting'
   | 'connected'
-  | 'ended'
+  | 'run-ended'
   | 'unavailable'
   | 'not-running'
   | 'timeout'
@@ -21,7 +21,7 @@ const CLOSE_NOT_RUNNING = 4409
 export function phaseAfterClose(code: number, wasConnected: boolean): DesktopPhase {
   switch (code) {
     case CLOSE_NORMAL:
-      return wasConnected ? 'ended' : 'unavailable'
+      return wasConnected ? 'run-ended' : 'unavailable'
     case CLOSE_PORT_TIMEOUT:
       return 'timeout'
     case CLOSE_NOT_RUNNING:
@@ -42,7 +42,6 @@ const RETRY_LABELS: Partial<Record<DesktopPhase, string>> = {
   timeout: '[RETRY]',
   unreachable: '[RETRY]',
   unavailable: '[RETRY]',
-  ended: '[RECONNECT]',
   failed: '[RECONNECT]',
 }
 
@@ -54,7 +53,7 @@ const MESSAGES: Record<DesktopPhase, string> = {
   connecting: 'connecting to the desktop...',
   waiting: 'waiting for the guest to start...',
   connected: 'connected',
-  ended: 'the desktop has closed',
+  'run-ended': 'The run has ended. CAPE is processing the results.',
   unavailable: 'the desktop is not available: the guest is not running',
   'not-running': 'the desktop is only available while the analysis runs',
   timeout: 'the desktop is not available yet',
@@ -64,6 +63,23 @@ const MESSAGES: Record<DesktopPhase, string> = {
 
 export function phaseMessage(phase: DesktopPhase, reason?: string): string {
   return phase === 'timeout' && reason ? reason : MESSAGES[phase]
+}
+
+export interface RunContext {
+  status: AnalysisStatus
+  /** The analyst pressed END RUN and the run has not left `running` yet. */
+  endRequested: boolean
+}
+
+const STATUSES_AFTER_THE_RUN: AnalysisStatus[] = ['processing', 'ingesting', 'done']
+
+/**
+ * What the panel shows: a desktop that is gone because the run ended says so once, instead of
+ * "connection lost" with RECONNECT or "only available while the analysis runs".
+ */
+export function phaseForRun(phase: DesktopPhase, { status, endRequested }: RunContext): DesktopPhase {
+  const runIsOver = endRequested || STATUSES_AFTER_THE_RUN.includes(status)
+  return runIsOver && (phase === 'failed' || phase === 'not-running') ? 'run-ended' : phase
 }
 
 /** The backend admits a desktop only while the guest is being started or is running. */

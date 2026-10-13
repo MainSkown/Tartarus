@@ -1,4 +1,6 @@
-import { realView } from './fixtures'
+import type { Page } from '@playwright/test'
+import type { AnalysisRead } from '../../src/api/types.gen'
+import { errorEnvelope, expect, realView } from './fixtures'
 
 export interface SessionProcess {
   pid: number
@@ -173,3 +175,43 @@ export function countsMessage(events: SessionEvent[]): { by_lane: Record<string,
 }
 
 export const RUNNING_STATUS = { status: 'running', phase: 'live', elapsed_s: 14.2, remaining_s: 165.8 }
+
+export interface FinishAnswer {
+  status: number
+  json: AnalysisRead | ReturnType<typeof errorEnvelope>
+}
+
+export function refusal(status: number, message: string): FinishAnswer {
+  return { status, json: errorEnvelope(status === 409 ? 'conflict' : 'bad_gateway', message) }
+}
+
+/** Plays `POST /api/analyses/{id}/finish`; `answer` is asked on every request, so a test can change its mind. */
+export async function mockFinish(page: Page, id: number, answer: () => FinishAnswer): Promise<{ requests: () => number }> {
+  let requests = 0
+  await page.route(
+    (url) => url.pathname === `/api/analyses/${id}/finish`,
+    async (route) => {
+      requests += 1
+      const { status, json } = answer()
+      await route.fulfill({ status, json })
+    },
+  )
+  return { requests: () => requests }
+}
+
+export const endRunButton = (page: Page) => page.locator('[data-live="end-run"]')
+const confirmDialog = (page: Page) => page.locator('.q-dialog')
+
+export async function pressEndRun(page: Page): Promise<void> {
+  await endRunButton(page).click()
+  await confirmDialog(page).getByRole('button', { name: 'END RUN' }).click()
+  await expect(confirmDialog(page), 'the dialog fades out before anything is photographed').toHaveCount(0)
+}
+
+export async function expectEndRunInsideStatusBar(page: Page): Promise<void> {
+  const bar = (await page.locator('[data-live="status"]').boundingBox())!
+  const button = (await endRunButton(page).boundingBox())!
+  expect(button.x, 'the button starts left of the bar').toBeGreaterThanOrEqual(bar.x)
+  expect(button.x + button.width, 'the button ends right of the bar').toBeLessThanOrEqual(bar.x + bar.width)
+  expect(button.y + button.height, 'the button sticks out of the bar').toBeLessThanOrEqual(bar.y + bar.height)
+}

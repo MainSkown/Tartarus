@@ -20,6 +20,11 @@ import {
 } from './fixtures'
 import {
   NON_API_EVENTS,
+  endRunButton,
+  expectEndRunInsideStatusBar,
+  mockFinish,
+  pressEndRun,
+  refusal,
   PROCESSES,
   RUNNING_STATUS,
   SESSION_EVENTS,
@@ -102,11 +107,13 @@ async function expectPanelsInsideViewport(page: Page): Promise<void> {
   }
 }
 
-async function snapshot(page: Page, name: string): Promise<void> {
+async function snapshot(page: Page, name: string, options: { toast?: boolean } = {}): Promise<void> {
   // A pointer left over a button from the last click would paint its hover state into the picture.
   await page.mouse.move(0, 0)
   await page.evaluate(() => window.scrollTo(0, 0))
-  await waitForTransitions(page)
+  // A toast's progress bar is a finite animation that ends with the toast, so waiting it out would photograph an empty corner.
+  if (options.toast) await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  else await waitForTransitions(page)
   await page.screenshot({ path: screenshotPath(name), fullPage: true })
 }
 
@@ -173,6 +180,7 @@ test('live-queued', async ({ page }) => {
   live.send('status', { status: 'queued', phase: 'live', elapsed_s: null, remaining_s: null })
   await expect(page.locator('.live-stream__empty')).toContainText('queued, position 2')
   await expect(page.locator('[data-live="status"]')).toContainText('position 2 in the queue')
+  await expect(page.locator('[data-live="end-run"]'), 'a queued analysis cannot be ended').toHaveCount(0)
   await expectNoVerticalScroll(page)
   await snapshot(page, 'live-queued')
 })
@@ -424,4 +432,136 @@ test('live-not-offered-for-a-finished-analysis', async ({ page }) => {
   await page.goto(`${ROUTE}/live`)
   await expect(page.locator('.analysis-summary')).toBeVisible()
   await expect(page.locator('.analysis-tabs button', { hasText: 'LIVE' })).toHaveCount(0)
+})
+
+const NOT_STARTED = 'Analysis 45 has not started in the guest yet: wait a few seconds'
+const confirmDialog = (page: Page) => page.locator('.q-dialog')
+
+async function openRunWithMonitor(page: Page, current: () => AnalysisRead = () => runningAnalysis()): Promise<LiveSocketMock> {
+  await mockShell(page, GUEST_READY_SYSTEM)
+  await mockAnalyses(page, { items: [current()] })
+  await mockEvolvingAnalysis(page, current)
+  await mockViews(page)
+  const live = await mockLiveSocket(page, ID)
+  await page.goto(ROUTE)
+  await live.connected()
+  stream(live)
+  await expect(page.locator('.live-event').first()).toBeVisible()
+  return live
+}
+
+test('live-end-run-waits-for-the-monitor', async ({ page }) => {
+  const live = await openLive(page)
+  live.send('status', RUNNING_STATUS)
+  await expect(page.locator('[data-live="status"]')).toContainText('RUNNING')
+  await expect(endRunButton(page)).toBeDisabled()
+  await expect(page.locator('.live-end-run')).toHaveAttribute('title', /not started in the guest yet/)
+  await expectEndRunInsideStatusBar(page)
+  await expectNoVerticalScroll(page)
+  await snapshot(page, 'live-end-run-waiting')
+
+  feedProcesses(live, PROCESSES.slice(0, 1))
+  await expect(endRunButton(page)).toBeEnabled()
+})
+
+test('live-end-run-ready', async ({ page }) => {
+  await openRunWithMonitor(page)
+  await expect(endRunButton(page)).toBeEnabled()
+  await expect(endRunButton(page)).toContainText('END RUN')
+  await expectEndRunInsideStatusBar(page)
+  await expectNoHorizontalOverflow(page)
+  await expectNoVerticalScroll(page)
+  await expectPanelsInsideViewport(page)
+  await snapshot(page, 'live-end-run-ready')
+})
+
+test('live-end-run-asks-before-ending', async ({ page }) => {
+  await openRunWithMonitor(page)
+  const finish = await mockFinish(page, ID, () => refusal(502, 'must not be asked'))
+  await endRunButton(page).click()
+  await expect(confirmDialog(page)).toContainText('End the run now?')
+  await expect(confirmDialog(page)).toContainText('The guest stops at once and CAPE processes what was collected so far. This cannot be resumed.')
+  await expect(endRunButton(page)).toBeDisabled()
+  await snapshot(page, 'live-end-run-confirm')
+
+  await confirmDialog(page).getByRole('button', { name: 'CANCEL' }).click()
+  await expect(confirmDialog(page)).toHaveCount(0)
+  await expect(endRunButton(page)).toBeEnabled()
+  expect(finish.requests(), 'cancelling must not end the run').toBe(0)
+})
+
+test('live-end-run-ending-then-over', async ({ page }) => {
+  let analysis = runningAnalysis()
+  const live = await openRunWithMonitor(page, () => analysis)
+  const finish = await mockFinish(page, ID, () => ({ status: 200, json: runningAnalysis() }))
+  await pressEndRun(page)
+  await expect(endRunButton(page)).toContainText('ENDING...')
+  await expect(endRunButton(page)).toBeDisabled()
+  await expect(page.locator('.q-notification')).toHaveCount(0)
+  expect(finish.requests()).toBe(1)
+  await expectEndRunInsideStatusBar(page)
+  await expectNoVerticalScroll(page)
+  await snapshot(page, 'live-end-run-ending')
+
+  analysis = runningAnalysis({ status: 'processing' })
+  live.send('status', { status: 'processing', phase: 'live', elapsed_s: 41, remaining_s: 0 })
+  await expect(page.locator('[data-live="status"]')).toContainText('PROCESSING')
+  await expect(page.locator('.analysis-header')).toContainText('PROCESSING')
+  await expect(endRunButton(page)).toHaveCount(0)
+  await expectNoVerticalScroll(page)
+  await snapshot(page, 'live-end-run-over')
+})
+
+test('live-end-run-not-started-in-the-guest-yet', async ({ page }) => {
+  await openRunWithMonitor(page)
+  const finish = await mockFinish(page, ID, () => refusal(409, NOT_STARTED))
+  await pressEndRun(page)
+  await expect(page.locator('.q-notification')).toContainText(NOT_STARTED)
+  await expect(page.locator('.tt-toast--error'), 'a calm warning, not an error').toHaveCount(0)
+  await expect(endRunButton(page)).toBeDisabled()
+  expect(finish.requests()).toBe(1)
+  await expectNoVerticalScroll(page)
+  await snapshot(page, 'live-end-run-not-started', { toast: true })
+
+  await expect(endRunButton(page), 'the button comes back after a few seconds').toBeEnabled({ timeout: 10_000 })
+})
+
+test('live-end-run-could-not-reach-the-guest', async ({ page }) => {
+  await openRunWithMonitor(page)
+  const message = 'The run could not be ended: the guest agent did not answer'
+  await mockFinish(page, ID, () => refusal(502, message))
+  await pressEndRun(page)
+  await expect(page.locator('.tt-toast--error')).toContainText(message)
+  await expect(endRunButton(page)).toBeEnabled()
+  await expectNoVerticalScroll(page)
+  await snapshot(page, 'live-end-run-could-not-end', { toast: true })
+})
+
+test('live-end-run-is-no-error-when-the-run-was-over-already', async ({ page }) => {
+  let analysis = runningAnalysis()
+  const live = await openRunWithMonitor(page, () => analysis)
+  await mockFinish(page, ID, () => {
+    analysis = runningAnalysis({ status: 'processing' })
+    live.send('status', { status: 'processing', phase: 'live', elapsed_s: 41, remaining_s: 0 })
+    return refusal(409, 'Analysis 45 is processing: its run is already over')
+  })
+  await pressEndRun(page)
+  await expect(page.locator('[data-live="status"]')).toContainText('PROCESSING')
+  await expect(endRunButton(page)).toHaveCount(0)
+  await expect(page.locator('.q-notification')).toHaveCount(0)
+})
+
+test('live-end-run-narrow-600', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 900 })
+  await openRunWithMonitor(page)
+  await expect(endRunButton(page)).toBeEnabled()
+  await expectEndRunInsideStatusBar(page)
+  await expectNoHorizontalOverflow(page)
+  await snapshot(page, 'live-end-run-narrow-600')
+
+  await mockFinish(page, ID, () => ({ status: 200, json: runningAnalysis() }))
+  await pressEndRun(page)
+  await expect(endRunButton(page)).toContainText('ENDING...')
+  await expectEndRunInsideStatusBar(page)
+  await expectNoHorizontalOverflow(page)
 })

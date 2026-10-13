@@ -107,16 +107,42 @@ describe('LiveDesktopSlot when the server closes the socket', () => {
     expect(wrapper.find('[data-desktop="retry"]').text()).toContain('RETRY')
   })
 
-  it('offers RECONNECT when the desktop closes after it was shown, and never prints NaN', async () => {
+  it('says the run has ended, with no button, when the desktop closes normally after it was shown', async () => {
     const wrapper = await connectToGuest()
     socket().serverCloses(1000, 'analysis is no longer running')
     await flushPromises()
-    expect(message(wrapper).text()).toContain('the desktop has closed')
+    expect(message(wrapper).text()).toContain('The run has ended. CAPE is processing the results.')
+    expect(message(wrapper).text()).not.toContain('analysis is no longer running')
     expect(message(wrapper).text()).not.toContain('NaN')
+    expect(wrapper.find('[data-desktop="retry"]').exists()).toBe(false)
+  })
+
+  it('says the run has ended when guacd reports the end of the run after the picture', async () => {
+    const wrapper = await connectToGuest()
+    FakeClient.latest.guacdError('Aborted. See logs.')
+    await flushPromises()
+    expect(message(wrapper).text()).toContain('The run has ended')
+    expect(wrapper.find('[data-desktop="retry"]').exists()).toBe(false)
+  })
+
+  it('offers RECONNECT when the connection drops while the run goes on', async () => {
+    const wrapper = await connectToGuest()
+    socket().serverCloses(1006, '')
+    await flushPromises()
+    expect(message(wrapper).text()).toContain('the desktop connection was lost')
     expect(wrapper.find('[data-desktop="retry"]').text()).toContain('RECONNECT')
     await wrapper.find('[data-desktop="retry"]').trigger('click')
     await flushPromises()
     expect(FakeDesktopSocket.instances).toHaveLength(2)
+  })
+
+  it('says the run has ended, not that the connection dropped, when END RUN was pressed', async () => {
+    const wrapper = await connectToGuest()
+    await wrapper.setProps({ endRequested: true })
+    socket().serverCloses(1006, '')
+    await flushPromises()
+    expect(message(wrapper).text()).toContain('The run has ended')
+    expect(wrapper.find('[data-desktop="retry"]').exists()).toBe(false)
   })
 
   it('says the guest is not running when guacd reports an error before any picture', async () => {
@@ -175,13 +201,19 @@ describe('LiveDesktopSlot by analysis status', () => {
     await flushPromises()
     expect(FakeClient.latest.disconnected).toBe(1)
     expect(socket().closedWith?.code).toBe(1000)
-    expect(message(wrapper).text()).toContain('only available while the analysis runs')
+    expect(message(wrapper).text()).toContain('The run has ended. CAPE is processing the results.')
+    expect(message(wrapper).text()).not.toContain('only available while')
   })
 
   it('shows the last screenshot of a finished analysis instead of connecting', async () => {
     const wrapper = await mountSlot(interactive('done'))
     expect(FakeDesktopSocket.instances).toHaveLength(0)
     expect(wrapper.find('[data-desktop="last-screenshot"]').attributes('src')).toBe('/api/analyses/45/artifacts/screenshots/3')
+    expect(message(wrapper).text()).toContain('The run has ended. CAPE is processing the results.')
+  })
+
+  it('keeps "only available while the analysis runs" for a run that never finished', async () => {
+    const wrapper = await mountSlot(interactive('cancelled'))
     expect(message(wrapper).text()).toContain('only available while the analysis runs')
   })
 

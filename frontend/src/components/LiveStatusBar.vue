@@ -85,6 +85,8 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
       class="live-status__item live-status__events"
       data-field="events"
     ><strong>{{ formatCount(total) }} events</strong>{{ shownLabel }} · {{ formatCount(eventsPerMinute) }}/min</span>
+
+    <slot name="actions" />
   </div>
 </template>
 

@@ -115,7 +115,7 @@ test('the interactive desktop shows the guest, takes the mouse, takes keys only 
     await expect(screen(page)).toHaveAttribute('data-captured', 'false')
 
     await expect(page.locator('.status-badge').first()).toContainText(/done/i, { timeout: 300_000 })
-    await expect(page.locator('[data-desktop="message"]')).toContainText('only available while the analysis runs')
+    await expect(page.locator('[data-desktop="message"]')).toContainText('The run has ended. CAPE is processing the results.')
     expect(pageErrors).toEqual([])
   } finally {
     await deleteWhenDone(request, id)

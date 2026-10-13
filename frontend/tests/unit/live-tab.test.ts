@@ -6,7 +6,12 @@ import { analysisWithStatus } from './analysis-fixtures'
 import { FakeWebSocket } from './fake-websocket'
 import { liveEvent, liveProcess } from './live-fixtures'
 
+const analysesFinish = vi.hoisted(() => vi.fn())
+const confirmDestructive = vi.hoisted(() => vi.fn())
+vi.mock('@/services/confirm', () => ({ confirmDestructive }))
+
 vi.mock('@/api', () => ({
+  analysesFinish,
   viewsArtifacts: vi.fn(() => Promise.resolve({ data: { screenshots: [{ n: 1, name: '1.jpg', size: 1 }] }, error: undefined })),
 }))
 
@@ -15,6 +20,7 @@ vi.mock('@/services/desktop-guacamole', () => ({ loadGuacamole: () => new Promis
 
 const LiveTab = (await import('@/components/tabs/LiveTab.vue')).default
 const LiveEventStream = (await import('@/components/LiveEventStream.vue')).default
+const LiveDesktopSlot = (await import('@/components/LiveDesktopSlot.vue')).default
 
 const RUNNING = { status: 'running', phase: 'live', elapsed_s: 12, remaining_s: 168 }
 const running = (overrides: Partial<AnalysisRead> = {}) => analysisWithStatus('running', { finished_at: null, ...overrides })
@@ -38,6 +44,8 @@ async function send(type: string, data: unknown) {
 }
 
 beforeEach(() => {
+  analysesFinish.mockReset()
+  confirmDestructive.mockReset()
   FakeWebSocket.reset()
   vi.stubGlobal('WebSocket', FakeWebSocket)
 })
@@ -87,6 +95,61 @@ describe('LiveTab desktop slot', () => {
   it('does not take a truthy string for interactive', async () => {
     const wrapper = await mountTab(running({ options: { interactive: 'yes' } }))
     expect(wrapper.find('[data-live="desktop"]').exists()).toBe(false)
+  })
+})
+
+describe('LiveTab END RUN', () => {
+  const endRun = (wrapper: VueWrapper) => wrapper.find('[data-live="end-run"]')
+
+  it('sits in the status bar, disabled with a reason until the feed shows the monitor is up', async () => {
+    const wrapper = await mountTab()
+    expect(wrapper.find('[data-live="status"] [data-live="end-run"]').exists()).toBe(true)
+    expect(endRun(wrapper).attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.live-end-run').attributes('title')).toMatch(/not started in the guest yet/)
+
+    await send('process', { op: 'add', node: liveProcess(10) })
+    expect(endRun(wrapper).attributes('disabled')).toBeUndefined()
+  })
+
+  it('becomes available with the first event as well', async () => {
+    const wrapper = await mountTab()
+    await send('events', { events: [liveEvent({ id: 'a' })], dropped: 0 })
+    expect(endRun(wrapper).attributes('disabled')).toBeUndefined()
+  })
+
+  it.each(['queued', 'done'] as const)('is not there for an analysis that is %s', async (status) => {
+    const wrapper = await mountTab(analysisWithStatus(status))
+    expect(endRun(wrapper).exists()).toBe(false)
+  })
+
+  it('ends the run of the analysis once the dialog is confirmed, and shows ENDING...', async () => {
+    confirmDestructive.mockResolvedValue(true)
+    analysesFinish.mockResolvedValue({ data: running({ id: 45 }), error: undefined, response: { status: 200 } })
+    const wrapper = await mountTab(running({ id: 45 }))
+    await send('process', { op: 'add', node: liveProcess(10) })
+    await endRun(wrapper).trigger('click')
+    await flushPromises()
+    expect(confirmDestructive).toHaveBeenCalledWith(expect.objectContaining({ title: 'End the run now?', confirmLabel: 'END RUN' }))
+    expect(analysesFinish).toHaveBeenCalledWith(expect.objectContaining({ path: { analysis_id: 45 } }))
+    expect(endRun(wrapper).text()).toContain('ENDING...')
+  })
+
+  it('tells the desktop panel that the run is being ended', async () => {
+    confirmDestructive.mockResolvedValue(true)
+    analysesFinish.mockResolvedValue({ data: running({ id: 45 }), error: undefined, response: { status: 200 } })
+    const wrapper = await mountTab(running({ id: 45, options: { interactive: true } }))
+    expect(wrapper.findComponent(LiveDesktopSlot).props('endRequested')).toBe(false)
+    await send('process', { op: 'add', node: liveProcess(10) })
+    await endRun(wrapper).trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent(LiveDesktopSlot).props('endRequested')).toBe(true)
+  })
+
+  it('goes away when the live status says the run is over', async () => {
+    const wrapper = await mountTab()
+    await send('process', { op: 'add', node: liveProcess(10) })
+    await send('status', { status: 'processing', phase: 'live', elapsed_s: 100, remaining_s: 0 })
+    expect(endRun(wrapper).exists()).toBe(false)
   })
 })
 

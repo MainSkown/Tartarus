@@ -8,10 +8,10 @@ import { useDesktopSession } from '@/composables/use-desktop-session'
 import { useFullscreen } from '@/composables/use-fullscreen'
 import { useLastScreenshot } from '@/composables/use-last-screenshot'
 import { isTerminalStatus } from '@/services/analysis-status'
-import { hasDesktop } from '@/services/desktop-close'
+import { hasDesktop, phaseForRun } from '@/services/desktop-close'
 import { screenshotUrl } from '@/services/screenshot-url'
 
-const props = defineProps<{ analysis: AnalysisRead }>()
+const props = defineProps<{ analysis: AnalysisRead; endRequested?: boolean }>()
 
 const root = ref<HTMLElement>()
 const screen = ref<HTMLElement>()
@@ -29,6 +29,9 @@ const { last } = useLastScreenshot(
   () => props.analysis.status,
 )
 
+const shownPhase = computed(() =>
+  phaseForRun(desktop.phase.value, { status: props.analysis.status, endRequested: props.endRequested === true }),
+)
 const connected = computed(() => desktop.phase.value === 'connected')
 const lastScreenshot = computed(() =>
   isTerminalStatus(props.analysis.status) && last.value > 0 ? screenshotUrl(props.analysis.id, last.value) : undefined,
@@ -71,7 +74,7 @@ function keepKeysFromTheApp(event: KeyboardEvent): void {
       />
       <DesktopMessage
         v-if="!connected"
-        :phase="desktop.phase.value"
+        :phase="shownPhase"
         :reason="desktop.reason.value"
         :screenshot="lastScreenshot"
         @retry="desktop.connect"

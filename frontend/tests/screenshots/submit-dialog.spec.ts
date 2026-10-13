@@ -58,7 +58,7 @@ async function chooseFile(page: Page, file: { name: string; mimeType: string; bu
 test('submit-dialog-default', async ({ page }) => {
   await openSubmitDialog(page)
   await expect(page.locator('.submit-reason')).toHaveText('Choose a sample to analyse')
-  await expect(page.locator('.interactive-note')).toContainText('The run lasts the full timeout (4 min)')
+  await expect(page.locator('.interactive-note')).toContainText('The run lasts the full timeout (4 min) unless you press END RUN on the live page.')
   await page.screenshot({ path: screenshotPath('submit-dialog-default') })
 })
 
@@ -109,7 +109,7 @@ test('submit-dialog-interactive-long-timeout', async ({ page }) => {
   await openSubmitDialog(page)
   await chooseFile(page)
   await page.getByLabel('TIMEOUT').fill('1200')
-  await expect(page.locator('.interactive-note')).toContainText('The run lasts the full timeout (20 min)')
+  await expect(page.locator('.interactive-note')).toContainText('The run lasts the full timeout (20 min) unless you press END RUN on the live page.')
   await waitForFieldMessages(page)
   await page.screenshot({ path: screenshotPath('submit-dialog-interactive-long-timeout') })
 })
@@ -219,3 +219,18 @@ test('submit-dialog-narrow-600', async ({ page }) => {
   await waitForTransitions(page)
   await page.screenshot({ path: screenshotPath('submit-dialog-narrow-600') })
 })
+
+for (const width of NARROW_AND_WIDE_WIDTHS) {
+  test(`submit dialog does not jump when the interactive switch is flipped at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 })
+    await openSubmitDialog(page)
+    await page.getByLabel('TIMEOUT').fill('1200')
+    const dialogHeight = async () => (await page.locator('.submit-dialog').boundingBox())!.height
+    await expect(page.locator('.interactive-note')).toContainText('unless you press END RUN on the live page.')
+    const interactiveHeight = await dialogHeight()
+
+    await interactiveSwitch(page).click()
+    await expect(page.locator('.interactive-note')).toContainText('The run ends once the sample has exited')
+    expect(await dialogHeight(), 'the dialog changed height with the switch').toBe(interactiveHeight)
+  })
+}

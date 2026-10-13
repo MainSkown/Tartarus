@@ -8,9 +8,10 @@ const LIVE = { status: 'running', phase: 'live', elapsed_s: 72, remaining_s: 108
 
 type Props = InstanceType<typeof LiveStatusBar>['$props']
 
-function mountBar(props: Partial<Props> = {}) {
+function mountBar(props: Partial<Props> = {}, actions = '') {
   return mount(LiveStatusBar, {
     global: { plugins: [Quasar] },
+    slots: { actions },
     props: {
       status: 'running',
       live: LIVE,
@@ -112,5 +113,11 @@ describe('LiveStatusBar', () => {
   it('says the stream ended once the run is over, whatever the socket state', () => {
     const wrapper = mountBar({ status: 'done', ended: true, connection: 'closed' })
     expect(wrapper.find('[data-field="link"]').text()).toContain('STREAM ENDED')
+  })
+
+  it('shows what is put in its actions slot after the event counter', () => {
+    const wrapper = mountBar({}, '<button data-test="action">END</button>')
+    const html = wrapper.html()
+    expect(html.indexOf('data-test="action"')).toBeGreaterThan(html.indexOf('data-field="events"'))
   })
 })
