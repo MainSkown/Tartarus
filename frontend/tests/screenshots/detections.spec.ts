@@ -187,17 +187,17 @@ test('detections-mixed-rulesets-capped-events', async ({ page }) => {
   await page.screenshot({ path: screenshotPath('detections-mixed-rulesets-capped-events'), fullPage: true })
 })
 
-test('the detail starts on the same line as the list: both lead with the ruleset, then the severity badge', async ({ page }) => {
+test('the detail starts on the same line as the list: both lead with a heading, then the severity badge', async ({ page }) => {
   await openDetections(page)
   await expect(page.locator('.detection-detail')).toBeVisible()
   const tops = await page.evaluate(() => {
     const top = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().top
     return {
-      heading: [top('.detection-group .ruleset-heading'), top('.detection-detail .ruleset-heading')],
+      heading: [top('.detection-group .pane-heading'), top('.detection-detail .pane-heading')],
       badge: [top('.detection-entry .severity-badge'), top('.detection-detail .severity-badge')],
     }
   })
-  expect(tops.heading[1], 'ruleset heading of the detail vs the list').toBeCloseTo(tops.heading[0]!, 0)
+  expect(tops.heading[1], 'heading of the detail vs the list').toBeCloseTo(tops.heading[0]!, 0)
   expect(tops.badge[1], 'severity badge of the detail vs the first list entry').toBeCloseTo(tops.badge[0]!, 0)
 })
 

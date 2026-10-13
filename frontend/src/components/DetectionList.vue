@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { DetectionGroup } from '@/api'
 import SeverityBadge from '@/components/SeverityBadge.vue'
-import RulesetHeading from '@/components/RulesetHeading.vue'
+import PaneHeading from '@/components/PaneHeading.vue'
+import { rulesetLabel } from '@/services/detection-groups'
 
 defineProps<{ groups: DetectionGroup[]; selectedId: string | undefined }>()
 const emit = defineEmits<{ select: [id: string] }>()
@@ -14,7 +15,7 @@ const emit = defineEmits<{ select: [id: string] }>()
       :key="group.ruleset"
       class="detection-group"
     >
-      <RulesetHeading :ruleset="group.ruleset" />
+      <PaneHeading :label="rulesetLabel(group.ruleset)" />
       <button
         v-for="detection in group.detections"
         :key="detection.id"

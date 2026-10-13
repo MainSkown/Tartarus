@@ -2,8 +2,9 @@
 import { computed } from 'vue'
 import type { Detection } from '@/api'
 import ProcessChip from '@/components/ProcessChip.vue'
-import RulesetHeading from '@/components/RulesetHeading.vue'
+import PaneHeading from '@/components/PaneHeading.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
+import { rulesetLabel } from '@/services/detection-groups'
 import { formatTimestamp } from '@/services/format-time'
 import { laneMeta } from '@/services/lanes'
 
@@ -21,7 +22,7 @@ const eventsCount = computed(() => {
 
 <template>
   <article class="detection-detail">
-    <RulesetHeading :ruleset="detection.ruleset" />
+    <PaneHeading label="DESCRIPTION" />
     <SeverityBadge
       class="detection-detail__severity"
       :severity="detection.severity"
@@ -34,6 +35,12 @@ const eventsCount = computed(() => {
     </p>
 
     <dl class="detection-detail__facts">
+      <dt class="text-mono">
+        RULESET
+      </dt>
+      <dd class="detection-detail__ruleset text-mono">
+        {{ rulesetLabel(detection.ruleset) }}
+      </dd>
       <dt class="text-mono">
         PROCESS
       </dt>

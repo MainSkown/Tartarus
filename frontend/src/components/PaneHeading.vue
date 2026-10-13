@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { rulesetLabel } from '@/services/detection-groups'
-
-defineProps<{ ruleset: string }>()
+defineProps<{ label: string }>()
 </script>
 
 <template>
-  <h3 class="ruleset-heading text-mono">
-    {{ rulesetLabel(ruleset) }}
+  <h3 class="pane-heading text-mono">
+    {{ label }}
   </h3>
 </template>
 
 <style scoped>
-.ruleset-heading {
+.pane-heading {
   margin: 0 0 var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
   border-bottom: 2px solid var(--border-primary);

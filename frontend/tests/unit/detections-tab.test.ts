@@ -74,7 +74,7 @@ describe('DetectionsTab states', () => {
 describe('DetectionsTab list', () => {
   it('groups the detections by ruleset, sigma first, only the rulesets that exist', async () => {
     const wrapper = await mountTab()
-    expect(wrapper.findAll('.detection-list .ruleset-heading').map((name) => name.text())).toEqual(['SIGMA', 'CAPE', 'SURICATA'])
+    expect(wrapper.findAll('.detection-list .pane-heading').map((name) => name.text())).toEqual(['SIGMA', 'CAPE', 'SURICATA'])
   })
 
   it('shows the severity, the name and the technique ids of an entry', async () => {
@@ -107,6 +107,14 @@ describe('DetectionsTab list', () => {
 })
 
 describe('DetectionsTab detail', () => {
+  it('heads the detail with DESCRIPTION, not a second copy of the ruleset, and states the ruleset as a fact', async () => {
+    const wrapper = await mountTab()
+    const detail = wrapper.find('.detection-detail')
+    expect(detail.find('.pane-heading').text()).toBe('DESCRIPTION')
+    expect(detail.find('.detection-detail__ruleset').text()).toBe('SIGMA')
+  })
+
+
   async function openDetection(name: string) {
     const wrapper = await mountTab()
     const index = entryNames(wrapper).indexOf(name)
