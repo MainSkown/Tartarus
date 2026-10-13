@@ -161,6 +161,65 @@ higher-level event in the semantic lane. That derived event links back through
 `related.events`. This way the process, file, registry and network views work from capemon
 alone, without Sysmon.
 
+#### capemon derivation rules (as built)
+
+Written from the real report (`behavior.processes[].calls[]`) and implemented in
+`backend/app/ingest/capemon_rules.py`; the arguments marked (spec) are not in the sample report
+yet and follow capemon's argument names, so they need a second real report to confirm.
+
+Every call yields one `api-call` event (lane `api`, `event.dataset: capemon.api`). A call that
+matches a row yields one more event (dataset `capemon.derived`), placed directly after it, whose
+`related.events` holds the `api-call` event id. Both carry the owning process; the derived event
+shares the call as `tartarus.raw`. A rule that finds its argument missing or unusable derives
+nothing and never raises. "Ok" means the call's `status` is true.
+
+| Calls | Derives | Condition | Fields from the call |
+|---|---|---|---|
+| `NtCreateUserProcess`, `CreateProcessInternalW` | `process-created` | Ok, `ProcessId` > 0, and no earlier call (by timestamp, then call id) created the same pid | `process` is the **child** (pid `ProcessId`, `parent.pid` the caller, `command_line` from `CommandLine`, executable and start from the child's own process record, else `ImagePathName`/`ApplicationName`) |
+| `NtTerminateProcess` | `process-terminated` | Ok and `ProcessHandle` is the current-process pseudo handle (`0xffffffff`); handle `0` (ending the other threads) and real handles derive nothing | owning process |
+| `NtWriteFile` | `file-written` | Ok and `HandleName` is a filesystem path (`C:\`, `\??\`, or a UNC `\\server\`); `\Device\ConDrv`, pipes and other devices derive nothing | `file.path` = `HandleName` |
+| `NtCreateFile` | `file-created` | Ok and `ExistedBefore` = `no` | `file.path` = `FileName` |
+| `NtDeleteFile` (spec) | `file-deleted` | Ok and `FileName` is a filesystem path | `file.path` = `FileName` |
+| `MoveFileWithProgressW` (spec) | `file-moved` | Ok and both `ExistingFileName` and `NewFileName` are filesystem paths | `file.path`, `file.target_path` |
+| `RegCreateKeyExA/W` | `reg-key-created` | Ok and `Disposition` = `1` (a new key; 2 is an existing key being opened) | `registry.*` from `FullName` |
+| `RegSetValueExA/W`, `NtSetValueKey` | `reg-value-set` | Ok and a path in `FullName` (else `ObjectAttributes`) | `registry.*` from the path, `ValueName`, the pretty `Type`, `Buffer` as `registry.data.strings` |
+| `RegDeleteValueA/W`, `NtDeleteValueKey` (spec) | `reg-value-deleted` | Ok and a registry path | as above |
+| `RegDeleteKeyA/W`, `RegDeleteKeyExA/W`, `NtDeleteKey` (spec) | `reg-key-deleted` | Ok and a registry path | `registry.*` |
+| `getaddrinfo`, `GetAddrInfoW`, `GetAddrInfoExW` | `dns-query` | `NodeName` present (an attempt counts, ok or not) | `dns.question.name` = `NodeName` |
+| `DnsQuery_A/W/UTF8` (spec) | `dns-query` | `Name` present | `dns.question.name` = `Name` |
+| `connect`, `WSAConnect` (spec) | `network-connection` | `ip` present (an attempt counts) | `destination.ip` = `ip`, `destination.port` = `port` |
+| `InternetOpenUrlA/W` (spec) | `http-request` | `URL` present | `url.full` |
+| `NtWriteVirtualMemory`, `WriteProcessMemory` (spec) | `inject-write-memory` | Ok and the call targets another process (below) | owning process; the summary names the target pid |
+| `NtCreateThreadEx`, `NtCreateThread`, `CreateRemoteThread(Ex)` (spec) | `inject-thread` | Ok and another process | as above |
+| `NtMapViewOfSection` (spec) | `inject-map-section` | Ok and another process | as above |
+| `NtQueueApcThread(Ex)`, `QueueUserAPC` (spec) | `inject-apc` | Ok and `ProcessId` names another process | as above |
+
+*Another process*: the target pid (`ProcessId`, else `ProcessIdentifier`) differs from the
+caller's; with no pid in the call, `ProcessHandle` is neither `0` nor the current-process pseudo
+handle. Handles are not resolved to pids.
+
+Choices that differ from the mapping table above:
+- Network actions are `dns-query`, `network-connection` and `http-request`, the Sigma-facing names
+  already used for Sysmon and ETW, not a capemon-only `net-*` family.
+- `WinHttpSendRequest` is not derived: the call carries no URL (capemon logs headers and data),
+  so HTTP for it comes from the CAPE network records.
+- Calls with no row (`NtClose`, `EventUnregister`, `LdrGetDllHandle`, `NtQueryValueKey`, `NtOpenFile`,
+  `NtAllocateVirtualMemory`, ...) stay `api-call` only.
+
+Event fields on every capemon event:
+- `@timestamp` is the call's `timestamp` read as **UTC**, unchanged. `info.started` and `ended`
+  are the CAPE host's local time and are never used to shift it. A call whose timestamp cannot be
+  read takes the analysis start.
+- `event.sequence` numbers the events in emission order: calls sorted by timestamp, then call id,
+  then report order; a derived event directly follows its call.
+- `api.arguments` maps each argument name to its `value` (the first of a repeated name); the
+  pretty form stays in `tartarus.raw`. `event.category` of an `api-call` follows the call category
+  (`filesystem` is `file`, `registry`, `network`, `process` and `threading` are `process`, anything
+  else is `host`).
+- `event.severity` is 0 on every capemon event; only detections carry a higher level.
+- `event.id` is `sha1(analysis_id, "capemon", "report.json", call position)`; a derived event uses
+  the file `report.json#derived`, so the two never collide.
+
 ### Sigma field mapping
 Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` →
 `process.executable`, `CommandLine` → `process.command_line`, `TargetFilename` → `file.path`,
