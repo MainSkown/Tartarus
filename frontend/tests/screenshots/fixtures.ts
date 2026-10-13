@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { test as base, expect } from '@playwright/test'
@@ -359,5 +360,61 @@ export async function waitForTransitions(page: Page): Promise<void> {
   )
   await page.waitForFunction(() =>
     document.getAnimations().every((animation) => animation.effect?.getComputedTiming().iterations === Infinity),
+  )
+}
+
+// ---------- Analysis views (processes, network, ...): real responses of a real analysis ----------
+
+const DATA_DIR = path.resolve(fileURLToPath(new URL('.', import.meta.url)), 'data')
+
+export type ViewName = 'processes' | 'network' | 'registry' | 'detections' | 'attack' | 'iocs' | 'artifacts'
+
+export interface ViewMock {
+  body?: unknown
+  status?: number
+  delayMs?: number
+}
+
+/** What the backend answered for a real analysis (benign.exe and its child cmd.exe), as parsed JSON. */
+export function realView<T = unknown>(name: ViewName | `process-${number}`): T {
+  return JSON.parse(readFileSync(path.join(DATA_DIR, 'views', `${name}.json`), 'utf8')) as T
+}
+
+/**
+ * Serves every view of an analysis from the real responses, so a tab (or the Overview) never meets
+ * an unmocked request. `overrides` replaces, delays or fails any one view; `processes/{pid}` serves
+ * the saved detail of pids 9708 and 2476 and `404` for any other pid; the screenshots are two real
+ * guest screenshots. Register it after `mockAnalyses` (which serves the analysis itself).
+ */
+export async function mockViews(page: Page, overrides: Partial<Record<ViewName, ViewMock>> = {}): Promise<void> {
+  const respond = async (route: import('@playwright/test').Route, name: ViewName): Promise<void> => {
+    const mock = overrides[name] ?? {}
+    await pause(mock.delayMs)
+    await route.fulfill({ status: mock.status ?? 200, json: mock.body ?? realView(name) })
+  }
+  const views: ViewName[] = ['processes', 'network', 'registry', 'detections', 'attack', 'iocs', 'artifacts']
+  for (const name of views) {
+    await page.route(
+      (url) => new RegExp(`^/api/analyses/\\d+/${name}$`).test(url.pathname),
+      (route) => respond(route, name),
+    )
+  }
+  await page.route(
+    (url) => /^\/api\/analyses\/\d+\/processes\/\d+$/.test(url.pathname),
+    async (route) => {
+      const pid = new URL(route.request().url()).pathname.split('/').pop()
+      try {
+        await route.fulfill({ json: realView(`process-${pid}` as `process-${number}`) })
+      } catch {
+        await route.fulfill({ status: 404, json: errorEnvelope('not_found', `Process ${pid} not found`) })
+      }
+    },
+  )
+  await page.route(
+    (url) => /^\/api\/analyses\/\d+\/artifacts\/screenshots\/\d+$/.test(url.pathname),
+    async (route) => {
+      const n = Number(new URL(route.request().url()).pathname.split('/').pop())
+      await route.fulfill({ contentType: 'image/jpeg', body: readFileSync(path.join(DATA_DIR, `shot-${(n % 2) + 1}.jpg`)) })
+    },
   )
 }
