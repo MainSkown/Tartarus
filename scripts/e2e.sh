@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # End-to-end check of M1a against the REAL stack (`make up` first, guest built and registered):
 # submits a harmless sample through the frontend's published port and follows it through the
-# queue, the guest and the report. `E2E_DRILLS=1` adds the failure drills, which stop cape and
-# restart the backend mid-run and put both back afterwards. `E2E_SKIP_UI=1` skips the browser test.
+# queue, the guest and the report, then checks the event index and every analysis view of the
+# finished analysis. `E2E_DRILLS=1` adds the failure drills, which stop cape or opensearch and
+# restart the backend mid-run and put them back afterwards. `E2E_SKIP_UI=1` skips the browser test.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -20,6 +21,7 @@ SKIP_UI=${E2E_SKIP_UI:-0}
 
 source "$REPO/scripts/lib/benign-sample.sh"
 source "$REPO/scripts/lib/e2e-api.sh"
+source "$REPO/scripts/lib/e2e-views.sh"
 
 WORK_DIR=$(mktemp -d)
 CREATED_IDS=()
@@ -28,13 +30,14 @@ CREATED_IDS=()
 
 remember() { CREATED_IDS+=("$1"); }
 
-# Always runs: puts cape and the backend back, then removes what the run created.
+# Always runs: puts cape, opensearch and the backend back, then removes what the run created.
 cleanup() {
     local id
     trap - EXIT
-    compose start cape backend >/dev/null 2>&1
+    compose start opensearch cape backend >/dev/null 2>&1
     if [[ -n ${BASE:-} ]]; then
         wait_for_health cape ok "$RESTORE_TIMEOUT" >/dev/null 2>&1 || info "cape is not healthy after the run"
+        wait_for_health opensearch ok "$RESTORE_TIMEOUT" >/dev/null 2>&1 || info "opensearch is not healthy after the run"
     fi
     for id in "${CREATED_IDS[@]}"; do
         delete_analysis "$id" >/dev/null 2>&1
@@ -114,6 +117,7 @@ step_a_sample_runs_to_done() {
     ok "(a) submit answered 201 with analysis id $A_ID"
     check "(a) analysis $A_ID reaches done" wait_for_status "$A_ID" done "$ANALYSIS_TIMEOUT" || return 1
     check "(a) the result has a score and at least one signature" has_score_and_signature "$A_ID"
+    check_finished_analysis_views "$A_ID" "$A_SHA"
     info "(a) took $((SECONDS - started)) s"
 }
 
@@ -183,17 +187,26 @@ delete_removes_analysis() { # id
     delete_analysis "$1" && is_gone "$1"
 }
 
+delete_removes_analysis_and_never_indexed() { # id
+    index_is_gone "$1" && delete_removes_analysis "$1" && index_is_gone "$1"
+}
+
+delete_removes_analysis_and_index() { # id
+    index_exists "$1" || { echo "$(index_name "$1") did not exist before the delete"; return 1; }
+    delete_removes_analysis "$1" && index_is_gone "$1"
+}
+
 sample_file_is_present() { stored_sample_exists "$1" || { echo "no $SAMPLES_IN_BACKEND/$1.zip in the backend"; return 1; }; }
 sample_file_is_gone() { ! stored_sample_exists "$1" || { echo "$SAMPLES_IN_BACKEND/$1.zip is still in the backend"; return 1; }; }
 
 step_d_delete() {
     check "(d) the sample file exists while analysis $A_ID refers to it" sample_file_is_present "$A_SHA"
-    check "(d) deleting finished analysis $A_ID answers 204 and it is gone" delete_removes_analysis "$A_ID"
+    check "(d) deleting finished analysis $A_ID answers 204 and it and its event index are gone" delete_removes_analysis_and_index "$A_ID"
     check "(d) its sample file is removed because nothing refers to it" sample_file_is_gone "$A_SHA"
-    check "(d) deleting $B1_ID (done) answers 204 and it is gone" delete_removes_analysis "$B1_ID"
+    check "(d) deleting $B1_ID (done) answers 204 and it and its event index are gone" delete_removes_analysis_and_index "$B1_ID"
     check "(d) the sample stays while $B2_ID and the cancelled $B3_ID still refer to it" sample_file_is_present "$B_SHA"
-    check "(d) deleting $B2_ID (done) answers 204 and it is gone" delete_removes_analysis "$B2_ID"
-    check "(d) deleting the cancelled $B3_ID answers 204 and it is gone" delete_removes_analysis "$B3_ID"
+    check "(d) deleting $B2_ID (done) answers 204 and it and its event index are gone" delete_removes_analysis_and_index "$B2_ID"
+    check "(d) deleting the cancelled $B3_ID answers 204 and it is gone, with no index to leave behind" delete_removes_analysis_and_never_indexed "$B3_ID"
     check "(d) the sample file is removed with the last analysis that used it" sample_file_is_gone "$B_SHA"
 }
 
@@ -322,6 +335,54 @@ step_f_backend_restarts_mid_run() {
     check "(f) it is still the same CAPE task" same_task_id "$id" "$task_id"
 }
 
+# --- (g) re-ingest after an index outage --------------------------------------
+
+error_says_indexing_failed() { # id
+    local error
+    error=$(analysis_field "$1" error) || return 1
+    [[ ${error,,} == *indexing* ]] || { echo "error is '$error'"; return 1; }
+    echo "$error"
+}
+
+failed_ingest_left_nothing_behind() { # id
+    local count
+    count=$(analysis_field "$1" event_count) || return 1
+    [[ $count == 0 ]] || { echo "event_count is $count"; return 1; }
+    index_is_gone "$1"
+}
+
+reingest_answers() { # id expected-code
+    http POST "/api/analyses/$1/reingest"
+    [[ $HTTP_CODE == "$2" ]] || { echo "answered $HTTP_CODE (wanted $2): $(body)"; return 1; }
+    echo "answered $HTTP_CODE"
+}
+
+step_g_reingest_after_index_outage() {
+    local failed_id busy_id
+    submit_and_remember "$(unique_sample e2e-g-failed.exe)" && failed_id=$SUBMITTED_ID ||
+        { fail "(g) submitting the drill analysis"; return 1; }
+    compose stop opensearch >/dev/null 2>&1
+    check "(g) /api/system/health reports opensearch down" wait_for_health opensearch down 60 || return 1
+    check "(g) analysis $failed_id ends report_failed because its events could not be indexed"         wait_for_status "$failed_id" report_failed "$ANALYSIS_TIMEOUT" || return 1
+    check "(g) its error says indexing failed" error_says_indexing_failed "$failed_id"
+    compose start opensearch >/dev/null 2>&1
+    check "(g) opensearch is ok in /api/system/health again" wait_for_health opensearch ok "$RESTORE_TIMEOUT" || return 1
+    check "(g) the failed analysis has no events and no index" failed_ingest_left_nothing_behind "$failed_id"
+
+    submit_and_remember "$(unique_sample e2e-g-busy.exe)" && busy_id=$SUBMITTED_ID ||
+        { fail "(g) submitting the second drill analysis"; return 1; }
+    check "(g) analysis $busy_id is running" wait_for_running "$busy_id" || return 1
+    check "(g) re-ingesting $failed_id while $busy_id is active answers 409" reingest_answers "$failed_id" 409
+    check "(g) analysis $failed_id is still report_failed after the refused re-ingest" \
+        wait_for_status "$failed_id" report_failed 5
+    check "(g) analysis $busy_id finishes done" wait_for_status "$busy_id" done "$ANALYSIS_TIMEOUT" || return 1
+
+    check "(g) re-ingesting $failed_id answers 200" reingest_answers "$failed_id" 200
+    check "(g) analysis $failed_id reaches done" wait_for_status "$failed_id" done "$ANALYSIS_TIMEOUT" || return 1
+    check "(g) its event_count is positive and the lane counts add up to it" event_count_matches_lanes "$failed_id"
+    check "(g) the rebuilt index holds exactly event_count documents" index_holds_every_event "$failed_id"
+}
+
 # --- main ---------------------------------------------------------------------
 
 main() {
@@ -345,6 +406,8 @@ main() {
         step_e2_cape_down_past_grace
         echo "== (f) the backend restarts mid-run"
         step_f_backend_restarts_mid_run
+        echo "== (g) re-ingest after an index outage"
+        step_g_reingest_after_index_outage
     fi
 }
 
