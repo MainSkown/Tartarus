@@ -3,7 +3,7 @@ from collections.abc import Iterable, Iterator
 from itertools import islice
 from typing import Any
 
-from opensearchpy import AsyncOpenSearch
+from opensearchpy import AsyncOpenSearch, NotFoundError
 from opensearchpy.helpers import BulkIndexError, async_bulk
 
 from app.search.template import INDEX_PREFIX, TEMPLATE_NAME, build_index_template
@@ -62,6 +62,16 @@ class EventIndex:
 
     async def refresh(self, analysis_id: int) -> None:
         await self._client.indices.refresh(index=index_name(analysis_id))
+
+    async def search(self, analysis_id: int, body: dict[str, Any]) -> dict[str, Any]:
+        """Runs a search on one analysis's index; an analysis with no index has no events."""
+        try:
+            response: dict[str, Any] = await self._client.search(
+                index=index_name(analysis_id), body=body
+            )
+        except NotFoundError:
+            return {"hits": {"total": {"value": 0}, "hits": []}, "aggregations": {}}
+        return response
 
     async def bulk_index(
         self, analysis_id: int, events: Iterable[dict[str, Any]], chunk_size: int = 1000

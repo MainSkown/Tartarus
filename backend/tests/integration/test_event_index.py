@@ -155,3 +155,26 @@ async def test_bulk_index_rejects_an_event_without_an_id(events_index: EventInde
 async def test_bulk_index_takes_only_nested_events(events_index: EventIndex) -> None:
     with pytest.raises(IndexingError, match=r"event\.id"):
         await events_index.bulk_index(ANALYSIS_ID, [{"event.id": "dotted-1", "process.pid": 9}])
+
+
+async def test_search_returns_the_raw_response_of_the_analysis_index(
+    events_index: EventIndex,
+) -> None:
+    await events_index.bulk_index(ANALYSIS_ID, generate_events(3))
+    await events_index.refresh(ANALYSIS_ID)
+
+    response = await events_index.search(
+        ANALYSIS_ID, {"query": {"term": {"process.name": "cmd.exe"}}}
+    )
+
+    assert response["hits"]["total"]["value"] == 3
+
+
+async def test_search_on_an_analysis_without_an_index_finds_nothing(
+    events_index: EventIndex,
+) -> None:
+    response = await events_index.search(ANALYSIS_ID + 1, {"query": {"match_all": {}}})
+
+    assert response["hits"]["total"]["value"] == 0
+    assert response["hits"]["hits"] == []
+    assert response["aggregations"] == {}

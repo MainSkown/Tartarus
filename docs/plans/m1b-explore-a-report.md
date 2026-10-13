@@ -7,7 +7,12 @@ catalog are designed for those, even though only the views below ship now.
 
 ## Status
 
-Planned 2026-10-13, after M1a was verified on the real stack. Nothing built yet.
+Planned 2026-10-13, after M1a was verified on the real stack.
+
+**Waves 1 to 3 are done** (B1 to B4, B6, F0, all committed). A real analysis on the stack now ends
+`done` with 708 events in its own index (api 472, network 217, process 15, file 2, registry 2; 12
+of them alerts linked to the calls that raised them); re-ingest rebuilds exactly one index and
+delete drops it. **Next: Wave 4 (view endpoints), then the four tabs.**
 
 ## Outcome
 
