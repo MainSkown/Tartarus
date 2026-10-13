@@ -22,7 +22,7 @@ class SampleSource(Protocol):
     def open_plain(self, sha256: str) -> AbstractAsyncContextManager[Path]: ...
 
 
-class ReportUnreadable(Exception):
+class ReportUnreadableError(Exception):
     """The report is missing or is not a CAPE report; the message says which."""
 
 
@@ -35,7 +35,7 @@ class ReportOutcome:
 
 
 ReportReader = Callable[[Path], ReportOutcome]
-"""Reads a CAPE `report.json`; raises `ReportUnreadable` instead of returning partial data."""
+"""Reads a CAPE `report.json`; raises `ReportUnreadableError` instead of returning partial data."""
 
 
 class RunnerControl(Protocol):
