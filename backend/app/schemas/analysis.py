@@ -3,6 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from app.analyses.summary import ReportSummary
 from app.db.models.analysis import AnalysisPhase, AnalysisStatus, Severity
 
 
@@ -25,4 +26,4 @@ class AnalysisRead(BaseModel):
     submitted_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
-    summary: dict[str, Any] | None
+    summary: ReportSummary | None

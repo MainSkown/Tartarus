@@ -1,0 +1,158 @@
+import json
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel
+
+from app.analyses.ports import ReportOutcome, ReportUnreadableError
+from app.db.models.analysis import Severity
+
+CRITICAL_FROM_CAPE_SEVERITY = 4
+CAPE_SEVERITY_SCALE = (Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH)
+SEVERITY_ORDER = list(Severity)
+
+
+class SignatureSummary(BaseModel):
+    name: str
+    severity: Severity
+    description: str
+
+
+class AttackTechnique(BaseModel):
+    """CAPE gives technique ids without names; the signatures that raised one say what it means."""
+
+    id: str
+    signatures: list[str]
+
+
+class NetworkCounts(BaseModel):
+    dns: int = 0
+    hosts: int = 0
+    tcp: int = 0
+
+
+class SampleSummary(BaseModel):
+    name: str | None = None
+    type: str | None = None
+
+
+class ReportSummary(BaseModel):
+    """What the Dashboard and the analysis summary tab show; stored as `analysis.summary`."""
+
+    duration_s: int | None = None
+    process_count: int = 0
+    signatures: list[SignatureSummary] = []
+    techniques: list[AttackTechnique] = []
+    network: NetworkCounts = NetworkCounts()
+    files_written: int = 0
+    registry_keys_written: int = 0
+    sample: SampleSummary = SampleSummary()
+
+
+def read_report(path: Path) -> ReportOutcome:
+    report = _load(path)
+    signatures = _signatures(report)
+    return ReportOutcome(
+        score=_number(report.get("malscore")),
+        max_severity=max(
+            (item.severity for item in signatures), key=SEVERITY_ORDER.index, default=None
+        ),
+        detected_families=_families(report.get("detections")),
+        summary=_summarise(report, signatures).model_dump(mode="json"),
+    )
+
+
+def _load(path: Path) -> dict[str, Any]:
+    try:
+        report = json.loads(path.read_bytes())
+    except FileNotFoundError:
+        raise ReportUnreadableError(f"report is missing: {path.name}") from None
+    except (OSError, ValueError) as error:
+        reason = "not valid JSON" if isinstance(error, ValueError) else type(error).__name__
+        raise ReportUnreadableError(f"report {path.name} is {reason}") from None
+    if not isinstance(report, dict) or not isinstance(report.get("info"), dict):
+        raise ReportUnreadableError(f"report {path.name} is not a CAPE report: no `info` section")
+    return report
+
+
+def _summarise(report: dict[str, Any], signatures: list[SignatureSummary]) -> ReportSummary:
+    behavior = _section(report, "behavior")
+    behavior_summary = _section(behavior, "summary")
+    target_file = _section(_section(report, "target"), "file")
+    network = _section(report, "network")
+    return ReportSummary(
+        duration_s=_integer(report["info"].get("duration")),
+        process_count=_length(behavior.get("processes")),
+        signatures=signatures,
+        techniques=_techniques(report.get("ttps")),
+        network=NetworkCounts(
+            dns=_length(network.get("dns")),
+            hosts=_length(network.get("hosts")),
+            tcp=_length(network.get("tcp")),
+        ),
+        files_written=_length(behavior_summary.get("write_files")),
+        registry_keys_written=_length(behavior_summary.get("write_keys")),
+        sample=SampleSummary(
+            name=_text(target_file.get("name")), type=_text(target_file.get("type"))
+        ),
+    )
+
+
+def _signatures(report: dict[str, Any]) -> list[SignatureSummary]:
+    raw = report.get("signatures")
+    parsed = [
+        SignatureSummary(
+            name=str(item.get("name", "")),
+            severity=_severity(item.get("severity")),
+            description=str(item.get("description", "")),
+        )
+        for item in (raw if isinstance(raw, list) else [])
+        if isinstance(item, dict)
+    ]
+    return sorted(parsed, key=lambda item: SEVERITY_ORDER.index(item.severity), reverse=True)
+
+
+def _severity(cape_severity: object) -> Severity:
+    level = _integer(cape_severity) or 0
+    if level >= CRITICAL_FROM_CAPE_SEVERITY:
+        return Severity.CRITICAL
+    return CAPE_SEVERITY_SCALE[max(level, 0)]
+
+
+def _techniques(ttps: object) -> list[AttackTechnique]:
+    signatures_by_id: dict[str, list[str]] = {}
+    for entry in ttps if isinstance(ttps, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        for technique_id in entry.get("ttps") or []:
+            raised_by = signatures_by_id.setdefault(str(technique_id), [])
+            if entry.get("signature"):
+                raised_by.append(str(entry["signature"]))
+    return [AttackTechnique(id=key, signatures=names) for key, names in signatures_by_id.items()]
+
+
+def _families(detections: object) -> list[str]:
+    if not isinstance(detections, list):
+        return []
+    return [family for family in detections if isinstance(family, str) and family]
+
+
+def _section(parent: dict[str, Any], key: str) -> dict[str, Any]:
+    value = parent.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _length(value: object) -> int:
+    return len(value) if isinstance(value, list | dict) else 0
+
+
+def _integer(value: object) -> int | None:
+    return int(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def _number(value: object) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def _text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None

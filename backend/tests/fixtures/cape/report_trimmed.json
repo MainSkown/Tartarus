@@ -1,0 +1,827 @@
+{
+ "info": {
+  "version": "2.5",
+  "started": "2026-10-13 12:12:18",
+  "ended": "2026-10-13 12:13:13",
+  "duration": 55,
+  "id": 6,
+  "category": "file",
+  "custom": "",
+  "machine": {
+   "id": 6,
+   "status": "stopping",
+   "name": "win",
+   "label": "win",
+   "platform": "windows",
+   "manager": "KVM",
+   "started_on": "2026-10-13 12:12:18",
+   "shutdown_on": "2026-10-13 12:13:12"
+  },
+  "package": "exe",
+  "timeout": false,
+  "tlp": null,
+  "parent_sample": null,
+  "options": {
+   "vnc_port": "5900"
+  },
+  "source_url": null,
+  "route": "inetsim",
+  "user_id": 1,
+  "CAPE_current_commit": "unknown"
+ },
+ "target": {
+  "category": "file",
+  "file": {
+   "name": "benign.exe",
+   "size": 41472,
+   "md5": "142000442188c14b0c506ed987706cb0",
+   "sha1": "57d1366363289698f787f85d27849787bd92f027",
+   "sha256": "751ef5d128ce639cef9564195e0e0bdefb50b7afc0225aef03f8346853d61265",
+   "type": "PE32+ executable (console) x86-64, for MS Windows"
+  }
+ },
+ "malscore": 6.0,
+ "malstatus": "Suspicious",
+ "signatures": [
+  {
+   "name": "queries_locale_api",
+   "description": "Queries the computer locale (possible geofencing)",
+   "categories": [
+    "location_discovery",
+    "geofence"
+   ],
+   "severity": 1,
+   "weight": 1,
+   "confidence": 100,
+   "families": []
+  },
+  {
+   "name": "antidebug_setunhandledexceptionfilter",
+   "description": "SetUnhandledExceptionFilter detected (possible anti-debug)",
+   "categories": [
+    "anti-debug"
+   ],
+   "severity": 1,
+   "weight": 1,
+   "confidence": 40,
+   "families": []
+  },
+  {
+   "name": "stealth_timeout",
+   "description": "Possible date expiration check, exits too soon after checking local time",
+   "categories": [
+    "stealth"
+   ],
+   "severity": 1,
+   "weight": 1,
+   "confidence": 40,
+   "families": []
+  },
+  {
+   "name": "language_check_registry",
+   "description": "Checks system language via registry key (possible geofencing)",
+   "categories": [
+    "location_discovery",
+    "geofence"
+   ],
+   "severity": 1,
+   "weight": 1,
+   "confidence": 100,
+   "families": []
+  },
+  {
+   "name": "dllload_suspicious_directory",
+   "description": "A DLL was loaded from a suspicious directory",
+   "categories": [
+    "side loading"
+   ],
+   "severity": 2,
+   "weight": 1,
+   "confidence": 50,
+   "families": []
+  },
+  {
+   "name": "stealth_window",
+   "description": "A process created a hidden window",
+   "categories": [
+    "stealth"
+   ],
+   "severity": 2,
+   "weight": 1,
+   "confidence": 100,
+   "families": []
+  },
+  {
+   "name": "antianalysis_tls_section",
+   "description": "Contains .tls (Thread Local Storage) section",
+   "categories": [
+    "anti-analysis"
+   ],
+   "severity": 2,
+   "weight": 1,
+   "confidence": 100,
+   "families": []
+  },
+  {
+   "name": "network_http",
+   "description": "Performs some HTTP requests",
+   "categories": [
+    "network"
+   ],
+   "severity": 2,
+   "weight": 1,
+   "confidence": 30,
+   "families": []
+  },
+  {
+   "name": "pe_tls_callbacks",
+   "description": "The PE file contains TLS callbacks which execute before the entry point and before debugger attachment, commonly used by packers for anti-analysis or pre-EP decryption",
+   "categories": [
+    "packer",
+    "anti-debug",
+    "static"
+   ],
+   "severity": 2,
+   "weight": 1,
+   "confidence": 50,
+   "families": []
+  },
+  {
+   "name": "invalid_authenticode_signature",
+   "description": "Authenticode signature is invalid",
+   "categories": [
+    "static"
+   ],
+   "severity": 2,
+   "weight": 1,
+   "confidence": 30,
+   "families": []
+  },
+  {
+   "name": "uses_windows_utilities",
+   "description": "Uses Windows utilities for basic functionality",
+   "categories": [
+    "command",
+    "lateral"
+   ],
+   "severity": 2,
+   "weight": 1,
+   "confidence": 80,
+   "families": []
+  },
+  {
+   "name": "recon_systeminfo",
+   "description": "Collects information on the system (ipconfig, netstat, systeminfo)",
+   "categories": [
+    "discovery"
+   ],
+   "severity": 3,
+   "weight": 1,
+   "confidence": 100,
+   "families": []
+  }
+ ],
+ "ttps": [
+  {
+   "signature": "dllload_suspicious_directory",
+   "ttps": [
+    "T1574"
+   ],
+   "mbcs": [
+    "F0015"
+   ]
+  },
+  {
+   "signature": "stealth_window",
+   "ttps": [
+    "T1564.003",
+    "T1564"
+   ],
+   "mbcs": [
+    "E1564"
+   ]
+  },
+  {
+   "signature": "antianalysis_tls_section",
+   "ttps": [
+    "T1055"
+   ],
+   "mbcs": [
+    "B0002",
+    "B0003",
+    "E1055"
+   ]
+  },
+  {
+   "signature": "network_http",
+   "ttps": [
+    "T1071"
+   ],
+   "mbcs": [
+    "OC0006",
+    "C0002"
+   ]
+  },
+  {
+   "signature": "pe_tls_callbacks",
+   "ttps": [
+    "T1027",
+    "T1055"
+   ],
+   "mbcs": [
+    "OB0013",
+    "B0002"
+   ]
+  },
+  {
+   "signature": "invalid_authenticode_signature",
+   "ttps": [
+    "T1553.002",
+    "T1036",
+    "T1553"
+   ],
+   "mbcs": [
+    "OC0006",
+    "C0002"
+   ]
+  },
+  {
+   "signature": "uses_windows_utilities",
+   "ttps": [
+    "T1202"
+   ],
+   "mbcs": [
+    "OB0009",
+    "E1203.m06"
+   ]
+  }
+ ],
+ "network": {
+  "dns": [
+   {
+    "request": "www.msftconnecttest.com",
+    "type": "A",
+    "answers": [
+     {
+      "type": "A",
+      "data": "192.168.150.1"
+     }
+    ],
+    "first_seen": 1791893546.015928
+   },
+   {
+    "request": "ipv6.msftconnecttest.com",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791893546.02001
+   },
+   {
+    "request": "outlook.office.com",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791893550.938791
+   },
+   {
+    "request": "staging.to-do.officeppe.com",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791893553.06243
+   },
+   {
+    "request": "tartarus-selftest.example",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791893567.838264
+   }
+  ],
+  "hosts": [],
+  "tcp": [
+   {
+    "src": "192.168.150.10",
+    "sport": 65521,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 328,
+    "time": 0.001096963882446289
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65522,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 4841,
+    "time": 1.745513916015625
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65523,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 5449,
+    "time": 1.74587082862854
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65524,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 10223,
+    "time": 1.7685658931732178
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65525,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 10799,
+    "time": 1.7697978019714355
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65526,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 12891,
+    "time": 1.782459020614624
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65527,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 13461,
+    "time": 1.7875850200653076
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65529,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 16131,
+    "time": 1.8034470081329346
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65528,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 16742,
+    "time": 1.8035929203033447
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65530,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 21519,
+    "time": 1.8243069648742676
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65531,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 22089,
+    "time": 1.8251748085021973
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65532,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 24385,
+    "time": 2.668632984161377
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65533,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 27193,
+    "time": 2.686898946762085
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 65534,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 28591,
+    "time": 2.711899995803833
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 49152,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 31402,
+    "time": 2.7308509349823
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 49153,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 32800,
+    "time": 2.8677968978881836
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 49154,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 35600,
+    "time": 2.8917670249938965
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 49155,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 36998,
+    "time": 2.924191951751709
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 49156,
+    "dst": "192.168.150.1",
+    "dport": 80,
+    "offset": 39806,
+    "time": 2.943897008895874
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 49157,
+    "dst": "192.168.150.1",
+    "dport": 443,
+    "offset": 41204,
+    "time": 2.960291862487793
+   }
+  ],
+  "udp": [
+   {
+    "src": "192.168.150.10",
+    "sport": 52171,
+    "dst": "192.168.150.1",
+    "dport": 53,
+    "offset": 4169,
+    "time": 1.7330539226531982
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 64214,
+    "dst": "192.168.150.1",
+    "dport": 53,
+    "offset": 15383,
+    "time": 1.7960209846496582
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 58442,
+    "dst": "192.168.150.1",
+    "dport": 53,
+    "offset": 111151,
+    "time": 5.898834943771362
+   },
+   {
+    "src": "192.168.150.10",
+    "sport": 51246,
+    "dst": "192.168.150.1",
+    "dport": 53,
+    "offset": 111365,
+    "time": 5.90291690826416
+   }
+  ],
+  "http": [],
+  "domains": [
+   {
+    "domain": "www.msftconnecttest.com",
+    "ip": "2.21.23.17"
+   },
+   {
+    "domain": "ipv6.msftconnecttest.com",
+    "ip": ""
+   },
+   {
+    "domain": "outlook.office.com",
+    "ip": "40.99.204.226"
+   },
+   {
+    "domain": "staging.to-do.officeppe.com",
+    "ip": ""
+   },
+   {
+    "domain": "tartarus-selftest.example",
+    "ip": ""
+   }
+  ]
+ },
+ "behavior": {
+  "processes": [
+   {
+    "process_id": 10116,
+    "process_name": "benign.exe",
+    "parent_id": 4336,
+    "module_path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+    "first_seen": "2026-10-13 10:12:41,164",
+    "calls": [
+     {
+      "timestamp": "2026-10-13 10:12:41,383",
+      "thread_id": "9372",
+      "caller": "0x7ffd9fe38838",
+      "parentcaller": "0x7ffd9fdfd5bc",
+      "category": "registry",
+      "api": "NtOpenKey",
+      "status": true,
+      "return": "0x00000000",
+      "arguments": [
+       {
+        "name": "KeyHandle",
+        "value": "0x00000210"
+       },
+       {
+        "name": "DesiredAccess",
+        "value": "0x00000001",
+        "pretty_value": "KEY_QUERY_VALUE"
+       },
+       {
+        "name": "ObjectAttributesHandle",
+        "value": "0x00000000"
+       },
+       {
+        "name": "ObjectAttributesName",
+        "value": "\\Registry\\MACHINE\\System\\CurrentControlSet\\Control\\Session Manager"
+       },
+       {
+        "name": "ObjectAttributes",
+        "value": "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager"
+       }
+      ],
+      "repeated": 0,
+      "id": 0
+     },
+     {
+      "timestamp": "2026-10-13 10:12:41,383",
+      "thread_id": "9372",
+      "caller": "0x7ffd9fe38919",
+      "parentcaller": "0x7ffd9fe38869",
+      "category": "registry",
+      "api": "NtQueryValueKey",
+      "status": false,
+      "return": "0xffffffffc0000034",
+      "pretty_return": "OBJECT_NAME_NOT_FOUND",
+      "arguments": [
+       {
+        "name": "KeyHandle",
+        "value": "0x00000210"
+       },
+       {
+        "name": "ValueName",
+        "value": "SmtDelaySleepLoopWindowSize"
+       },
+       {
+        "name": "FullName",
+        "value": "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelaySleepLoopWindowSize"
+       }
+      ],
+      "repeated": 0,
+      "id": 1
+     },
+     {
+      "timestamp": "2026-10-13 10:12:41,383",
+      "thread_id": "9372",
+      "caller": "0x7ffd9fe38919",
+      "parentcaller": "0x7ffd9fe38881",
+      "category": "registry",
+      "api": "NtQueryValueKey",
+      "status": false,
+      "return": "0xffffffffc0000034",
+      "pretty_return": "OBJECT_NAME_NOT_FOUND",
+      "arguments": [
+       {
+        "name": "KeyHandle",
+        "value": "0x00000210"
+       },
+       {
+        "name": "ValueName",
+        "value": "SmtDelaySpinCountThreshold"
+       },
+       {
+        "name": "FullName",
+        "value": "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelaySpinCountThreshold"
+       }
+      ],
+      "repeated": 0,
+      "id": 2
+     }
+    ]
+   },
+   {
+    "process_id": 9632,
+    "process_name": "cmd.exe",
+    "parent_id": 10116,
+    "module_path": "C:\\Windows\\System32\\cmd.exe",
+    "first_seen": "2026-10-13 10:12:41,613",
+    "calls": [
+     {
+      "timestamp": "2026-10-13 10:12:41,801",
+      "thread_id": "9616",
+      "caller": "0x7ffd9fe38838",
+      "parentcaller": "0x7ffd9fdfd5bc",
+      "category": "registry",
+      "api": "NtOpenKey",
+      "status": true,
+      "return": "0x00000000",
+      "arguments": [
+       {
+        "name": "KeyHandle",
+        "value": "0x000001fc"
+       },
+       {
+        "name": "DesiredAccess",
+        "value": "0x00000001",
+        "pretty_value": "KEY_QUERY_VALUE"
+       },
+       {
+        "name": "ObjectAttributesHandle",
+        "value": "0x00000000"
+       },
+       {
+        "name": "ObjectAttributesName",
+        "value": "\\Registry\\MACHINE\\System\\CurrentControlSet\\Control\\Session Manager"
+       },
+       {
+        "name": "ObjectAttributes",
+        "value": "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager"
+       }
+      ],
+      "repeated": 0,
+      "id": 0
+     },
+     {
+      "timestamp": "2026-10-13 10:12:41,801",
+      "thread_id": "9616",
+      "caller": "0x7ffd9fe38919",
+      "parentcaller": "0x7ffd9fe38869",
+      "category": "registry",
+      "api": "NtQueryValueKey",
+      "status": false,
+      "return": "0xffffffffc0000034",
+      "pretty_return": "OBJECT_NAME_NOT_FOUND",
+      "arguments": [
+       {
+        "name": "KeyHandle",
+        "value": "0x000001fc"
+       },
+       {
+        "name": "ValueName",
+        "value": "SmtDelaySleepLoopWindowSize"
+       },
+       {
+        "name": "FullName",
+        "value": "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelaySleepLoopWindowSize"
+       }
+      ],
+      "repeated": 0,
+      "id": 1
+     },
+     {
+      "timestamp": "2026-10-13 10:12:41,801",
+      "thread_id": "9616",
+      "caller": "0x7ffd9fe38919",
+      "parentcaller": "0x7ffd9fe38881",
+      "category": "registry",
+      "api": "NtQueryValueKey",
+      "status": false,
+      "return": "0xffffffffc0000034",
+      "pretty_return": "OBJECT_NAME_NOT_FOUND",
+      "arguments": [
+       {
+        "name": "KeyHandle",
+        "value": "0x000001fc"
+       },
+       {
+        "name": "ValueName",
+        "value": "SmtDelaySpinCountThreshold"
+       },
+       {
+        "name": "FullName",
+        "value": "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelaySpinCountThreshold"
+       }
+      ],
+      "repeated": 0,
+      "id": 2
+     }
+    ]
+   }
+  ],
+  "processtree": [
+   {
+    "name": "benign.exe",
+    "pid": 10116,
+    "parent_id": 4336,
+    "module_path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+    "children": [
+     {
+      "name": "cmd.exe",
+      "pid": 9632,
+      "parent_id": 10116,
+      "module_path": "C:\\Windows\\System32\\cmd.exe",
+      "children": []
+     }
+    ]
+   }
+  ],
+  "summary": {
+   "files": [
+    "C:\\Users\\Analyst\\AppData\\Local\\Temp\\tartarus-benign.txt",
+    "C:\\Users\\Analyst\\AppData\\Local\\Temp",
+    "C:\\",
+    "C:\\Users\\",
+    "C:\\Users\\Analyst\\",
+    "C:\\Users\\Analyst\\AppData\\",
+    "C:\\Users\\Analyst\\AppData\\Local\\"
+   ],
+   "read_files": [
+    "C:\\",
+    "C:\\Users\\",
+    "C:\\Users\\Analyst\\",
+    "C:\\Users\\Analyst\\AppData\\",
+    "C:\\Users\\Analyst\\AppData\\Local\\"
+   ],
+   "write_files": [
+    "C:\\Users\\Analyst\\AppData\\Local\\Temp\\tartarus-benign.txt"
+   ],
+   "delete_files": [],
+   "keys": [
+    "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Session Manager",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelaySleepLoopWindowSize",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelaySpinCountThreshold",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelayBaseYield",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtFactorYield",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelayMaxYield",
+    "HKEY_CURRENT_USER\\Software\\Tartarus",
+    "HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest",
+    "HKEY_CURRENT_USER\\Software\\Policies\\Microsoft\\Windows\\System",
+    "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Command Processor",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\DisableUNCCheck",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\EnableExtensions",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\DelayedExpansion",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\DefaultColor",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\CompletionChar",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\PathCompletionChar",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\InteractiveExtensionLevel",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\KnownPackageManagers",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\AutoRun",
+    "HKEY_CURRENT_USER\\Software\\Microsoft\\Command Processor",
+    "HKEY_LOCAL_MACHINE\\System\\Software\\Microsoft\\Command Processor",
+    "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Nls\\CustomLocale",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Nls\\CustomLocale\\pl-PL",
+    "HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Control\\Nls\\ExtendedLocale",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Nls\\ExtendedLocale\\pl-PL",
+    "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\UBR"
+   ],
+   "read_keys": [
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelaySleepLoopWindowSize",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelaySpinCountThreshold",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelayBaseYield",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtFactorYield",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Session Manager\\SmtDelayMaxYield",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\DisableUNCCheck",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\EnableExtensions",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\DelayedExpansion",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\DefaultColor",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\CompletionChar",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\PathCompletionChar",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\InteractiveExtensionLevel",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Command Processor\\AutoRun",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Nls\\CustomLocale\\pl-PL",
+    "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Control\\Nls\\ExtendedLocale\\pl-PL",
+    "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\UBR"
+   ],
+   "write_keys": [
+    "HKEY_CURRENT_USER\\Software\\Tartarus",
+    "HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest"
+   ],
+   "delete_keys": [],
+   "executed_commands": [
+    "cmd.exe /c ver"
+   ],
+   "resolved_apis": [],
+   "mutexes": [
+    "Local\\SM0:9632:304:WilStaging_02"
+   ],
+   "created_services": [],
+   "started_services": []
+  }
+ },
+ "dropped": [
+  {
+   "name": [
+    "tartarus-benign.txt"
+   ],
+   "size": 33,
+   "sha256": "19e19f9e997696d63c3a2ef193633c001b032b3880fd4b487dfea606aa77c196"
+  }
+ ]
+}
