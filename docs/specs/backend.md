@@ -20,7 +20,7 @@ and the guest builder. The frontend talks **only** to this service.
 | `search/` | OpenSearch client, index template, bulk indexer, query helpers (search, facets, histogram) |
 | `query/` | KQL-like grammar (lark), AST → OpenSearch DSL compiler, field catalog and aliases |
 | `export/` | STIX 2.1, MISP JSON, CSV, HTML/PDF report (Jinja2 + WeasyPrint) |
-| `guest/` | Guest build pipeline steps and health checks, using `libvirt-python` over `qemu+tcp://cape/system` (internal network only; no Docker socket) |
+| `guest/` | Guest build pipeline steps and health checks (M6). Will use `libvirt-python` over `qemu+tcp://cape/system`, which is switched off until then; no Docker socket |
 | `jobs/` | Persistent job runner, queue runner |
 | `pubsub.py` | In-process broadcast: topics `analysis:{id}` and `system` |
 | `db/` | SQLAlchemy models, session, Alembic |

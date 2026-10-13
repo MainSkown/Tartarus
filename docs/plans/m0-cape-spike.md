@@ -15,8 +15,8 @@ so "test-first" means each acceptance check is a script that fails before the im
 independently twice with identical results), so the host-libvirt fallback is not needed. What was
 built, what differed from the spec and what is still open is in
 [cape-integration](../specs/cape-integration.md#findings-that-need-action). Two findings need
-decisions before M1: libvirt's TCP endpoint has no authentication, and the guest's SMBIOS still
-says QEMU.
+decisions before M1: libvirt's TCP endpoint had no authentication (now switched off until the
+guest wizard needs it), and the guest's SMBIOS still said QEMU (closed by M0b).
 
 Needs nothing from the user. A throwaway Linux guest stands in for Windows, so the whole host side
 is proven independently.
@@ -30,8 +30,9 @@ is proven independently.
 - `scripts/verify-cape.sh` and its tests, written first.
 
 **Acceptance checks** (each inside the running container, from the host via `docker compose exec`)
-1. libvirtd and virtlogd run; `virsh list` works; libvirt also answers on TCP `16509` to another
-   container on the internal network (the backend's future `qemu+tcp://cape/system` connection).
+1. libvirtd and virtlogd run; `virsh list` works. (As first written this also required libvirt to
+   answer on TCP `16509` to another container; M0a showed that is unsafe, and the check now
+   requires the opposite: nothing listens, and another container is refused.)
 2. KVM acceleration works: `virsh capabilities` lists `kvm`, and a tiny Linux guest boots with it.
 3. The bridge `tt-guest` (192.168.150.1/24) exists only in the container's namespace; the guest
    gets an address on it.

@@ -61,10 +61,13 @@ touch CAPE's SQL task DB, and the final report is read from `report.json` (writt
   `package.json` changes), and publishes debug ports on `127.0.0.1` only: Vite `5173` (proxies
   `/api` and `/ws` to the backend), backend `8000` (OpenAPI docs at `/docs`), Postgres `5432`,
   OpenSearch `9200`.
-- **Backend → libvirt:** the backend controls the guest VM (build wizard, health checks) with
-  `libvirt-python` over `qemu+tcp://cape/system`. libvirtd in the `cape` container listens on the
-  internal compose network only. The Docker socket is **never** mounted into any container: it is
-  root on the host, and the backend handles malware artefacts and untrusted report data.
+- **Backend → libvirt (planned for M6, off until then):** the guest wizard will control the guest
+  VM with `libvirt-python` over `qemu+tcp://cape/system`. That endpoint has no authentication and
+  the container is privileged, so it is **switched off** (libvirtd runs without `--listen`) until
+  the wizard exists; M1 and M2 talk to CAPE's own token-authenticated HTTP API only. Turning it on
+  needs authentication and a network shared only by `cape` and the backend. The Docker socket is
+  **never** mounted into any container: it is root on the host, and the backend handles malware
+  artefacts and untrusted report data.
 - **Host prerequisite for OpenSearch:** `vm.max_map_count ≥ 262144` (checked by the preflight
   script).
 - **Volumes:** `pg-data`, `os-data`, `cape-storage` (CAPE `storage/`; mounted

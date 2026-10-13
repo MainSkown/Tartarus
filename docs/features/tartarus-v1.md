@@ -131,19 +131,17 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | Sources: capemon, Sysmon, ETW, Suricata/PCAP, Volatility3 | User's choice; Sysmon and ETW complement user-mode hooks |
 | Extra workflows: tags/notes and export/report only | User's choice |
 | Separate `frontend` container: Vite in dev, nginx in prod proxying `/api` and `/ws` | Same pattern as the user's Momos project; fast HMR; still one published port |
-| Backend controls libvirt via `qemu+tcp://cape/system`; never mount the Docker socket | The Docker socket is root on the host, and the backend processes untrusted malware data |
+| The guest wizard (M6) will control libvirt via `qemu+tcp://cape/system`, off until then; never mount the Docker socket | The Docker socket is root on the host, and the backend processes untrusted malware data |
 | No `mongo` service | Verified from CAPE source: `tasks/create/file`, `tasks/status`, `tasks/delete`, `machines/list` and `cuckoo/status` only touch CAPE's SQL task DB; CAPE's scheduler skips the `mongodb` reporting module when it's disabled (the shipped default); `jsondump` (what Tartarus reads) has no Mongo dependency; and the one startup check that requires Mongo or Elasticsearch only fires if `web.conf [web_reporting]` is enabled, which also ships off. Keep both at their defaults. `pymongo` stays installed in the `cape` image (an unconditional import for `bson.objectid.ObjectId`), but no connection is ever opened. |
 
 ## Open questions
-1. **How to protect libvirt's TCP endpoint (decide before M1).** M0a proved the privileged
-   `cape` container works (the host-libvirt fallback is not needed), but libvirt's
-   `qemu+tcp://cape/system` has no authentication. Any container on `tartarus-internal` could
-   define a VM that passes a host disk through, which is host root. Options: (a) a network shared
-   only by `cape` and `backend`, so only the backend can reach it; (b) SASL or TLS client
-   certificates, so reaching it isn't enough; (c) drop the remote libvirt API for a small control
-   service inside `cape` that exposes only define/snapshot/start/stop. Recommended: (a) now,
-   because it is cheap and independent, plus (b) or (c) when the backend starts using it, since
-   the backend parses untrusted malware reports.
+1. **How to protect libvirt's TCP endpoint when the guest wizard needs it (M6, not before).**
+   Resolved for now by switching the endpoint off: it has no authentication, and the container is
+   privileged, so any container on `tartarus-internal` reaching it would be host root. `make
+   verify-cape` enforces that it stays off. For M6 the options are: (a) a network shared only by
+   `cape` and `backend`; (b) SASL or TLS client certificates; (c) drop the remote libvirt API for a
+   small control service inside `cape` that exposes only define, snapshot, start and stop.
+   Recommended: (a) plus (b) or (c), since the backend parses untrusted malware reports.
 2. **Stop and extend a running task:** which CAPE mechanism stops a task early and extends an
    interactive one? If extending isn't supported, the `+60s` button is dropped and the timeout
    is only set at submission.

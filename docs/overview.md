@@ -65,10 +65,10 @@ remote access. Everything binds to `127.0.0.1`.
 
 ### Next up
 
-Two decisions come before M1 touches the sandbox: how to protect libvirt's TCP endpoint
-(question 1 in [tartarus-v1](features/tartarus-v1.md#open-questions); no authentication today,
-which is host root for any compromised container on the internal network) and what to do about
-Defender's Tamper Protection (question 5). Then M1 proper: submit a sample from the UI, receive
+One decision comes before M1 touches the sandbox: what to do about Defender's Tamper Protection
+(question 5 in [tartarus-v1](features/tartarus-v1.md#open-questions)); it can wait until the guest
+wizard if M1 leaves Defender on. libvirt's unauthenticated TCP endpoint is already switched off
+until the wizard needs it (question 1). Then M1 proper: submit a sample from the UI, receive
 CAPE's callback, ingest `report.json` into OpenSearch, and the first analysis views.
 
 ### After v1 (not designed yet)
