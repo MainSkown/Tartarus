@@ -32,7 +32,7 @@ case "$args" in
     *"ps -q cape"*) echo 0123456789abcdef ;;
     *"config --format json"*) show compose-config ;;
     *"--network host"*) show "host-firewall.$(state cape)$(state route)" ;;
-    *"--network tartarus-internal"*"qemu+tcp://cape/system"*) show virsh-tcp-list ;;
+    *"--network tartarus-internal"*"qemu+tcp://cape/system"*) show virsh-tcp-list; [[ -e $f/virsh-tcp-connects ]] ;;
     *"--network tartarus-internal"*"4822"*) show guac ;;
     *"--network tartarus-internal"*"Authorization: Token"*)
         if [[ ${CAPE_API_TOKEN:-} == "${EXPECTED_TOKEN:-test-token}" ]]; then show api-with-token; else printf '401\n{}\n'; fi ;;
@@ -52,7 +52,6 @@ case "$args" in
     *"exec -T cape virsh -c qemu:///system domstate tt-probe"*) show probe-state ;;
     *"exec -T cape virsh -c qemu:///system domdisplay tt-probe"*) echo "vnc://127.0.0.1:0" ;;
     *"exec -T cape ss -Hltn sport = :16509"*) show libvirt-tcp-listeners ;;
-    *"exec -T cape ip -4 -o addr show dev eth0"*) show eth0-addr ;;
     *"exec -T cape ip -4 -br addr show dev tt-guest"*) show tt-guest-addr ;;
     *"exec -T cape iptables-save -t nat"*) show "nat$(state route)" ;;
     *"exec -T cape sh -c"*"mongod"*) show mongo-processes ;;
@@ -100,9 +99,8 @@ healthy_fixtures() {
     fixture host-firewall.running.route 'table ip filter { chain DOCKER { } }'
     fixture supervisor-libvirt $'virtlogd RUNNING pid 10, uptime 0:01:00\nlibvirtd RUNNING pid 11, uptime 0:01:00'
     fixture virsh-list $' Id   Name       State\n------------------------\n 1    tt-probe   running'
-    fixture virsh-tcp-list "$(cat "$STUB_DIR/f/virsh-list")"
-    fixture libvirt-tcp-listeners 'LISTEN 0 50 172.30.0.5:16509 0.0.0.0:*'
-    fixture eth0-addr '2: eth0    inet 172.30.0.5/16 brd 172.30.255.255 scope global eth0'
+    fixture virsh-tcp-list 'error: unable to connect to server at cape:16509: Connection refused'
+    fixture libvirt-tcp-listeners ''
     fixture capabilities "<capabilities><guest><arch name='x86_64'><domain type='qemu'/><domain type='kvm'/></arch></guest></capabilities>"
     fixture probe-xml "<domain type='kvm' id='1'><name>tt-probe</name></domain>"
     fixture probe-state 'running'
@@ -188,17 +186,23 @@ test_check1_fails_when_libvirtd_is_down() {
     expect_fail_mentioning "1 libvirt: virtlogd and libvirtd are running"
 }
 
-test_check1_fails_when_tcp_is_unreachable_from_another_container() {
-    fixture virsh-tcp-list 'error: unable to connect to server at cape:16509: Connection refused'
-    sed -i 's|show virsh-tcp-list ;;|show virsh-tcp-list; exit 1 ;;|' "$STUB_DIR/bin/docker"
+test_check1_fails_when_libvirt_listens_on_tcp() {
+    fixture libvirt-tcp-listeners 'LISTEN 0 50 172.30.0.5:16509 0.0.0.0:*'
     run_verify
-    expect_fail_mentioning "1 libvirt: answers on qemu+tcp://cape/system"
+    expect_fail_mentioning "1 libvirt: nothing listens on TCP 16509"
 }
 
-test_check1_fails_when_libvirt_tcp_listens_on_every_interface() {
-    fixture libvirt-tcp-listeners 'LISTEN 0 50 0.0.0.0:16509 0.0.0.0:*'
+test_check1_fails_when_another_container_can_reach_libvirt() {
+    fixture virsh-tcp-list "$(cat "$STUB_DIR/f/virsh-list")"
+    touch "$STUB_DIR/f/virsh-tcp-connects"
     run_verify
-    expect_fail_mentioning "1 libvirt: TCP 16509 is bound to the internal network address only"
+    expect_fail_mentioning "1 libvirt: qemu+tcp://cape/system is refused"
+}
+
+test_check1_does_not_count_a_dns_failure_as_a_refused_connection() {
+    fixture virsh-tcp-list 'error: Failed to connect socket to cape: Name or service not known'
+    run_verify
+    expect_fail_mentioning "1 libvirt: qemu+tcp://cape/system is refused"
 }
 
 test_check2_fails_without_kvm_in_capabilities() {

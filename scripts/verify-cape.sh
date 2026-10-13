@@ -231,22 +231,31 @@ all_running() {
     done
 }
 
-internal_address() { in_cape ip -4 -o addr show dev eth0 | awk '{split($4, address, "/"); print address[1]}'; }
+# libvirt's TCP endpoint has no authentication, and the container is privileged, so reaching it
+# is host root. Nothing needs it until the guest wizard (M6), so it stays off: a compose-network
+# neighbour must get a refused connection, not just a missing listener.
+libvirt_tcp_has_no_listener() {
+    local listeners
+    listeners=$(in_cape ss -Hltn sport = :16509)
+    [[ -z $listeners ]] || { echo "listening: $listeners"; return 1; }
+}
 
-libvirt_tcp_bound_to_internal_address_only() {
-    local address listeners
-    address=$(internal_address)
-    listeners=$(in_cape ss -Hltn sport = :16509 | awk '{print $4}')
-    [[ -n $listeners ]] || { echo "nothing listens on 16509"; return 1; }
-    ! grep -vxF "$address:16509" <<<"$listeners"
+libvirt_tcp_is_refused_from_another_container() {
+    local output
+    if output=$(on_internal_network virsh -c qemu+tcp://cape/system list --all 2>&1); then
+        echo "another container can run virsh against libvirt"
+        return 1
+    fi
+    # A failure for another reason (the name did not resolve, the image broke) proves nothing.
+    grep -qi "refused" <<<"$output" || { echo "not a refusal: $output"; return 1; }
 }
 
 check_libvirt() {
     check "1 libvirt: virtlogd and libvirtd are running" all_running virtlogd libvirtd
     check "1 libvirt: virsh list works in the container" virsh_in_cape list --all
-    check "1 libvirt: answers on qemu+tcp://cape/system from another container on tartarus-internal" \
-        on_internal_network virsh -c qemu+tcp://cape/system list --all
-    check "1 libvirt: TCP 16509 is bound to the internal network address only" libvirt_tcp_bound_to_internal_address_only
+    check "1 libvirt: nothing listens on TCP 16509 inside the container" libvirt_tcp_has_no_listener
+    check "1 libvirt: qemu+tcp://cape/system is refused from another container on tartarus-internal" \
+        libvirt_tcp_is_refused_from_another_container
 }
 
 # Check 2: KVM.

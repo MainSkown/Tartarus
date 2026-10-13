@@ -61,7 +61,7 @@ create_cape_schema() {
 export CAPE_INTERNAL_IP
 CAPE_INTERNAL_IP=$(internal_network_address)
 derive_guest_addresses
-render libvirtd.conf /etc/libvirt/libvirtd.conf '${CAPE_INTERNAL_IP}'
+install -m 0644 "$TEMPLATES/libvirtd.conf" /etc/libvirt/libvirtd.conf
 render_inetsim_config
 render_cape_guest_network_overrides
 grant_qemu_user_kvm_access
