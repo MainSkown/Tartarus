@@ -124,7 +124,10 @@ in its report instead of diverging.
   it in `cape/conf/api.conf` (the `[taskdelete]` section; confirm the name in CAPE's source) and
   the client's delete relies on that.
 - `machines/list/` shows an idle guest as `status: "poweroff"`, `locked: false`, `reserved: false`:
-  the guest is **ready when it is listed under `GUEST_LABEL` and not locked**, not when it runs.
+  the guest is **ready when it is listed under `GUEST_LABEL`**, not when it runs. (Corrected in M1b: it
+  also said "and not locked", which made a guest busy with an analysis refuse every new sample and
+  disable the Submit button, so nothing could be queued while one ran. A locked guest is healthy
+  and busy; the end-to-end run's 409 flake in step (b) was this.)
 - `tasks/view/{id}/` carries `added_on`, `started_on`, `completed_on`, `reporting_finished_on`,
   `status`, `machine`, `route`, `package` and `timedout`; those feed the analysis timings.
 

@@ -43,7 +43,11 @@ class CapeCheck:
 
 
 class GuestCheck:
-    """Ready means listed and unlocked: an idle guest is `poweroff` until CAPE restores it."""
+    """Ready means listed: an idle guest is `poweroff` until CAPE restores it.
+
+    A locked guest is running a task. It is healthy, and new samples queue behind the task, so
+    being busy must not stop a submission; the message says so, for the header's tooltip.
+    """
 
     def __init__(self, cape: CapeProbe, guest_label: str) -> None:
         self._cape = cape
@@ -62,6 +66,7 @@ class GuestCheck:
             )
         if guest.locked:
             return ComponentHealth(
-                status=HealthStatus.DEGRADED, message=f"guest {self._guest_label} is locked"
+                status=HealthStatus.OK,
+                message=f"guest {self._guest_label} is busy with an analysis",
             )
         return ComponentHealth(status=HealthStatus.OK)

@@ -103,14 +103,16 @@ async def test_guest_check_is_degraded_when_no_machines_are_listed() -> None:
     assert result.status is HealthStatus.DEGRADED
 
 
-async def test_guest_check_is_degraded_when_the_guest_is_locked() -> None:
-    locked = GUEST.model_copy(update={"locked": True})
+async def test_guest_check_is_ok_while_the_guest_is_busy_with_an_analysis() -> None:
+    # A locked guest is running a task. That is healthy, and a new sample must still be accepted:
+    # it waits in the queue.
+    busy = GUEST.model_copy(update={"locked": True, "status": "running"})
 
-    result = await GuestCheck(FakeCape(machines=[locked]), "win").check()
+    result = await GuestCheck(FakeCape(machines=[busy]), "win").check()
 
-    assert result.status is HealthStatus.DEGRADED
+    assert result.status is HealthStatus.OK
     assert result.message is not None
-    assert "locked" in result.message
+    assert "busy" in result.message
 
 
 async def test_guest_check_is_down_when_cape_is_unreachable() -> None:

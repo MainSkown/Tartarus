@@ -14,6 +14,31 @@ Planned 2026-10-13, after M1a was verified on the real stack.
 of them alerts linked to the calls that raised them); re-ingest rebuilds exactly one index and
 delete drops it. **Next: Wave 4 (view endpoints), then the four tabs.**
 
+**Wave 6 (`make e2e`), run for real on 2026-10-13, is not green: the real stack showed a defect.**
+- Passing against the real stack: the new step (a) checks (event_count and lane counts add up; the
+  index holds exactly that many documents; the process tree has a parent and child with end times;
+  DNS rows and `simulated`; every detection and related event is a document of the index; an
+  ATT&CK technique under a known tactic; a hash IOC for the sample's own sha256; a path-traversal
+  artifact id answers 404); the index is gone after each delete in step (d); and the new drill (g)
+  end to end (OpenSearch stopped, the analysis ends `report_failed` with "Indexing the events
+  failed (ConnectionError)", no events and no index; a re-ingest while another analysis is running
+  answers 409; after the other one finishes the re-ingest answers 200 and ends `done` with the
+  document count equal to `event_count`). Drills e, e2 and f still pass. In the browser test the
+  Processes, Network, Artifacts (the DOWNLOAD href is the exact API URL) and Detections (list and
+  ATT&CK cell) assertions pass.
+- **Failing: artifact downloads and screenshots.** CAPE writes `files/<sha>`, `procdump/*` and
+  `shots/*.jpg` with mode `0600` as its own user (uid 999); the backend (uid 1000) mounts
+  `cape-storage` read-only and cannot read them. `GET .../artifacts/{id}/download` answers 500
+  (`PermissionError` in `write_encrypted_zip`), and `GET .../artifacts/screenshots/{n}` sends a
+  `200 image/jpeg` header and then fails, so every screenshot thumbnail is a broken image
+  (`naturalWidth` 0). The e2e check (viii) and the browser's thumbnail assertion fail on this; the
+  zip-opens-only-with-the-password half of (viii) has therefore not been seen to pass on the
+  stack (the probe itself was checked against zips written by pyzipper). It needs a fix on the CAPE
+  side (files readable by the backend) or in how the backend reads them; it is not an e2e problem.
+- Flaky, already there before Wave 6: step (b) submits three analyses back to back, and once the
+  first is running the guest is `locked` and the next `POST /analyses` answers 409 ("guest win is
+  locked"); it happened in one of four full runs and made every later step fail.
+
 ## Outcome
 
 After a `done` analysis, in the UI:
