@@ -32,8 +32,8 @@ The first Wave 6 run was red and found two defects that no fixture-based test co
   409 and the header's Submit button went disabled: nothing could be queued behind a running
   analysis. This was also the intermittent 409 in step (b). A locked guest is busy and healthy.
 
-**Status:** waiting on the user's review comments on the five screen Artifacts (Processes was reworked
-once after comments: it now fits one screen). Known gaps are on each Artifact page; the main ones:
+**Status: approved by the user (2026-10-13)** after review rounds on the Processes tab (it now fits one
+screen) and the Detections tab (the detail lines up with the list and is headed DESCRIPTION). Known gaps are on each Artifact page; the main ones:
 integrity level is always a dash, tags and notes are not built, TLS and Suricata alerts are empty
 until a later milestone, PNG export of the graph is only unit-tested.
 
