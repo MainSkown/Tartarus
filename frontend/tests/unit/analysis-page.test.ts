@@ -19,7 +19,19 @@ vi.mock('@/api', () => ({
   analysesDelete: (...args: unknown[]) => analysesDeleteMock(...args),
   analysesList: vi.fn(),
   analysesCreate: vi.fn(),
+  viewsArtifacts: () => Promise.resolve({ data: { screenshots: [] }, error: undefined }),
 }))
+
+// The tabs are tested on their own; here only that the page renders the one that was asked for.
+vi.mock('@/components/tabs', async () => {
+  const { h } = await import('vue')
+  const stub = (tab: string) => ({ render: () => h('section', { 'data-tab': tab }) })
+  return {
+    TAB_VIEWS: Object.fromEntries(
+      ['processes', 'network', 'artifacts', 'detections'].map((tab) => [tab, stub(tab)]),
+    ),
+  }
+})
 
 const confirmDestructiveMock = vi.fn()
 vi.mock('@/services/confirm', () => ({

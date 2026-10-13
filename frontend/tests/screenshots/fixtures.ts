@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { test as base, expect } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import type { Page, Route } from '@playwright/test'
 import type { AnalysisRead, ErrorEnvelope, SettingsBody, SystemHealth } from '../../src/api/types.gen'
 
 // An /api request no scenario mocked would fall through to the dev server's proxy (no backend
@@ -387,7 +387,7 @@ export function realView<T = unknown>(name: ViewName | `process-${number}`): T {
  * guest screenshots. Register it after `mockAnalyses` (which serves the analysis itself).
  */
 export async function mockViews(page: Page, overrides: Partial<Record<ViewName, ViewMock>> = {}): Promise<void> {
-  const respond = async (route: import('@playwright/test').Route, name: ViewName): Promise<void> => {
+  const respond = async (route: Route, name: ViewName): Promise<void> => {
     const mock = overrides[name] ?? {}
     await pause(mock.delayMs)
     await route.fulfill({ status: mock.status ?? 200, json: mock.body ?? realView(name) })
