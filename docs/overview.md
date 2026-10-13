@@ -56,7 +56,7 @@ remote access. Everything binds to `127.0.0.1`.
 | # | Milestone | Outcome |
 |---|---|---|
 | M0 | **Container spike** | **Done.** The privileged `cape` container runs a script-built Windows 11 guest and completes a CAPE analysis end to end (libvirt, KVM, rooter, INetSim, guacd, capemon on build 26200). See the [M0 plan](plans/m0-cape-spike.md). |
-| M1 | **Stack and final-report path** | **Foundation done** (compose stack, backend skeleton, generated API client, Quasar shell with theme, Settings). **Still to do:** submission, CAPE callback, report ingestion to OpenSearch, Dashboard and Overview, Processes, Network, Artifacts and Detections views |
+| M1 | **Stack and final-report path** | **Built, in visual review.** M1a (submit a sample, the queue, the CAPE callback, the Dashboard, the Submit dialog and the analysis page) and M1b (the event index, the capemon, network and signature normalisers, and the Processes, Network, Artifacts and Detections views). Verified end to end on the real stack by `make e2e DRILLS=1`. See the [M1a](plans/m1a-submit-and-report.md) and [M1b](plans/m1b-explore-a-report.md) plans. |
 | M2 | **Live** | Collector (BSON/ETW tailing), live WebSocket, LIVE tab with event stream and process tree, interactive desktop proxy |
 | M3 | **Query and timeline** | KQL-like query compiler, facets, Events tab, timeline, event detail drawer |
 | M4 | **Sigma** | Rule loader, in-stream matcher, Rules page, detections in the live feed |

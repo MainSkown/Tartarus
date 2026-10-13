@@ -9,35 +9,33 @@ catalog are designed for those, even though only the views below ship now.
 
 Planned 2026-10-13, after M1a was verified on the real stack.
 
-**Waves 1 to 3 are done** (B1 to B4, B6, F0, all committed). A real analysis on the stack now ends
-`done` with 708 events in its own index (api 472, network 217, process 15, file 2, registry 2; 12
-of them alerts linked to the calls that raised them); re-ingest rebuilds exactly one index and
-delete drops it. **Next: Wave 4 (view endpoints), then the four tabs.**
+**All waves are built and committed.** A real analysis on the stack ends `done` with about 700
+events in its own index (api, network, process, file, registry; the alerts are linked to the calls
+that raised them); re-ingest rebuilds exactly one index and delete drops it. The four exploring tabs
+and the Overview additions are built, tested (658 frontend unit tests, 154 screenshot scenarios,
+844 backend unit and 130 container tests) and published as Artifacts for the visual review (rule 4).
 
-**Wave 6 (`make e2e`), run for real on 2026-10-13, is not green: the real stack showed a defect.**
-- Passing against the real stack: the new step (a) checks (event_count and lane counts add up; the
-  index holds exactly that many documents; the process tree has a parent and child with end times;
-  DNS rows and `simulated`; every detection and related event is a document of the index; an
-  ATT&CK technique under a known tactic; a hash IOC for the sample's own sha256; a path-traversal
-  artifact id answers 404); the index is gone after each delete in step (d); and the new drill (g)
-  end to end (OpenSearch stopped, the analysis ends `report_failed` with "Indexing the events
-  failed (ConnectionError)", no events and no index; a re-ingest while another analysis is running
-  answers 409; after the other one finishes the re-ingest answers 200 and ends `done` with the
-  document count equal to `event_count`). Drills e, e2 and f still pass. In the browser test the
-  Processes, Network, Artifacts (the DOWNLOAD href is the exact API URL) and Detections (list and
-  ATT&CK cell) assertions pass.
-- **Failing: artifact downloads and screenshots.** CAPE writes `files/<sha>`, `procdump/*` and
-  `shots/*.jpg` with mode `0600` as its own user (uid 999); the backend (uid 1000) mounts
-  `cape-storage` read-only and cannot read them. `GET .../artifacts/{id}/download` answers 500
-  (`PermissionError` in `write_encrypted_zip`), and `GET .../artifacts/screenshots/{n}` sends a
-  `200 image/jpeg` header and then fails, so every screenshot thumbnail is a broken image
-  (`naturalWidth` 0). The e2e check (viii) and the browser's thumbnail assertion fail on this; the
-  zip-opens-only-with-the-password half of (viii) has therefore not been seen to pass on the
-  stack (the probe itself was checked against zips written by pyzipper). It needs a fix on the CAPE
-  side (files readable by the backend) or in how the backend reads them; it is not an e2e problem.
-- Flaky, already there before Wave 6: step (b) submits three analyses back to back, and once the
-  first is running the guest is `locked` and the next `POST /analyses` answers 409 ("guest win is
-  locked"); it happened in one of four full runs and made every later step fail.
+**`make e2e DRILLS=1` passed on the real stack on 2026-10-13** (60 checks, exit 0): the new step (a)
+checks (index document count equals `event_count`, the views answer with sensible content, a dropped
+file downloads as a zip that needs the password and opens with `infected`, a path-traversal id is a
+404), the index is gone after delete, the browser flow opens every tab, drills e, e2 and f, and the
+new drill g: OpenSearch stopped during an ingest gives `report_failed` with the reason, a re-ingest
+while another analysis is active is refused with 409, and after it finishes the re-ingest ends `done`
+with the document count equal to `event_count`.
+
+The first Wave 6 run was red and found two defects that no fixture-based test could:
+- **CAPE's uploaded files were unreadable to the backend.** Dropped files, dumps and screenshots are
+  created mode `0600` (Python's temporary-file API ignores the umask), the backend runs as another
+  user with a read-only mount: downloads answered 500 and screenshots broke mid-response. Fixed by
+  `share-storage`, a supervisord program in the `cape` container (see the CAPE integration spec).
+- **A busy guest counted as not ready**, so a submission made while an analysis ran was refused with
+  409 and the header's Submit button went disabled: nothing could be queued behind a running
+  analysis. This was also the intermittent 409 in step (b). A locked guest is busy and healthy.
+
+**Status:** waiting on the user's review comments on the five screen Artifacts (Processes was reworked
+once after comments: it now fits one screen). Known gaps are on each Artifact page; the main ones:
+integrity level is always a dash, tags and notes are not built, TLS and Suricata alerts are empty
+until a later milestone, PNG export of the graph is only unit-tested.
 
 ## Outcome
 
