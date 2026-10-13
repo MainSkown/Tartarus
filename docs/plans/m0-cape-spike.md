@@ -47,16 +47,19 @@ fallback's cost. Either answer closes the question.
 
 ## Stage M0b: a real Windows analysis
 
-**Status (2026-10-13, about 04:00): in progress, not yet reviewed.** The ISO is intact (`wimverify`
-passed on `boot.wim` and `install.wim`). The first attempts failed because the generated answer
-file was malformed XML (a `wcm:` prefix without its namespace declared): Windows 11 25H2 Setup
-exits silently on that and WinPE reboots to the CD prompt, which looked like a blank screen. With
-that fixed and a regression test added, Windows Setup installs unattended (seen at 31% in
-Polish). Checks 8-12 below are not proven yet. The work so far (`guest/`, `scripts/build-guest.sh`,
-`scripts/verify-guest.sh` with their tests, and changes to `cape/` and `docker-compose.yml`) is
-on disk uncommitted, awaiting review. The guest disk and the CAPE database are in the Docker
-volumes `guest-images` and `pg-data`; the git-ignored `.env` holds their passwords and must not
-be regenerated, because the Postgres volume keeps the first password.
+**Result: passed (2026-10-13).** Checks 8 to 12 pass, run four times by the agent and once
+independently by the planner (`make verify-guest`: 12 passed, 0 failed, a fresh task through to a
+finished report with the callback received). **capemon works on Windows 11 build 26200**, so no
+fallback image is needed. The unattended build takes about 13.6 minutes. Defender's Tamper
+Protection cannot be turned off by script, so it stays a manual wizard step. The full findings,
+including the silent Setup failures the wizard must handle, are in
+[cape-integration](../specs/cape-integration.md#findings-from-m0b-the-windows-11-guest).
+
+**Where things are left.** The working guest lives in the Docker volumes `guest-images` (22.5 GB),
+`cape-storage` and `pg-data`; all containers are stopped. The git-ignored `.env` holds their
+passwords and must not be regenerated, because the Postgres volume keeps the first password. To
+use it again: `docker compose --profile cape up -d`, then `make verify-guest`. To rebuild the
+guest from nothing: `make build-guest`.
 
 The ISO is the user's own `Win11_25H2_Polish_x64_v2.iso` in `./data/iso`: genuine Microsoft retail
 media, build 26200 (Windows 11 25H2), pl-PL only, x64, eight consumer editions. Use **Windows 11

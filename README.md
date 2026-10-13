@@ -5,11 +5,12 @@ Drop in a Windows sample, watch it detonate **live** in an isolated, hardened Wi
 with the guest desktop, then dig through processes, timeline, network and detections with a
 query bar, and export IOCs and reports.
 
-> **Status:** the foundation is built and running: the Docker stack, a FastAPI backend with a
-> live health feed and a Settings API, and a Quasar PWA with the app shell and Settings page. The
-> sandbox itself (CAPE, the Windows guest, submitting and analysing samples) is not built yet;
-> the docs below describe it, and the [foundation plan](docs/plans/foundation.md) records what
-> exists.
+> **Status:** the foundation is built and running (the Docker stack, a FastAPI backend with a
+> live health feed and a Settings API, a Quasar PWA with the app shell and Settings page), and
+> the sandbox works underneath it: a privileged CAPE container runs a script-built Windows 11
+> guest on KVM, and a test sample has been analysed end to end. What isn't built yet is the part
+> that connects them: submitting a sample from the UI, live monitoring, and the analysis views.
+> See the [overview](docs/overview.md#roadmap) and the [M0 plan](docs/plans/m0-cape-spike.md).
 
 ## Documentation
 

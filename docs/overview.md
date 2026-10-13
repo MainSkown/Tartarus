@@ -55,13 +55,21 @@ remote access. Everything binds to `127.0.0.1`.
 ### v1 milestones (proposed order)
 | # | Milestone | Outcome |
 |---|---|---|
-| M0 | **Container spike** | Privileged `cape` container boots a hand-made Windows guest and completes one CAPE analysis (libvirt, rooter, INetSim and guacd inside the container). Settles the biggest risk. |
-| M1 | **Stack and final-report path** | Compose stack, backend skeleton, generated API client, Quasar shell with theme, submission, CAPE callback, report ingestion to OpenSearch, Dashboard and Overview, Processes, Network, Artifacts and Detections views |
+| M0 | **Container spike** | **Done.** The privileged `cape` container runs a script-built Windows 11 guest and completes a CAPE analysis end to end (libvirt, KVM, rooter, INetSim, guacd, capemon on build 26200). See the [M0 plan](plans/m0-cape-spike.md). |
+| M1 | **Stack and final-report path** | **Foundation done** (compose stack, backend skeleton, generated API client, Quasar shell with theme, Settings). **Still to do:** submission, CAPE callback, report ingestion to OpenSearch, Dashboard and Overview, Processes, Network, Artifacts and Detections views |
 | M2 | **Live** | Collector (BSON/ETW tailing), live WebSocket, LIVE tab with event stream and process tree, interactive desktop proxy |
 | M3 | **Query and timeline** | KQL-like query compiler, facets, Events tab, timeline, event detail drawer |
 | M4 | **Sigma** | Rule loader, in-stream matcher, Rules page, detections in the live feed |
 | M5 | **Analyst workflow** | Tags and notes, IOC exports, HTML and PDF report |
-| M6 | **Guest wizard** | Automated hardened guest build, health checks, self-test |
+| M6 | **Guest wizard** | Automated hardened guest build, health checks, self-test. **Seeded by M0b:** `make build-guest` and `make verify-guest` already do the build and the checks; the wizard adds the UI, the ISO scan and the manual Defender step. |
+
+### Next up
+
+Two decisions come before M1 touches the sandbox: how to protect libvirt's TCP endpoint
+(question 1 in [tartarus-v1](features/tartarus-v1.md#open-questions); no authentication today,
+which is host root for any compromised container on the internal network) and what to do about
+Defender's Tamper Protection (question 5). Then M1 proper: submit a sample from the UI, receive
+CAPE's callback, ingest `report.json` into OpenSearch, and the first analysis views.
 
 ### After v1 (not designed yet)
 - **Windows hosts (experimental):** the same compose stack inside WSL2 with nested KVM (see

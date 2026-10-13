@@ -150,13 +150,22 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 3. **Sysmon timing:** CAPE probably collects the Sysmon EVTX only at the end of the run, so
    Sysmon events would be final-phase only. Add a live forwarder in the guest later?
 4. **Default Sigma ruleset:** ship a curated SigmaHQ subset (proposed) or start empty?
-5. **Defender Tamper Protection:** can the guest wizard disable it fully unattended on current
-   Windows builds, or is the one manual step unavoidable?
+5. **Defender Tamper Protection (answered by M0b, decision needed).** It cannot be turned off by
+   script by any documented means: the policy keys and `Set-MpPreference` are silently ignored.
+   Defender did not block the analysis or capemon's injection. Either accept the one manual step
+   (the user turns it off in Windows Security on the live desktop, then the wizard re-applies the
+   settings), or accept Defender staying on. Methods that bypass Tamper Protection were not tried.
 6. **Default analysis timeout:** 180 s is proposed.
 7. **App icon:** design a PWA and app icon (a descending pit or gate motif in ice blue).
 8. **PDF report styling:** a print variant (white background, blue accents) is proposed instead
    of a black PDF.
 9. **Maximum sample upload size:** 512 MB is proposed (nginx `client_max_body_size` on `/api/`).
+10. **Remaining sandbox-detection tells (from M0b):** remove the two empty optical drives once the
+    guest is installed? The display adapter is "Microsoft Basic Display Adapter" (no GPU driver).
+    Both are cheap to leave and moderately cheap to fix; decide how far to go.
+11. **The guest's default password** (`Tartarus1!`, overridable with `GUEST_PASSWORD`) is in the
+    repo and stored in plain text for autologon. Fine for a throwaway account in an isolated
+    guest; say so if you want a generated one per build instead.
 
 ## Research references
 - CAPEv2: https://github.com/kevoreilly/CAPEv2. Docs: https://capev2.readthedocs.io/en/latest/

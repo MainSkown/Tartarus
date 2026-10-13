@@ -71,6 +71,70 @@ Not verified in M0a: the `internet` route, that the domain and snapshot persist 
 recreating the container, that the ResultServer binds `192.168.150.1:2042` (it starts only with a
 registered guest), the `/dev/kvm` group-alignment code, and any Ubuntu or AppArmor host.
 
+## Findings from M0b: the Windows 11 guest
+
+Built and proven by milestone M0b ([plan](../plans/m0-cape-spike.md)): checks 8 to 12 pass with
+the user's `Win11_25H2_Polish_x64_v2.iso` (Windows 11 Pro, build 26200, pl-PL). **capemon works on
+build 26200**: a benign sample ran to a finished report with 249 and 224 hooked API calls in its two
+processes, its file write, registry write and command line, a DNS lookup answered by INetSim,
+screenshots and a callback. No fallback image is needed. Rerun with `make build-guest`
+(about 13.6 minutes, no input) and `make verify-guest` (about 100 seconds).
+
+**What the guest reports about itself.** Dell OptiPlex SMBIOS and BIOS, Samsung disk, Intel
+82574L NIC with a Dell MAC prefix, an AMD Ryzen CPU with `HypervisorPresent=False`, TPM 2.0,
+Secure Boot on. No QEMU strings: the SMBIOS finding from M0a is closed. Remaining tells: the
+display adapter is "Microsoft Basic Display Adapter", two empty optical drives, and KVM's rdtsc
+timing around a forced VM exit. A pafish run outside a CAPE task found no identity tells.
+
+**Image and domain changes it needed**
+- Secure Boot with Microsoft keys comes from only the two OVMF files of Ubuntu's `ovmf` package;
+  installing the package conflicts with the custom `qemu.deb`. The OVMF files are not pinned.
+- libvirt 10.0 rejects every firmware lookup because of QEMU's loongarch64 descriptor, so only
+  x86_64 descriptors are kept. swtpm runs as user `swtpm`.
+- The domain uses Q35 and UEFI, SATA disk and CD-ROMs, e1000e and VGA, so no virtio drivers are
+  needed. The libvirt element is `<baseBoard>`; lowercase `<baseboard>` is silently dropped.
+
+**Snapshots are external.** libvirt 10.0 refuses internal snapshots of UEFI domains, so
+`tartarus-clean` is an external disk-and-memory snapshot (`--memspec`/`--diskspec`): a memory file
+plus an overlay. Each revert replaces the overlay, so overlays don't pile up. Revert takes about
+1.6 seconds and the agent answers 1 second later. The CPU must be `migratable='on'`, or the exposed
+`invtsc` flag blocks any memory save. **The base `win.qcow2` becomes a backing file and must never
+be written directly.** libvirt 10.10 or later would allow internal snapshots.
+
+**One registered guest at a time.** Each `kvm.conf.d/<label>.conf` sets `[kvm] machines` and the
+last file read wins. Supporting several guests later (post-v1) means one registration listing all
+machines; `make verify-cape` works around it for now.
+
+**Provisioning results.** Scripted: the local admin `Analyst` with autologon, OOBE skipped, static
+IP, Windows Update off, UAC off, firewall off with port 8000 open, sleep and hibernate off,
+SmartScreen off, 32-bit Python 3.11.9 with Pillow, and CAPE's agent as a logon task. Caveats:
+`AllowTelemetry=0` is honoured only on Enterprise and Education, so Pro keeps "Required"
+telemetry; Sysmon was skipped. **Defender and Tamper Protection cannot be turned off by script**
+by any documented means; `Set-MpPreference` reports success and changes nothing. The agent did
+not try methods that bypass Tamper Protection. Defender did not block the analysis or capemon.
+
+**Silent failures the wizard inherits** (none reported an error)
+1. A malformed answer file (an undeclared `wcm:` prefix): Setup exits silently and WinPE reboots
+   to the CD prompt in a loop, which looks like a black screen. A well-formedness test covers it.
+2. "Press any key to boot from CD": with no key the firmware falls through to the empty disk. A key
+   sent too late lands on Setup's "Cancel" button. The build sends Enter for the first 20 seconds.
+3. `virsh destroy` right after provisioning lost unflushed writes; use an ACPI shutdown.
+4. Windows applies the pl-PL time zone to an RTC in UTC, so the clock jumps 2 hours; CAPE sets
+   the guest clock per task.
+5. CAPE's agent `/execute` splits commands POSIX-style and removes backslashes: use `C:/` paths.
+6. One API is not hooked on this build (`Unable to create trampoline for LockResource`).
+
+**Fragile points.** The 20-second key window depends on firmware timing. The external-snapshot
+setup assumes libvirt 10.0's revert behaviour. swtpm's state on the volume is owned by uid 102.
+The default guest password `Tartarus1!` is in the repo and in plain text for autologon; it is a
+throwaway account in an isolated guest.
+
+**M1 can rely on:** a registered machine `win` (tags `windows,win11`) at 192.168.150.10 with the
+snapshot `tartarus-clean`; tasks submitted with `machine=win`, `route=inetsim`, `package=exe`;
+status going pending, running, completed, reported; capemon logs in `storage/analyses/<id>/logs/`
+while it runs; `reports/report.json` afterwards; and a working `callback` reporting module (M1
+should set the backend's URL in `reporting.conf`).
+
 ## How the backend talks to CAPE
 
 | Need | Mechanism |
@@ -125,16 +189,19 @@ Rebuilding replaces it after the new one passes its checks.
 4. **Provision** (first-logon PowerShell, logged back to the wizard):
    - Disable Windows Update, UAC prompts, the firewall, telemetry, sleep/hibernate and
      SmartScreen.
-   - Disable Defender, including Tamper Protection. Tamper Protection can block a scripted
-     disable. If it does, the wizard pauses and shows one manual step in the live desktop, then
-     continues.
+   - Try to disable Defender. With Tamper Protection on (the default) the documented policy keys
+     and `Set-MpPreference` are silently ignored, so this is a **manual step** the wizard pauses
+     for: the user turns Tamper Protection off in Windows Security on the live desktop, then the
+     wizard re-applies the settings (see M0b findings).
    - Install 32-bit Python 3.12 and Pillow.
    - Install CAPE `agent.py` as a scheduled task that starts at logon with highest privileges.
    - Install Sysmon with `guest/sysmon-config.xml`.
    - Set a static IP of `192.168.150.10` with gateway and DNS `192.168.150.1`.
    - Apply the decoys if that option was chosen.
-5. **Snapshot:** reboot, wait for the agent on `:8000`, let the system idle for 60 s, then take a
-   live snapshot (with memory) named `tartarus-clean`.
+5. **Snapshot:** shut down with ACPI (never `virsh destroy`, which loses Windows' unflushed writes),
+   boot the clean guest, wait until the agent answers on `:8000` and `C:\tartarus\provision.done`
+   exists, let it idle for 60 s, then take an external disk-and-memory snapshot named
+   `tartarus-clean` (see M0b findings).
 6. **Register:** write `kvm.conf.d/<label>.conf`, restart `cape` and check `apiv2/machines/list`.
 7. **Self-test:**
    - Run a bundled benign test sample. It spawns a child process, writes a file, sets a registry
