@@ -96,9 +96,15 @@ Rebuilding replaces it after the new one passes its checks.
 
 ### Inputs
 - An ISO placed in `./data/iso/`. The wizard lists the ISOs it finds and shows each one's
-  edition and version (read from `sources/install.wim` metadata).
-- Edition, product key (optional; evaluation ISOs work without a key), locale and keyboard
-  (default: en-US), local username (default: a realistic random first name) and password.
+  editions, build and language, read from the metadata of `sources/install.wim` (`wiminfo`).
+  Microsoft's retail ISOs keep their files in a UDF filesystem, and the ISO9660 view holds only a
+  README, so the reader must handle UDF (7-Zip does; `bsdtar` does not). Reading the metadata
+  means extracting the 7 GB image once, to scratch space inside a throwaway container.
+- Edition: any index of the image (a retail ISO has eight or more: Home, Pro, Education and their
+  N variants). Pro is the default. Product key is optional; installing without one works.
+- Language: the image's own. An ISO carries one language (e.g. pl-PL), so the guest's display
+  language is the ISO's and the wizard offers no other; the keyboard layout is a separate
+  setting. Local username (default: a realistic random first name) and password.
 - Resources: vCPUs (default 2), RAM (default 4 GB), disk (default 80 GB thin qcow2).
 - Optional: "make it look used" decoys (documents, browser history, recent files, installed
   common apps) to defeat sandbox-detection checks for fresh systems.

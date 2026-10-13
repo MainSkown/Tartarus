@@ -47,19 +47,52 @@ fallback's cost. Either answer closes the question.
 
 ## Stage M0b: a real Windows analysis
 
-Needs a Windows 10 or 11 ISO. Decided: the user downloads a free evaluation ISO from Microsoft's
-Evaluation Center into `./data/iso` (git-ignored). Pick Windows 10 or 11 Enterprise, 64-bit,
-English (US), as an ISO rather than a VHD. CAPE's own docs name Windows 10 and Windows 11 23H2 as
-the preferred guests, so an older build is the safer pick over the newest. Evaluation licences
-expire after about 90 days, which is fine for a spike and is why the wizard also accepts a
-user's own licensed ISO. This stage takes the hand-built guest the wizard will later automate.
+The ISO is the user's own `Win11_25H2_Polish_x64_v2.iso` in `./data/iso`: genuine Microsoft retail
+media, build 26200 (Windows 11 25H2), pl-PL only, x64, eight consumer editions. Use **Windows 11
+Pro** (image index 5, edition ID `Professional`), installed without a product key.
 
-- Install Windows in the guest by hand, add CAPE's agent, take the clean snapshot, register it.
-- Run a benign test sample through CAPE and confirm: capemon's BSON logs appear in
-  `storage/analyses/<id>/logs/` on the shared volume while it runs, `report.json` appears after,
-  and the `callback` reporting module reaches a listener on the internal network.
-- Note exactly which steps were manual, since each one is a step the guest-build wizard (M6) has
-  to automate.
+Two risks to settle here, because neither is covered by CAPE's docs:
+- CAPE names Windows 10 and Windows 11 **23H2** as its preferred guests and says nothing about
+  24H2 or 25H2 (build 26100/26200). Whether capemon hooks and CAPE's agent work on 26200 is
+  exactly what this stage answers. If they don't, that is a finding, not something to patch
+  around: the fallbacks are Windows 10 Enterprise LTSC 2021 (official evaluation ISO, no TPM)
+  or a 23H2 image.
+- Windows 11 setup requires a TPM 2.0 and Secure Boot, so the guest needs an emulated TPM
+  (`swtpm`) and Secure Boot firmware, neither of which the M0a image has yet.
+
+Install by script, not by clicking: an answer file on a second ISO (`autounattend.xml`, which
+Windows Setup reads from removable media) plus provisioning scripts. That is what the wizard has
+to do anyway, so the scripts become its seed rather than throwaway work.
+
+**Deliverables**
+- `guest/`: the libvirt domain template, the answer file and the provisioning scripts, as the
+  seed of the wizard. Nothing from Microsoft or any large binary is committed; downloaded
+  installers (32-bit Python, Pillow) are pinned by sha256 in a manifest.
+- The `cape` image gains `swtpm`, Secure Boot firmware, and a way to build the answer-file ISO;
+  `./data/iso` is mounted into it read-only.
+- The guest's domain sets realistic `<sysinfo>` (closing the SMBIOS finding from M0a), a
+  real-vendor MAC, a hidden hypervisor bit, a TPM 2.0, 2 vCPUs, 4 GB RAM and an 80 GB thin disk,
+  with the VNC display bound inside the container only.
+
+**Acceptance checks**
+8. Windows 11 Pro installs unattended from the answer file, with the machine reachable at
+   `192.168.150.10` and CAPE's agent answering on port 8000 from inside the container.
+9. A running (memory) snapshot named `tartarus-clean` exists, and the guest is registered with
+   CAPE: `apiv2/machines/list` shows it.
+10. A benign test sample (built with mingw: starts a child process, writes a file, sets a
+    registry value, resolves a name) submitted through `apiv2` runs to completion. capemon's
+    BSON logs appear in `storage/analyses/<id>/logs/` while it runs, `report.json` appears after,
+    and the `callback` reporting module reaches a listener on the internal network.
+11. The ResultServer listens on `192.168.150.1:2042` while a guest is registered.
+12. Recreating the container (without deleting volumes) keeps the domain, the snapshot and the
+    registration.
+
+**Exit:** all five pass, or a written finding that names what can't work and why. A failure of
+check 10 on build 26200 specifically (hooks not loading, agent crashing) is a finding to report
+with the evidence, and the decision on a fallback image is the planner's. Also record exactly
+which steps could not be scripted: each is a step the wizard (M6) cannot automate either, and
+Defender's Tamper Protection is the likeliest (open question 5 in
+[tartarus-v1](../features/tartarus-v1.md)).
 
 ## Risks
 
