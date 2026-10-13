@@ -4,40 +4,72 @@ How Tartarus runs, configures and drives CAPEv2, and how the Windows guest gets 
 
 ## `cape` container
 
-| Aspect | Spec |
+Built and proven by milestone M0a ([plan](../plans/m0-cape-spike.md)): all seven acceptance checks
+pass with a throwaway Linux guest on KVM, so the host-libvirt fallback is not needed. Rerun them
+with `make verify-cape`.
+
+| Aspect | As built |
 |---|---|
-| Base | `ubuntu:24.04` (CAPE's reference OS) |
-| CAPE version | Pinned via build arg `CAPE_REF` (git commit of `kevoreilly/CAPEv2`). CAPE has no releases and changes daily, so bump it deliberately and re-run the self-test. |
-| Install | CAPE's own `installer/kvm-qemu.sh` (patched QEMU/SeaBIOS with anti-VM strings; `<WOOT>` placeholders replaced at build time from build args) and `installer/cape2.sh` (CAPE, poetry env, Suricata, tcpdump perms) |
-| Privileges | `privileged: true`, `devices: [/dev/kvm]`. The container needs its own iptables, bridge and tun management for the rooter and libvirt. |
-| Network namespace | Its own namespace (**not** `network_mode: host`). The guest bridge `tt-guest` lives only in this namespace. |
-| Process supervisor | supervisord (no systemd): `virtlogd`, `libvirtd` (also listening on TCP `16509` for the backend's `qemu+tcp://cape/system` connection, bound to the internal compose network only), `cape-rooter`, `cape` (scheduler + ResultServer), `cape-processor`, `cape-web` (gunicorn, apiv2 only), `suricata`, `inetsim`, `guacd` |
-| Databases | `postgres` service, database `cape`. No Mongo: `web.conf [web_reporting]` and `reporting.conf [mongodb]` stay at their shipped-disabled defaults, since Tartarus reads `report.json` instead of CAPE's Mongo-backed report viewer |
-| Shared volume | `/opt/CAPEv2/storage` = `cape-storage` volume (backend mounts it read-only) |
-| Health | `HEALTHCHECK` calls `apiv2/cuckoo/status/` and `virsh list` |
-| Python deps | `pymongo` stays installed (CAPE's `apiv2/views.py` imports `bson.objectid.ObjectId` unconditionally), but no Mongo connection is ever opened since `web_reporting` is off |
+| Base | `ubuntu:24.04` |
+| CAPE version | Pinned by `CAPE_REF` to a full commit SHA (default in `docker-compose.yml`, overridable in `.env`). CAPE has no releases and changes daily, so bump it deliberately and rerun `make verify-cape`. |
+| Install | QEMU 9.2.2 and SeaBIOS 1.16.3 built by CAPE's `kvm-qemu.sh`, with the anti-VM strings passed as build args (`cape/build/kvm-config.sh`). libvirt is Ubuntu's 10.0.0 package with matching libvirt-python, not built from source. CAPE itself is installed by hand with **uv** from its `uv.lock`; `cape2.sh` is used only for Suricata, because its `sandbox` step hardcodes a localhost database, cron, a libvirt-python version and systemd sudoers. |
+| Privileges | `privileged: true` and `/dev/kvm`. A narrower set looks feasible (see Findings) but is untested. |
+| Network namespace | Its own namespace, never the host's. `tt-guest` (192.168.150.1/24), the rooter's iptables rules and QEMU's tap devices all live inside it. A `net.ipv4.ip_forward=1` sysctl is set on the container. |
+| Process supervisor | supervisord, no systemd: `virtlogd`, `libvirtd`, `cape-rooter`, `cape` (scheduler and ResultServer), `cape-processor`, `cape-web` (gunicorn serving CAPE's whole Django app, reachable only on the internal network and loopback), `suricata`, `inetsim`, `guacd`. |
+| libvirt | Listens on TCP `16509`, bound to the container's internal address only so the guest cannot reach it. **No authentication yet** (see Findings). `security_driver = "none"` and `cgroup_controllers = [ ]` in `qemu.conf`. |
+| Guest network | `tt-guest` is a transient libvirt network rebuilt on every start: isolated (no forward), libvirt's DNS off so INetSim owns port 53, DHCP offering only `.10` with router and DNS `.1`. The Windows guest uses a static IP instead, because the rooter's INetSim route DNATs DHCP renewals. |
+| INetSim | Ubuntu's 1.3.2, patched at build time because its DNS service dies with the Net::DNS in Ubuntu 24.04 (`main_loop` becomes `loop_once`); the build fails if the patch stops applying. |
+| Databases | The `cape` database on the `postgres` service. No Mongo: `web.conf [web_reporting]` and `reporting.conf [mongodb]` stay disabled. `pymongo` stays installed because CAPE imports `bson` unconditionally. The entrypoint creates the schema once before any process starts, because CAPE's processes race on `CREATE TYPE`. |
+| Volumes | `cape-storage` at `/opt/CAPEv2/storage` (the backend mounts it read-only). `guest-images` at `/var/lib/libvirt`, with `/etc/libvirt/qemu` symlinked into it, so domain XML, snapshots and the guest's registration survive recreating the container. |
+| Compose | Behind the `cape` profile until M1: `docker compose --profile cape up -d cape`. Publishes no ports. |
+| Idle cost | About 1 GiB of memory and 63 processes with no guest running; image 3.08 GB; a full build takes about 10 minutes (QEMU 7), a config-only rebuild about 17 seconds. |
 
-**Prototype first (open question):** running libvirtd, the rooter's iptables and guacd inside a
-privileged container is unverified. Milestone 0 is a spike that boots a guest and completes one
-analysis in this setup. The fallback, if the spike fails, is libvirt on the host with only CAPE
-userland in the container. That fallback would require a host-side `kvm-qemu.sh`, which ties
-Tartarus to Ubuntu hosts.
+## CAPE configuration
 
-## CAPE configuration overrides (`cape/conf/`)
-
-Generated at container start from `.env` (Jinja templates), overriding CAPE's defaults:
+There are no Jinja templates. CAPE already layers `custom/conf/<name>.conf` over its defaults and
+expands `%(ENV:NAME)s`, so `cape/conf/` holds plain files, credentials come from the compose
+environment, and the one derived value (the gateway IP, from `GUEST_SUBNET`) is rendered with
+`envsubst` into `custom/conf/{cuckoo,routing}.conf.d/guest-network.conf`. It is rendered by the
+entrypoint into files because processes started with `docker compose exec` don't see variables
+the entrypoint exports.
 
 | File | Settings |
 |---|---|
-| `cuckoo.conf` | `machinery = kvm`; `[resultserver] ip = 192.168.150.1, port = 2042`; `[timeouts] default = 180, critical = 120`; `[database] connection = postgresql://…/cape`; `freespace` threshold matches the Tartarus disk warning |
-| `kvm.conf` | `machines = win`; `[win] label, platform = windows, ip = 192.168.150.10, snapshot = tartarus-clean, arch = x64, interface = tt-guest, tags = win10` or `win11` |
-| `routing.conf` | `route = inetsim` (default); `[inetsim] enabled = yes, server = 192.168.150.1`; `internet = <container uplink>`; vpn/wireguard/socks5 sections from `.env` if configured; `[routing] reject_segments` for RFC1918 + Docker subnets |
-| `auxiliary.conf` | `sysmon = yes` (Windows), ETW modules (`dns_etw`, `network_etw`, `wmi_etw`, `amsi_etw`) on, `QemuScreenshots` on |
-| `processing.conf` | `behavior`, `network`, `suricata`, `CAPE`, `procmemory`, `strings`, `trid`, `die` on; `memory` (Volatility3) on but only runs when the task has `memory=1`; `virustotal` **off** (no data leaves the host) |
-| `memory.conf` | Volatility3 plugins: pslist, pstree, malfind, netscan, handles, ldrmodules, hollowprocesses, processghosting, suspiciousthreads, unhookedsyscalls |
-| `reporting.conf` | `jsondump = on`; `mongodb = off` (default; no Mongo service exists); `callback = on, url = http://backend:8000/internal/cape/callback`; everything else off |
-| `web.conf` | `[guacamole] enabled = yes, guacd_host = 127.0.0.1` (Tartarus proxies guacd itself; CAPE's own guac web view is not exposed) |
-| `api.conf` | Token auth on (token generated at first start and shared with the backend via the env file); `[taskstatus] enabled = yes` |
+| `cuckoo.conf` | `machinery = kvm`; ResultServer on `192.168.150.1:2042`; timeouts; database connection to the `cape` database. |
+| `kvm.conf` | Holds **no machine**. Registering a guest writes `/var/lib/libvirt/tartarus/kvm.conf.d/<label>.conf` (a `[kvm] machines = <label>` section plus a `[<label>]` section with `platform`, `ip`, `snapshot`, `arch`, `interface = tt-guest`, `tags`) and restarts `cape`. The `cape` program waits until a registered machine is defined, because `cuckoo.py` exits with "No machines available". |
+| `routing.conf` | `route = inetsim`; `no_local_routing = no` (`yes` needs a VRF and the host's `vrf` module); `internet = eth0`; RFC1918 and Docker `reject_segments`. Only the inetsim route is verified; `internet` is configured but unexercised. |
+| `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
+| `web.conf` | `[guacamole] enabled = yes` so CAPE records each guest's VNC port. `guacd` binds the internal address only. The backend uses `cape:4822` itself; CAPE's own Guacamole view is unused. |
+| `auxiliary.conf` | Sysmon, ETW modules and `QemuScreenshots`: **deferred to M0b/M1**, they need a Windows guest. |
+| `processing.conf`, `memory.conf` | **Deferred.** Volatility3 and its symbol tables are not installed yet. `virustotal` stays off (no data leaves the host). |
+| `reporting.conf` | **Deferred.** `jsondump` on, `mongodb` off, plus the `callback` module pointing at the backend (M1). |
+
+**API token.** `CAPE_API_TOKEN` comes from `.env`; the entrypoint refuses to start without one,
+while compose doesn't require it, so `make up` works without the `cape` profile. On every start
+it is provisioned into CAPE's `ApiKey` model (which stores a SHA-256 hash) for the Django user
+`tartarus`, in a container-local SQLite file, so rotating the token revokes the old one.
+
+**Start order matters.** CAPE's Django `settings.py` calls `init_rooter()` and `init_routing()`,
+so `cape-web`, `cape-processor` and token provisioning all wait for the rooter and `tt-guest`
+(`cape/bin/wait-then-exec`). And `cuckoo.py` powers off any running registered machine when it
+starts, so the wizard's order is: define the domain, register it, restart `cape`, only then boot
+and snapshot.
+
+### Findings that need action
+
+| Finding | Why it matters | Resolve |
+|---|---|---|
+| **libvirt on TCP has no authentication.** | Any container on `tartarus-internal` (nginx, OpenSearch, Postgres) gets full control of libvirt. It could define a VM that passes a host disk through, and because the container is privileged, that is host root. | Before M1 uses `qemu+tcp://`: authentication (SASL or TLS client certificates) and/or a network shared only by `cape` and `backend`. See the open question in [tartarus-v1](../features/tartarus-v1.md). |
+| **The guest's SMBIOS still says QEMU.** `sys_vendor=QEMU`, `product_name=Standard PC (i440FX + PIIX, 1996)`. `kvm-qemu.sh` doesn't patch these. | A basic sandbox-detection check. | The guest's domain XML must set `<sysinfo>` and hide the hypervisor CPUID bit (already in wizard step 2). |
+| Other anti-VM gaps. | SeaBIOS keeps its "SeaBIOS (version …)" banner and some unused legacy `BXPC` ACPI blobs. | Check with pafish in the self-test; accepted for now. |
+| **Unpinned inputs at build time.** | `kvm-qemu.sh` doesn't verify the QEMU tarball (gpg reports "No public key" and continues); CAPE's community signatures come from master; the Suricata rules are a snapshot. Guacamole and Cirros are pinned by sha256. | Pin or verify when hardening the build. |
+| `yara-python` comes from the wheel, not rebuilt with `--enable-cuckoo`/`magic` as `cape2.sh` does. Missing optional CAPE dependencies: httpreplay, regex, DIE, de4dot, Volatility3. `/opt/CAPEv2/.git` is removed, so `analysisinfo` logs an error. | Possible gaps in analysis output. | Check during M0b; fix what matters. |
+| **`privileged: true` is probably broader than needed.** | Reasoned, not tested: libvirt/QEMU need the devices `/dev/kvm`, `/dev/net/tun`, `/dev/vhost-net` and capabilities `NET_ADMIN`, `SYS_ADMIN`, `SYS_RESOURCE`, `IPC_LOCK`, with seccomp (and AppArmor on such hosts) unconfined; the rooter and tcpdump need `NET_ADMIN` and `NET_RAW`. | Try `cap_add` plus those devices later; it would drop host block devices, `SYS_MODULE`, `SYS_RAWIO` and `SYS_PTRACE`. |
+| The host auto-loads kernel modules on demand (`tap`, `tun`, `vhost_net`, `xt_*` and others). | They stay loaded until reboot and can't be unloaded without root. A host-side libvirt would load the same ones. | Accepted. `make verify-cape` prints them as `[INFO]`. |
+
+Not verified in M0a: the `internet` route, that the domain and snapshot persist across
+recreating the container, that the ResultServer binds `192.168.150.1:2042` (it starts only with a
+registered guest), the `/dev/kvm` group-alignment code, and any Ubuntu or AppArmor host.
 
 ## How the backend talks to CAPE
 
@@ -76,8 +108,9 @@ Rebuilding replaces it after the new one passes its checks.
    ISO readable.
 2. **Define VM:** libvirt domain from `guest/domain.xml.j2`:
    - `host-passthrough` CPU with the `hypervisor` feature disabled and KVM state hidden.
-   - SMBIOS, BIOS, disk-serial and NIC strings taken from realistic vendor values (the
-     `kvm-qemu.sh` placeholders).
+   - SMBIOS (`<sysinfo>`: system and board vendor, product name, serial), disk-serial and NIC
+     strings set to realistic vendor values. The patched QEMU covers the BIOS, ACPI and device
+     strings but not SMBIOS (see Findings).
    - A MAC address with a real vendor prefix (OUI).
    - Q35/UEFI with emulated TPM for Windows 11.
    - VNC display bound inside the container only.
@@ -96,7 +129,7 @@ Rebuilding replaces it after the new one passes its checks.
    - Apply the decoys if that option was chosen.
 5. **Snapshot:** reboot, wait for the agent on `:8000`, let the system idle for 60 s, then take a
    live snapshot (with memory) named `tartarus-clean`.
-6. **Register:** write `kvm.conf`, reload CAPE and check `apiv2/machines/list`.
+6. **Register:** write `kvm.conf.d/<label>.conf`, restart `cape` and check `apiv2/machines/list`.
 7. **Self-test:**
    - Run a bundled benign test sample. It spawns a child process, writes a file, sets a registry
      value and resolves a domain. Check that live events, the final report and the INetSim DNS

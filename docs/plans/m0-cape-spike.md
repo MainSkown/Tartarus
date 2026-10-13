@@ -11,6 +11,13 @@ so "test-first" means each acceptance check is a script that fails before the im
 
 ## Stage M0a: the container, with no Windows involved
 
+**Result: passed.** All seven checks pass (`make verify-cape`: 28 checks, about 100 seconds, run
+independently twice with identical results), so the host-libvirt fallback is not needed. What was
+built, what differed from the spec and what is still open is in
+[cape-integration](../specs/cape-integration.md#findings-that-need-action). Two findings need
+decisions before M1: libvirt's TCP endpoint has no authentication, and the guest's SMBIOS still
+says QEMU.
+
 Needs nothing from the user. A throwaway Linux guest stands in for Windows, so the whole host side
 is proven independently.
 

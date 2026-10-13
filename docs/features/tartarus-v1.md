@@ -135,9 +135,15 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | No `mongo` service | Verified from CAPE source: `tasks/create/file`, `tasks/status`, `tasks/delete`, `machines/list` and `cuckoo/status` only touch CAPE's SQL task DB; CAPE's scheduler skips the `mongodb` reporting module when it's disabled (the shipped default); `jsondump` (what Tartarus reads) has no Mongo dependency; and the one startup check that requires Mongo or Elasticsearch only fires if `web.conf [web_reporting]` is enabled, which also ships off. Keep both at their defaults. `pymongo` stays installed in the `cape` image (an unconditional import for `bson.objectid.ObjectId`), but no connection is ever opened. |
 
 ## Open questions
-1. **Container spike (M0):** will libvirtd, the rooter's iptables, INetSim and guacd work
-   inside the privileged `cape` container with its own network namespace? The fallback is host
-   libvirt, which would tie Tartarus to Ubuntu hosts.
+1. **How to protect libvirt's TCP endpoint (decide before M1).** M0a proved the privileged
+   `cape` container works (the host-libvirt fallback is not needed), but libvirt's
+   `qemu+tcp://cape/system` has no authentication. Any container on `tartarus-internal` could
+   define a VM that passes a host disk through, which is host root. Options: (a) a network shared
+   only by `cape` and `backend`, so only the backend can reach it; (b) SASL or TLS client
+   certificates, so reaching it isn't enough; (c) drop the remote libvirt API for a small control
+   service inside `cape` that exposes only define/snapshot/start/stop. Recommended: (a) now,
+   because it is cheap and independent, plus (b) or (c) when the backend starts using it, since
+   the backend parses untrusted malware reports.
 2. **Stop and extend a running task:** which CAPE mechanism stops a task early and extends an
    interactive one? If extending isn't supported, the `+60s` button is dropped and the timeout
    is only set at submission.
