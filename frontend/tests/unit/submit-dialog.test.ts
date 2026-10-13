@@ -1,6 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { Quasar, QBtn, QInput } from 'quasar'
+import { Quasar, QBtn, QInput, QToggle } from 'quasar'
 import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -80,6 +80,14 @@ function textInput(wrapper: VueWrapper, label: string) {
   const input = wrapper.findAllComponents(QInput).find((component) => component.props('label') === label)
   if (!input) throw new Error(`no q-input labelled ${label}`)
   return input
+}
+
+function interactiveSwitch(wrapper: VueWrapper) {
+  return wrapper.findComponent(QToggle)
+}
+
+function storedSettings(settings: Record<string, unknown>) {
+  vi.mocked(settingsRead).mockResolvedValue({ data: settings, error: undefined } as unknown as SettingsResult)
 }
 
 async function submit(wrapper: VueWrapper) {
@@ -253,7 +261,90 @@ describe('SubmitDialog', () => {
     })
   })
 
+  describe('interactive desktop', () => {
+    it('is a switch labelled INTERACTIVE DESKTOP, off when settings are unavailable', async () => {
+      const { wrapper } = await mountDialog()
+
+      expect(interactiveSwitch(wrapper).props('label')).toBe('INTERACTIVE DESKTOP')
+      expect(interactiveSwitch(wrapper).props('modelValue')).toBe(false)
+    })
+
+    it.each([true, false])('starts from default_interactive %s in Settings', async (stored) => {
+      storedSettings({ default_interactive: stored })
+      const { wrapper } = await mountDialog()
+
+      expect(interactiveSwitch(wrapper).props('modelValue')).toBe(stored)
+    })
+
+    it('explains that the run lasts the full timeout, in minutes of the timeout field', async () => {
+      storedSettings({ default_interactive: true })
+      const { wrapper } = await mountDialog()
+      expect(wrapper.find('.interactive-note').text()).toBe(
+        'Drive the guest yourself. The run lasts the full timeout (3 min) even if the sample exits earlier.',
+      )
+
+      await textInput(wrapper, 'TIMEOUT').find('input').setValue('1200')
+      expect(wrapper.find('.interactive-note').text()).toContain('(20 min)')
+
+      await textInput(wrapper, 'TIMEOUT').find('input').setValue('150')
+      expect(wrapper.find('.interactive-note').text()).toContain('(2.5 min)')
+    })
+
+    it('drops the minutes while the timeout is not a valid number', async () => {
+      storedSettings({ default_interactive: true })
+      const { wrapper } = await mountDialog()
+
+      await textInput(wrapper, 'TIMEOUT').find('input').setValue('5')
+
+      expect(wrapper.find('.interactive-note').text()).toBe(
+        'Drive the guest yourself. The run lasts the full timeout even if the sample exits earlier.',
+      )
+    })
+
+    it('says how a non-interactive run ends while the switch is off', async () => {
+      const { wrapper } = await mountDialog()
+
+      expect(wrapper.find('.interactive-note').text()).toBe(
+        'The run ends once the sample has exited, or at the timeout.',
+      )
+    })
+
+    it('is disabled while submitting', async () => {
+      vi.mocked(analysesCreate).mockReturnValue(new Promise(() => undefined) as ReturnType<typeof analysesCreate>)
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await submit(wrapper)
+
+      expect(interactiveSwitch(wrapper).props('disable')).toBe(true)
+    })
+  })
+
   describe('submitting', () => {
+    it.each([true, false])('sends interactive %s as a boolean the dialog holds', async (stored) => {
+      storedSettings({ default_interactive: stored })
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await submit(wrapper)
+
+      expect(sentOptions().interactive).toBe(stored)
+    })
+
+    it('sends the switch as the analyst left it, not as Settings had it', async () => {
+      storedSettings({ default_interactive: false })
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      interactiveSwitch(wrapper).vm.$emit('update:modelValue', true)
+      await flushPromises()
+
+      await submit(wrapper)
+
+      expect(sentOptions().interactive).toBe(true)
+    })
+
     it('sends the file with the chosen route, timeout and package', async () => {
       vi.mocked(analysesCreate).mockResolvedValue(created())
       const { wrapper } = await mountDialog()
@@ -266,7 +357,7 @@ describe('SubmitDialog', () => {
 
       expect(analysesCreate).toHaveBeenCalledTimes(1)
       expect(vi.mocked(analysesCreate).mock.calls[0]![0].body.file).toBe(SAMPLE)
-      expect(sentOptions()).toEqual({ route: 'drop', timeout: 300, package: 'doc' })
+      expect(sentOptions()).toEqual({ route: 'drop', timeout: 300, interactive: false, package: 'doc' })
     })
 
     it('leaves the package out when it is blank so the backend picks auto', async () => {
@@ -277,7 +368,7 @@ describe('SubmitDialog', () => {
 
       await submit(wrapper)
 
-      expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180 })
+      expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false })
     })
 
     it('shows the in-flight state and blocks a second submit while uploading', async () => {
@@ -318,6 +409,7 @@ describe('SubmitDialog', () => {
         failedValidation([
           { location: ['body', 'options', 'timeout'], message: 'Input should be at least 60' },
           { location: ['body', 'options', 'package'], message: 'unknown package' },
+          { location: ['body', 'options', 'interactive'], message: 'not a valid boolean' },
           { location: ['body', 'file'], message: 'The uploaded file is empty' },
         ]),
       )
@@ -328,6 +420,7 @@ describe('SubmitDialog', () => {
 
       expect(textInput(wrapper, 'TIMEOUT').props('errorMessage')).toBe('Input should be at least 60')
       expect(textInput(wrapper, 'PACKAGE').props('errorMessage')).toBe('unknown package')
+      expect(wrapper.find('.interactive-error').text()).toBe('not a valid boolean')
       expect(wrapper.find('.file-error').text()).toBe('The uploaded file is empty')
       expect(wrapper.find('.error-banner').exists()).toBe(false)
       expect(wrapper.emitted('ok')).toBeUndefined()

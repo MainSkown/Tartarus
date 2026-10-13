@@ -16,6 +16,7 @@ export type AnalysisListQuery = NonNullable<AnalysesListData['query']>
 export interface SubmitOptions {
   route: Route
   timeout: number
+  interactive?: boolean
   package?: string
 }
 

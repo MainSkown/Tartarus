@@ -17,9 +17,14 @@ const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginC
 const ROUTES: Route[] = ['inetsim', 'none', 'drop', 'internet']
 const TIMEOUT_MIN_SECONDS = 60
 const TIMEOUT_MAX_SECONDS = 1200
+const SECONDS_PER_MINUTE = 60
 const TIMEOUT_ERROR = `Whole seconds, ${TIMEOUT_MIN_SECONDS} to ${TIMEOUT_MAX_SECONDS}`
-const FORM_FIELDS = ['file', 'route', 'timeout', 'package'] as const
+const FORM_FIELDS = ['file', 'route', 'timeout', 'package', 'interactive'] as const
 type FormField = (typeof FORM_FIELDS)[number]
+
+function formatMinutes(seconds: number): string {
+  return `${Math.round((seconds / SECONDS_PER_MINUTE) * 10) / 10} min`
+}
 
 const analyses = useAnalysesStore()
 const router = useRouter()
@@ -30,6 +35,7 @@ const hash = ref<string>()
 const route = ref<Route>('inetsim')
 const timeoutText = ref('180')
 const packageName = ref('')
+const interactive = ref(false)
 
 const dragOver = ref(false)
 const dropError = ref<string>()
@@ -44,6 +50,12 @@ const timeoutError = computed(() => {
   return valid && seconds >= TIMEOUT_MIN_SECONDS && seconds <= TIMEOUT_MAX_SECONDS ? undefined : TIMEOUT_ERROR
 })
 
+const interactiveNote = computed(() => {
+  if (!interactive.value) return 'The run ends once the sample has exited, or at the timeout.'
+  const minutes = timeoutError.value ? '' : ` (${formatMinutes(Number(timeoutText.value))})`
+  return `Drive the guest yourself. The run lasts the full timeout${minutes} even if the sample exits earlier.`
+})
+
 const blockReason = computed(() => guestBlockReason.value ?? (file.value ? undefined : 'Choose a sample to analyse'))
 const canSubmit = computed(() => !blockReason.value && !timeoutError.value && !submitting.value)
 
@@ -52,6 +64,7 @@ const submitOptions = computed<SubmitOptions>(() => {
   return {
     route: route.value,
     timeout: Number(timeoutText.value),
+    interactive: interactive.value,
     ...(trimmedPackage ? { package: trimmedPackage } : {}),
   }
 })
@@ -63,6 +76,7 @@ async function applySettingsDefaults(): Promise<void> {
   if (defaultTimeout && defaultTimeout >= TIMEOUT_MIN_SECONDS && defaultTimeout <= TIMEOUT_MAX_SECONDS) {
     timeoutText.value = String(defaultTimeout)
   }
+  interactive.value = data?.default_interactive === true
 }
 
 async function chooseFile(chosen: File): Promise<void> {
@@ -267,6 +281,26 @@ onMounted(applySettingsDefaults)
           />
         </div>
 
+        <div class="form-field">
+          <q-toggle
+            v-model="interactive"
+            dense
+            label="INTERACTIVE DESKTOP"
+            :disable="submitting"
+            class="interactive-toggle text-mono"
+          />
+          <p class="interactive-note text-gray">
+            {{ interactiveNote }}
+          </p>
+          <p
+            v-if="fieldErrors.interactive"
+            class="field-error interactive-error"
+            role="alert"
+          >
+            {{ fieldErrors.interactive }}
+          </p>
+        </div>
+
         <p
           v-if="errorBanner"
           class="error-banner text-mono"
@@ -436,6 +470,20 @@ onMounted(applySettingsDefaults)
 .package-input {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.interactive-toggle {
+  align-self: flex-start;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+
+.interactive-note {
+  margin: 0;
+  font-size: 0.75rem;
+  /* Both notes fit two lines at the dialog width, so flipping the switch does not move the form. */
+  line-height: 1.5;
+  min-height: 3em;
 }
 
 .field-error {

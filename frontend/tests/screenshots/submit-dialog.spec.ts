@@ -22,11 +22,12 @@ import {
 
 test.use({ timezoneId: 'UTC' })
 
-// Not the backend defaults, so waiting for this timeout proves the dialog applied the stored settings.
+// Not the backend defaults (interactive is on, the backend's is off), so waiting for this timeout
+// and switch proves the dialog applied the stored settings.
 const STORED_SETTINGS: SettingsBody = {
   default_route: 'inetsim',
   default_timeout: 240,
-  default_interactive: false,
+  default_interactive: true,
   disk_warn_gb: 80,
   disk_block_gb: 30,
 }
@@ -41,7 +42,12 @@ async function openSubmitDialog(page: Page, analyses: Partial<AnalysesMockOption
   await page.goto('/')
   await page.getByRole('button', { name: '+ SUBMIT', exact: true }).click()
   await expect(page.getByLabel('TIMEOUT')).toHaveValue('240')
+  await expect(interactiveSwitch(page)).toBeChecked()
   await waitForTransitions(page)
+}
+
+function interactiveSwitch(page: Page) {
+  return page.getByRole('switch', { name: 'INTERACTIVE DESKTOP' })
 }
 
 async function chooseFile(page: Page, file: { name: string; mimeType: string; buffer: Buffer } = SAMPLE): Promise<void> {
@@ -52,6 +58,7 @@ async function chooseFile(page: Page, file: { name: string; mimeType: string; bu
 test('submit-dialog-default', async ({ page }) => {
   await openSubmitDialog(page)
   await expect(page.locator('.submit-reason')).toHaveText('Choose a sample to analyse')
+  await expect(page.locator('.interactive-note')).toContainText('The run lasts the full timeout (4 min)')
   await page.screenshot({ path: screenshotPath('submit-dialog-default') })
 })
 
@@ -88,6 +95,25 @@ test('submit-dialog-internet-route', async ({ page }) => {
   await page.screenshot({ path: screenshotPath('submit-dialog-internet-route') })
 })
 
+test('submit-dialog-interactive-off', async ({ page }) => {
+  await openSubmitDialog(page)
+  await chooseFile(page)
+  await interactiveSwitch(page).click()
+  await expect(interactiveSwitch(page)).not.toBeChecked()
+  await expect(page.locator('.interactive-note')).toContainText('The run ends once the sample has exited')
+  await waitForTransitions(page)
+  await page.screenshot({ path: screenshotPath('submit-dialog-interactive-off') })
+})
+
+test('submit-dialog-interactive-long-timeout', async ({ page }) => {
+  await openSubmitDialog(page)
+  await chooseFile(page)
+  await page.getByLabel('TIMEOUT').fill('1200')
+  await expect(page.locator('.interactive-note')).toContainText('The run lasts the full timeout (20 min)')
+  await waitForFieldMessages(page)
+  await page.screenshot({ path: screenshotPath('submit-dialog-interactive-long-timeout') })
+})
+
 test('submit-dialog-invalid-timeout', async ({ page }) => {
   await openSubmitDialog(page)
   await chooseFile(page)
@@ -106,8 +132,19 @@ test('submit-dialog-submitting', async ({ page }) => {
   await page.getByRole('button', { name: '▶ DETONATE' }).click()
   await expect(page.locator('.submit-btn .q-spinner')).toBeVisible()
   await expect(page.getByLabel('TIMEOUT')).toBeDisabled()
+  await expect(interactiveSwitch(page)).toBeDisabled()
   await waitForTransitions(page)
   await page.screenshot({ path: screenshotPath('submit-dialog-submitting') })
+})
+
+test('submit-dialog-sends-the-switch', async ({ page }) => {
+  await openSubmitDialog(page, { createResponse: { status: 201, body: makeAnalysis({ id: 10, filename: SAMPLE.name }) } })
+  await chooseFile(page)
+  await interactiveSwitch(page).click()
+  const request = page.waitForRequest((candidate) => candidate.method() === 'POST' && candidate.url().includes('/analyses'))
+  await page.getByRole('button', { name: '▶ DETONATE' }).click()
+  const body = (await request).postDataBuffer()!.toString()
+  expect(body).toContain('"interactive":false')
 })
 
 test('submit-dialog-field-errors', async ({ page }) => {
@@ -118,6 +155,7 @@ test('submit-dialog-field-errors', async ({ page }) => {
         { field: 'file', message: 'File is empty' },
         { field: 'timeout', message: 'must not exceed the guest limit of 600 seconds' },
         { field: 'package', message: 'unknown package "exe64"' },
+        { field: 'interactive', message: 'Input should be a valid boolean' },
       ]),
     },
   })
@@ -127,6 +165,7 @@ test('submit-dialog-field-errors', async ({ page }) => {
   await expect(dialog.getByText('File is empty')).toBeVisible()
   await expect(dialog.getByText('must not exceed the guest limit of 600 seconds')).toBeVisible()
   await expect(dialog.getByText('unknown package "exe64"')).toBeVisible()
+  await expect(dialog.getByText('Input should be a valid boolean')).toBeVisible()
   await waitForFieldMessages(page)
   await waitForTransitions(page)
   await page.screenshot({ path: screenshotPath('submit-dialog-field-errors') })
