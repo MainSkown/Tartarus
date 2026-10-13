@@ -271,7 +271,7 @@ export type BodyAnalysesCreate = {
     /**
      * Options
      *
-     * JSON object: `route`, `timeout` (60 to 1200 seconds) and `package`.
+     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` and `interactive` (a desktop to drive; the run then lasts the whole timeout).
      */
     options?: string;
 };
