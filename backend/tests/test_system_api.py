@@ -4,7 +4,7 @@ import httpx
 from fastapi import FastAPI
 
 from app.api.system import get_health_checks
-from app.health import ComponentHealth, HealthCheck, HealthStatus, NotConfiguredCheck
+from app.health import ComponentHealth, HealthCheck, HealthStatus
 
 
 class RaisingCheck:
@@ -27,8 +27,8 @@ async def test_health_reports_every_component(app: FastAPI, client: httpx.AsyncC
         {
             "postgres": OkCheck(),
             "opensearch": OkCheck(),
-            "cape": NotConfiguredCheck(),
-            "guest": NotConfiguredCheck(),
+            "cape": OkCheck(),
+            "guest": RaisingCheck(),
         },
     )
 
@@ -38,8 +38,8 @@ async def test_health_reports_every_component(app: FastAPI, client: httpx.AsyncC
     assert response.json() == {
         "postgres": {"status": "ok", "message": None},
         "opensearch": {"status": "ok", "message": None},
-        "cape": {"status": "down", "message": "not set up yet"},
-        "guest": {"status": "down", "message": "not set up yet"},
+        "cape": {"status": "ok", "message": None},
+        "guest": {"status": "down", "message": "check failed: ConnectionError"},
     }
 
 
@@ -51,8 +51,8 @@ async def test_health_answers_200_even_when_everything_is_down(
         {
             "postgres": RaisingCheck(),
             "opensearch": RaisingCheck(),
-            "cape": NotConfiguredCheck(),
-            "guest": NotConfiguredCheck(),
+            "cape": RaisingCheck(),
+            "guest": RaisingCheck(),
         },
     )
 

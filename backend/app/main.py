@@ -3,18 +3,37 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI
+from opensearchpy import AsyncOpenSearch
+from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.analyses.runner import build_runner
+from app.analyses.summary import read_report
 from app.api import api_router
+from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
+from app.cape.client import CapeClient
+from app.cape.health import CapeCheck, CapeProbe, GuestCheck
 from app.config import Settings, get_settings
 from app.db.session import create_engine, create_session_factory
 from app.errors import ErrorEnvelope, install_error_handlers
-from app.health import build_health_checks
+from app.health import HealthCheck, OpenSearchCheck, PostgresCheck
 from app.logging_config import configure_logging
+from app.samples.store import SampleStore
 from app.search.client import create_opensearch_client
 from app.ws.system import router as system_ws_router
 
 logger = logging.getLogger(__name__)
+
+
+def build_health_checks(
+    engine: AsyncEngine, opensearch: AsyncOpenSearch, cape: CapeProbe, guest_label: str
+) -> dict[str, HealthCheck]:
+    return {
+        "postgres": PostgresCheck(engine),
+        "opensearch": OpenSearchCheck(opensearch),
+        "cape": CapeCheck(cape),
+        "guest": GuestCheck(cape, guest_label),
+    }
 
 
 def _build_lifespan(
@@ -27,14 +46,25 @@ def _build_lifespan(
         configure_logging(resolved.log_level)
         engine = create_engine(resolved.database_url)
         opensearch = create_opensearch_client(resolved.opensearch_url)
+        cape = CapeClient.from_settings(resolved)
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.opensearch = opensearch
-        app.state.health_checks = build_health_checks(engine, opensearch)
+        app.state.cape = cape
+        sample_store = SampleStore.from_settings(resolved)
+        app.state.sample_store = sample_store
+        app.state.health_checks = build_health_checks(
+            engine, opensearch, cape, resolved.guest_label
+        )
+        runner = build_runner(app.state.session_factory, cape, sample_store, read_report, resolved)
+        app.state.runner = runner
+        runner.start()
         logger.info("Backend started (%s)", resolved.environment)
         try:
             yield
         finally:
+            await runner.stop()
+            await cape.aclose()
             await opensearch.close()
             await engine.dispose()
 
@@ -50,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     install_error_handlers(app)
     app.include_router(api_router)
+    app.include_router(internal_router)
     app.include_router(system_ws_router)
     return app
 

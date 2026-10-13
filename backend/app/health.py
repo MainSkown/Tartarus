@@ -57,20 +57,6 @@ class OpenSearchCheck:
         )
 
 
-class NotConfiguredCheck:
-    async def check(self) -> ComponentHealth:
-        return ComponentHealth(status=HealthStatus.DOWN, message="not set up yet")
-
-
-def build_health_checks(engine: AsyncEngine, opensearch: AsyncOpenSearch) -> dict[str, HealthCheck]:
-    return {
-        "postgres": PostgresCheck(engine),
-        "opensearch": OpenSearchCheck(opensearch),
-        "cape": NotConfiguredCheck(),
-        "guest": NotConfiguredCheck(),
-    }
-
-
 async def evaluate(check: HealthCheck, timeout_s: float = DEFAULT_TIMEOUT_S) -> ComponentHealth:
     """Run one check; a failure or a hang becomes `down` instead of an exception."""
     try:

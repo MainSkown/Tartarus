@@ -6,8 +6,12 @@ from fastapi import FastAPI, Request
 from opensearchpy import AsyncOpenSearch
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.analyses.runner import Runner
+from app.cape.client import CapeClient
+from app.cape.health import CapeCheck, GuestCheck
 from app.db.session import get_session
-from app.health import PostgresCheck
+from app.health import ComponentHealth, HealthStatus, PostgresCheck, evaluate
+from app.samples.store import SampleStore
 
 
 async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAPI) -> None:
@@ -15,8 +19,20 @@ async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAP
         assert isinstance(app.state.engine, AsyncEngine)
         assert isinstance(app.state.session_factory, async_sessionmaker)
         assert isinstance(app.state.opensearch, AsyncOpenSearch)
+        assert isinstance(app.state.cape, CapeClient)
+        assert isinstance(app.state.sample_store, SampleStore)
+        assert isinstance(app.state.runner, Runner)
         assert set(app.state.health_checks) == {"postgres", "opensearch", "cape", "guest"}
         assert isinstance(app.state.health_checks["postgres"], PostgresCheck)
+        assert isinstance(app.state.health_checks["cape"], CapeCheck)
+        assert isinstance(app.state.health_checks["guest"], GuestCheck)
+
+
+async def test_lifespan_starts_without_a_cape_token_and_reports_cape_down(app: FastAPI) -> None:
+    async with app.router.lifespan_context(app):
+        cape = await evaluate(app.state.health_checks["cape"], timeout_s=1)
+
+    assert cape == ComponentHealth(status=HealthStatus.DOWN, message="CAPE_API_TOKEN is not set")
 
 
 async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
@@ -30,13 +46,25 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
     async def record_close(self: AsyncOpenSearch) -> None:
         released.append("opensearch")
 
+    async def record_cape_close(self: CapeClient) -> None:
+        released.append("cape")
+
     monkeypatch.setattr(AsyncEngine, "dispose", record_dispose)
     monkeypatch.setattr(AsyncOpenSearch, "close", record_close)
+
+    async def record_runner_stop(self: Runner) -> None:
+        released.append("runner")
+
+    monkeypatch.setattr(CapeClient, "aclose", record_cape_close)
+    monkeypatch.setattr(Runner, "stop", record_runner_stop)
 
     async with app.router.lifespan_context(app):
         assert released == []
 
-    assert sorted(released) == ["engine", "opensearch"]
+    assert sorted(released) == ["cape", "engine", "opensearch", "runner"]
+    # A tick in progress still uses the CAPE client and the database, so it must end first.
+    assert released.index("runner") < released.index("cape")
+    assert released.index("runner") < released.index("engine")
 
 
 async def test_session_dependency_yields_a_session_and_closes_it(app: FastAPI) -> None:
@@ -46,3 +74,9 @@ async def test_session_dependency_yields_a_session_and_closes_it(app: FastAPI) -
         assert isinstance(session, AsyncSession)
         with pytest.raises(StopAsyncIteration):
             await anext(sessions)
+
+
+async def test_the_runner_is_running_while_the_app_is_up(app: FastAPI) -> None:
+    async with app.router.lifespan_context(app):
+        with pytest.raises(RuntimeError):
+            app.state.runner.start()

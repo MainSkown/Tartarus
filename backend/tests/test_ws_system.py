@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.websockets import WebSocketDisconnect
 from starlette.testclient import TestClient
 
-from app.health import ComponentHealth, HealthCheck, HealthStatus, NotConfiguredCheck
+from app.health import ComponentHealth, HealthCheck, HealthStatus
 from app.ws.messages import HealthMessage
 from app.ws.system import get_health_checks, get_health_push_interval_s, router, system_health_feed
 
@@ -38,8 +38,8 @@ def healthy_checks() -> dict[str, HealthCheck]:
     return {
         "postgres": OkCheck(),
         "opensearch": OkCheck(),
-        "cape": NotConfiguredCheck(),
-        "guest": NotConfiguredCheck(),
+        "cape": OkCheck(),
+        "guest": OkCheck(),
     }
 
 
@@ -77,7 +77,7 @@ def test_connecting_receives_a_health_message_immediately(
     message = HealthMessage.model_validate(payload)
     assert message.type == "health"
     assert message.data.postgres.status is HealthStatus.OK
-    assert message.data.cape.status is HealthStatus.DOWN
+    assert message.data.cape.status is HealthStatus.OK
 
 
 def test_envelope_has_exactly_type_ts_and_data(ws_app: FastAPI, client: TestClient) -> None:
