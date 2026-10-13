@@ -48,11 +48,16 @@ normalisers (M2 and later; CAPE's own `report.json` is the only source here), Si
    Noisy calls with no derived meaning (`NtClose`, `EventUnregister`, `LdrGetDllHandle`, ...) stay
    `api-call` only. The rules for which call derives what are written down by the capemon task,
    from the real report, in the spec's mapping table.
-6. **Time.** capemon call timestamps are **UTC**; `info.started`/`ended` and the machine times are
-   the CAPE host's **local** time (verified on analysis 6: calls at 10:12:41, `info.started`
-   12:12:18, host UTC+2). Network records carry epoch floats. A test must prove every event of the
-   fixture falls inside the analysis window after conversion, because mixing these shifts a whole
-   timeline by hours without any error.
+6. **Time (corrected after checking four real reports).** True UTC is the host's: `info.started`/
+   `ended`, the pcap-derived `network.*` epoch floats, and `analysis.started_at` from CAPE
+   (the cape container runs in UTC). capemon's call and `first_seen` timestamps use the guest
+   monitor's clock, which was **exactly 2 hours behind** true UTC in all four reports (delta
+   1:59:37 to 1:59:47), i.e. the host's own UTC offset (Warsaw summer time), so it will be 1 hour
+   in winter and cannot be hardcoded. The ingest therefore calibrates per analysis: the offset is
+   `info.started - earliest process first_seen` rounded to the nearest 15 minutes (the real
+   difference is the seconds between machine start and the first process), applied to every
+   capemon timestamp. Tests prove capemon events and network events of the fixture land in the
+   same window; mixing the clocks silently misaligns the timeline by hours.
 7. **Index lifecycle.** Template `tartarus-events` created idempotently at startup; index
    `tartarus-events-<analysis_id>` created at ingest, `refresh_interval` 30 s after ingest, dropped
    when the analysis is deleted or re-ingested.
@@ -97,7 +102,7 @@ planner re-runs the checks and reads the diff before committing.
 | ID | Task | Model | Deliverables | Tests first |
 |---|---|---|---|---|
 | **B1** | Field catalog and index | Sonnet, **care** | `app/search/fields.py` (catalog for every field in the data model's event document), `app/search/template.py` (template generated from it), `app/search/index.py` (create template, create/drop index, set refresh interval, bulk index in chunks) | Catalog is unique and typed; template built from it has `dynamic: false` and the lowercase normaliser on keywords; testcontainers: create, bulk, search by field, drop |
-| **B2** | Normaliser protocol and capemon | Sonnet, **care** | `app/ingest/{protocol,ecs}.py`, `app/ingest/capemon.py` (calls to `api` events plus derived process, file, registry, network and inject events), the written derivation rules | Pure tests on the real fixture: event counts per lane, deterministic ids, process-created derived once per child, timestamps inside the analysis window (decision 6), unknown calls never raise |
+| **B2** | Normaliser protocol and capemon | Sonnet, **care** | `app/ingest/{protocol,ecs}.py`, `app/ingest/capemon.py` (calls to `api` events plus derived process, file, registry, network and inject events), the written derivation rules | Pure tests on the real fixture: event counts per lane, deterministic ids, process-created derived once per child, timestamps inside the analysis window, unknown calls never raise |
 | **B6** | Queue position | Sonnet | `queue_position` on `AnalysisRead` (null unless queued; 1 = next) | Repository and API tests |
 | **F0** | Review leftovers | Sonnet | Analysis page: a 404 shows "analysis not found" (the store keeps the error code); a tab named in the URL that is not built does not mark itself active; one date formatter for the Dashboard and the analysis page; the delete confirmation says how much disk it frees (`formatFileSize`) | Component and store tests; Playwright cases for 404 and the tab |
 
@@ -105,7 +110,7 @@ planner re-runs the checks and reads the diff before committing.
 
 | ID | Task | Model | Deliverables | Tests first |
 |---|---|---|---|---|
-| **B3** | CAPE report normalisers | Sonnet, **care** | `tartarus.inject.target_pid` in the catalog and the capemon injection events (decision 13), `app/ingest/cape_network.py` (DNS, TCP/UDP flows, HTTP with attribution where the report has it), `app/ingest/cape_signatures.py` (alert events, ATT&CK from `ttps`, `related.events` from call refs) | Pure tests on the fixture: signature call refs resolve to real event ids; every `ttps` id appears; DNS/HTTP counts match `network.*` |
+| **B3** | Clock calibration and CAPE report normalisers | Sonnet, **care** | the capemon clock calibration of decision 6 (B2 assumed the wrong clock: fix it and its test first), `tartarus.inject.target_pid` in the catalog and the capemon injection events (decision 13), `app/ingest/cape_network.py` (DNS, TCP/UDP flows, HTTP with attribution where the report has it), `app/ingest/cape_signatures.py` (alert events, ATT&CK from `ttps`, `related.events` from call refs) | Pure tests on the fixture: signature call refs resolve to real event ids; every `ttps` id appears; DNS/HTTP counts match `network.*` |
 
 ### Wave 3
 
