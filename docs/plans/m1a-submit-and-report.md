@@ -21,18 +21,31 @@ with a score of 6.0, a `high` highest severity, 12 signatures and 10 ATT&CK ids;
 reached the backend. Three submissions at once ran strictly in order and a cancelled one never
 ran; cancel and delete of a running analysis answer `409`. Deleting removed the CAPE task, the
 rows and the stored sample (the last one only after nothing else used it). Restarting the backend
-in the middle of a running analysis resumed the same CAPE task and finished `done`. Not yet
-exercised on the real stack: CAPE going down mid-run (unit-tested; the real drill is A11).
-**Wave 3 is built and committed** (A7 to A10: store and badges, Dashboard, Submit dialog, analysis
-page; 344 unit tests and 58 screenshot scenarios pass). The first screenshot review found and
-fixed real layout bugs (a nav drawer that covered the page below 1024 px, empty progress bars,
-a table that hid its row actions at 600 px); the three review pages are published as Artifacts
-and were approved by the user after one round of comments (the header's Submit button now shares a right edge with the page content). Known gaps carried to the next round: no queue position in the API,
-a 404 on an analysis shows the generic load error, the disabled tab named in the URL is marked
-active, and the Dashboard and analysis page format dates differently. The Submit dialog's
-navigation after a successful submit (it calls `useRouter()` inside a Quasar dialog) has only been
-unit-tested; A11 drives it in a real browser.
-**Next: A11 (`make e2e`).**
+in the middle of a running analysis resumed the same CAPE task and finished `done`.
+
+Also verified (A11, `make e2e`, 2026-10-13, passing on two runs of mine): the same flow through the
+real UI in a browser, where the Submit dialog lands on the analysis page and reaches `done` with a
+score, so `useRouter()` does work inside the Quasar dialog; and the failure drills (`make e2e
+DRILLS=1`). Stopping `cape` kills the guest, so even a 15-second outage ends the running
+analysis: CAPE closes the task as `failed_analysis` and the analysis fails with that message about
+22 seconds after the stop. The runner's own "CAPE has been unreachable for N seconds" failure
+appears only when CAPE stays down past the grace period (about 119 seconds). In both cases the
+queued analysis then runs normally. A backend restart mid-run resumed the same CAPE task.
+Not covered by the drills: the CAPE task's removal after a delete (only the analysis row and the
+sample file are checked), and an outage during `starting`.
+
+**Wave 3 is built, committed and approved** (A7 to A10: store and badges, Dashboard, Submit
+dialog, analysis page; 344 unit tests and 60 screenshot scenarios pass). The first screenshot
+review found and fixed real layout bugs (a nav drawer that covered the page below 1024 px, empty
+progress bars, a table that hid its row actions at 600 px); the three review pages were published
+as Artifacts and the user approved them after one round of comments (the header's Submit button
+now shares a right edge with the page content).
+
+**M1a is complete.** Known gaps carried forward: no queue position in the API, a 404 on an analysis
+shows the generic load error (with a pointless retry), the disabled tab named in the URL is marked
+active, the Dashboard and the analysis page format dates differently, the delete confirmation does
+not say how much disk it frees, and a short CAPE outage fails the running analysis instead of
+letting it resume.
 
 ## Outcome
 
