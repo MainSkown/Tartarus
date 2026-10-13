@@ -47,6 +47,17 @@ fallback's cost. Either answer closes the question.
 
 ## Stage M0b: a real Windows analysis
 
+**Status (2026-10-13, about 04:00): in progress, not yet reviewed.** The ISO is intact (`wimverify`
+passed on `boot.wim` and `install.wim`). The first attempts failed because the generated answer
+file was malformed XML (a `wcm:` prefix without its namespace declared): Windows 11 25H2 Setup
+exits silently on that and WinPE reboots to the CD prompt, which looked like a blank screen. With
+that fixed and a regression test added, Windows Setup installs unattended (seen at 31% in
+Polish). Checks 8-12 below are not proven yet. The work so far (`guest/`, `scripts/build-guest.sh`,
+`scripts/verify-guest.sh` with their tests, and changes to `cape/` and `docker-compose.yml`) is
+on disk uncommitted, awaiting review. The guest disk and the CAPE database are in the Docker
+volumes `guest-images` and `pg-data`; the git-ignored `.env` holds their passwords and must not
+be regenerated, because the Postgres volume keeps the first password.
+
 The ISO is the user's own `Win11_25H2_Polish_x64_v2.iso` in `./data/iso`: genuine Microsoft retail
 media, build 26200 (Windows 11 25H2), pl-PL only, x64, eight consumer editions. Use **Windows 11
 Pro** (image index 5, edition ID `Professional`), installed without a product key.
