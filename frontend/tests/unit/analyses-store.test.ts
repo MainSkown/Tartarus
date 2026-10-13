@@ -27,6 +27,7 @@ function analysis(id: number, status: AnalysisStatus = 'done'): AnalysisRead {
     sample_sha256: 'a'.repeat(64),
     filename: `sample-${id}.exe`,
     cape_task_id: null,
+    queue_position: null,
     status,
     phase: 'live',
     options: {},

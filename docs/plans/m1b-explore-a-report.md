@@ -69,7 +69,14 @@ normalisers (M2 and later; CAPE's own `report.json` is the only source here), Si
 11. **Large reports.** The report is parsed once and events are bulk-indexed in chunks of 1000 off
     the event loop (`asyncio.to_thread`); memory is bounded by the parsed report, not by the event
     count. A report of hundreds of MB is a known limit, recorded as a risk, not solved now.
-12. **Frontend.** The tab key for Overview stays `summary`. Process graph uses Cytoscape with dagre
+12. **Event sequence.** `event.sequence` is a unique, stable ordinal per analysis, not a time order
+    across sources; queries sort by `@timestamp` and use the sequence as the tie-break. Each
+    normaliser numbers its own events; the ingester renumbers while it streams the merged output
+    (B4), so normalisers never coordinate.
+13. **Injection target.** The target pid of a cross-process injection call is stored in the catalog
+    field `tartarus.inject.target_pid` (B3 adds it), because the process view's `injected_into[]`
+    cannot be built from `tartarus.raw` by an aggregation.
+14. **Frontend.** The tab key for Overview stays `summary`. Process graph uses Cytoscape with dagre
     (as the GUI spec says). Each tab loads its own endpoint through one small composable, with the
     same loading / error / empty states as the Dashboard.
 
@@ -98,7 +105,7 @@ planner re-runs the checks and reads the diff before committing.
 
 | ID | Task | Model | Deliverables | Tests first |
 |---|---|---|---|---|
-| **B3** | CAPE report normalisers | Sonnet, **care** | `app/ingest/cape_network.py` (DNS, TCP/UDP flows, HTTP with attribution where the report has it), `app/ingest/cape_signatures.py` (alert events, ATT&CK from `ttps`, `related.events` from call refs) | Pure tests on the fixture: signature call refs resolve to real event ids; every `ttps` id appears; DNS/HTTP counts match `network.*` |
+| **B3** | CAPE report normalisers | Sonnet, **care** | `tartarus.inject.target_pid` in the catalog and the capemon injection events (decision 13), `app/ingest/cape_network.py` (DNS, TCP/UDP flows, HTTP with attribution where the report has it), `app/ingest/cape_signatures.py` (alert events, ATT&CK from `ttps`, `related.events` from call refs) | Pure tests on the fixture: signature call refs resolve to real event ids; every `ttps` id appears; DNS/HTTP counts match `network.*` |
 
 ### Wave 3
 

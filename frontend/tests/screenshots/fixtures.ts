@@ -195,6 +195,7 @@ export function makeAnalysis(overrides: Partial<AnalysisRead> & Pick<AnalysisRea
     detected_families: [],
     event_count: 0,
     disk_bytes: 0,
+    queue_position: null,
     error: null,
     submitted_at: SUBMITTED_AT,
     started_at: null,

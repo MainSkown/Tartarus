@@ -34,7 +34,7 @@ async function expectHeaderShowing(page: Page, analysis: AnalysisRead): Promise<
 }
 
 const STATE_SCENARIOS: { name: string; analysis: AnalysisRead; text: string }[] = [
-  { name: 'analysis-queued', analysis: makeAnalysis({ id: ID, status: 'queued' }), text: 'queued, waiting for the guest to be free' },
+  { name: 'analysis-queued', analysis: makeAnalysis({ id: ID, status: 'queued', queue_position: 2 }), text: 'position 2 in the queue' },
   { name: 'analysis-running', analysis: makeAnalysis({ id: ID, status: 'running', started_at: STARTED_AT }), text: 'detonating in the guest' },
   { name: 'analysis-processing', analysis: makeAnalysis({ id: ID, status: 'processing', started_at: STARTED_AT }), text: 'CAPE is processing the results' },
   { name: 'analysis-done-detections', analysis: makeDetectedAnalysis({ id: ID }), text: 'SIGNATURES' },

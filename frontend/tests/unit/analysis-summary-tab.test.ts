@@ -15,6 +15,16 @@ function mountTab(analysis: AnalysisRead) {
 }
 
 describe('AnalysisSummaryTab waiting states', () => {
+  it.each([
+    [1, 'next in the queue'],
+    [3, 'position 3 in the queue'],
+  ])('says where queued position %i stands', (position, expected) => {
+    const wrapper = mountTab(
+      analysisWithStatus('queued', { started_at: null, finished_at: null, queue_position: position }),
+    )
+    expect(wrapper.text()).toContain(expected)
+  })
+
   it('explains that a queued analysis is waiting for the guest', () => {
     const wrapper = mountTab(analysisWithStatus('queued', { started_at: null, finished_at: null }))
     expect(wrapper.text()).toContain('queued')

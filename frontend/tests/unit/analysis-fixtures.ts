@@ -16,6 +16,7 @@ export function analysisFixture(overrides: Partial<AnalysisRead> = {}): Analysis
     detected_families: [],
     event_count: 0,
     disk_bytes: 0,
+    queue_position: null,
     error: null,
     submitted_at: '2026-10-13T10:00:00Z',
     started_at: '2026-10-13T10:00:05Z',

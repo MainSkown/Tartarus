@@ -85,6 +85,12 @@ export type AnalysisRead = {
      */
     finished_at: string | null;
     summary: ReportSummary | null;
+    /**
+     * Queue Position
+     *
+     * 1 for the analysis served next; null unless `queued`.
+     */
+    queue_position: number | null;
 };
 
 /**

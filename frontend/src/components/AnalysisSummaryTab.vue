@@ -23,8 +23,16 @@ const NO_REPORT_MESSAGES: Partial<Record<AnalysisStatus, string>> = {
   cancelled: 'cancelled before it ran',
 }
 
+function queuedMessage(position: number | null): string {
+  if (position === null) return NO_REPORT_MESSAGES.queued!
+  const place = position === 1 ? 'next in the queue' : `position ${position} in the queue`
+  return `queued, ${place}, waiting for the guest to be free`
+}
+
 const phase = computed(() => PHASES[props.analysis.status])
-const noReportMessage = computed(() => NO_REPORT_MESSAGES[props.analysis.status])
+const noReportMessage = computed(() =>
+  props.analysis.status === 'queued' ? queuedMessage(props.analysis.queue_position) : NO_REPORT_MESSAGES[props.analysis.status],
+)
 const report = computed<ReportSummary>(() => props.analysis.summary ?? {})
 const signatures = computed(() =>
   [...(report.value.signatures ?? [])].sort((a, b) => compareSeverity(b.severity, a.severity)),
