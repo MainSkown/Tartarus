@@ -692,3 +692,26 @@ def test_apc_injection_needs_a_foreign_process_id(context: IngestContext) -> Non
     assert foreign["tartarus"]["inject"] == {"target_pid": 4242}
     own = report_with(call("NtQueueApcThread", {"ProcessId": "100"}))
     assert actions(normalise(own, context)) == ["api-call"]
+
+
+# --- identity -------------------------------------------------------------------------------
+
+
+def second_process_ids(first_process_calls: int, context: IngestContext) -> list[str]:
+    report = report_of(
+        process(1, [call("A") for _ in range(first_process_calls)]),
+        process(2, [call("B0"), call("B1")]),
+    )
+    return [e["event"]["id"] for e in normalise(report, context) if e["process"]["pid"] == 2]
+
+
+def test_a_call_is_identified_by_its_process_and_its_place_in_that_process(
+    context: IngestContext,
+) -> None:
+    assert second_process_ids(3, context) == second_process_ids(1, context)
+
+
+def test_the_same_place_in_two_processes_is_two_events(context: IngestContext) -> None:
+    report = report_of(process(1, [call("A")]), process(2, [call("A")]))
+    ids = [e["event"]["id"] for e in normalise(report, context)]
+    assert len(set(ids)) == len(ids) == 2

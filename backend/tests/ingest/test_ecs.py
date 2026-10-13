@@ -198,6 +198,14 @@ def test_factory_fills_the_common_fields(factory: EventFactory) -> None:
     }
 
 
+def test_a_live_factory_marks_its_events_live() -> None:
+    context = IngestContext(analysis_id=6, started_at=NOON)
+    live = EventFactory(
+        context, source="capemon", source_file="report.json", module="capemon", phase="live"
+    )
+    assert build(live)["tartarus"]["phase"] == "live"  # type: ignore[index]
+
+
 def test_a_record_can_come_from_another_file_of_the_same_source(factory: EventFactory) -> None:
     same = factory.build(FILE_WRITTEN, SourceRecord(1, NOON, {}), "a")
     other = factory.build(FILE_WRITTEN, SourceRecord(1, NOON, {}, source_file="derived"), "a")

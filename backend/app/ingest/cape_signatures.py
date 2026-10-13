@@ -159,7 +159,9 @@ def _candidate(entry: Mapping[str, Any], index: int, facts: _ReportFacts) -> _Ca
     if name is None:
         return None
     referenced = _referenced_calls(entry.get("data"), facts.calls)
-    earliest = min(referenced, key=lambda c: (c.timestamp, c.call_id, c.index), default=None)
+    earliest = min(
+        referenced, key=lambda c: (c.timestamp, c.call_id, c.process.pid, c.index), default=None
+    )
     timestamp = earliest.timestamp if earliest else facts.fallback_time
     lane = call_lane(earliest) if earliest else "process"
     rule = _rule(entry, name)

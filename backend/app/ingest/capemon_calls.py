@@ -13,7 +13,7 @@ class Call:
     """One capemon API call with the process that made it, read defensively from the report."""
 
     raw: Mapping[str, Any]
-    index: int
+    index: int  # the call's place in its own process's list; with the pid it identifies the call
     api: str
     timestamp: datetime
     call_id: int
@@ -58,7 +58,7 @@ def read_processes(report: Mapping[str, Any], clock_offset: timedelta) -> list[C
     }
     return [
         CapemonProcess(
-            _identity(entry, names, clock_offset),
+            read_identity(entry, names, clock_offset),
             calls if isinstance(calls := entry.get("calls"), list) else [],
         )
         for entry in entries
@@ -70,7 +70,7 @@ def _shifted(value: object, clock_offset: timedelta) -> datetime | None:
     return None if moment is None else moment + clock_offset
 
 
-def _identity(
+def read_identity(
     entry: Mapping[str, Any], names: Mapping[int | None, str | None], clock_offset: timedelta
 ) -> ProcessIdentity:
     environ = entry.get("environ")
@@ -103,7 +103,7 @@ def _flat_arguments(raw_arguments: object) -> tuple[dict[str, str], dict[str, st
     return values, pretty
 
 
-def _read_call(
+def read_call(
     raw: object,
     index: int,
     process: ProcessIdentity,
@@ -135,12 +135,10 @@ def _read_call(
 def calls_in_sequence_order(
     processes: list[CapemonProcess], clock_offset: timedelta, fallback_time: datetime
 ) -> list[Call]:
-    index = 0
     calls: list[Call] = []
     for process in processes:
-        for raw in process.calls:
-            call = _read_call(raw, index, process.identity, clock_offset, fallback_time)
-            index += 1
+        for position, raw in enumerate(process.calls):
+            call = read_call(raw, position, process.identity, clock_offset, fallback_time)
             if call is not None:
                 calls.append(call)
-    return sorted(calls, key=lambda call: (call.timestamp, call.call_id, call.index))
+    return sorted(calls, key=lambda call: (call.timestamp, call.call_id))

@@ -218,8 +218,12 @@ Event fields on every capemon event:
   (`filesystem` is `file`, `registry`, `network`, `process` and `threading` are `process`, anything
   else is `host`).
 - `event.severity` is 0 on every capemon event; only detections carry a higher level.
-- `event.id` is `sha1(analysis_id, "capemon", "report.json", call position)`; a derived event uses
-  the file `report.json#derived`, so the two never collide.
+- `event.id` is `sha1(analysis_id, "capemon", "processes/<pid>", call position in that process)`; a
+  derived event uses the file `processes/<pid>#derived`, so the two never collide. The id is per
+  process (not one running number over the whole report) so the live collector, which reads each
+  process's log as it grows, can compute the same id before it knows how long the other processes'
+  logs will be. The live path matches the report path exactly except where CAPE merged consecutive
+  identical calls (and renumbered the rest), which the live parser does not do.
 
 ### CAPE report normalisers (as built)
 

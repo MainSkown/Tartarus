@@ -3,13 +3,14 @@ import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from app.analyses.summary import SEVERITY_ORDER, severity_from_cape
 from app.ingest.protocol import IngestContext
 
 LANES = ("process", "file", "registry", "network", "memory", "api")
 RESERVED_SECTIONS = ("@timestamp", "event")
+type Phase = Literal["live", "final"]
 REGISTRY_HIVES = {
     "HKEY_LOCAL_MACHINE": "HKLM",
     "HKEY_CURRENT_USER": "HKCU",
@@ -160,9 +161,16 @@ class EventFactory:
     """Builds event documents for one source of one analysis and numbers them in build order."""
 
     def __init__(
-        self, context: IngestContext, *, source: str, source_file: str, module: str
+        self,
+        context: IngestContext,
+        *,
+        source: str,
+        source_file: str,
+        module: str,
+        phase: Phase = "final",
     ) -> None:
         self._context = context
+        self._phase = phase
         self._source = source
         self._source_file = source_file
         self._module = module
@@ -185,7 +193,7 @@ class EventFactory:
         common = {
             "analysis_id": self._context.analysis_id,
             "lane": shape.lane,
-            "phase": "final",
+            "phase": self._phase,
             "summary": summary,
             "raw": record.raw,
         }

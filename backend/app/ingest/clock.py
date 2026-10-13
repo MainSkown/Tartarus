@@ -55,16 +55,21 @@ def _earliest_process_start(report: Mapping[str, Any]) -> datetime | None:
     return min(starts, default=None)
 
 
-def guest_clock_offset(report: Mapping[str, Any]) -> timedelta:
-    """What to add to a capemon timestamp to get UTC; zero when the report cannot say.
+def calibrated_offset(started: datetime, first_process: datetime) -> timedelta:
+    """What to add to a capemon timestamp to get UTC, from the true start and the first process.
 
-    `info.started` is when the machine started and the first process appears seconds later, so
-    the raw gap is the true offset minus those seconds; rounding to a quarter hour (real zones
-    are whole quarters) removes them.
+    `started` is when the machine started and the first process appears seconds later, so the
+    raw gap is the true offset minus those seconds; rounding to a quarter hour (real zones are
+    whole quarters) removes them. Zero when the gap is no timezone's.
     """
+    offset = round((started - first_process) / OFFSET_GRANULARITY) * OFFSET_GRANULARITY
+    return offset if abs(offset) <= MAX_PLAUSIBLE_OFFSET else timedelta(0)
+
+
+def guest_clock_offset(report: Mapping[str, Any]) -> timedelta:
+    """The offset of a report's capemon clock; zero when the report cannot say."""
     started = analysis_started(report)
     first_process = _earliest_process_start(report)
     if started is None or first_process is None:
         return timedelta(0)
-    offset = round((started - first_process) / OFFSET_GRANULARITY) * OFFSET_GRANULARITY
-    return offset if abs(offset) <= MAX_PLAUSIBLE_OFFSET else timedelta(0)
+    return calibrated_offset(started, first_process)

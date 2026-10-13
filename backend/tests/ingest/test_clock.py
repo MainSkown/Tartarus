@@ -6,6 +6,7 @@ import pytest
 from app.ingest.clock import (
     analysis_ended,
     analysis_started,
+    calibrated_offset,
     epoch_to_datetime,
     guest_clock_offset,
     parse_clock,
@@ -121,3 +122,34 @@ def test_epoch_to_datetime_returns_none_for_what_it_cannot_read(value: object) -
 
 def test_the_offset_is_two_hours_on_the_fixture(full_report: dict[str, Any]) -> None:
     assert guest_clock_offset(full_report) == timedelta(hours=2)
+
+
+ANCHOR = datetime(2026, 10, 13, 12, 12, 18, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("first_process", "expected_hours"),
+    [
+        (datetime(2026, 10, 13, 10, 12, 41, 164000, tzinfo=UTC), 2),
+        (datetime(2026, 10, 13, 12, 12, 20, tzinfo=UTC), 0),
+        (datetime(2026, 10, 13, 14, 12, 28, tzinfo=UTC), -2),
+        (datetime(2026, 10, 13, 6, 42, 41, tzinfo=UTC), 5.5),
+    ],
+)
+def test_an_explicit_anchor_calibrates_with_the_same_quarter_hour_rounding(
+    first_process: datetime, expected_hours: float
+) -> None:
+    assert calibrated_offset(ANCHOR, first_process) == timedelta(hours=expected_hours)
+
+
+def test_an_explicit_anchor_with_an_implausible_gap_gives_no_offset() -> None:
+    assert calibrated_offset(ANCHOR, datetime(2026, 10, 11, 12, 12, 18, tzinfo=UTC)) == timedelta(0)
+
+
+def test_the_report_and_the_anchor_agree_on_every_gap() -> None:
+    for seconds in range(-3 * 3600, 3 * 3600, 977):
+        first_process = ANCHOR + timedelta(seconds=seconds)
+        report = report_with_clocks(
+            "2026-10-13 12:12:18", first_process.strftime("%Y-%m-%d %H:%M:%S")
+        )
+        assert guest_clock_offset(report) == calibrated_offset(ANCHOR, first_process)

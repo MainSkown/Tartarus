@@ -20,8 +20,7 @@ from app.ingest.ecs import (
 from app.ingest.protocol import IngestContext
 
 SOURCE = "capemon"
-SOURCE_FILE = "report.json"
-DERIVED_SOURCE_FILE = "report.json#derived"
+SOURCE_FILE = "processes"
 
 API_CATEGORY_TO_ECS = {
     "filesystem": "file",
@@ -50,8 +49,13 @@ def read_calls(report: Mapping[str, Any], context: IngestContext) -> list[Call]:
     return _read(report, context)[1]
 
 
+def _call_source_file(call: Call, *, derived: bool = False) -> str:
+    """Names the process's call list, so an event id never depends on the other processes."""
+    return f"{SOURCE_FILE}/{call.process.pid}" + ("#derived" if derived else "")
+
+
 def api_event_id(analysis_id: int, call: Call) -> str:
-    return event_id(analysis_id, SOURCE, SOURCE_FILE, call.index)
+    return event_id(analysis_id, SOURCE, _call_source_file(call), call.index)
 
 
 def call_lane(call: Call) -> str:
@@ -74,11 +78,17 @@ class CapemonNormalizer:
         run = DerivationRun({process.identity.pid: process.identity for process in processes})
         factory = EventFactory(context, source=SOURCE, source_file=SOURCE_FILE, module=SOURCE)
         for call in calls:
-            api_event = _api_event(factory, call, context.analysis_id)
-            yield api_event
-            derived = derive(call, run)
-            if derived is not None:
-                yield _derived_event(factory, call, derived, api_event, context.analysis_id)
+            yield from call_events(factory, call, run, context.analysis_id)
+
+
+def call_events(
+    factory: EventFactory, call: Call, run: DerivationRun, analysis_id: int
+) -> Iterator[dict[str, Any]]:
+    """A call's `api` event and, when a rule derives one from it, the derived event."""
+    yield api_event(factory, call, analysis_id)
+    derived = derive(call, run)
+    if derived is not None:
+        yield derived_event(factory, call, derived, analysis_id)
 
 
 def _api_fields(call: Call) -> dict[str, Any]:
@@ -96,9 +106,9 @@ def _owner_process(call: Call, analysis_id: int) -> dict[str, Any]:
     return process_fields(call.process, analysis_id, thread_id=call.thread_id)
 
 
-def _api_event(factory: EventFactory, call: Call, analysis_id: int) -> dict[str, Any]:
+def api_event(factory: EventFactory, call: Call, analysis_id: int) -> dict[str, Any]:
     shape = API_SHAPES[API_CATEGORY_TO_ECS.get(call.category or "", FALLBACK_ECS_CATEGORY)]
-    record = SourceRecord(call.index, call.timestamp, call.raw)
+    record = SourceRecord(call.index, call.timestamp, call.raw, source_file=_call_source_file(call))
     return factory.build(
         shape,
         record,
@@ -108,14 +118,12 @@ def _api_event(factory: EventFactory, call: Call, analysis_id: int) -> dict[str,
     )
 
 
-def _derived_event(
-    factory: EventFactory,
-    call: Call,
-    derived: Derived,
-    api_event: Mapping[str, Any],
-    analysis_id: int,
+def derived_event(
+    factory: EventFactory, call: Call, derived: Derived, analysis_id: int
 ) -> dict[str, Any]:
-    record = SourceRecord(call.index, call.timestamp, call.raw, source_file=DERIVED_SOURCE_FILE)
+    record = SourceRecord(
+        call.index, call.timestamp, call.raw, source_file=_call_source_file(call, derived=True)
+    )
     process = (
         process_fields(derived.process, analysis_id)
         if derived.process
@@ -124,7 +132,7 @@ def _derived_event(
     sections = {
         "process": process,
         **derived.sections,
-        "related": related_events(api_event["event"]["id"]),
+        "related": related_events(api_event_id(analysis_id, call)),
     }
     return factory.build(
         derived.shape, record, derived.summary, tartarus=derived.tartarus, **sections

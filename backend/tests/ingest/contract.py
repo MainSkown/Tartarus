@@ -29,7 +29,9 @@ def check_normalizer_contract(
     return events
 
 
-def check_common_fields(event: Mapping[str, Any], context: IngestContext) -> None:
+def check_common_fields(
+    event: Mapping[str, Any], context: IngestContext, phase: str = "final"
+) -> None:
     json.dumps(event)
     assert TIMESTAMP.match(event["@timestamp"])
     meta = event["event"]
@@ -43,7 +45,7 @@ def check_common_fields(event: Mapping[str, Any], context: IngestContext) -> Non
     tartarus = event["tartarus"]
     assert tartarus["analysis_id"] == context.analysis_id
     assert tartarus["lane"] in LANES
-    assert tartarus["phase"] == "final"
+    assert tartarus["phase"] == phase
     assert tartarus["summary"]
     assert "raw" in tartarus
 

@@ -87,9 +87,15 @@ def _foreign_target(call: Call) -> tuple[bool, int | None]:
     return handle is not None and handle != 0 and not _is_current_process(handle), None
 
 
-def _process_created(call: Call, run: DerivationRun) -> Derived | None:
+def created_child_pid(call: Call) -> int | None:
+    """The pid of the child a process-creating call started, when it did start one."""
     child_pid = call.integer("ProcessId")
-    if not call.succeeded or not child_pid or child_pid < 0:
+    return child_pid if call.succeeded and child_pid and child_pid > 0 else None
+
+
+def _process_created(call: Call, run: DerivationRun) -> Derived | None:
+    child_pid = created_child_pid(call)
+    if child_pid is None:
         return None
     # capemon logs both NtCreateUserProcess and CreateProcessInternalW for one child; the
     # earliest call (the one processed first) speaks for it.
