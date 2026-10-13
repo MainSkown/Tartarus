@@ -15,7 +15,11 @@ const HEALTHY: SystemHealth = {
 vi.mock('@/api', () => ({
   systemHealth: vi.fn().mockResolvedValue({ data: undefined }),
   settingsRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
+  analysesList: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
+  analysesRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
 }))
+
+vi.mock('@/services/submit-dialog', () => ({ openSubmitDialog: vi.fn() }))
 
 vi.mock('@/services/ws', () => ({
   createSystemHealthClient: () => ({
@@ -34,6 +38,9 @@ const { createAppRouter } = await import('@/router')
 // its router-view at depth 0, resolving right back to MainLayout itself instead of the page.
 const App = (await import('@/App.vue')).default
 const { useSystemStore } = await import('@/stores/system')
+const { openSubmitDialog } = await import('@/services/submit-dialog')
+
+const GUEST_READY: SystemHealth = { ...HEALTHY, guest: { status: 'ok', message: null } }
 
 async function mountShellAt(path: string) {
   setActivePinia(createPinia())
@@ -116,5 +123,40 @@ describe('MainLayout', () => {
     store.health = { ...HEALTHY, guest: { status: 'down', message: 'a different guest reason' } }
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.submit-wrapper').attributes('aria-label')).toBe('a different guest reason')
+  })
+
+  it('enables the Submit button, with no disabled reason, once the guest is ready', async () => {
+    const { wrapper, store } = await mountShellAt('/')
+    store.health = GUEST_READY
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('.submit-wrapper').attributes('aria-label')).toBeUndefined()
+  })
+
+  it('opens the Submit dialog when the enabled Submit button is clicked', async () => {
+    const { wrapper, store } = await mountShellAt('/')
+    store.health = GUEST_READY
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.submit-btn').trigger('click')
+
+    expect(openSubmitDialog).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not open the Submit dialog while the guest is not ready', async () => {
+    const { wrapper } = await mountShellAt('/')
+
+    await wrapper.find('.submit-btn').trigger('click')
+
+    expect(openSubmitDialog).not.toHaveBeenCalled()
+  })
+
+  it('says it is still checking when no health snapshot has arrived yet', async () => {
+    const { wrapper, store } = await mountShellAt('/')
+    store.health = undefined
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.submit-wrapper').attributes('aria-label')).toBe('checking guest status…')
   })
 })

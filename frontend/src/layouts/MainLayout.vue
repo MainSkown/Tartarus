@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import HealthDot from '@/components/HealthDot.vue'
+import { useGuestBlockReason } from '@/services/guest-gate'
+import { openSubmitDialog } from '@/services/submit-dialog'
 import { useSystemStore } from '@/stores/system'
 
 interface NavItem {
@@ -45,7 +47,7 @@ const storeSubStatuses = computed(() => {
   ]
 })
 
-const submitDisabledReason = computed(() => system.guestMessage ?? 'checking guest status…')
+const submitDisabledReason = useGuestBlockReason()
 </script>
 
 <template>
@@ -96,11 +98,14 @@ const submitDisabledReason = computed(() => system.guestMessage ?? 'checking gue
           <q-btn
             outline
             square
-            disable
+            :disable="submitDisabledReason !== undefined"
             label="+ SUBMIT"
             class="submit-btn text-mono"
+            @click="openSubmitDialog"
           />
-          <q-tooltip>{{ submitDisabledReason }}</q-tooltip>
+          <q-tooltip v-if="submitDisabledReason">
+            {{ submitDisabledReason }}
+          </q-tooltip>
         </div>
       </q-toolbar>
     </q-header>
