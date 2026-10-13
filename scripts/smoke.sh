@@ -34,6 +34,11 @@ check, config = sys.argv[1], json.loads(sys.argv[2])
 services = config["services"]
 published = [(name, port) for name, svc in services.items() for port in svc.get("ports", [])]
 
+
+def volume_mounts(service, volume):
+    return [m for m in service.get("volumes", []) if m.get("type") == "volume" and m.get("source") == volume]
+
+
 if check == "loopback-only":
     problems = [
         f"{name} publishes {port.get('published')} on {port.get('host_ip') or 'all interfaces'}"
@@ -59,6 +64,36 @@ elif check == "distinct-build-image-tags":
     ]
     print("; ".join(collisions))
     sys.exit(1 if collisions else 0)
+elif check == "same-build-same-image-tag":
+    other = json.loads(sys.argv[3]).get("services", {})
+    problems = [
+        f"{name} is tagged {svc['image']!r} here and {other[name]['image']!r} in the other compose file"
+        for name, svc in services.items()
+        if name in other
+        and svc.get("image")
+        and other[name].get("image")
+        and svc.get("build") == other[name].get("build")
+        and svc["image"] != other[name]["image"]
+    ]
+elif check == "cape-storage-read-only-in-backend":
+    mounts = volume_mounts(services.get("backend", {}), "cape-storage")
+    if not mounts:
+        problems = ["backend does not mount cape-storage"]
+    else:
+        problems = ["backend mounts cape-storage read-write" for mount in mounts if not mount.get("read_only")]
+elif check == "cape-storage-only-in-backend-and-cape":
+    problems = [
+        f"{name} mounts cape-storage"
+        for name, svc in services.items()
+        if name not in ("backend", "cape") and volume_mounts(svc, "cape-storage")
+    ]
+elif check == "sample-store-only-in-backend":
+    problems = [] if volume_mounts(services.get("backend", {}), "sample-store") else ["backend does not mount sample-store"]
+    problems += [
+        f"{name} mounts sample-store"
+        for name, svc in services.items()
+        if name != "backend" and volume_mounts(svc, "sample-store")
+    ]
 elif check == "cape-no-ports":
     problems = [f"cape publishes {port.get('published')}" for name, port in published if name == "cape"]
 elif check == "cape-iso-readonly":
@@ -128,6 +163,11 @@ check_static() {
         check "$mode: cape mounts ./data/iso read-only" policy_violations cape-iso-readonly "$config"
         check "$mode: no service other than cape is privileged" policy_violations only-cape-privileged "$config"
         check "$mode: no service uses the host network" policy_violations no-host-network "$config"
+        check "$mode: backend mounts cape-storage read-only" policy_violations cape-storage-read-only-in-backend "$config"
+        check "$mode: only backend and cape mount cape-storage" policy_violations cape-storage-only-in-backend-and-cape "$config"
+        check "$mode: only backend mounts sample-store" policy_violations sample-store-only-in-backend "$config"
+        check "$mode: unchanged builds keep their image tag across both compose files" \
+            policy_violations same-build-same-image-tag "$config" "${other_config:-{\}}"
         check "$mode: built images are not shared with the other compose file" \
             policy_violations distinct-build-image-tags "$config" "${other_config:-{\}}"
         if [[ $mode == prod ]]; then

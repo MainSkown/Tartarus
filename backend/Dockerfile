@@ -11,8 +11,8 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH="/opt/venv/bin:$PATH"
 
 RUN useradd --system --create-home --uid 1000 tartarus \
-    && mkdir /app /opt/venv \
-    && chown tartarus:tartarus /app /opt/venv
+    && mkdir -p /app /opt/venv /data/samples \
+    && chown tartarus:tartarus /app /opt/venv /data/samples
 
 WORKDIR /app
 USER tartarus

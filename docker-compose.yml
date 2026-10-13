@@ -66,10 +66,21 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tartarus}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env (copy .env.example)}@postgres:5432/${POSTGRES_DB:-tartarus}
       OPENSEARCH_URL: http://opensearch:9200
+      CAPE_API_URL: http://cape:8000
+      CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
+      CAPE_STORAGE_PATH: /cape-storage
+      SAMPLE_STORE_PATH: /data/samples
+      GUEST_LABEL: ${GUEST_LABEL:-win}
+    volumes:
+      # Read-only: the backend reads reports and CAPE alone writes (and deletes) its analyses.
+      - cape-storage:/cape-storage:ro
+      - sample-store:/data/samples
     depends_on:
       postgres:
         condition: service_healthy
       opensearch:
+        condition: service_healthy
+      cape:
         condition: service_healthy
     networks:
       - tartarus-internal
@@ -105,9 +116,7 @@ services:
       retries: 5
       start_period: 10s
 
-  # Behind a profile until M1 wires it into the stack: `docker compose --profile cape up -d cape`.
   cape:
-    profiles: [cape]
     container_name: tartarus-cape
     image: tartarus-cape:latest
     build:
@@ -125,8 +134,7 @@ services:
       CAPE_DB_USER: ${CAPE_DB_USER:-cape}
       CAPE_DB_PASSWORD: ${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set in .env (copy .env.example)}
       CAPE_DB_NAME: ${CAPE_DB_NAME:-cape}
-      # Not required here: compose would then refuse to start the stack without the cape profile.
-      CAPE_API_TOKEN: ${CAPE_API_TOKEN:-}
+      CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
       GUEST_SUBNET: ${GUEST_SUBNET:-192.168.150.0/24}
     sysctls:
       net.ipv4.ip_forward: "1"
@@ -153,3 +161,4 @@ volumes:
   os-data:
   cape-storage:
   guest-images:
+  sample-store:

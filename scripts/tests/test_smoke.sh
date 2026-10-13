@@ -12,17 +12,23 @@ STATUS=0
 
 port_entry() { printf '{"mode":"ingress","host_ip":"%s","target":%s,"published":"%s","protocol":"tcp"}' "$1" "$2" "$3"; }
 
-DEFAULT_CAPE='{"profiles":["cape"],"image":"tartarus-cape:latest","build":{},"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"volumes":[{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":true}],"networks":{"tartarus-internal":null}}'
+CAPE_STORAGE_VOLUME='{"type":"volume","source":"cape-storage","target":"/opt/CAPEv2/storage"}'
+ISO_MOUNT='{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":true}'
+DEFAULT_CAPE='{"image":"tartarus-cape:latest","build":{},"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"volumes":['"$CAPE_STORAGE_VOLUME,$ISO_MOUNT"'],"networks":{"tartarus-internal":null}}'
+CAPE_STORAGE_READ_ONLY='{"type":"volume","source":"cape-storage","target":"/cape-storage","read_only":true}'
+SAMPLE_STORE='{"type":"volume","source":"sample-store","target":"/data/samples"}'
+DEFAULT_BACKEND_VOLUMES="$CAPE_STORAGE_READ_ONLY,$SAMPLE_STORE"
 
 write_prod_config() {
     local frontend_ip=$1 backend_ports=$2 backend_image=${3:-tartarus-backend:latest} frontend_image=${4:-tartarus-frontend:latest}
-    local cape=${5:-$DEFAULT_CAPE} backend_extra=${6:-}
+    local cape=${5:-$DEFAULT_CAPE} backend_extra=${6:-} backend_volumes=${7-$DEFAULT_BACKEND_VOLUMES}
+    local postgres_image=${8:-postgres:16}
     cat >"$STUB_DIR/config-prod.json" <<JSON
 {"services":{
   "frontend":{"image":"$frontend_image","build":{"target":"production-stage"},"ports":[$(port_entry "$frontend_ip" 80 8080)]},
-  "backend":{"image":"$backend_image","build":{"target":"prod"},"ports":[$backend_ports],"volumes":[]${backend_extra:+,$backend_extra}},
+  "backend":{"image":"$backend_image","build":{"target":"prod"},"ports":[$backend_ports],"volumes":[$backend_volumes]${backend_extra:+,$backend_extra}},
   "cape":$cape,
-  "postgres":{"volumes":[{"type":"volume","source":"pg-data","target":"/var/lib/postgresql/data"}]},
+  "postgres":{"image":"$postgres_image","volumes":[{"type":"volume","source":"pg-data","target":"/var/lib/postgresql/data"}]},
   "opensearch":{"volumes":[{"type":"volume","source":"os-data","target":"/usr/share/opensearch/data"}]}
 }}
 JSON
@@ -30,13 +36,13 @@ JSON
 
 write_dev_config() {
     local postgres_ip=$1 backend_volumes=$2 extra_frontend_ports=${3:-} backend_image=${4:-tartarus-backend:dev} frontend_image=${5:-tartarus-frontend:dev}
-    local cape=${6:-$DEFAULT_CAPE}
+    local cape=${6:-$DEFAULT_CAPE} postgres_image=${7:-postgres:16}
     cat >"$STUB_DIR/config-dev.json" <<JSON
 {"services":{
   "frontend":{"image":"$frontend_image","build":{"target":"dev-stage"},"ports":[$(port_entry 127.0.0.1 5173 5173)${extra_frontend_ports:+,$extra_frontend_ports}]},
   "backend":{"image":"$backend_image","build":{"target":"dev"},"ports":[$(port_entry 127.0.0.1 8000 8000)],"volumes":[$backend_volumes]},
   "cape":$cape,
-  "postgres":{"ports":[$(port_entry "$postgres_ip" 5432 5432)]},
+  "postgres":{"image":"$postgres_image","ports":[$(port_entry "$postgres_ip" 5432 5432)]},
   "opensearch":{"ports":[$(port_entry 127.0.0.1 9200 9200)]}
 }}
 JSON
@@ -78,7 +84,7 @@ new_sandbox() {
     mkdir "$STUB_DIR/bin"
     install_stubs
     write_prod_config 127.0.0.1 ""
-    write_dev_config 127.0.0.1 ""
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES"
     printf 'tartarus\ncape\n' >"$STUB_DIR/postgres-databases"
     printf 'tartarus\ncape\n' >"$STUB_DIR/postgres-env"
     printf '{"cluster_name":"tartarus","status":"green"}' >"$STUB_DIR/opensearch-health"
@@ -129,7 +135,7 @@ test_static_rejects_prod_port_without_host_ip() {
 }
 
 test_static_rejects_dev_port_on_all_interfaces() {
-    write_dev_config 0.0.0.0 ""
+    write_dev_config 0.0.0.0 "$DEFAULT_BACKEND_VOLUMES"
     run_smoke static
     expect_fail_mentioning "postgres"
 }
@@ -141,26 +147,26 @@ test_static_rejects_prod_publishing_more_than_frontend() {
 }
 
 test_static_rejects_docker_socket_mount() {
-    write_dev_config 127.0.0.1 '{"type":"bind","source":"/var/run/docker.sock","target":"/var/run/docker.sock"}'
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES"',{"type":"bind","source":"/var/run/docker.sock","target":"/var/run/docker.sock"}'
     run_smoke static
     expect_fail_mentioning "docker.sock"
 }
 
 test_static_rejects_dev_frontend_also_publishing_prod_port() {
-    write_dev_config 127.0.0.1 "" "$(port_entry 127.0.0.1 80 8080)"
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "$(port_entry 127.0.0.1 80 8080)"
     run_smoke static
     expect_fail_mentioning "8080"
 }
 
 test_static_rejects_dev_and_prod_sharing_an_image_tag() {
     write_prod_config 127.0.0.1 "" "tartarus-backend:latest" "tartarus-frontend:latest"
-    write_dev_config 127.0.0.1 "" "" "tartarus-backend:latest" "tartarus-frontend:dev"
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "" "tartarus-backend:latest" "tartarus-frontend:dev"
     run_smoke static
     expect_fail_mentioning "backend"
 }
 
 test_static_rejects_cape_publishing_a_port() {
-    write_dev_config 127.0.0.1 "" "" "" "" '{"profiles":["cape"],"privileged":true,"ports":['"$(port_entry 127.0.0.1 16509 16509)"']}'
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "" "" "" '{"privileged":true,"ports":['"$(port_entry 127.0.0.1 16509 16509)"']}'
     run_smoke static
     expect_fail_mentioning "cape publishes"
 }
@@ -172,21 +178,95 @@ test_static_rejects_a_privileged_service_other_than_cape() {
 }
 
 test_static_rejects_cape_mounting_the_iso_read_write() {
-    write_prod_config 127.0.0.1 "" "" "" '{"profiles":["cape"],"privileged":true,"volumes":[{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":false}],"networks":{"tartarus-internal":null}}'
+    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"volumes":[{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":false}],"networks":{"tartarus-internal":null}}'
     run_smoke static
     expect_fail_mentioning "read-write"
 }
 
 test_static_rejects_cape_not_mounting_the_iso() {
-    write_prod_config 127.0.0.1 "" "" "" '{"profiles":["cape"],"privileged":true,"networks":{"tartarus-internal":null}}'
+    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"networks":{"tartarus-internal":null}}'
     run_smoke static
     expect_fail_mentioning "does not mount /data/iso"
 }
 
 test_static_rejects_host_networking() {
-    write_prod_config 127.0.0.1 "" "" "" '{"profiles":["cape"],"privileged":true,"network_mode":"host"}'
+    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"network_mode":"host"}'
     run_smoke static
     expect_fail_mentioning "cape uses the host network"
+}
+
+test_static_checks_services_behind_a_profile() {
+    python3 -I - "$STUB_DIR/config-prod.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+config = json.load(open(path))
+config["services"]["debug"] = {"profiles": ["debug"], "privileged": True}
+json.dump(config, open(path, "w"))
+PY
+    run_smoke static
+    expect_fail_mentioning "debug is privileged"
+}
+
+test_static_rejects_backend_mounting_cape_storage_read_write() {
+    write_prod_config 127.0.0.1 "" "" "" "" "" '{"type":"volume","source":"cape-storage","target":"/cape-storage"},'"$SAMPLE_STORE"
+    run_smoke static
+    expect_fail_mentioning "backend mounts cape-storage read-write"
+}
+
+test_static_rejects_backend_not_mounting_cape_storage() {
+    write_prod_config 127.0.0.1 "" "" "" "" "" "$SAMPLE_STORE"
+    run_smoke static
+    expect_fail_mentioning "backend does not mount cape-storage"
+}
+
+test_static_rejects_dev_backend_mounting_cape_storage_read_write() {
+    write_dev_config 127.0.0.1 '{"type":"volume","source":"cape-storage","target":"/cape-storage"},'"$SAMPLE_STORE"
+    run_smoke static
+    expect_fail_mentioning "backend mounts cape-storage read-write"
+}
+
+test_static_rejects_a_third_service_mounting_cape_storage() {
+    python3 -I - "$STUB_DIR/config-prod.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+config = json.load(open(path))
+config["services"]["frontend"]["volumes"] = [
+    {"type": "volume", "source": "cape-storage", "target": "/cape-storage", "read_only": True}
+]
+json.dump(config, open(path, "w"))
+PY
+    run_smoke static
+    expect_fail_mentioning "frontend mounts cape-storage"
+}
+
+test_static_rejects_cape_storage_bind_mounted_from_the_host_into_backend() {
+    write_prod_config 127.0.0.1 "" "" "" "" "" '{"type":"bind","source":"/srv/cape","target":"/cape-storage","read_only":true},'"$SAMPLE_STORE"
+    run_smoke static
+    expect_fail_mentioning "backend does not mount cape-storage"
+}
+
+test_static_rejects_backend_not_mounting_sample_store() {
+    write_prod_config 127.0.0.1 "" "" "" "" "" "$CAPE_STORAGE_READ_ONLY"
+    run_smoke static
+    expect_fail_mentioning "backend does not mount sample-store"
+}
+
+test_static_rejects_cape_mounting_sample_store() {
+    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"volumes":['"$ISO_MOUNT,$SAMPLE_STORE"'],"networks":{"tartarus-internal":null}}'
+    run_smoke static
+    expect_fail_mentioning "cape mounts sample-store"
+}
+
+test_static_rejects_a_pulled_image_pinned_differently_in_dev() {
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "" "" "" "" postgres:15
+    run_smoke static
+    expect_fail_mentioning "postgres"
+}
+
+test_static_rejects_cape_tagged_differently_in_dev() {
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "" "" "" '{"image":"tartarus-cape:dev","build":{},"privileged":true,"volumes":['"$ISO_MOUNT"']}'
+    run_smoke static
+    expect_fail_mentioning "cape"
 }
 
 test_prod_passes_on_healthy_stack() {
