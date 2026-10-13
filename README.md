@@ -34,9 +34,14 @@ query bar, and export IOCs and reports.
 Needs Docker with Compose 2.24.4 or newer. Run `make preflight` first to check your host.
 
 ```bash
-cp .env.example .env     # then set POSTGRES_PASSWORD and CAPE_DB_PASSWORD
+cp .env.example .env     # then set POSTGRES_PASSWORD, CAPE_DB_PASSWORD and CAPE_API_TOKEN
 make up                  # production build at http://127.0.0.1:8080
 ```
+
+`make up` starts the whole stack, including the privileged `cape` container, which needs
+`/dev/kvm` and takes a few minutes to build the first time. Without KVM you can still work on the
+UI with `docker compose up -d --no-deps postgres opensearch backend frontend` (`--no-deps`,
+because the backend waits for a healthy `cape` otherwise); CAPE then shows as down.
 
 For development with hot reload, use `make dev` instead (frontend on `127.0.0.1:5173`, backend
 and its API docs on `127.0.0.1:8000`). Database migrations run when the backend starts.
@@ -45,8 +50,9 @@ and its API docs on `127.0.0.1:8000`). Database migrations run when the backend 
 Node 24 or newer on the host. `make smoke` checks the compose files' safety rules without
 starting anything; `make smoke MODE=prod` or `MODE=dev` checks a running stack.
 
-Submitting a sample needs the CAPE container and a Windows guest, which come in later
-milestones (see the [overview](docs/overview.md#roadmap)).
+Submitting a sample needs the Windows guest: build it once with `make build-guest` (see the
+[CAPE integration spec](docs/specs/cape-integration.md)). The `cape` container is part of the
+default stack; `make verify-guest` proves the guest works.
 
 ## Developing
 

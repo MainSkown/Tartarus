@@ -175,6 +175,11 @@ test_leaves_cape_stopped_and_cleans_up_the_probe() {
     grep -q "inetsim_disable" "$STUB_DIR/calls" || { echo "  route never disabled"; return 1; }
 }
 
+test_does_not_need_the_cape_compose_profile() {
+    run_verify
+    ! grep -q -- '--profile' "$STUB_DIR/calls" || { echo "  still passes --profile"; return 1; }
+}
+
 test_rejects_a_checksum_mismatch_before_touching_docker() {
     CIRROS_SHA256=0000 run_verify
     expect_fail_mentioning "probe image" && ! grep -qs "up -d" "$STUB_DIR/calls"

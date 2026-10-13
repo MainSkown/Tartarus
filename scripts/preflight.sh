@@ -62,7 +62,7 @@ check_kvm() {
     if [ -e "$DEV_DIR/kvm" ]; then
         ok "$DEV_DIR/kvm present"
     else
-        warn "$DEV_DIR/kvm missing: the CAPE guest needs KVM (from M0)"
+        warn "$DEV_DIR/kvm missing: the cape container, part of \`make up\`, needs KVM (the UI alone runs without it, see the README)"
     fi
 }
 
@@ -70,7 +70,7 @@ check_cpu_virtualization() {
     if grep -Eqw 'vmx|svm' "$PROC_DIR/cpuinfo" 2>/dev/null; then
         ok "CPU virtualization extensions present"
     else
-        warn "no vmx/svm in $PROC_DIR/cpuinfo: hardware virtualization is unavailable (needed from M0)"
+        warn "no vmx/svm in $PROC_DIR/cpuinfo: hardware virtualization is unavailable (the cape container needs it)"
     fi
 }
 

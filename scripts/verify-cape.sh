@@ -41,7 +41,7 @@ check() {
     fi
 }
 
-compose() { docker compose --profile cape "$@"; }
+compose() { docker compose "$@"; }
 in_cape() { compose exec -T cape "$@"; }
 virsh_in_cape() { in_cape virsh -c qemu:///system "$@"; }
 as_cape_user() { compose exec -T -u cape -w /opt/CAPEv2 cape "$@"; }

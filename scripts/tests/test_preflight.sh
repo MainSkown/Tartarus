@@ -74,6 +74,7 @@ main() {
     run_case "compose desktop suffix parses" 0 "[ OK ] Docker Compose 2.30.3" FAKE_COMPOSE_VERSION=v2.30.3-desktop.1
     run_case "low max_map_count fails" 1 "[FAIL] vm.max_map_count is 65530" FAKE_MAX_MAP_COUNT=65530
     run_case "missing kvm warns and exits 0" 0 "[WARN] $EMPTY_DEV/kvm missing" PREFLIGHT_DEV_DIR="$EMPTY_DEV"
+    run_case "missing kvm says the default stack needs it" 0 "make up" PREFLIGHT_DEV_DIR="$EMPTY_DEV"
     run_case "node 22 warns and exits 0" 0 "[WARN] node v22.11.0" FAKE_NODE_VERSION=v22.11.0
 
     if [ "$FAILURES" -gt 0 ]; then

@@ -171,6 +171,31 @@ test_check10_submits_without_free_mode() {
     ! grep -q 'free=' "$STUB_DIR/calls" || { echo "  submission disables capemon with free="; return 1; }
 }
 
+test_removes_only_its_own_override_and_never_the_permanent_reporting_config() {
+    run_verify
+    expect_pass || return 1
+    local removals call
+    removals=$(grep -E 'exec -T cape rm ' "$STUB_DIR/calls")
+    [[ -n $removals ]] || { echo "  expected the temporary callback.conf to be removed"; return 1; }
+    while read -r call; do
+        [[ $call == *"rm -f /opt/CAPEv2/custom/conf/reporting.conf.d/callback.conf" ]] ||
+            { echo "  removes something other than the temporary override: $call"; return 1; }
+    done <<<"$removals"
+    ! grep -qE '> */opt/CAPEv2/custom/conf/reporting\.conf( |$)' "$STUB_DIR/calls" ||
+        { echo "  writes over the permanent reporting.conf"; return 1; }
+}
+
+test_writes_its_override_into_the_directory_that_layers_over_reporting_conf() {
+    run_verify
+    grep -q '> /opt/CAPEv2/custom/conf/reporting.conf.d/callback.conf' "$STUB_DIR/calls" ||
+        { echo "  override is not written to reporting.conf.d/callback.conf"; return 1; }
+}
+
+test_does_not_need_the_cape_compose_profile() {
+    run_verify
+    ! grep -q -- '--profile' "$STUB_DIR/calls" || { echo "  still passes --profile"; return 1; }
+}
+
 test_check12_fails_when_cape_does_not_come_back() {
     : >"$STUB_DIR/f/cape-unhealthy"
     run_verify

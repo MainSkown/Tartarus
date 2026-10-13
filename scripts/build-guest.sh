@@ -64,7 +64,7 @@ IDLE_SECONDS=${GUEST_IDLE_SECONDS:-60}
 say() { printf '\n==> [%s] %s\n' "$(date +%T)" "$1"; }
 die() { printf 'build-guest: %s\n' "$1" >&2; exit 1; }
 
-compose() { docker compose --profile cape "$@"; }
+compose() { docker compose "$@"; }
 in_cape() { compose exec -T cape "$@"; }
 virsh_cape() { in_cape virsh -c qemu:///system "$@"; }
 
@@ -295,14 +295,14 @@ snapshot_and_register() {
 
 full_build() {
     [[ -f $REPO/.env ]] || die ".env is missing (copy .env.example and set the passwords and CAPE_API_TOKEN)"
-    docker image inspect tartarus-cape:latest >/dev/null 2>&1 || die "tartarus-cape:latest is not built (docker compose --profile cape build cape)"
+    docker image inspect tartarus-cape:latest >/dev/null 2>&1 || die "tartarus-cape:latest is not built (docker compose build cape)"
     [[ -f $REPO/data/iso/$ISO_NAME ]] || die "data/iso/$ISO_NAME not found"
 
     generate_identity
 
     say "starting postgres and cape"
     compose up -d --wait postgres >/dev/null 2>&1 || die "postgres did not become healthy"
-    compose up -d --wait cape >/dev/null 2>&1 || die "cape did not become healthy (docker compose --profile cape logs cape)"
+    compose up -d --wait cape >/dev/null 2>&1 || die "cape did not become healthy (docker compose logs cape)"
 
     remove_existing_guest
     download_into_cache

@@ -31,7 +31,7 @@ check() {
     else detail=${detail//$'\n'/; }; fail "$description${detail:+ ($detail)}"; return 1; fi
 }
 
-compose() { docker compose --profile cape "$@"; }
+compose() { docker compose "$@"; }
 in_cape() { compose exec -T cape "$@"; }
 virsh_cape() { in_cape virsh -c qemu:///system "$@"; }
 on_internal() { docker run --rm -i -e CAPE_API_TOKEN --network tartarus-internal --entrypoint "" "$CAPE_IMAGE" "$@"; }
