@@ -8,12 +8,12 @@ export const routes: RouteRecordRaw[] = [
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
-      { path: '', name: 'dashboard', component: () => import('@/pages/PlaceholderPage.vue') },
+      { path: '', name: 'dashboard', component: () => import('@/pages/DashboardPage.vue') },
       {
         // One route covers both /analyses/:id (defaults to no tab) and /analyses/:id/:tab.
         path: 'analyses/:id/:tab?',
         name: 'analysis-workspace',
-        component: () => import('@/pages/PlaceholderPage.vue'),
+        component: () => import('@/pages/AnalysisPage.vue'),
       },
       { path: 'rules', name: 'rules', component: () => import('@/pages/PlaceholderPage.vue') },
       { path: 'guest', name: 'guest', component: () => import('@/pages/PlaceholderPage.vue') },
