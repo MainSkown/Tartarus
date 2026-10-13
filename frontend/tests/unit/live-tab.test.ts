@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisRead } from '@/api'
@@ -20,8 +20,13 @@ const RUNNING = { status: 'running', phase: 'live', elapsed_s: 12, remaining_s: 
 const running = (overrides: Partial<AnalysisRead> = {}) => analysisWithStatus('running', { finished_at: null, ...overrides })
 const socket = () => FakeWebSocket.latest
 
+// A wrapper left mounted keeps its socket client, and a close in its test arms a reconnect timer that
+// opens a new fake socket during some later test, which then talks to the wrong component.
+const mounted: VueWrapper[] = []
+
 async function mountTab(analysis: AnalysisRead = running()) {
   const wrapper = mount(LiveTab, { attachTo: document.body, global: { plugins: [Quasar] }, props: { analysis } })
+  mounted.push(wrapper)
   socket().serverOpens()
   await flushPromises()
   return wrapper
@@ -38,6 +43,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  mounted.splice(0).forEach((wrapper) => wrapper.unmount())
   vi.unstubAllGlobals()
   document.body.innerHTML = ''
 })
