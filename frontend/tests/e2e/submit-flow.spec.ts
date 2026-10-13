@@ -68,13 +68,20 @@ test('submit a sample through the dialog and watch it finish', async ({ page, re
 
     await page.locator('input[type="file"]').setInputFiles(sample)
     await expect(page.locator('.file-name')).toHaveText(basename(sample))
+    // An interactive run lasts its whole timeout; the desktop flow covers those, this one wants the finished views.
+    const interactive = page.getByRole('switch', { name: 'INTERACTIVE DESKTOP' })
+    if ((await interactive.getAttribute('aria-checked')) === 'true') await interactive.click()
+    await expect(interactive).toHaveAttribute('aria-checked', 'false')
     await page.getByRole('button', { name: '▶ DETONATE' }).click()
 
     await page.waitForURL(ANALYSIS_URL)
     analysisId = ANALYSIS_URL.exec(page.url())?.[1]
     expect(analysisId, 'the URL after submitting carries the analysis id').toBeDefined()
 
-    await expect(page.locator('.status-badge')).toContainText(/done/i, { timeout: 300_000 })
+    // The LIVE tab shows a second badge while the analysis is active; the first is the page header's.
+    await expect(page.locator('.status-badge').first()).toContainText(/done/i, { timeout: 300_000 })
+    // A finished analysis keeps the LIVE tab it opened on; its views start at SUMMARY.
+    await openTab(page, 'SUMMARY')
     const score = page.locator('.stat-tile', { hasText: 'SCORE' }).locator('.stat-tile__value')
     await expect(score).toHaveText(/^\d+(\.\d+)?$/)
 

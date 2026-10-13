@@ -4,6 +4,9 @@
 # queue, the guest and the report, then checks the event index and every analysis view of the
 # finished analysis. `E2E_DRILLS=1` adds the failure drills, which stop cape or opensearch and
 # restart the backend mid-run and put them back afterwards. `E2E_SKIP_UI=1` skips the browser test.
+# `E2E_DESKTOP=1` adds the interactive desktop (the tunnel's API half, then the browser test
+# frontend/tests/e2e/desktop-flow.spec.ts): it holds the guest for the whole timeout of two
+# interactive runs, about 10 minutes. The live feed is always checked, on the analysis of step (a).
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -12,16 +15,19 @@ REPO=$PWD
 SAMPLE_SRC=$REPO/guest/testsample/benign.c
 SAMPLE_DIR=${TMPDIR:-/tmp}/tt-guest-verify
 SAMPLES_IN_BACKEND=/data/samples
+BROWSER_SECONDS=${E2E_BROWSER_SECONDS:-480}
 ANALYSIS_TIMEOUT=${E2E_ANALYSIS_TIMEOUT:-420}
 RESTORE_TIMEOUT=${E2E_RESTORE_TIMEOUT:-240}
 DRILLS=${E2E_DRILLS:-0}
 CAPE_DOWN_SECONDS=${E2E_CAPE_DOWN_SECONDS:-15}
 GRACE_MARGIN=${E2E_GRACE_MARGIN:-45}
 SKIP_UI=${E2E_SKIP_UI:-0}
+DESKTOP=${E2E_DESKTOP:-0}
 
 source "$REPO/scripts/lib/benign-sample.sh"
 source "$REPO/scripts/lib/e2e-api.sh"
 source "$REPO/scripts/lib/e2e-views.sh"
+source "$REPO/scripts/lib/e2e-live.sh"
 
 WORK_DIR=$(mktemp -d)
 CREATED_IDS=()
@@ -34,6 +40,7 @@ remember() { CREATED_IDS+=("$1"); }
 cleanup() {
     local id
     trap - EXIT
+    stop_live_watch
     compose start opensearch cape backend >/dev/null 2>&1
     if [[ -n ${BASE:-} ]]; then
         wait_for_health cape ok "$RESTORE_TIMEOUT" >/dev/null 2>&1 || info "cape is not healthy after the run"
@@ -115,10 +122,19 @@ step_a_sample_runs_to_done() {
     submit_and_remember "$A_FILE" || { fail "(a) POST /api/analyses did not answer 201"; return 1; }
     A_ID=$SUBMITTED_ID
     ok "(a) submit answered 201 with analysis id $A_ID"
+    watch_live_in_background "$A_ID" --include-api --query-probe
     check "(a) analysis $A_ID reaches done" wait_for_status "$A_ID" done "$ANALYSIS_TIMEOUT" || return 1
+    finish_live_watch
     check "(a) the result has a score and at least one signature" has_score_and_signature "$A_ID"
     check_finished_analysis_views "$A_ID" "$A_SHA"
     info "(a) took $((SECONDS - started)) s"
+}
+
+# --- (h) the live feed -------------------------------------------------------------------------
+
+step_h_live_feed() {
+    [[ -s ${LIVE_SUMMARY:-} ]] || { fail "(h) skipped: step (a) recorded no live feed"; return 1; }
+    check_live_feed "$A_ID" "$LIVE_SUMMARY" "$(basename "$A_FILE")"
 }
 
 # --- (b) and (c) strict order, and cancelling a queued analysis ---------------
@@ -212,9 +228,11 @@ step_d_delete() {
 
 # --- browser test -------------------------------------------------------------
 
-browser_test_passes() { # file
+# The desktop spec is opt in through E2E_DESKTOP, so each run pins it: a `make e2e DESKTOP=1` must not
+# also run it inside the submit flow's call.
+browser_test_passes() { # file spec desktop(0|1) bound-seconds
     local output
-    output=$(cd frontend && E2E_BASE_URL=$BASE E2E_SAMPLE=$1 npm run --silent e2e 2>&1)
+    output=$(cd frontend && E2E_BASE_URL=$BASE E2E_SAMPLE=$1 E2E_DESKTOP=$3 timeout "$4" npm run --silent e2e -- "$2" 2>&1)
     local status=$?
     # A skipped test exits 0 too, so the count is what proves it ran.
     if ((status == 0)) && grep -q '1 passed' <<<"$output"; then return 0; fi
@@ -225,8 +243,16 @@ browser_test_passes() { # file
 step_browser_flow() {
     local started=$SECONDS
     check "browser: the submit dialog lands on /analyses/<id> and the page shows done with a score" \
-        browser_test_passes "$(unique_sample e2e-ui.exe)"
+        browser_test_passes "$(unique_sample e2e-ui.exe)" submit-flow 0 "$BROWSER_SECONDS"
     info "browser flow took $((SECONDS - started)) s"
+}
+
+step_i_interactive_desktop() {
+    local started=$SECONDS
+    desktop_api_flow
+    check "browser: the LIVE tab shows the guest's desktop, takes the mouse and keys, and ends with the run" \
+        browser_test_passes "$(unique_sample e2e-desktop.exe)" desktop-flow 1 "$DESKTOP_BROWSER_SECONDS"
+    info "(i) took $((SECONDS - started)) s"
 }
 
 # --- drills -------------------------------------------------------------------
@@ -326,6 +352,7 @@ step_f_backend_restarts_mid_run() {
     local id task_id
     submit_and_remember "$(unique_sample e2e-f.exe)" || { fail "(f) submitting the drill analysis"; return 1; }
     id=$SUBMITTED_ID
+    watch_live_in_background "$id" --include-api --reconnect
     check "(f) analysis $id is running" wait_for_running "$id" || return 1
     task_id=$(analysis_field "$id" cape_task_id)
     compose restart backend >/dev/null 2>&1
@@ -333,6 +360,9 @@ step_f_backend_restarts_mid_run() {
     check "(f) analysis $id still points at CAPE task $task_id" same_task_id "$id" "$task_id"
     check "(f) analysis $id finishes done" wait_for_status "$id" done "$ANALYSIS_TIMEOUT"
     check "(f) it is still the same CAPE task" same_task_id "$id" "$task_id"
+    finish_live_watch
+    check "(f) a live client that reconnected across the restart saw only events of the final index and phase final" \
+        live_client_survived_the_restart "$LIVE_SUMMARY" "$id"
 }
 
 # --- (g) re-ingest after an index outage --------------------------------------
@@ -391,6 +421,8 @@ main() {
     build_sample || { fail "could not build benign.exe with mingw-w64"; exit 1; }
     echo "== (a) a submitted sample runs to done"
     step_a_sample_runs_to_done
+    echo "== (h) the live feed of step (a)"
+    step_h_live_feed
     echo "== (b, c) order and cancel"
     step_bc_order_and_cancel
     echo "== (d) delete"
@@ -398,6 +430,10 @@ main() {
     if [[ $SKIP_UI != 1 ]]; then
         echo "== browser flow"
         step_browser_flow
+    fi
+    if [[ $DESKTOP == 1 ]]; then
+        echo "== (i) the interactive desktop"
+        step_i_interactive_desktop
     fi
     if [[ $DRILLS == 1 ]]; then
         echo "== (e) cape restarts mid-run, inside the grace period"

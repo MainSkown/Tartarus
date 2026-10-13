@@ -11,6 +11,40 @@ Planned 2026-10-13, after M1b was approved. Nothing built yet. Fixtures exist: t
 analysis 45 (`backend/tests/fixtures/cape/live_logs_45/*.bson`) and the calls CAPE's own processor
 made of the same logs (`report_calls.json` beside them), which is exact ground truth for the parser.
 
+**E1 (end to end), 2026-10-13, seen on the real stack.** `make e2e` follows the first analysis of the
+run on `/ws/analyses/{id}/live` (client `scripts/lib/live_client.py`, checks `scripts/lib/e2e-live.sh`) and
+passed step (h): statuses `starting -> running -> processing -> done` in order; `process` add for the
+sample and its `cmd.exe` child, each `end` after its add; first events 30 s into the run, 30 s before
+`processing`; `phase: final` once, last, then close 1000; no `error` besides the refused `query`
+(`query_unsupported`, the stream went on); a client on the finished analysis gets `status`, `phase` and
+1000 and no events; an unknown id closes 4404. Live against final, with `include_api`: 479, 481, 479 and
+480 live events (four runs), each equal to the capemon events of the final index, with no event missing and none
+extra (the "merged repeats" tolerance of five was never used). Step (f) with `DRILLS=1`: a live client
+that reconnects across `docker compose restart backend` saw close codes `[1012, None x3..6 (502 while
+the backend was down), 1000]`, got all 476 to 479 events again on the reconnected socket (the collector
+resumes and replays from the start, decision 6), only ids of the final index, and `phase: final`.
+`make e2e DRILLS=1` 71 checks, 0 failed, 13 min; `make e2e DESKTOP=1` 45 checks, 0 failed, 10 min,
+including step (i): the desktop tunnel's first frame is `0.,36.<uuid>;`, a `size` follows at once, a
+`clipboard` instruction sent by the client is not answered with one, the socket stays up (internal
+`ping` echoed) and closes 1000 when the guest's VNC ends with the run, and a second client on the
+finished analysis gets 4409; and the Playwright `desktop-flow.spec.ts` passed against the real guest with
+the real `guacamole-common-js`.
+
+Seen and not changed (E1 does not edit the backend):
+- A raw client must send a `nop` at least every 15 s: `guacd` ends the connection with error 776
+  (client timeout) otherwise. `guacamole-common-js` does this by itself.
+- At the end of an interactive run `guacd` reports the guest's VNC going away (515) before the status
+  leaves `running`, so the tunnel closes 1000 with the reason "desktop reported an error", not "analysis
+  is no longer running".
+- The tunnel forwards `blob` and `end` for a stream the browser never opened (the dropped `clipboard`
+  one); `guacd` answers `ack ... Invalid stream index` (768) twice. Harmless, but not the silence the
+  allow-list suggests.
+- `default_interactive` is `true`, so the Submit dialog opens with the interactive switch on and a
+  plain dialog submit holds the guest for the whole timeout. The submit flow of the e2e now turns the
+  switch off.
+- The e2e submit flow had been broken since the LIVE tab (two `.status-badge`, and the SCORE tile is on
+  SUMMARY while the page stays on LIVE); `submit-flow.spec.ts` follows the new page now.
+
 ## Outcome
 
 While an analysis is `starting` or `running`, its page opens on a **LIVE** tab:

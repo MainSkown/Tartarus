@@ -55,8 +55,8 @@ build-guest: ## Build the Windows analysis guest unattended and register it with
 verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; needs make build-guest first)
 	scripts/verify-guest.sh
 
-e2e: ## End-to-end check against the running stack (slow, needs the built guest); DRILLS=1 adds the failure drills
-	E2E_DRILLS=$(or $(DRILLS),0) scripts/e2e.sh
+e2e: ## End-to-end check against the running stack (slow, needs the built guest); DRILLS=1 adds the failure drills, DESKTOP=1 the interactive desktop (long)
+	E2E_DRILLS=$(or $(DRILLS),0) E2E_DESKTOP=$(or $(DESKTOP),0) scripts/e2e.sh
 
 hooks: ## Install the pre-commit tool and register the git hooks (once per clone)
 	uv tool install pre-commit
