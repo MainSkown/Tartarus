@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Makes what CAPE writes under its analyses directory readable by other users.
+#
+# CAPE saves uploaded files (dropped files, process dumps, screenshots) through Python's
+# temporary-file API, which always creates them mode 0600, whatever the umask. The backend
+# mounts this storage read-only as a different user, so without this it cannot read them and
+# artifact downloads fail. report.json and the pcap are already 0644; this brings the rest in
+# line. Only read (and directory search) bits are added, never write, and only by the owner.
+#
+#   share-storage [--once] [DIRECTORY]
+#
+# Without --once it keeps running: one full pass, then a pass every few seconds over what
+# changed in the last RECENT_MINUTES, so a large storage is not walked every time.
+set -uo pipefail
+
+DIRECTORY=/opt/CAPEv2/storage/analyses
+ONCE=0
+INTERVAL_SECONDS=${SHARE_STORAGE_INTERVAL:-3}
+RECENT_MINUTES=15
+
+usage() { echo "usage: share-storage [--once] [DIRECTORY]" >&2; exit 2; }
+
+for argument in "$@"; do
+    case $argument in
+        --once) ONCE=1 ;;
+        -*) usage ;;
+        *) DIRECTORY=$argument ;;
+    esac
+done
+
+# $@ is extra `find` tests narrowing what to look at, e.g. -mmin -15.
+share() {
+    [[ -d $DIRECTORY ]] || return 0
+    find "$DIRECTORY" "$@" \
+        \( \( -type f ! -perm -o=r \) -o \( -type d ! -perm -o=rx \) \) \
+        -exec chmod go+rX {} + 2>/dev/null
+    return 0
+}
+
+share
+((ONCE)) && exit 0
+while sleep "$INTERVAL_SECONDS"; do
+    share -mmin "-$RECENT_MINUTES"
+done

@@ -145,6 +145,7 @@ should set the backend's URL in `reporting.conf`).
 | Extend | Interactive mode only. Implementation depends on CAPE support; if unavailable, "extend" is only offered before submission via the timeout. See open questions. |
 | Live data | Files in `storage/analyses/{id}/` (shared volume): `logs/*.bson`, `aux/*.json` |
 | Final data | `storage/analyses/{id}/reports/report.json`, `files/`, `CAPE/`, `procdump/`, `memory.dmp`, `dump.pcap`, `shots/`, `sysmon/`, `evtx/` |
+| File access | The backend mounts the storage read-only as another user. CAPE saves uploaded files (`files/`, `procdump/`, `shots/`) through Python's temporary-file API, always mode `0600`, so `cape/bin/share-storage` (a supervisord program in the `cape` container) adds read and directory-search bits for others within seconds of a file appearing. Found on the real stack by `make e2e`: before it, artifact downloads answered 500 and screenshots broke mid-response. |
 | Delete | `GET apiv2/tasks/delete/{id}/` (removes CAPE DB rows and storage) |
 | Desktop | Backend ↔ `guacd` (`cape:4822`, internal network) with a VNC connection to the guest's QEMU display |
 | Health | `GET apiv2/cuckoo/status/`, `GET apiv2/machines/list/` |
