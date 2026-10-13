@@ -11,6 +11,7 @@ import {
   makeDetectedAnalysis,
   mockAnalyses,
   mockShell,
+  mockViews,
   screenshotPath,
   test,
   waitForTransitions,
@@ -25,6 +26,7 @@ const LONG_ERROR = `CAPE task 107 aborted: ${'the guest agent stopped answering 
 async function openAnalysis(page: Page, analysis: AnalysisRead | undefined, mock: Partial<AnalysesMockOptions> = {}, path = `/analyses/${ID}`): Promise<void> {
   await mockShell(page, GUEST_READY_SYSTEM)
   await mockAnalyses(page, { items: analysis ? [analysis] : [], ...mock })
+  if (analysis?.status === 'done') await mockViews(page)
   await page.goto(path)
 }
 

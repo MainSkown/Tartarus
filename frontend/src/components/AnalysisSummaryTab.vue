@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AnalysisRead, AnalysisStatus, ReportSummary } from '@/api'
+import LaneBars from '@/components/LaneBars.vue'
+import ScreenshotStrip from '@/components/ScreenshotStrip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatTile from '@/components/StatTile.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { compareSeverity } from '@/services/analysis-status'
 import { formatDuration } from '@/services/format-duration'
+import { laneBars } from '@/services/lanes'
 
 const props = defineProps<{ analysis: AnalysisRead }>()
 
@@ -39,6 +42,7 @@ const signatures = computed(() =>
 )
 const techniques = computed(() => report.value.techniques ?? [])
 const hasDetections = computed(() => signatures.value.length > 0 || techniques.value.length > 0)
+const lanes = computed(() => laneBars(report.value.lane_counts))
 const duration = computed(() => (report.value.duration_s == null ? null : formatDuration(report.value.duration_s)))
 </script>
 
@@ -91,6 +95,18 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
           :value="report.registry_keys_written"
         />
       </div>
+
+      <template v-if="lanes.length > 0">
+        <h2 class="analysis-summary__heading text-mono">
+          EVENTS BY LANE
+        </h2>
+        <LaneBars :bars="lanes" />
+      </template>
+
+      <h2 class="analysis-summary__heading text-mono">
+        SCREENSHOTS
+      </h2>
+      <ScreenshotStrip :analysis-id="analysis.id" />
 
       <h2 class="analysis-summary__heading text-mono">
         NETWORK

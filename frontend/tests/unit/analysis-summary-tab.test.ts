@@ -1,14 +1,24 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
-import { describe, expect, it } from 'vitest'
-import AnalysisSummaryTab from '@/components/AnalysisSummaryTab.vue'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import {
   analysisWithStatus,
   DETECTIONS_SUMMARY,
   NO_DETECTIONS_SUMMARY,
 } from './analysis-fixtures'
+import { ARTIFACTS_VIEW } from './detections-fixtures'
 import type { AnalysisRead } from '@/api'
+
+vi.mock('@/api', () => ({ viewsArtifacts: vi.fn() }))
+
+const { viewsArtifacts } = await import('@/api')
+const AnalysisSummaryTab = (await import('@/components/AnalysisSummaryTab.vue')).default
+const artifactsMock = vi.mocked(viewsArtifacts)
+
+beforeEach(() => {
+  artifactsMock.mockResolvedValue({ data: ARTIFACTS_VIEW, error: undefined } as never)
+})
 
 function mountTab(analysis: AnalysisRead) {
   return mount(AnalysisSummaryTab, { global: { plugins: [Quasar] }, props: { analysis } })
@@ -124,4 +134,49 @@ describe('AnalysisSummaryTab terminal without a report', () => {
   it('says a cancelled analysis never ran', () => {
     expect(mountTab(analysisWithStatus('cancelled', { started_at: null })).text()).toContain('cancelled')
   })
+})
+
+describe('AnalysisSummaryTab events by lane', () => {
+  const withLanes = (lane_counts?: Record<string, number>) =>
+    mountTab(analysisWithStatus('done', { summary: { ...DETECTIONS_SUMMARY, lane_counts } }))
+
+  it('draws a bar per lane that has events, with direct labels', () => {
+    const wrapper = withLanes({ api: 472, network: 217, process: 15, file: 0 })
+    const rows = wrapper.findAll('.lane-bar').map((row) => row.text())
+    expect(rows).toEqual([expect.stringContaining('PROCESS'), expect.stringContaining('NETWORK'), expect.stringContaining('API')])
+    expect(rows[2]).toContain('472')
+  })
+
+  it('has no lane section when the summary carries no lane counts', () => {
+    const wrapper = withLanes(undefined)
+    expect(wrapper.find('.lane-bar').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('EVENTS BY LANE')
+  })
+})
+
+describe('AnalysisSummaryTab screenshots', () => {
+  it('shows the screenshot strip of a done analysis', async () => {
+    const wrapper = mountTab(analysisWithStatus('done', { id: 45, summary: DETECTIONS_SUMMARY }))
+    await flushPromises()
+    expect(artifactsMock).toHaveBeenCalledWith(expect.objectContaining({ path: { analysis_id: 45 } }))
+    expect(wrapper.findAll('.screenshot-strip__thumb')).toHaveLength(3)
+  })
+
+  it('still renders everything else when the artifacts request fails', async () => {
+    artifactsMock.mockResolvedValue({ data: undefined, error: { error: { message: 'boom' } } } as never)
+    const wrapper = mountTab(analysisWithStatus('done', { summary: DETECTIONS_SUMMARY }))
+    await flushPromises()
+    expect(wrapper.text()).toContain('failed to load: boom')
+    expect(wrapper.text()).toContain('SIGNATURES')
+    expect(wrapper.findAll('.stat-tile').length).toBeGreaterThan(0)
+  })
+
+  it.each(['queued', 'starting', 'running', 'processing', 'ingesting', 'failed', 'report_failed', 'cancelled'] as const)(
+    'does not ask for artifacts while the analysis is %s',
+    async (status) => {
+      mountTab(analysisWithStatus(status))
+      await flushPromises()
+      expect(artifactsMock).not.toHaveBeenCalled()
+    },
+  )
 })
