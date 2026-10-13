@@ -7,6 +7,7 @@ import AnalysesTable from '@/components/AnalysesTable.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { ANALYSIS_STATUSES, analysisStatusMeta } from '@/services/analysis-status'
 import { confirmDestructive } from '@/services/confirm'
+import { deleteConfirmation } from '@/services/delete-confirmation'
 import { openSubmitDialog } from '@/services/submit-dialog'
 import { useAnalysesStore, type AnalysisListQuery } from '@/stores/analyses'
 import { useSystemStore } from '@/stores/system'
@@ -63,10 +64,9 @@ function filenameOf(id: number): string {
 }
 
 async function deleteAnalysis(id: number): Promise<void> {
-  const confirmed = await confirmDestructive({
-    title: `Delete #${id}`,
-    message: `Delete ${filenameOf(id)}? Its sample, events and report are removed and this cannot be undone.`,
-  })
+  const analysis = analyses.items.find((item) => item.id === id)
+  if (!analysis) return
+  const confirmed = await confirmDestructive(deleteConfirmation(analysis))
   if (!confirmed) return
   if (!(await analyses.remove(id))) Notify.create({ type: 'tt-error', message: `Could not delete #${id}` })
 }

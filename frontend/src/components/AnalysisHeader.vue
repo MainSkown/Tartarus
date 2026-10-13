@@ -4,7 +4,8 @@ import { copyToClipboard, Notify } from 'quasar'
 import type { AnalysisRead } from '@/api'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { isActiveStatus } from '@/services/analysis-status'
-import { formatDuration, formatUtcTimestamp, secondsBetween } from '@/services/format-duration'
+import { formatDuration, secondsBetween } from '@/services/format-duration'
+import { formatTimestamp } from '@/services/format-time'
 
 const props = defineProps<{ analysis: AnalysisRead; busy: boolean }>()
 const emit = defineEmits<{ cancel: []; delete: [] }>()
@@ -83,14 +84,14 @@ async function copyHash(): Promise<void> {
     <dl class="analysis-header__timing text-mono">
       <div>
         <dt>SUBMITTED</dt>
-        <dd>{{ formatUtcTimestamp(analysis.submitted_at) }}</dd>
+        <dd>{{ formatTimestamp(analysis.submitted_at) }}</dd>
       </div>
       <div
         v-if="analysis.started_at"
         class="analysis-header__started"
       >
         <dt>STARTED</dt>
-        <dd>{{ formatUtcTimestamp(analysis.started_at) }}</dd>
+        <dd>{{ formatTimestamp(analysis.started_at) }}</dd>
       </div>
       <div
         v-if="duration"

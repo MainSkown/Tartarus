@@ -2,14 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { formatTimestamp } from '@/services/format-time'
 
 describe('formatTimestamp', () => {
-  it('renders an instant as local date and minute', () => {
-    const instant = new Date(2026, 9, 12, 14, 3, 59)
-    expect(formatTimestamp(instant.toISOString())).toBe('2026-10-12 14:03')
+  it('writes the instant as UTC to the second, whatever the offset it was sent with', () => {
+    expect(formatTimestamp('2026-10-13T12:00:05.123+02:00')).toBe('2026-10-13 10:00:05 UTC')
   })
 
-  it('zero-pads month, day, hour and minute', () => {
-    const instant = new Date(2026, 0, 2, 3, 4)
-    expect(formatTimestamp(instant.toISOString())).toBe('2026-01-02 03:04')
+  it('zero-pads every field', () => {
+    expect(formatTimestamp('2026-01-02T03:04:05Z')).toBe('2026-01-02 03:04:05 UTC')
   })
 
   it('returns the input unchanged when it is not a date', () => {

@@ -8,6 +8,8 @@ import AnalysisTabs from '@/components/AnalysisTabs.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { DEFAULT_TAB } from '@/services/analysis-tabs'
 import { confirmDestructive } from '@/services/confirm'
+import { deleteConfirmation } from '@/services/delete-confirmation'
+import { NOT_FOUND_STATUS } from '@/services/quiet-statuses'
 import { useAnalysesStore } from '@/stores/analyses'
 
 const route = useRoute()
@@ -19,7 +21,10 @@ const acting = ref(false)
 const analysisId = computed(() => (/^\d+$/.test(String(route.params.id)) ? Number(route.params.id) : undefined))
 const activeTab = computed(() => (typeof route.params.tab === 'string' && route.params.tab) || DEFAULT_TAB)
 const analysis = computed(() => (store.current?.id === analysisId.value ? store.current : undefined))
-const showLoadError = computed(() => store.loadError !== undefined && !store.loading)
+const loadFailed = computed(() => store.loadError !== undefined && !store.loading)
+const notFound = computed(
+  () => analysisId.value === undefined || (loadFailed.value && store.loadErrorStatus === NOT_FOUND_STATUS),
+)
 
 async function load(): Promise<void> {
   if (analysisId.value === undefined) return
@@ -41,10 +46,8 @@ async function cancelAnalysis(): Promise<void> {
 }
 
 async function deleteAnalysis(): Promise<void> {
-  const confirmed = await confirmDestructive({
-    title: 'Delete analysis',
-    message: 'This removes the analysis, its CAPE task and its sample. It cannot be undone.',
-  })
+  if (!analysis.value) return
+  const confirmed = await confirmDestructive(deleteConfirmation(analysis.value))
   if (!confirmed) return
   if (await perform(store.remove, 'Could not delete the analysis')) await router.push({ name: 'dashboard' })
 }
@@ -61,7 +64,7 @@ onBeforeUnmount(store.stopPolling)
 <template>
   <div class="analysis-page">
     <TerminalEmpty
-      v-if="analysisId === undefined"
+      v-if="notFound"
       message="analysis not found"
     />
 
@@ -87,7 +90,7 @@ onBeforeUnmount(store.stopPolling)
     </template>
 
     <div
-      v-else-if="showLoadError"
+      v-else-if="loadFailed"
       class="page-state text-mono"
     >
       <p class="text-gray">

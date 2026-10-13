@@ -3,6 +3,7 @@ import { computed, onScopeDispose, ref } from 'vue'
 import { analysesCancel, analysesCreate, analysesDelete, analysesList, analysesRead } from '@/api'
 import type { AnalysesListData, AnalysisRead, Route } from '@/api'
 import { isTerminalStatus } from '@/services/analysis-status'
+import { NOT_FOUND_STATUS, quietOn } from '@/services/quiet-statuses'
 import { validationIssues, type ValidationIssue } from '@/services/validation-errors'
 
 const POLL_INTERVAL_MS = 2_000
@@ -30,6 +31,15 @@ export class SubmissionRejected extends Error {
   }
 }
 
+interface LoadFailure {
+  message: string
+  status?: number
+}
+
+function failureOf(error: unknown, response?: Response): LoadFailure {
+  return { message: errorMessage(error), status: response?.status }
+}
+
 function errorMessage(error: unknown): string {
   const message = (error as { error?: { message?: unknown } } | undefined)?.error?.message
   return typeof message === 'string' ? message : GENERIC_ERROR_MESSAGE
@@ -50,6 +60,7 @@ export const useAnalysesStore = defineStore('analyses', () => {
   const total = ref(0)
   const current = ref<AnalysisRead>()
   const loadError = ref<string>()
+  const loadErrorStatus = ref<number>()
   const activeFetches = ref(0)
   const loading = computed(() => activeFetches.value > 0)
 
@@ -64,30 +75,36 @@ export const useAnalysesStore = defineStore('analyses', () => {
   let pollInFlight = false
   let consecutivePollFailures = 0
 
-  /** Resolves to the failure message, or `undefined` when the list was loaded or superseded. */
-  async function loadList(): Promise<string | undefined> {
+  /** Resolves to the failure, or `undefined` when the list was loaded or superseded. */
+  async function loadList(): Promise<LoadFailure | undefined> {
     const requestId = ++listRequestId
-    const { data, error } = await analysesList({ query: listQuery ?? {} })
+    const { data, error, response } = await analysesList({ query: listQuery ?? {} })
     if (requestId !== listRequestId) return undefined
-    if (error || !data) return errorMessage(error)
+    if (error || !data) return failureOf(error, response)
     items.value = data.items
     total.value = data.total
     return undefined
   }
 
-  async function loadCurrent(id: number): Promise<string | undefined> {
+  async function loadCurrent(id: number): Promise<LoadFailure | undefined> {
     const requestId = ++currentRequestId
-    const { data, error } = await analysesRead({ path: { analysis_id: id } })
+    // A missing analysis is a state the page shows, not a fault to toast about.
+    const { data, error, response } = await analysesRead({
+      path: { analysis_id: id },
+      meta: quietOn(NOT_FOUND_STATUS),
+    })
     if (requestId !== currentRequestId) return undefined
-    if (error || !data) return errorMessage(error)
+    if (error || !data) return failureOf(error, response)
     current.value = data
     return undefined
   }
 
-  async function trackFetch(load: () => Promise<string | undefined>): Promise<void> {
+  async function trackFetch(load: () => Promise<LoadFailure | undefined>): Promise<void> {
     activeFetches.value++
     try {
-      loadError.value = await load()
+      const failure = await load()
+      loadError.value = failure?.message
+      loadErrorStatus.value = failure?.status
     } finally {
       activeFetches.value--
     }
@@ -159,7 +176,7 @@ export const useAnalysesStore = defineStore('analyses', () => {
     pollTimer = undefined
     pollInFlight = true
     try {
-      const loads: Promise<string | undefined>[] = []
+      const loads: Promise<LoadFailure | undefined>[] = []
       if (listNeedsPolling()) loads.push(loadList())
       if (current.value && currentNeedsPolling()) loads.push(loadCurrent(current.value.id))
       const failures = (await Promise.all(loads)).filter((failure) => failure !== undefined)
@@ -190,6 +207,7 @@ export const useAnalysesStore = defineStore('analyses', () => {
     current,
     loading,
     loadError,
+    loadErrorStatus,
     fetchList,
     fetchOne,
     submit,

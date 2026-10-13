@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import configureApiClient, { notifyApiError } from '@/boot/api'
 import { client } from '@/api/client.gen'
 import type { ErrorEnvelope } from '@/api'
+import { quietOn } from '@/services/quiet-statuses'
 
 function registeredErrorInterceptor() {
   configureApiClient({} as Parameters<typeof configureApiClient>[0])
@@ -47,6 +48,39 @@ describe('api boot', () => {
     expect(notifyCreate).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'tt-error', message: 'Analysis not found' }),
     )
+  })
+
+  describe('requests that expect some failures', () => {
+    const notFound: ErrorEnvelope = { error: { code: 'not_found', message: 'Analysis 9 not found', details: {} } }
+    const responseWith = (status: number) => ({ status }) as Response
+
+    it('stays silent for a status the request said it handles itself, and passes the error on', async () => {
+      const notifyCreate = mockNotifyCreate()
+      const interceptor = registeredErrorInterceptor()
+
+      const result = await interceptor(notFound, responseWith(404), undefined, { meta: quietOn(404) } as never)
+
+      expect(notifyCreate).not.toHaveBeenCalled()
+      expect(result).toBe(notFound)
+    })
+
+    it('still toasts any other status of that request', async () => {
+      const notifyCreate = mockNotifyCreate()
+      const interceptor = registeredErrorInterceptor()
+
+      await interceptor(notFound, responseWith(500), undefined, { meta: quietOn(404) } as never)
+
+      expect(notifyCreate).toHaveBeenCalledWith(expect.objectContaining({ type: 'tt-error' }))
+    })
+
+    it('toasts a 404 of a request that did not ask for silence', async () => {
+      const notifyCreate = mockNotifyCreate()
+      const interceptor = registeredErrorInterceptor()
+
+      await interceptor(notFound, responseWith(404), undefined, {} as never)
+
+      expect(notifyCreate).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('includes field messages for a 422 validation error', async () => {

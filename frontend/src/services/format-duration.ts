@@ -13,7 +13,3 @@ export function formatDuration(totalSeconds: number): string {
 export function secondsBetween(startIso: string, endIso: string): number {
   return (new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000
 }
-
-export function formatUtcTimestamp(iso: string): string {
-  return `${new Date(iso).toISOString().slice(0, 19).replace('T', ' ')} UTC`
-}

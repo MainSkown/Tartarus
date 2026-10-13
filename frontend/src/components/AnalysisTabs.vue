@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ANALYSIS_TABS } from '@/services/analysis-tabs'
+import { computed } from 'vue'
+import { ANALYSIS_TABS, selectableTab } from '@/services/analysis-tabs'
 
-defineProps<{ active: string }>()
+const props = defineProps<{ active: string }>()
 const emit = defineEmits<{ select: [tab: string] }>()
+
+const selected = computed(() => selectableTab(props.active))
 </script>
 
 <template>
@@ -17,7 +20,7 @@ const emit = defineEmits<{ select: [tab: string] }>()
       type="button"
       role="tab"
       class="analysis-tabs__tab text-mono"
-      :aria-selected="tab.key === active"
+      :aria-selected="tab.key === selected"
       :disabled="!tab.available"
       :title="tab.available ? undefined : 'Arrives with M1b'"
       @click="emit('select', tab.key)"

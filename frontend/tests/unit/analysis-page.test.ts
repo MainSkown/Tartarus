@@ -33,15 +33,16 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
 }))
 
+const { deleteConfirmation } = await import('@/services/delete-confirmation')
 const { default: AnalysisPage } = await import('@/pages/AnalysisPage.vue')
 
 const POLL_MS = 2_000
 
 const succeeded = <T>(data: T) => ({ data, error: undefined })
 
-function failed(message = 'Analysis 42 not found') {
-  const error: ErrorEnvelope = { error: { code: 'not_found', message, details: {} } }
-  return { data: undefined, error }
+function failed(message = 'Analysis 42 not found', status = 404) {
+  const error: ErrorEnvelope = { error: { code: status === 404 ? 'not_found' : 'internal_error', message, details: {} } }
+  return { data: undefined, error, response: { status } }
 }
 
 async function mountPage(analysis: AnalysisRead = analysisWithStatus('done', { summary: NO_DETECTIONS_SUMMARY })) {
@@ -79,19 +80,28 @@ describe('AnalysisPage loading', () => {
 
   it('reads the analysis named by the route', async () => {
     await mountPage()
-    expect(analysesReadMock).toHaveBeenCalledWith({ path: { analysis_id: 42 } })
+    expect(analysesReadMock).toHaveBeenCalledWith(expect.objectContaining({ path: { analysis_id: 42 } }))
   })
 
   it('shows the failure message with a retry that loads again', async () => {
-    analysesReadMock.mockResolvedValue(failed())
+    analysesReadMock.mockResolvedValue(failed('database connection lost', 500))
     const wrapper = mount(AnalysisPage, { global: { plugins: [Quasar] } })
     await flushPromises()
-    expect(wrapper.text()).toContain('failed to load: Analysis 42 not found')
+    expect(wrapper.text()).toContain('failed to load: database connection lost')
 
     analysesReadMock.mockResolvedValue(succeeded(analysisWithStatus('done', { summary: NO_DETECTIONS_SUMMARY })))
     await wrapper.find('.retry-btn').trigger('click')
     await flushPromises()
     expect(wrapper.find('.analysis-header').exists()).toBe(true)
+  })
+
+  it('reports an id the backend does not know as not found, with no retry', async () => {
+    analysesReadMock.mockResolvedValue(failed())
+    const wrapper = mount(AnalysisPage, { global: { plugins: [Quasar] } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('analysis not found')
+    expect(wrapper.text()).not.toContain('failed to load')
+    expect(wrapper.find('.retry-btn').exists()).toBe(false)
   })
 
   it('reports a non-numeric id as not found without asking the backend', async () => {
@@ -107,7 +117,7 @@ describe('AnalysisPage loading', () => {
     analysesReadMock.mockResolvedValue(succeeded(analysisWithStatus('done', { id: 43, summary: NO_DETECTIONS_SUMMARY })))
     route.params = { id: '43' }
     await flushPromises()
-    expect(analysesReadMock).toHaveBeenLastCalledWith({ path: { analysis_id: 43 } })
+    expect(analysesReadMock).toHaveBeenLastCalledWith(expect.objectContaining({ path: { analysis_id: 43 } }))
     expect(wrapper.find('.analysis-header').text()).toContain('#43')
   })
 })
@@ -158,6 +168,13 @@ describe('AnalysisPage tabs', () => {
     const wrapper = await mountPage()
     expect(wrapper.find('.analysis-summary').exists()).toBe(false)
     expect(wrapper.text()).toContain('processes arrives with M1b')
+  })
+
+  it('leaves SUMMARY marked, and marks nothing else, for a tab that is not built yet', async () => {
+    route.params = { id: '42', tab: 'events' }
+    const wrapper = await mountPage()
+    const selected = wrapper.findAll('.analysis-tabs [aria-selected="true"]')
+    expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
   })
 
   it('navigates when the summary tab is selected', async () => {
@@ -226,9 +243,21 @@ describe('AnalysisPage delete', () => {
     analysesDeleteMock.mockResolvedValue({ data: undefined, error: undefined })
     await wrapper.find('.analysis-header__delete').trigger('click')
     await flushPromises()
-    expect(confirmDestructiveMock).toHaveBeenCalledWith(expect.objectContaining({ title: expect.any(String) }))
+    expect(confirmDestructiveMock).toHaveBeenCalledWith(deleteConfirmation(analysisWithStatus('done', { summary: NO_DETECTIONS_SUMMARY })))
     expect(analysesDeleteMock).toHaveBeenCalledWith({ path: { analysis_id: 42 } })
     expect(push).toHaveBeenCalledWith({ name: 'dashboard' })
+  })
+
+  it('tells the user how much disk the delete frees', async () => {
+    const wrapper = await mountPage(
+      analysisWithStatus('done', { summary: NO_DETECTIONS_SUMMARY, disk_bytes: 3 * 1024 * 1024 }),
+    )
+    confirmDestructiveMock.mockResolvedValue(false)
+    await wrapper.find('.analysis-header__delete').trigger('click')
+    await flushPromises()
+    expect(confirmDestructiveMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('freeing 3 MB') }),
+    )
   })
 
   it('does nothing when the confirmation is declined', async () => {

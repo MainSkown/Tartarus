@@ -15,3 +15,8 @@ export const ANALYSIS_TABS: AnalysisTab[] = [
     available: false,
   })),
 ]
+
+/** The tab to mark selected: the requested one only if it is built, otherwise the default. */
+export function selectableTab(key: string): string {
+  return ANALYSIS_TABS.some((tab) => tab.key === key && tab.available) ? key : DEFAULT_TAB
+}

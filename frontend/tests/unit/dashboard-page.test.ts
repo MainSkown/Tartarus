@@ -268,6 +268,19 @@ describe('DashboardPage row actions', () => {
     expect(wrapper.find('tbody').exists()).toBe(false)
   })
 
+  it('tells the user how much disk the delete frees', async () => {
+    vi.mocked(analysesList).mockResolvedValue(listed([analysis({ id: 5, disk_bytes: 2 * 1024 ** 3 })]))
+    vi.mocked(confirmDestructive).mockResolvedValue(false)
+    const { wrapper } = await mountDashboard()
+
+    await wrapper.find('[aria-label="Delete analysis 5"]').trigger('click')
+    await flushPromises()
+
+    expect(confirmDestructive).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('freeing 2 GB') }),
+    )
+  })
+
   it('keeps the analysis when the user declines', async () => {
     vi.mocked(analysesList).mockResolvedValue(listed([analysis({ id: 5 })]))
     vi.mocked(confirmDestructive).mockResolvedValue(false)

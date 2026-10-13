@@ -2,6 +2,7 @@ import { defineBoot } from '#q-app'
 import { Notify } from 'quasar'
 import { client } from '@/api/client.gen'
 import type { ErrorEnvelope } from '@/api'
+import { isQuietFailure } from '@/services/quiet-statuses'
 import { validationIssues } from '@/services/validation-errors'
 
 // Empty, not '/api': every generated URL in sdk.gen.ts already starts with /api (the backend
@@ -39,8 +40,10 @@ export function notifyApiError(error: unknown): void {
 
 export default defineBoot(() => {
   client.setConfig({ baseUrl: API_BASE_URL })
-  client.interceptors.error.use((error) => {
-    notifyApiError(error)
+  client.interceptors.error.use((error, response, _request, options) => {
+    // The generated client hands interceptors the caller's own options, `meta` included, but types them without it.
+    const { meta } = options as { meta?: Record<string, unknown> }
+    if (!isQuietFailure(response, meta)) notifyApiError(error)
     return error
   })
 })

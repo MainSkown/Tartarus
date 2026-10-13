@@ -16,6 +16,7 @@ vi.mock('@/api', () => ({
 }))
 
 const { SubmissionRejected, useAnalysesStore } = await import('@/stores/analyses')
+const { quietOn } = await import('@/services/quiet-statuses')
 
 const POLL_MS = 2_000
 const BACKOFF_MS = 10_000
@@ -48,7 +49,12 @@ function page(...items: AnalysisRead[]): AnalysisPage {
 
 const succeeded = <T>(data: T) => ({ data, error: undefined })
 
-function failed(code = 'internal_error', message = 'boom', fields: { location: string[]; message: string }[] = []) {
+function failed(
+  code = 'internal_error',
+  message = 'boom',
+  fields: { location: string[]; message: string }[] = [],
+  status = 500,
+) {
   const error: ErrorEnvelope = {
     error: {
       code,
@@ -56,7 +62,7 @@ function failed(code = 'internal_error', message = 'boom', fields: { location: s
       details: fields.length > 0 ? { fields: fields.map((f) => ({ ...f, type: 'value_error' })) } : {},
     },
   }
-  return { data: undefined, error }
+  return { data: undefined, error, response: { status } }
 }
 
 function deferred<T>() {
@@ -143,7 +149,7 @@ describe('fetchOne', () => {
   it('reads the analysis by id into current', async () => {
     analysesReadMock.mockResolvedValue(succeeded(analysis(7, 'running')))
     await store.fetchOne(7)
-    expect(analysesReadMock).toHaveBeenCalledWith({ path: { analysis_id: 7 } })
+    expect(analysesReadMock).toHaveBeenCalledWith(expect.objectContaining({ path: { analysis_id: 7 } }))
     expect(store.current?.id).toBe(7)
   })
 
@@ -160,10 +166,35 @@ describe('fetchOne', () => {
   })
 
   it('records the error and leaves current empty when the analysis does not exist', async () => {
-    analysesReadMock.mockResolvedValue(failed('not_found', 'Analysis 9 not found'))
+    analysesReadMock.mockResolvedValue(failed('not_found', 'Analysis 9 not found', [], 404))
     await store.fetchOne(9)
     expect(store.current).toBeUndefined()
     expect(store.loadError).toBe('Analysis 9 not found')
+  })
+
+  it('keeps the HTTP status of the failure so a missing analysis can be told from a broken backend', async () => {
+    analysesReadMock.mockResolvedValue(failed('not_found', 'Analysis 9 not found', [], 404))
+    await store.fetchOne(9)
+    expect(store.loadErrorStatus).toBe(404)
+
+    analysesReadMock.mockResolvedValue(failed('internal_error', 'database is down'))
+    await store.fetchOne(9)
+    expect(store.loadErrorStatus).toBe(500)
+  })
+
+  it('clears the failure status once a read succeeds', async () => {
+    analysesReadMock.mockResolvedValue(failed('not_found', 'Analysis 9 not found', [], 404))
+    await store.fetchOne(9)
+    analysesReadMock.mockResolvedValue(succeeded(analysis(9)))
+    await store.fetchOne(9)
+    expect(store.loadErrorStatus).toBeUndefined()
+    expect(store.loadError).toBeUndefined()
+  })
+
+  it('asks the API client not to toast a 404, which the page shows itself', async () => {
+    analysesReadMock.mockResolvedValue(succeeded(analysis(7)))
+    await store.fetchOne(7)
+    expect(analysesReadMock).toHaveBeenCalledWith(expect.objectContaining({ meta: quietOn(404) }))
   })
 })
 
@@ -399,7 +430,7 @@ describe('polling the viewed analysis', () => {
     analysesReadMock.mockResolvedValueOnce(succeeded(analysis(4, 'processing')))
     await tick(POLL_MS)
     expect(store.current?.status).toBe('processing')
-    expect(analysesReadMock).toHaveBeenLastCalledWith({ path: { analysis_id: 4 } })
+    expect(analysesReadMock).toHaveBeenLastCalledWith(expect.objectContaining({ path: { analysis_id: 4 } }))
 
     analysesReadMock.mockResolvedValue(succeeded(analysis(4, 'done')))
     await tick(POLL_MS)

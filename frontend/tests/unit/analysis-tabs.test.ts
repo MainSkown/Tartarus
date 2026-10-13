@@ -13,6 +13,16 @@ describe('AnalysisTabs', () => {
     expect(selected[0]!.text()).toBe('SUMMARY')
   })
 
+  it('keeps SUMMARY marked, and marks no disabled tab, when the active tab is not built yet', () => {
+    const selected = mountTabs('processes').findAll('[aria-selected="true"]')
+    expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
+  })
+
+  it('keeps SUMMARY marked for a tab name that does not exist', () => {
+    const selected = mountTabs('bogus').findAll('[aria-selected="true"]')
+    expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
+  })
+
   it('disables every tab that arrives with M1b and says why', () => {
     const disabled = mountTabs().findAll('button[disabled]')
     expect(disabled.map((tab) => tab.text())).toEqual([
