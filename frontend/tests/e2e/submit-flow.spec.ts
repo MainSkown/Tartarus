@@ -1,8 +1,13 @@
 import { basename } from 'node:path'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { deleteWhenOver } from './delete-when-over'
+import { expectEventsTab, expectTimelineTab } from './explore-tabs'
 
 const SAMPLE = process.env.E2E_SAMPLE
 const ANALYSIS_URL = /\/analyses\/(\d+)/
+// An analysis takes minutes of guest time, then the Events and Timeline tabs are exercised; scripts/e2e.sh bounds the whole run at 480 s.
+const TEST_TIMEOUT_MS = 450_000
+const CLEANUP_WAIT_MS = 120_000
 
 const openTab = (page: Page, label: string) => page.getByRole('tab', { name: label, exact: true }).click()
 
@@ -54,9 +59,12 @@ async function expectDetectionsContent(page: Page): Promise<void> {
 
 // Real stack, no mocks. Reaching /analyses/<id> from the dialog proves `useRouter()` works inside
 // the Quasar dialog, which the unit tests (a stubbed router) cannot show. Once the analysis is
-// done, every exploring tab must show what the real index and report hold.
+// done, every exploring tab must show what the real index and report hold, and the Events and
+// Timeline tabs must filter it as the API does. One analysis serves all of it: a second run would
+// hold the guest again for minutes.
 test('submit a sample through the dialog and watch it finish', async ({ page, request }) => {
   test.skip(!SAMPLE, 'E2E_SAMPLE must name the file to submit; scripts/e2e.sh sets it')
+  test.setTimeout(TEST_TIMEOUT_MS)
   const sample = SAMPLE as string
   let analysisId: string | undefined
 
@@ -90,9 +98,10 @@ test('submit a sample through the dialog and watch it finish', async ({ page, re
     await expectNetworkContent(page)
     await expectArtifactsContent(page, request, analysisId as string)
     await expectDetectionsContent(page)
+
+    const total = await test.step('the Events tab filters the real index', () => expectEventsTab(page, request, analysisId as string))
+    await test.step('the Timeline tab draws and brushes the real index', () => expectTimelineTab(page, request, analysisId as string, total))
   } finally {
-    if (analysisId) {
-      await request.delete(`/api/analyses/${analysisId}`)
-    }
+    if (analysisId) await deleteWhenOver(request, analysisId, CLEANUP_WAIT_MS)
   }
 })

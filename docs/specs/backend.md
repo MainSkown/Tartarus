@@ -489,4 +489,11 @@ start into `data/secrets.env`.
   - Exports, validated with the `stix2` validator and a MISP JSON schema.
 - Integration tests: an OpenSearch and Postgres testcontainer. The collector is replayed
   against a fixture analysis directory that is written incrementally to simulate a live run.
-- End-to-end: the guest self-test sample (see cape-integration) runs in the dev environment.
+- End-to-end: the guest self-test sample (see cape-integration) runs in the dev environment, and `make e2e`
+  (`scripts/e2e.sh`, helpers in `scripts/lib/`, browser tests in `frontend/tests/e2e/`) checks the real stack:
+  step (a) submits it and checks the report views and, in `e2e-query.sh`, that the finished analysis answers
+  the query API (validation, paging in both sorts, query and chip narrowing, error answers, facets, histogram,
+  event detail, value autocomplete, columns) with counts equal to the analysis record's own; the browser flow
+  repeats the filtering through the Events and Timeline tabs. The bash assertions have their own tests
+  (`scripts/tests/test_e2e_query.sh`, `test_e2e_cleanup.sh`) against fake APIs, each fault of which must be
+  caught by its check.

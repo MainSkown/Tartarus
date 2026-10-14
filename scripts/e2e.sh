@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# End-to-end check of M1a against the REAL stack (`make up` first, guest built and registered):
+# End-to-end check of the stack against the REAL services (`make up` first, guest built and registered):
 # submits a harmless sample through the frontend's published port and follows it through the
-# queue, the guest and the report, then checks the event index and every analysis view of the
-# finished analysis. `E2E_DRILLS=1` adds the failure drills, which stop cape or opensearch and
-# restart the backend mid-run and put them back afterwards. `E2E_SKIP_UI=1` skips the browser test. Step (j) always ends an interactive run early through POST /finish.
+# queue, the guest and the report. On the finished analysis of step (a) it checks the event index,
+# every analysis view (processes, network, detections, ATT&CK, IOCs, artifacts) and the query API:
+# validation, the field catalog, search with paging in both sorts, query/chip/lane narrowing, the
+# error answers, facets, the histogram, one event with its related events, value autocomplete and
+# extra columns, each compared with the analysis record's own counts (scripts/lib/e2e-query.sh).
+# The live feed is always checked on the same analysis. Then it checks the queue order and
+# cancelling, deleting a finished analysis, and a browser run of the submit flow
+# (frontend/tests/e2e/submit-flow.spec.ts: the tabs, and the Events and Timeline tabs filtering the
+# real index) on a second analysis. Step (j) always ends an interactive run early through POST /finish.
+# `E2E_DRILLS=1` adds the failure drills, which stop cape or opensearch and restart the backend
+# mid-run and put them back afterwards. `E2E_SKIP_UI=1` skips the browser test.
 # `E2E_DESKTOP=1` adds the interactive desktop (the tunnel's API half, then the browser test
 # frontend/tests/e2e/desktop-flow.spec.ts): it holds the guest for the whole timeout of two
-# interactive runs, about 10 minutes. The live feed is always checked, on the analysis of step (a).
+# interactive runs, about 10 minutes.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -27,6 +35,7 @@ DESKTOP=${E2E_DESKTOP:-0}
 source "$REPO/scripts/lib/benign-sample.sh"
 source "$REPO/scripts/lib/e2e-api.sh"
 source "$REPO/scripts/lib/e2e-views.sh"
+source "$REPO/scripts/lib/e2e-query.sh"
 source "$REPO/scripts/lib/e2e-live.sh"
 source "$REPO/scripts/lib/e2e-finish.sh"
 
@@ -37,9 +46,10 @@ CREATED_IDS=()
 
 remember() { CREATED_IDS+=("$1"); }
 
-# Always runs: puts cape, opensearch and the backend back, then removes what the run created.
+# Always runs: puts cape, opensearch and the backend back, then removes what the run created. An
+# analysis that is still running is waited for (see remove_analysis), so a failed step does not leave
+# one behind to block the next run; a second interrupt skips the wait.
 cleanup() {
-    local id
     trap - EXIT
     stop_live_watch
     compose start opensearch cape backend >/dev/null 2>&1
@@ -47,9 +57,7 @@ cleanup() {
         wait_for_health cape ok "$RESTORE_TIMEOUT" >/dev/null 2>&1 || info "cape is not healthy after the run"
         wait_for_health opensearch ok "$RESTORE_TIMEOUT" >/dev/null 2>&1 || info "opensearch is not healthy after the run"
     fi
-    for id in "${CREATED_IDS[@]}"; do
-        delete_analysis "$id" >/dev/null 2>&1
-    done
+    remove_analyses "${CREATED_IDS[@]}" >/dev/null 2>&1
     rm -rf "$WORK_DIR" "$RESPONSE_FILE"
 }
 trap cleanup EXIT
@@ -128,6 +136,7 @@ step_a_sample_runs_to_done() {
     finish_live_watch
     check "(a) the result has a score and at least one signature" has_score_and_signature "$A_ID"
     check_finished_analysis_views "$A_ID" "$A_SHA"
+    check_finished_analysis_queries "$A_ID"
     info "(a) took $((SECONDS - started)) s"
 }
 
@@ -241,10 +250,20 @@ browser_test_passes() { # file spec desktop(0|1) bound-seconds
     return 1
 }
 
+# The browser submits its own analysis, so this script learns of it by the sample's hash; remembered,
+# cleanup removes it even when the test died before it could.
+remember_analyses_of_sample() { # sha256
+    local id
+    for id in $(analyses_of_sample "$1"); do remember "$id"; done
+}
+
 step_browser_flow() {
-    local started=$SECONDS
-    check "browser: the submit dialog lands on /analyses/<id> and the page shows done with a score" \
-        browser_test_passes "$(unique_sample e2e-ui.exe)" submit-flow 0 "$BROWSER_SECONDS"
+    local started=$SECONDS sample sha
+    sample=$(unique_sample e2e-ui.exe)
+    sha=$(sha256_of "$sample")
+    check "browser: the submit dialog lands on /analyses/<id>, the page shows done with a score, and the Events and Timeline tabs answer queries" \
+        browser_test_passes "$sample" submit-flow 0 "$BROWSER_SECONDS"
+    remember_analyses_of_sample "$sha"
     info "browser flow took $((SECONDS - started)) s"
 }
 

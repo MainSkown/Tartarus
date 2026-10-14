@@ -13,13 +13,21 @@ finish_analysis() { # id
 }
 
 # "running" begins when CAPE takes the task, well before the guest is up; ending the run before the
-# analyzer has started the monitor leaves the guest hung until CAPE gives up on it. A log written by
-# the monitor (logs/<pid>.bson) means the sample is being watched.
+# analyzer has started the monitor in the sample leaves the guest hung until CAPE gives up on it. The
+# analyzer logs the sample's pid when it starts it, and the monitor writes logs/<pid>.bson once it runs
+# in that process. Any other process's log (explorer.exe's comes about 10 s earlier) does not count.
+sample_is_monitored() { # task
+    compose exec -T cape sh -c "
+        dir=/opt/CAPEv2/storage/analyses/$1
+        pid=\$(sed -n 's/.*Successfully executed process from path .* with pid \\([0-9]*\\)\$/\\1/p' \$dir/analysis.log 2>/dev/null | head -n 1)
+        [ -n \"\$pid\" ] && [ -e \$dir/logs/\$pid.bson ]"
+}
+
 wait_for_monitor() { # id
     local task deadline=$((SECONDS + MONITOR_UP_SECONDS))
     task=$(analysis_field "$1" cape_task_id) || return 1
-    until compose exec -T cape sh -c "ls /opt/CAPEv2/storage/analyses/$task/logs 2>/dev/null | grep -q '\.bson$'"; do
-        ((SECONDS < deadline)) || { echo "no monitor log for CAPE task $task after $MONITOR_UP_SECONDS s"; return 1; }
+    until sample_is_monitored "$task"; do
+        ((SECONDS < deadline)) || { echo "the sample is not monitored in CAPE task $task after $MONITOR_UP_SECONDS s"; return 1; }
         sleep "$POLL_SECONDS"
     done
     echo "CAPE task $task"

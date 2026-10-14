@@ -7,18 +7,32 @@ TRAVERSAL_ARTIFACT_ID='..%2F..%2Fetc%2Fpasswd'
 
 # Runs the Python block on stdin over the JSON document `v` in RESPONSE_FILE (the last http
 # answer). `assert` fails the check with its message; whatever the block leaves in `detail` is
-# printed as the check's detail.
+# printed as the check's detail. `api(method, path, body)` returns (status, JSON) for a further call.
 json_assert() {
     python3 -I -c '
-import json, sys
+import json, sys, urllib.error, urllib.request
+
+# No proxy: BASE is the frontend on this machine, and a configured proxy would not reach it.
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+def api(method, path, body=None):
+    headers = {"content-type": "application/json"} if body is not None else {}
+    data = None if body is None else json.dumps(body).encode()
+    request = urllib.request.Request(sys.argv[2] + path, data=data, headers=headers, method=method)
+    try:
+        with opener.open(request, timeout=60) as response:
+            return response.status, json.load(response)
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read() or "null")
+
 with open(sys.argv[1]) as response:
-    scope = {"json": json, "v": json.load(response), "detail": ""}
+    scope = {"json": json, "v": json.load(response), "api": api, "detail": ""}
 try:
     exec(sys.stdin.read(), scope)
 except AssertionError as error:
     print(error)
     sys.exit(1)
-print(scope["detail"])' "$RESPONSE_FILE"
+print(scope["detail"])' "$RESPONSE_FILE" "${BASE:-}"
 }
 
 # GETs an analysis view (stdin: the Python block, see json_assert).

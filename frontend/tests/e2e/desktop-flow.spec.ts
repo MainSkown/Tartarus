@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { deleteWhenOver } from './delete-when-over'
 
 const SAMPLE = process.env.E2E_SAMPLE
 const REAL_SCREENSHOT = process.env.E2E_DESKTOP_SCREENSHOT
@@ -60,13 +61,6 @@ async function submitInteractive(request: APIRequestContext, sample: string): Pr
   return String((await response.json()).id)
 }
 
-async function deleteWhenDone(request: APIRequestContext, id: string): Promise<void> {
-  for (let attempt = 0; attempt < 90; attempt++) {
-    if ((await request.delete(`/api/analyses/${id}`)).status() !== 409) return
-    await new Promise((resolve) => setTimeout(resolve, 4000))
-  }
-}
-
 // Real stack, a real guest, minutes long: opt in with E2E_DESKTOP=1.
 test('the interactive desktop shows the guest, takes the mouse, takes keys only while focused, and ends with the run', async ({
   page,
@@ -118,6 +112,6 @@ test('the interactive desktop shows the guest, takes the mouse, takes keys only 
     await expect(page.locator('[data-desktop="message"]')).toContainText('The run has ended. CAPE is processing the results.')
     expect(pageErrors).toEqual([])
   } finally {
-    await deleteWhenDone(request, id)
+    await deleteWhenOver(request, id, 360_000)
   }
 })

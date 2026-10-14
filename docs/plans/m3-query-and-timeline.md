@@ -8,7 +8,7 @@ the event index of M1b and the field catalog it was generated from.
 
 ## Status
 
-Planned 2026-10-14, after M2 was approved. Nothing built yet.
+Planned 2026-10-14, after M2 was approved. Built and approved the same day: the query compiler, the events API, the query bar, the Events tab, the Timeline tab and the filter-on actions, with `make e2e` proving the API and the Events and Timeline tabs on a real run (73 checks).
 
 ## Outcome
 
@@ -128,6 +128,32 @@ F8 first; F9 then F10 (the timeline opens F9's drawer); F11 beside F10. Each scr
 
 `make e2e` gains a check that a finished analysis answers queries through the real API and that the Events
 tab filters it in a real browser.
+
+**Built, 2026-10-14, `make e2e` 73 checks, 0 failed, 5 min on the real stack.**
+- `scripts/lib/e2e-query.sh` (20 checks on the analysis of step (a), labelled `(a) ...`): validation and the
+  field catalog; the unfiltered total is `event_count`; paging with size 100 collects every event once in both
+  sorts and the two orders are exact reverses; `lane:process`, a lane chip and a negated chip against the
+  summary's `lane_counts`; the alias `proc` and free text on the sample's own name (`filename` of the
+  analysis); an impossible query; the 422 and 404 answers with spans; facets (including the own-field rule);
+  the histogram against `event_count` and `lane_counts`; one event and an alert with their related events;
+  value autocomplete; extra columns. Its tests, `scripts/tests/test_e2e_query.sh`, run the checks against a
+  fake API (`fixtures/fake_events_api.py`) and need each of 19 injected faults to be caught by its check.
+- `frontend/tests/e2e/explore-tabs.ts`, called from `submit-flow.spec.ts` on the one analysis that test
+  submits: the Events table, footer count, facets, query bar, chips (click, minus, alt-click, remove), reload
+  from the URL, the drawer (open, raw JSON, arrow, Esc) and a bad query; the Timeline canvas, a brush on the
+  axis against the API's count for its `t=` range, and the double-click that fits the view. Every count is
+  read from the page and from the API (`expect.poll`).
+- The leak when the browser test fails while its analysis is still running: `deleteWhenOver`
+  (`tests/e2e/delete-when-over.ts`, shared with the desktop spec) waits for the run to end before deleting, and
+  `scripts/e2e.sh` now removes what it created with `remove_analyses` (queued ones cancelled first, a running
+  one waited for) and remembers the browser's analysis by the sample's hash, so no leftover blocks the next
+  run's precondition (`scripts/tests/test_e2e_cleanup.sh`).
+- The live check (h) compared calls by their timestamp, which T0 made differ between the live path (rounded
+  offset) and the final index (exact): live times are 4 to 5 s earlier, constant within a run. It now matches a
+  call by pid, action and API name with the run's own offset (`scripts/tests/test_e2e_live.sh`).
+- Known flake in step (j), not from this wave: "the monitor is up" is satisfied by the first `.bson`
+  (`explorer.exe`) and can pass before the sample itself runs; a finish sent in that gap is missed and the run
+  lasts its whole timeout (seen once in three runs).
 
 ## Risks
 

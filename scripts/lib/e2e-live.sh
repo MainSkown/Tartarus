@@ -5,6 +5,10 @@
 
 LIVE_CLIENT=$REPO/scripts/lib/live_client.py
 LIVE_FINAL_ID_LIMIT=10000
+# A live run is calibrated to a rounded offset, the final index exactly: measured 4.1 to 4.9 s apart on one
+# run, 4.4 to 7.1 s across eight (M3 plan, decision 8). The offset is constant within a run.
+LIVE_CLOCK_MAX_OFFSET_SECONDS=${E2E_LIVE_CLOCK_MAX_OFFSET:-10}
+LIVE_CLOCK_TOLERANCE_SECONDS=${E2E_LIVE_CLOCK_TOLERANCE:-1}
 DESKTOP_FIRST_FRAME_SECONDS=${E2E_DESKTOP_FIRST_FRAME_SECONDS:-60}
 DESKTOP_RUN_SECONDS=${E2E_DESKTOP_RUN_SECONDS:-120}
 DESKTOP_BROWSER_SECONDS=${E2E_DESKTOP_BROWSER_SECONDS:-900}
@@ -114,6 +118,8 @@ PY
 live_events_are_in_the_final_index() { # summary-file id
     summary_with_index_ids "$1" "$2" || { echo "could not read the ids of $(index_name "$2")"; return 1; }
     json_assert <<PY
+from datetime import datetime
+
 live = v["live"]
 final = set(v["final"])
 events = [m for m in live["messages"] if m["type"] == "events"]
@@ -125,15 +131,38 @@ assert len(delivered) == len(live_ids), f"{len(delivered) - len(live_ids)} event
 assert len(final) < $LIVE_FINAL_ID_LIMIT, "the final index has more events than this check reads"
 # CAPE merges consecutive identical calls and renumbers the rest, and the live path does not, so an id
 # can shift after a merge. What must hold is that every call seen live exists in the final index.
+# The final index calibrates the guest clock exactly and a live run only to a rounded offset (M3
+# decision 8), so live times sit a constant few seconds off the final ones: a call is the same call
+# when pid, action and API name match and the times differ by that run's offset, give or take
+# $LIVE_CLOCK_TOLERANCE_SECONDS s.
 shifted = live_ids - final
-final_calls = set(v["final_calls"])
+
+def split_call(call):
+    pid, stamp, action, api = call.split("|")
+    return (pid, action, api), datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+
+def times_by_call(calls):
+    grouped = {}
+    for key, when in map(split_call, calls):
+        grouped.setdefault(key, []).append(when)
+    return grouped
+
+final_times = times_by_call(v["final_calls"])
 live_calls = [call for m in events for call in m["calls"]]
-absent = [call for call in live_calls if call not in final_calls]
+live_times = times_by_call(live_calls)
+# A call made once on each side pins the offset; repeated identical calls could be matched a step off.
+single = [when - final_times[key][0] for key, (when, *rest) in live_times.items() if key in final_times and not rest and len(final_times[key]) == 1]
+assert single, "no call was made exactly once on each side, so the clock offset cannot be measured"
+offset = sorted(single)[len(single) // 2]
+assert abs(offset) <= $LIVE_CLOCK_MAX_OFFSET_SECONDS, f"live times are {offset:.1f} s off the final ones, more than the rounded calibration allows"
+def same_call(live_when, final_when):
+    return abs(live_when - final_when - offset) <= $LIVE_CLOCK_TOLERANCE_SECONDS
+absent = [key for key, whens in live_times.items() for when in whens if not any(same_call(when, other) for other in final_times.get(key, []))]
 assert not absent, f"{len(absent)} live events have no matching call in the final index, e.g. {absent[:2]}"
-never_live = final_calls - set(live_calls)
+never_live = [key for key, whens in final_times.items() for when in whens if not any(same_call(other, when) for other in live_times.get(key, []))]
 assert not never_live, f"{len(never_live)} calls of the final index never arrived live, e.g. {sorted(never_live)[:2]}"
 missing = final - live_ids
-detail = f"{len(live_ids)} live events, {len(final)} capemon events in the index, {len(missing)} not seen live under their id, {len(shifted)} live ids shifted by merged repeats"
+detail = f"{len(live_ids)} live events, {len(final)} capemon events in the index, {len(missing)} not seen live under their id, {len(shifted)} live ids shifted by merged repeats; live times {offset:.1f} s off the final ones"
 if missing:
     detail += ": " + ", ".join(sorted(missing))
 PY

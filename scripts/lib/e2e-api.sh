@@ -5,6 +5,8 @@
 TERMINAL_STATES="done failed report_failed cancelled"
 DEFAULT_OPTIONS='{}'
 POLL_SECONDS=${E2E_POLL_SECONDS:-2}
+# How long cleanup waits for an analysis that is still running: the longest a default run takes.
+CLEANUP_WAIT_SECONDS=${E2E_CLEANUP_WAIT:-300}
 
 failed=0
 ok()   { printf '[ OK ] %s\n' "$1"; }
@@ -109,6 +111,34 @@ wait_for_health() { # component status timeout-seconds
 }
 
 delete_analysis() { http DELETE "/api/analyses/$1"; [[ $HTTP_CODE == 204 ]] || { echo "DELETE answered $HTTP_CODE: $(body)"; return 1; }; }
+
+cancel_when_queued() { # id
+    [[ $(analysis_status "$1" 2>/dev/null) == queued ]] && http POST "/api/analyses/$1/cancel"
+    return 0
+}
+
+# The API refuses to delete (409) an analysis that is still active, and only a queued one can be
+# cancelled, so a running one is waited for, up to CLEANUP_WAIT_SECONDS.
+remove_analysis() { # id
+    local outcome
+    http GET "/api/analyses/$1"
+    [[ $HTTP_CODE == 404 ]] && return 0
+    outcome=$(wait_for_terminal "$1" "$CLEANUP_WAIT_SECONDS") || { echo "$outcome; it was left behind"; return 1; }
+    delete_analysis "$1"
+}
+
+# Queued analyses are cancelled first: behind a running one they would start as soon as it ends.
+remove_analyses() { # id...
+    local id left_behind=0
+    for id; do cancel_when_queued "$id"; done
+    for id; do remove_analysis "$id" || left_behind=1; done
+    return "$left_behind"
+}
+
+analyses_of_sample() { # sha256 -> one analysis id per line
+    http GET "/api/analyses?limit=200"
+    body | json_eval '"\n".join(str(a["id"]) for a in v["items"] if a["sample_sha256"] == "'"$1"'")'
+}
 
 # Evaluates a Python expression over the JSON document `v` on stdin: json_eval 'len(v["items"])'.
 json_eval() {
