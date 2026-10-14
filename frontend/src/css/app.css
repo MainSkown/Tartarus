@@ -328,20 +328,14 @@ a:hover {
   box-shadow: var(--shadow-blue-weak);
 }
 
+/* The tick is a background, not a ::after box: pseudo-elements on an appearance:none input are placed differently per browser, and it landed in the box's bottom-right corner. */
 .checkbox-input:checked {
   background-color: var(--blue-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
   border-color: var(--blue-primary);
-}
-
-.checkbox-input:checked::after {
-  content: '';
-  display: block;
-  width: 0.35rem;
-  height: 0.2rem;
-  margin: 0.15rem auto 0;
-  border-left: 2px solid var(--text-on-primary);
-  border-bottom: 2px solid var(--text-on-primary);
-  transform: rotate(-45deg);
 }
 
 .checkbox-input:disabled {
