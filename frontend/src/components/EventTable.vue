@@ -58,19 +58,20 @@ const isStale = computed(() => props.loading && props.events.length > 0)
 const ascending = computed(() => props.sort === '@timestamp')
 
 const extraColumns = computed(() => columns.chosen.map((field) => ({ field, label: field.toUpperCase() })))
+const HEAD_END_REM = 2.25
 const gridColumns = computed(() => {
   const { time, lane, process, action, summary, severity } = DEFAULT_COLUMN_REMS
   const extras = extraColumns.value.map(() => `${EXTRA_COLUMN_REM}rem`)
-  return [`${time}rem`, `${lane}rem`, `${process}rem`, `${action}rem`, `minmax(${summary}rem, 1fr)`, `${severity}rem`, ...extras].join(' ')
+  return [`${time}rem`, `${lane}rem`, `${process}rem`, `${action}rem`, `minmax(${summary}rem, 1fr)`, `${severity}rem`, ...extras, `${HEAD_END_REM}rem`].join(' ')
 })
 const gridMinWidth = computed(() => {
   const fixed = Object.values(DEFAULT_COLUMN_REMS).reduce((sum, width) => sum + width, 0)
-  const columnCount = Object.keys(DEFAULT_COLUMN_REMS).length + extraColumns.value.length
-  return `${fixed + extraColumns.value.length * EXTRA_COLUMN_REM + (columnCount - 1) * GAP_REM + 2 * PADDING_REM}rem`
+  const columnCount = Object.keys(DEFAULT_COLUMN_REMS).length + extraColumns.value.length + 1
+  return `${fixed + HEAD_END_REM + extraColumns.value.length * EXTRA_COLUMN_REM + (columnCount - 1) * GAP_REM + 2 * PADDING_REM}rem`
 })
 
+const showsFooter = computed(() => !showsSkeleton.value && !isEmpty.value && !props.error)
 const counter = computed(() => {
-  if (showsSkeleton.value || props.error) return ''
   return `${formatCount(props.events.length)} of ${formatCount(props.total)} event${props.total === 1 ? '' : 's'}`
 })
 
@@ -141,19 +142,6 @@ watch(
 
 <template>
   <div class="event-table">
-    <div class="event-table__bar">
-      <span
-        class="event-table__count text-mono text-gray"
-        aria-live="polite"
-      >{{ counter }}</span>
-      <EventColumnChooser
-        :chosen="columns.chosen"
-        :at-limit="columns.atLimit"
-        @toggle="columns.toggle"
-        @clear="columns.clear"
-      />
-    </div>
-
     <div class="event-table__state">
       <ViewState
         :error="error"
@@ -231,6 +219,14 @@ watch(
                 :title="column.field"
               >
                 {{ column.label }}
+              </div>
+              <div class="event-table__head-end">
+                <EventColumnChooser
+                  :chosen="columns.chosen"
+                  :at-limit="columns.atLimit"
+                  @toggle="columns.toggle"
+                  @clear="columns.clear"
+                />
               </div>
             </div>
 
@@ -325,60 +321,62 @@ watch(
                   >{{ columnValue(item, column.field) }}</span>
                 </div>
               </template>
-              <template #after>
-                <div
-                  v-if="loadingMore || loadMoreError"
-                  class="event-table__footer text-mono"
-                >
-                  <template v-if="loadMoreError">
-                    <span class="text-gray">&gt; failed to load more: {{ loadMoreError }}</span>
-                    <button
-                      type="button"
-                      class="event-table__retry button text-mono"
-                      @click="emit('load-more')"
-                    >
-                      [RETRY]
-                    </button>
-                  </template>
-                  <template v-else>
-                    <span
-                      class="loader event-table__loader"
-                      role="status"
-                      aria-label="Loading more events"
-                    />
-                    <span class="text-gray">loading more events</span>
-                  </template>
-                </div>
-              </template>
             </q-virtual-scroll>
           </div>
         </div>
       </ViewState>
     </div>
+
+    <footer
+      v-if="showsFooter"
+      class="event-table__footer text-mono"
+    >
+      <span
+        class="event-table__count text-gray"
+        aria-live="polite"
+      >{{ counter }}</span>
+      <span
+        v-if="loadMoreError"
+        class="event-table__paging"
+      >
+        <span class="text-gray">&gt; failed to load more: {{ loadMoreError }}</span>
+        <button
+          type="button"
+          class="event-table__retry button text-mono"
+          @click="emit('load-more')"
+        >
+          [RETRY]
+        </button>
+      </span>
+      <span
+        v-else-if="loadingMore"
+        class="event-table__paging"
+      >
+        <span
+          class="loader event-table__loader"
+          role="status"
+          aria-label="Loading more events"
+        />
+        <span class="text-gray">loading more events</span>
+      </span>
+    </footer>
   </div>
 </template>
 
 <style scoped>
+/* The box has the same top and bottom edge as the facet panel beside it, so nothing sits above or below it. */
 .event-table {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
   min-width: 0;
   min-height: 0;
   height: 100%;
-}
-
-.event-table__bar {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-  min-height: 24px;
+  border: 2px solid var(--border-primary);
+  background: var(--black);
 }
 
 .event-table__count {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
 }
 
 .event-table__state {
@@ -392,7 +390,6 @@ watch(
   align-items: flex-start;
   gap: var(--spacing-sm);
   padding: var(--spacing-md);
-  border: 2px solid var(--border-primary);
 }
 
 .event-table__empty :deep(.terminal-empty) {
@@ -408,8 +405,6 @@ watch(
   height: 100%;
   min-height: 0;
   overflow-x: auto;
-  border: 2px solid var(--border-primary);
-  background: var(--black);
 }
 
 .event-table__grid {
@@ -447,6 +442,16 @@ watch(
   font-weight: bold;
   letter-spacing: 1px;
   white-space: nowrap;
+}
+
+.event-table__head-end {
+  position: sticky;
+  right: 0;
+  display: flex;
+  justify-content: flex-end;
+  margin-right: calc(-1 * (var(--spacing-sm) + 8px));
+  padding-right: var(--spacing-xs);
+  background: var(--black);
 }
 
 .event-table__head > * {
@@ -535,15 +540,30 @@ watch(
 
 .event-table__footer {
   display: flex;
+  flex: none;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  height: 24px;
+  padding: 0 var(--spacing-sm);
+  border-top: 1px solid var(--border-primary);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.event-table__paging {
+  display: inline-flex;
+  align-items: center;
   gap: var(--spacing-sm);
-  height: 28px;
-  font-size: 0.75rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .event-table__loader {
-  transform: scale(0.5);
+  flex: none;
+  transform: scale(0.4);
+  margin: -10px;
 }
 
 .event-table__retry {

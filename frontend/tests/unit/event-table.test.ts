@@ -82,6 +82,34 @@ describe('the header', () => {
   })
 })
 
+describe('the layout', () => {
+  it('has no strip above the table: the box starts with its header row', () => {
+    const wrapper = mountTable()
+    expect(wrapper.find('.event-table__bar').exists()).toBe(false)
+    expect(wrapper.find('.event-table').element.firstElementChild!.querySelector('[role="columnheader"]')).not.toBeNull()
+  })
+
+  it('puts the column chooser in the header row, as its last cell', () => {
+    const head = mountTable().find('.event-table__head')
+    expect(head.find('.column-chooser__trigger').exists()).toBe(true)
+    expect(head.element.lastElementChild!.querySelector('.column-chooser__trigger')).not.toBeNull()
+  })
+
+  it('puts the count in the footer inside the box, with the paging state, and shows it while stale rows load', () => {
+    const wrapper = mountTable({ events: eventList(100), total: 500, hasMore: true, loadingMore: true })
+    const footer = wrapper.find('.event-table__footer')
+    expect(footer.find('.event-table__count').text()).toBe('100 of 500 events')
+    expect(footer.text()).toContain('loading more')
+    expect(wrapper.findAll('.event-table__count')).toHaveLength(1)
+  })
+
+  it('has a footer with the count only when the list is shown', () => {
+    expect(mountTable({ events: [], total: 0 }).find('.event-table__footer').exists()).toBe(false)
+    expect(mountTable({ events: [], total: 0, loading: true }).find('.event-table__footer').exists()).toBe(false)
+    expect(mountTable({ events: [], total: 0, error: 'x' }).find('.event-table__footer').exists()).toBe(false)
+  })
+})
+
 describe('the rows', () => {
   it('shows the time of day to the millisecond, with the full time on hover', () => {
     const cell = mountTable().find('[data-column="time"]')

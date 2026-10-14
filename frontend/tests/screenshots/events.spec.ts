@@ -157,7 +157,7 @@ const TWELVE_COLUMNS = [
 
 test('events-h-column-chooser-and-extra-columns', async ({ page }) => {
   const mock = await openLoadedEvents(page)
-  await page.getByRole('button', { name: /COLUMNS/ }).click()
+  await page.getByRole('button', { name: /columns/i }).click()
   await expect(page.locator('.column-chooser__field').first()).toBeVisible()
   await expect(page.locator('.column-chooser__field', { hasText: 'process.command_line' })).toBeVisible()
   await capture(page, '08-column-chooser-open-every-field')
@@ -188,7 +188,7 @@ test('events-h2-column-limit-message', async ({ page }) => {
   await page.addInitScript((columns) => window.localStorage.setItem('tartarus.events.columns', JSON.stringify(columns)), TWELVE_COLUMNS)
   const mock = await openLoadedEvents(page)
   expect(mock.searches[0]!.columns).toEqual(TWELVE_COLUMNS)
-  await page.getByRole('button', { name: /COLUMNS/ }).click()
+  await page.getByRole('button', { name: /columns/i }).click()
   await expect(page.locator('.column-chooser__limit')).toBeVisible()
   await expect(page.locator('.column-chooser__field input:disabled').first()).toBeDisabled()
   await capture(page, '08d-column-chooser-at-the-limit-of-12')

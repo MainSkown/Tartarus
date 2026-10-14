@@ -17,12 +17,14 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
     class="column-chooser__trigger button text-mono"
     :class="{ 'is-active': chosen.length > 0 }"
     aria-haspopup="true"
+    aria-label="Columns"
+    :title="chosen.length > 0 ? `Columns: ${chosen.length} added` : 'Choose columns'"
   >
     <q-icon
       name="view_column"
-      size="14px"
+      size="16px"
       aria-hidden="true"
-    />COLUMNS<span
+    /><span
       v-if="chosen.length > 0"
       class="column-chooser__count"
     >+{{ chosen.length }}</span>
@@ -101,8 +103,9 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
 <style scoped>
 .column-chooser__trigger {
   gap: var(--spacing-xs);
-  min-height: 24px;
-  padding: 0 var(--spacing-sm);
+  min-width: 24px;
+  height: 22px;
+  padding: 0 var(--spacing-xs);
   border: 1px solid var(--border-primary);
   font-size: 0.65rem;
   letter-spacing: 1px;
@@ -114,7 +117,6 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
 }
 
 .column-chooser__count {
-  margin-left: var(--spacing-xs);
   font-weight: bold;
 }
 
