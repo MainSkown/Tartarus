@@ -69,7 +69,7 @@ async def test_tag_names_are_lowercased_so_one_name_is_one_tag(session: AsyncSes
     ]
 
 
-@pytest.mark.parametrize("name", ["a" * 40, "a", "x.y_z-9", "needs-review"])
+@pytest.mark.parametrize("name", ["a" * 40, "a", "x.y_z-9", "needs-review", "tlp:amber"])
 async def test_a_tag_name_of_up_to_40_allowed_characters_is_accepted(
     session: AsyncSession, name: str
 ) -> None:
@@ -80,7 +80,9 @@ async def test_a_tag_name_of_up_to_40_allowed_characters_is_accepted(
     assert added.tag == name
 
 
-@pytest.mark.parametrize("name", ["a" * 41, "", "has space", "snow☃", "slash/", "ünï", "a,b"])
+@pytest.mark.parametrize(
+    "name", ["a" * 41, "", "has space", "snow☃", "slash/", "ünï", "a,b", ":", "a::b"]
+)
 async def test_a_tag_name_that_is_empty_too_long_or_uses_other_characters_is_refused(
     session: AsyncSession, name: str
 ) -> None:

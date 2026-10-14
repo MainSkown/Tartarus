@@ -3,10 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.annotations.read import load_annotations
 from app.api.views_findings import ExistingAnalysis, Files, Index
 from app.db.models import Sample
 from app.db.session import get_session
-from app.export.assembly import build_export_input
+from app.export.assembly import build_export_input, export_annotations
 from app.export.formats import ExportFormat, export_filename, render
 from app.export.inputs import ExportAnnotations, IocExportInput
 from app.schemas.views_findings import IocsView
@@ -16,12 +17,12 @@ from app.views.iocs import collect_iocs
 router = APIRouter(prefix="/analyses", tags=["export"])
 
 
-# The seam for the annotations repository: it will need the analysis, so the signature keeps it.
-async def load_export_annotations(analysis: ExistingAnalysis) -> ExportAnnotations:  # noqa: ARG001
-    """The tags and notes an export carries. The one place to read them from the annotations
-    repository; until it is wired here the exports carry none.
-    """
-    return ExportAnnotations()
+async def load_export_annotations(
+    analysis: ExistingAnalysis,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    index: Index,
+) -> ExportAnnotations:
+    return export_annotations(await load_annotations(session, index, analysis.id))
 
 
 async def found_iocs(analysis: ExistingAnalysis, index: Index, files: Files) -> IocsView:

@@ -11,12 +11,15 @@ from fastapi import FastAPI
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.annotations.validation import Target
 from app.api import export as export_api
 from app.api.dependencies import get_cape_storage_path, get_event_index
 from app.api.export import load_export_annotations
 from app.api.export import router as export_router
 from app.api.operation_ids import generate_operation_id
+from app.db import annotation_repository
 from app.db.base import Base
+from app.db.models.annotation import TargetType as StoredTargetType
 from app.errors import install_error_handlers
 from app.export.inputs import ExportAnnotations, ExportNote, TargetType
 from app.schemas.views_findings import IocsView
@@ -145,6 +148,23 @@ async def test_the_annotations_come_from_the_one_loader_function(
     export_app.dependency_overrides[load_export_annotations] = loaded
 
     document = json.loads((await download(client, "misp")).content)
+
+    names = [tag["name"] for tag in document["Event"]["Tag"]]
+    assert names[:2] == ["tlp:red", "phishing"]
+    comments = [a for a in document["Event"]["Attribute"] if a["type"] == "comment"]
+    assert [a["value"] for a in comments] == ["Seen in a campaign."]
+
+
+async def test_the_stored_tags_and_notes_of_the_analysis_are_exported(
+    export_app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    whole = Target(StoredTargetType.ANALYSIS)
+    async with export_app.state.session_factory() as session:
+        await annotation_repository.add_tag(session, 1, whole, "tlp:red")
+        await annotation_repository.add_tag(session, 1, whole, "phishing")
+        await annotation_repository.add_note(session, 1, whole, "Seen in a campaign.")
+
+    document = (await download(client, "misp")).json()
 
     names = [tag["name"] for tag in document["Event"]["Tag"]]
     assert names[:2] == ["tlp:red", "phishing"]

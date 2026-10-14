@@ -2,12 +2,16 @@ from datetime import UTC, datetime
 
 from app.analyses.summary import ReportSummary
 from app.db.models import Analysis, Sample
+from app.db.models.annotation import TargetType as StoredTargetType
 from app.export.inputs import (
     ExportAnnotations,
+    ExportNote,
     ExportSample,
     ExportTechnique,
     IocExportInput,
+    TargetType,
 )
+from app.schemas.annotations import Annotations
 from app.schemas.views_findings import Ioc
 from app.views.attack_table import AttackTable
 
@@ -50,4 +54,24 @@ def _techniques(analysis: Analysis, table: AttackTable) -> tuple[ExportTechnique
             technique_id, info.name if (info := table.technique(technique_id)) else None
         )
         for technique_id in sorted({technique.id for technique in summary.techniques})
+    )
+
+
+def export_annotations(annotations: Annotations) -> ExportAnnotations:
+    """Only the analysis's own tags, since the formats have no place for a process's or an
+    event's tag, and no note whose target is gone from the index.
+    """
+    return ExportAnnotations(
+        tags=tuple(
+            tag.tag for tag in annotations.tags if tag.target_type is StoredTargetType.ANALYSIS
+        ),
+        notes=tuple(
+            ExportNote(
+                note.body,
+                TargetType(note.target_type),
+                note.target_ref or None,
+            )
+            for note in annotations.notes
+            if not note.orphaned
+        ),
     )

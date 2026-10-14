@@ -11,7 +11,8 @@ MAX_TAG_NAME_LENGTH = 40
 MAX_NOTE_LENGTH = 20_000
 MAX_PID_DIGITS = 10
 
-_TAG_NAME = re.compile(rf"[a-z0-9._-]{{1,{MAX_TAG_NAME_LENGTH}}}")
+# One optional `namespace:value` colon, so an analyst can set the `tlp:*` tag the MISP export reads.
+_TAG_NAME = re.compile(r"[a-z0-9._-]+(:[a-z0-9._-]+)?")
 _PID = re.compile(rf"[0-9]{{1,{MAX_PID_DIGITS}}}")
 
 
@@ -25,9 +26,10 @@ class Target:
 
 def normalise_tag_name(name: str) -> str:
     lowered = name.lower()
-    if not _TAG_NAME.fullmatch(lowered):
+    if len(lowered) > MAX_TAG_NAME_LENGTH or not _TAG_NAME.fullmatch(lowered):
         raise ValueError(
-            f"A tag name is 1 to {MAX_TAG_NAME_LENGTH} characters of a-z, 0-9, '.', '_' and '-'"
+            f"A tag name is 1 to {MAX_TAG_NAME_LENGTH} characters of a-z, 0-9, '.', '_' and '-', "
+            "with at most one ':' between two parts"
         )
     return lowered
 

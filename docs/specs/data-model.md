@@ -45,7 +45,7 @@ writes to the shared storage volume. See [architecture](../architecture.md#compo
 ### Annotations
 | Table | Columns |
 |---|---|
-| `tag` | `id`, `name` (unique, lowercase, `[a-z0-9._-]{1,40}`), `created_at` |
+| `tag` | `id`, `name` (unique, lowercase, `[a-z0-9._-]{1,40}` with at most one `:` between two parts (`tlp:amber`)), `created_at` |
 | `tag_link` | `id`, `tag_id` FK, `analysis_id` FK (cascade), `target_type` enum(`analysis`,`process`,`event`), `target_ref` text (`""` for analysis, `pid` for process, `event.id` for event); unique(`tag_id`,`analysis_id`,`target_type`,`target_ref`) |
 | `note` | `id`, `analysis_id` FK (cascade), `target_type`, `target_ref`, `body` text (plain text, ≤ 20 000 chars), `created_at`, `updated_at` |
 
