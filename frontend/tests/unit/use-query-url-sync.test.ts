@@ -42,7 +42,22 @@ describe('reading the route', () => {
       chips: [{ field: 'api', value: 'NtDelayExecution', negate: true }],
       pids: [4120],
       timeRange: { from: '2026-10-13T12:00:01Z', to: null },
+      eventId: null,
     })
+  })
+
+  it('opens the event the route names', async () => {
+    await mountSync('/analyses/7/events?e=abc123')
+    expect(store.eventId).toBe('abc123')
+  })
+
+  it('closes the event when back goes to an entry without it', async () => {
+    await mountSync('/analyses/7/events')
+    store.openEvent('abc123')
+    await flushPromises()
+    router.back()
+    await flushPromises()
+    expect(store.eventId).toBeNull()
   })
 
   it('binds the store to the analysis of the page', async () => {
@@ -123,6 +138,40 @@ describe('writing the route', () => {
       pid: ['4120'],
       t: '2026-10-13T12:00:01Z..2026-10-13T12:00:04Z',
     })
+  })
+
+  it('pushes a history entry when an event is opened and when it is closed, so back closes and reopens it', async () => {
+    await mountSync()
+    const push = vi.spyOn(router, 'push')
+    const replace = vi.spyOn(router, 'replace')
+    store.openEvent('abc123')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ e: 'abc123' })
+    store.closeEvent()
+    await flushPromises()
+    expect(push).toHaveBeenCalledTimes(2)
+    expect(replace).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.query).toEqual({})
+  })
+
+  it('replaces the entry when the open event moves to another one', async () => {
+    await mountSync('/analyses/7/events?e=first')
+    const push = vi.spyOn(router, 'push')
+    const replace = vi.spyOn(router, 'replace')
+    store.openEvent('second')
+    await flushPromises()
+    expect(replace).toHaveBeenCalledTimes(1)
+    expect(push).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.query).toEqual({ e: 'second' })
+  })
+
+  it('keeps the event when a chip changes, and the chips when the event changes', async () => {
+    await mountSync('/analyses/7/events?e=first&f=lane%3Afile')
+    store.addChip({ field: 'process.name', value: 'cmd.exe', negate: false })
+    await flushPromises()
+    store.openEvent('second')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ e: 'second', f: ['lane:file', 'process.name:cmd.exe'] })
   })
 
   it('writes one navigation for a change that touches several parts at once', async () => {

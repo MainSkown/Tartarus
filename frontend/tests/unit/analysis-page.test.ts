@@ -291,6 +291,7 @@ describe('AnalysisPage query bar', () => {
       chips: [{ field: 'api', value: 'NtDelayExecution', negate: true }],
       pids: [4120],
       timeRange: null,
+      eventId: null,
     })
   })
 

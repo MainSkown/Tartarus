@@ -8,8 +8,8 @@ const signatureOf = (state: QueryUrlState): string => JSON.stringify(encodeQuery
 /**
  * Keeps the shared query state and the URL query (`q`, `f`, `pid`, `t`) the same thing: the route
  * fills the store when the page opens and on back and forward, and a store change is written
- * back, as a new history entry when the applied text changed and in place for chips, pids and
- * the time range. Each side acts only when the other differs, which is what stops a loop.
+ * back, as a new history entry when the applied text changed or the event drawer opened or closed
+ * (so back closes it) and in place for chips, pids, the time range and a move to another event. Each side acts only when the other differs, which is what stops a loop.
  */
 export function useQueryUrlSync(analysisId: () => number | undefined): void {
   const route = useRoute()
@@ -29,9 +29,10 @@ export function useQueryUrlSync(analysisId: () => number | undefined): void {
   }
 
   function writeRoute(): void {
-    const textChanged = decodeQueryState(route.query).text !== store.text
+    const shown = decodeQueryState(route.query)
+    const opensOrClosesEvent = (shown.eventId === null) !== (store.eventId === null)
     const location = { query: withQueryState(route.query, store.urlState) }
-    void (textChanged ? router.push(location) : router.replace(location))
+    void (shown.text !== store.text || opensOrClosesEvent ? router.push(location) : router.replace(location))
   }
 
   bindToAnalysisAndReadRoute()

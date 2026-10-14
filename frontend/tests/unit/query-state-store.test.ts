@@ -124,6 +124,29 @@ describe('time range', () => {
   })
 })
 
+describe('the open event', () => {
+  it('opens and closes an event', () => {
+    store.openEvent('e1')
+    expect(store.eventId).toBe('e1')
+    store.closeEvent()
+    expect(store.eventId).toBeNull()
+  })
+
+  it('is part of the URL state but not of the search filter', () => {
+    store.openEvent('e1')
+    expect(store.urlState.eventId).toBe('e1')
+    expect(store.searchFilter).toEqual({})
+    expect(store.isEmpty).toBe(true)
+  })
+
+  it('closes when the analysis changes', () => {
+    store.bindTo(1)
+    store.openEvent('e1')
+    store.bindTo(2)
+    expect(store.eventId).toBeNull()
+  })
+})
+
 describe('the search filter', () => {
   it('holds every part that is set, under the names of the API', () => {
     store.setText('lane:network')
@@ -151,19 +174,20 @@ describe('reset and restore', () => {
     store.addChip(CMD)
     store.setPids([1])
     store.setTimeRange({ from: '2026-10-13T12:00:01Z', to: null })
+    store.openEvent('e1')
     store.reset()
     expect(store.isEmpty).toBe(true)
-    expect(store.urlState).toEqual({ text: '', chips: [], pids: [], timeRange: null })
+    expect(store.urlState).toEqual({ text: '', chips: [], pids: [], timeRange: null, eventId: null })
   })
 
   it('restores a whole state at once', () => {
-    const state = { text: 'a', chips: [CMD], pids: [3], timeRange: { from: null, to: '2026-10-13T12:00:04Z' } }
+    const state = { text: 'a', chips: [CMD], pids: [3], timeRange: { from: null, to: '2026-10-13T12:00:04Z' }, eventId: 'e1' }
     store.restore(state)
     expect(store.urlState).toEqual(state)
   })
 
   it('does not share its arrays with the state it restored from', () => {
-    const state = { text: '', chips: [CMD], pids: [3], timeRange: null }
+    const state = { text: '', chips: [CMD], pids: [3], timeRange: null, eventId: null }
     store.restore(state)
     store.togglePid(3)
     expect(state.pids).toEqual([3])

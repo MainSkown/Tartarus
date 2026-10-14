@@ -17,7 +17,8 @@ function apiTimeRange({ from, to }: QueryTimeRange): TimeRange {
 /**
  * The one copy of what the Events and Timeline tabs are filtered by (M3 decision 10): the applied
  * query text, the chips, the selected processes and the time range. The query bar's draft is not
- * here; it becomes `text` when the user applies it.
+ * here; it becomes `text` when the user applies it. The event open in the detail drawer rides
+ * along because it shares the URL, but it is not part of the filter.
  */
 export const useQueryStateStore = defineStore('query-state', () => {
   const analysisId = ref<number>()
@@ -25,12 +26,14 @@ export const useQueryStateStore = defineStore('query-state', () => {
   const chips = ref<FilterChip[]>([])
   const pids = ref<number[]>([])
   const timeRange = ref<QueryTimeRange | null>(null)
+  const eventId = ref<string | null>(null)
 
   const urlState = computed<QueryUrlState>(() => ({
     text: text.value,
     chips: chips.value.map((chip) => ({ ...chip })),
     pids: [...pids.value],
     timeRange: timeRange.value && { ...timeRange.value },
+    eventId: eventId.value,
   }))
 
   // An empty list is left out, not sent: for `pids` the API reads it as "match nothing".
@@ -78,15 +81,24 @@ export const useQueryStateStore = defineStore('query-state', () => {
     timeRange.value = null
   }
 
+  function openEvent(id: string): void {
+    eventId.value = id
+  }
+
+  function closeEvent(): void {
+    eventId.value = null
+  }
+
   function restore(state: QueryUrlState): void {
     setText(state.text)
     chips.value = state.chips.map((chip) => ({ ...chip }))
     setPids(state.pids)
     timeRange.value = state.timeRange && { ...state.timeRange }
+    eventId.value = state.eventId
   }
 
   function reset(): void {
-    restore({ text: '', chips: [], pids: [], timeRange: null })
+    restore({ text: '', chips: [], pids: [], timeRange: null, eventId: null })
   }
 
   function bindTo(id: number | undefined): void {
@@ -101,6 +113,7 @@ export const useQueryStateStore = defineStore('query-state', () => {
     chips,
     pids,
     timeRange,
+    eventId,
     urlState,
     searchFilter,
     isEmpty,
@@ -112,6 +125,8 @@ export const useQueryStateStore = defineStore('query-state', () => {
     togglePid,
     setTimeRange,
     clearTimeRange,
+    openEvent,
+    closeEvent,
     restore,
     reset,
     bindTo,

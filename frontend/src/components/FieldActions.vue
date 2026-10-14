@@ -3,7 +3,9 @@ import { computed } from 'vue'
 import CopyButton from '@/components/CopyButton.vue'
 import { useQueryStateStore } from '@/stores/query-state'
 
-const props = defineProps<{ field: string; value: string | number }>()
+const props = withDefaults(defineProps<{ field: string; value: string | number; filterable?: boolean }>(), {
+  filterable: true,
+})
 const store = useQueryStateStore()
 
 const text = computed(() => String(props.value))
@@ -17,6 +19,7 @@ function filter(negate: boolean): void {
 <template>
   <span class="field-actions">
     <button
+      v-if="filterable"
       type="button"
       class="field-actions__button"
       :aria-label="`Filter on ${target}`"
@@ -29,6 +32,7 @@ function filter(negate: boolean): void {
       />
     </button>
     <button
+      v-if="filterable"
       type="button"
       class="field-actions__button"
       :aria-label="`Filter out ${target}`"

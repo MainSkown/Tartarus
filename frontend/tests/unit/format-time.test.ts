@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatClockTime, formatTimestamp } from '@/services/format-time'
+import { formatClockTime, formatPreciseTimestamp, formatTimestamp } from '@/services/format-time'
 
 describe('formatTimestamp', () => {
   it('writes the instant as UTC to the second, whatever the offset it was sent with', () => {
@@ -26,5 +26,15 @@ describe('formatClockTime', () => {
 
   it('returns the input unchanged when it is not a date', () => {
     expect(formatClockTime('later')).toBe('later')
+  })
+})
+
+describe('formatPreciseTimestamp', () => {
+  it('writes the date and the time of day to the millisecond, in UTC', () => {
+    expect(formatPreciseTimestamp('2026-10-13T12:00:01.25+02:00')).toBe('2026-10-13 10:00:01.250 UTC')
+  })
+
+  it('returns the input unchanged when it is not a date', () => {
+    expect(formatPreciseTimestamp('later')).toBe('later')
   })
 })

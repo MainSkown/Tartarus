@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { decodeQueryState, encodeQueryState, withQueryState, type QueryUrlState } from '@/services/query-url'
 
-const EMPTY: QueryUrlState = { text: '', chips: [], pids: [], timeRange: null }
+const EMPTY: QueryUrlState = { text: '', chips: [], pids: [], timeRange: null, eventId: null }
 
 describe('decodeQueryState', () => {
   it('reads an empty query as the empty state', () => {
@@ -71,8 +71,21 @@ describe('decodeQueryState', () => {
     })
   })
 
+  it('reads the open event from e', () => {
+    expect(decodeQueryState({ e: 'a1b2c3' }).eventId).toBe('a1b2c3')
+    expect(decodeQueryState({ e: ['first', 'second'] }).eventId).toBe('first')
+  })
+
+  it('reads an event id that has colons and slashes whole', () => {
+    expect(decodeQueryState({ e: 'cape:42/7' }).eventId).toBe('cape:42/7')
+  })
+
+  it('reads an empty e as no open event', () => {
+    expect(decodeQueryState({ e: '' }).eventId).toBeNull()
+  })
+
   it('ignores null entries a router produces for a bare key', () => {
-    expect(decodeQueryState({ q: null, f: [null], pid: [null], t: null })).toEqual(EMPTY)
+    expect(decodeQueryState({ q: null, f: [null], pid: [null], t: null, e: null })).toEqual(EMPTY)
   })
 })
 
@@ -91,6 +104,7 @@ describe('encodeQueryState', () => {
         ],
         pids: [4120, 9708],
         timeRange: { from: '2026-10-13T12:00:01Z', to: null },
+        eventId: null,
       }),
     ).toEqual({
       q: 'lane:network',
@@ -98,6 +112,10 @@ describe('encodeQueryState', () => {
       pid: ['4120', '9708'],
       t: '2026-10-13T12:00:01Z..',
     })
+  })
+
+  it('writes the open event under e', () => {
+    expect(encodeQueryState({ ...EMPTY, eventId: 'a1b2c3' })).toEqual({ e: 'a1b2c3' })
   })
 
   it('leaves out a time range with neither end', () => {
@@ -114,6 +132,7 @@ describe('encodeQueryState', () => {
       ],
       pids: [1],
       timeRange: { from: '2026-10-13T12:00:01.250Z', to: '2026-10-13T12:00:04.100Z' },
+      eventId: 'cape:42/7 &?',
     }
     expect(decodeQueryState(encodeQueryState(state))).toEqual(state)
   })
@@ -122,7 +141,7 @@ describe('encodeQueryState', () => {
 describe('withQueryState', () => {
   it('replaces only its own params and keeps the others', () => {
     const merged = withQueryState(
-      { q: 'old', f: 'lane:file', pid: '1', t: '..2026-10-13T12:00:04Z', tab: 'x', other: ['a', 'b'] },
+      { q: 'old', f: 'lane:file', pid: '1', t: '..2026-10-13T12:00:04Z', e: 'old-event', tab: 'x', other: ['a', 'b'] },
       { ...EMPTY, text: 'new' },
     )
     expect(merged).toEqual({ tab: 'x', other: ['a', 'b'], q: 'new' })

@@ -6,11 +6,13 @@ import {
   expectNoVerticalScroll,
   makeDetectedAnalysis,
   mockAnalyses,
+  mockEvents,
   mockQuery,
   mockShell,
   screenshotPath,
   test,
   waitForTransitions,
+  type EventsMock,
   type QueryMockOptions,
 } from './fixtures'
 
@@ -38,10 +40,13 @@ const MANY_CHIPS = [
   .concat(['pid=9708', 'pid=2476', 'pid=4412', 't=2026-10-13T15:39:34.250Z..'])
   .join('&')
 
+let eventsMock: EventsMock
+
 async function openEvents(page: Page, search = '', mock: QueryMockOptions = {}): Promise<Locator> {
   await mockShell(page, GUEST_READY_SYSTEM)
   await mockAnalyses(page, { items: [makeDetectedAnalysis({ id: ID })] })
   await mockQuery(page, mock)
+  eventsMock = await mockEvents(page)
   await page.goto(`${EVENTS}${search ? `?${search}` : ''}`)
   const bar = page.getByRole('combobox', { name: 'Query' })
   await expect(bar).toBeVisible()
@@ -272,6 +277,7 @@ test('query-bar-i-slash-and-enter-write-the-url', async ({ page }) => {
   await bar.press('Escape')
   await bar.press('Enter')
   await expect(page).toHaveURL(/q=process\.name%3Acmd\.exe|q=process\.name:cmd\.exe/)
-  await expect(page.locator('pre.code-block')).toContainText('"query": "process.name:cmd.exe"')
-  await capture(page, '09-applied-query-shown-by-the-placeholder')
+  await expect.poll(() => eventsMock.searches.at(-1)?.query).toBe('process.name:cmd.exe')
+  await expect(page.locator('[data-event-id]').first()).toBeVisible()
+  await capture(page, '09-applied-query-narrows-the-events-table')
 })

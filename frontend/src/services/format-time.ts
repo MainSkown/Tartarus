@@ -16,3 +16,11 @@ export function formatClockTime(iso: string): string {
   const time = `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
   return `${time}.${String(date.getUTCMilliseconds()).padStart(3, '0')}`
 }
+
+/** Renders an ISO instant as `YYYY-MM-DD HH:mm:ss.SSS UTC`, for the one event a detail view is about. */
+export function formatPreciseTimestamp(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  const day = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
+  return `${day} ${formatClockTime(iso)} UTC`
+}

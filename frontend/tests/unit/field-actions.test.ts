@@ -7,11 +7,11 @@ import { useQueryStateStore } from '@/stores/query-state'
 
 let store: ReturnType<typeof useQueryStateStore>
 
-function mountActions(value: string | number = 'cmd.exe') {
+function mountActions(value: string | number = 'cmd.exe', filterable?: boolean) {
   const pinia = createPinia()
   setActivePinia(pinia)
   store = useQueryStateStore()
-  return mount(FieldActions, { props: { field: 'process.name', value }, global: { plugins: [Quasar, pinia] } })
+  return mount(FieldActions, { props: { field: 'process.name', value, ...(filterable === undefined ? {} : { filterable }) }, global: { plugins: [Quasar, pinia] } })
 }
 
 beforeEach(() => {
@@ -46,6 +46,13 @@ describe('FieldActions', () => {
     await wrapper.findAll('button')[0]!.trigger('click')
     await wrapper.findAll('button')[1]!.trigger('click')
     expect(store.chips).toEqual([{ field: 'process.name', value: 'cmd.exe', negate: true }])
+  })
+
+  it('offers only copy for a field the query language cannot filter on', () => {
+    const labels = mountActions('x', false)
+      .findAll('button')
+      .map((button) => button.attributes('aria-label'))
+    expect(labels).toEqual(['Copy process.name value'])
   })
 
   it('emits nothing', async () => {

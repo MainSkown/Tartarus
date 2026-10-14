@@ -6,19 +6,21 @@ export interface QueryTimeRange {
   to: string | null
 }
 
-/** The part of the shared query state that lives in the URL. */
+/** The part of the shared query state that lives in the URL; `eventId` is the event open in the detail drawer. */
 export interface QueryUrlState {
   text: string
   chips: FilterChip[]
   pids: number[]
   timeRange: QueryTimeRange | null
+  eventId: string | null
 }
 
 const TEXT_KEY = 'q'
 const CHIP_KEY = 'f'
 const PID_KEY = 'pid'
 const TIME_KEY = 't'
-const OWN_KEYS = [TEXT_KEY, CHIP_KEY, PID_KEY, TIME_KEY]
+const EVENT_KEY = 'e'
+const OWN_KEYS = [TEXT_KEY, CHIP_KEY, PID_KEY, TIME_KEY, EVENT_KEY]
 const NEGATION_PREFIX = '-'
 const CHIP_SEPARATOR = ':'
 const RANGE_SEPARATOR = '..'
@@ -76,11 +78,13 @@ function decodeTimeRange(value: RawValue): QueryTimeRange | null {
 /** Reads the shared query state from a route's query; whatever cannot be read is dropped, never thrown. */
 export function decodeQueryState(query: LocationQuery | Record<string, RawValue>): QueryUrlState {
   const [text = ''] = allOf(query[TEXT_KEY])
+  const [eventId] = allOf(query[EVENT_KEY])
   return {
     text,
     chips: decodeChips(query[CHIP_KEY]),
     pids: decodePids(query[PID_KEY]),
     timeRange: decodeTimeRange(query[TIME_KEY]),
+    eventId: eventId || null,
   }
 }
 
@@ -98,6 +102,7 @@ export function encodeQueryState(state: QueryUrlState): Record<string, string | 
   if (timeRange && (timeRange.from !== null || timeRange.to !== null)) {
     params[TIME_KEY] = `${timeRange.from ?? ''}${RANGE_SEPARATOR}${timeRange.to ?? ''}`
   }
+  if (state.eventId !== null) params[EVENT_KEY] = state.eventId
   return params
 }
 
