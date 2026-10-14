@@ -418,6 +418,153 @@ export type ErrorEnvelope = {
 };
 
 /**
+ * Event
+ *
+ * The fields the events table shows; `GET events/{id}` has the whole document.
+ */
+export type Event = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Sequence
+     */
+    sequence: number | null;
+    /**
+     * Lane
+     */
+    lane: string | null;
+    /**
+     * Kind
+     */
+    kind: string | null;
+    /**
+     * Category
+     */
+    category: Array<string>;
+    /**
+     * Action
+     */
+    action: string | null;
+    /**
+     * Module
+     */
+    module: string | null;
+    /**
+     * Dataset
+     */
+    dataset: string | null;
+    /**
+     * Summary
+     */
+    summary: string | null;
+    severity: Severity | null;
+    process: EventProcess | null;
+    /**
+     * Api Name
+     */
+    api_name: string | null;
+    /**
+     * Rule Name
+     */
+    rule_name: string | null;
+    /**
+     * Rule Ruleset
+     */
+    rule_ruleset: string | null;
+    destination: EventDestination | null;
+    /**
+     * Dns Query
+     */
+    dns_query: string | null;
+    /**
+     * Url
+     */
+    url: string | null;
+    /**
+     * File Path
+     */
+    file_path: string | null;
+    /**
+     * Registry Path
+     */
+    registry_path: string | null;
+};
+
+/**
+ * EventDestination
+ */
+export type EventDestination = {
+    /**
+     * Ip
+     */
+    ip: string | null;
+    /**
+     * Port
+     */
+    port: number | null;
+    /**
+     * Domain
+     */
+    domain: string | null;
+};
+
+/**
+ * EventDetail
+ */
+export type EventDetail = {
+    event: Event;
+    /**
+     * Source
+     */
+    source: {
+        [key: string]: unknown;
+    };
+    related: RelatedEvents;
+};
+
+/**
+ * EventPage
+ */
+export type EventPage = {
+    /**
+     * Events
+     */
+    events: Array<Event>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Next Cursor
+     */
+    next_cursor: string | null;
+};
+
+/**
+ * EventProcess
+ */
+export type EventProcess = {
+    /**
+     * Pid
+     */
+    pid: number | null;
+    /**
+     * Name
+     */
+    name: string | null;
+    /**
+     * Entity Id
+     */
+    entity_id: string | null;
+};
+
+/**
  * ExtractedConfig
  */
 export type ExtractedConfig = {
@@ -435,6 +582,131 @@ export type ExtractedConfig = {
     data: {
         [key: string]: unknown;
     };
+};
+
+/**
+ * Facet
+ *
+ * `field` is the name as requested; `total` counts the events that have any value for it.
+ */
+export type Facet = {
+    /**
+     * Field
+     */
+    field: string;
+    /**
+     * Values
+     */
+    values: Array<ValueCount>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * FacetsRequest
+ */
+export type FacetsRequest = {
+    /**
+     * Query
+     */
+    query?: string;
+    /**
+     * Filters
+     */
+    filters?: Array<FilterChip>;
+    time_range?: TimeRange | null;
+    /**
+     * Lanes
+     */
+    lanes?: Array<Lane> | null;
+    /**
+     * Pids
+     */
+    pids?: Array<number> | null;
+    /**
+     * Fields
+     */
+    fields?: Array<string>;
+};
+
+/**
+ * FacetsResponse
+ */
+export type FacetsResponse = {
+    /**
+     * Facets
+     */
+    facets: Array<Facet>;
+};
+
+/**
+ * FieldRead
+ */
+export type FieldRead = {
+    /**
+     * Name
+     */
+    name: string;
+    type: FieldType;
+    /**
+     * Aliases
+     */
+    aliases: Array<string>;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Example
+     */
+    example: string;
+    lane: Lane | null;
+    /**
+     * Members
+     */
+    members: Array<string>;
+    /**
+     * Searchable
+     */
+    searchable: boolean;
+};
+
+/**
+ * FieldType
+ */
+export type FieldType = 'keyword' | 'text' | 'keyword_with_text' | 'long' | 'integer' | 'date' | 'ip' | 'boolean' | 'flat_object' | 'object_disabled';
+
+/**
+ * FieldValues
+ */
+export type FieldValues = {
+    /**
+     * Values
+     */
+    values: Array<ValueCount>;
+};
+
+/**
+ * FilterChip
+ *
+ * `field` equal to `value`, or not equal when `negate`; wildcards in the value work as in a
+ * query.
+ */
+export type FilterChip = {
+    /**
+     * Field
+     */
+    field: string;
+    /**
+     * Value
+     */
+    value: string;
+    /**
+     * Negate
+     */
+    negate?: boolean;
 };
 
 /**
@@ -495,6 +767,109 @@ export type HealthMessage = {
  * HealthStatus
  */
 export type HealthStatus = 'ok' | 'degraded' | 'down';
+
+/**
+ * Histogram
+ *
+ * Contiguous buckets from the one holding `from` to the one holding `to`, empty ones
+ * included. `from` and `to` are null when nothing matches and the filter gives no range.
+ */
+export type Histogram = {
+    /**
+     * Interval Ms
+     */
+    interval_ms: number;
+    /**
+     * From
+     */
+    from: string | null;
+    /**
+     * To
+     */
+    to: string | null;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Buckets
+     */
+    buckets: Array<HistogramBucket>;
+    /**
+     * Detections
+     */
+    detections: Array<HistogramDetection>;
+};
+
+/**
+ * HistogramBucket
+ */
+export type HistogramBucket = {
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * By Lane
+     */
+    by_lane: {
+        [key: string]: number;
+    };
+};
+
+/**
+ * HistogramDetection
+ */
+export type HistogramDetection = {
+    /**
+     * Time
+     */
+    time: string;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string | null;
+    severity: Severity | null;
+    /**
+     * Ruleset
+     */
+    ruleset: string | null;
+};
+
+/**
+ * HistogramRequest
+ */
+export type HistogramRequest = {
+    /**
+     * Query
+     */
+    query?: string;
+    /**
+     * Filters
+     */
+    filters?: Array<FilterChip>;
+    time_range?: TimeRange | null;
+    /**
+     * Lanes
+     */
+    lanes?: Array<Lane> | null;
+    /**
+     * Pids
+     */
+    pids?: Array<number> | null;
+    /**
+     * Interval
+     */
+    interval?: number | 'auto';
+};
 
 /**
  * HostRow
@@ -597,6 +972,11 @@ export type IocsView = {
 };
 
 /**
+ * Lane
+ */
+export type Lane = 'process' | 'file' | 'registry' | 'network' | 'memory' | 'api';
+
+/**
  * Listing[DnsRow]
  */
 export type ListingDnsRow = {
@@ -604,6 +984,20 @@ export type ListingDnsRow = {
      * Items
      */
     items: Array<DnsRow>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Listing[Event]
+ */
+export type ListingEvent = {
+    /**
+     * Items
+     */
+    items: Array<Event>;
     /**
      * Total
      */
@@ -953,6 +1347,52 @@ export type ProcessTree = {
 };
 
 /**
+ * QueryErrorRead
+ */
+export type QueryErrorRead = {
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Suggestion
+     */
+    suggestion: string | null;
+};
+
+/**
+ * QueryValidateRequest
+ */
+export type QueryValidateRequest = {
+    /**
+     * Query
+     */
+    query: string;
+};
+
+/**
+ * QueryValidation
+ */
+export type QueryValidation = {
+    /**
+     * Ok
+     */
+    ok: boolean;
+    /**
+     * Errors
+     */
+    errors: Array<QueryErrorRead>;
+};
+
+/**
  * RegistryChange
  */
 export type RegistryChange = {
@@ -1043,6 +1483,14 @@ export type RelatedEvent = {
 };
 
 /**
+ * RelatedEvents
+ */
+export type RelatedEvents = {
+    references: ListingEvent;
+    referenced_by: ListingEvent;
+};
+
+/**
  * ReportSummary
  *
  * What the Dashboard and the analysis summary tab show; stored as `analysis.summary`.
@@ -1117,6 +1565,40 @@ export type Screenshot = {
 };
 
 /**
+ * SearchRequest
+ */
+export type SearchRequest = {
+    /**
+     * Query
+     */
+    query?: string;
+    /**
+     * Filters
+     */
+    filters?: Array<FilterChip>;
+    time_range?: TimeRange | null;
+    /**
+     * Lanes
+     */
+    lanes?: Array<Lane> | null;
+    /**
+     * Pids
+     */
+    pids?: Array<number> | null;
+    sort?: SortOrder;
+    /**
+     * Size
+     */
+    size?: number;
+    /**
+     * Search After
+     *
+     * The `next_cursor` of the previous page.
+     */
+    search_after?: string | null;
+};
+
+/**
  * SettingsBody
  */
 export type SettingsBody = {
@@ -1159,6 +1641,8 @@ export type SignatureSummary = {
     description: string;
 };
 
+export type SortOrder = '@timestamp' | '-@timestamp';
+
 /**
  * SystemHealth
  */
@@ -1167,6 +1651,22 @@ export type SystemHealth = {
     opensearch: ComponentHealth;
     cape: ComponentHealth;
     guest: ComponentHealth;
+};
+
+/**
+ * TimeRange
+ *
+ * Both ends are inclusive; a missing end leaves that side open.
+ */
+export type TimeRange = {
+    /**
+     * From
+     */
+    from?: string | null;
+    /**
+     * To
+     */
+    to?: string | null;
 };
 
 /**
@@ -1194,6 +1694,20 @@ export type TlsRow = {
      */
     ja3s: string | null;
     process: ProcessRef | null;
+};
+
+/**
+ * ValueCount
+ */
+export type ValueCount = {
+    /**
+     * Value
+     */
+    value: string;
+    /**
+     * Count
+     */
+    count: number;
 };
 
 export type SystemHealthData = {
@@ -1834,6 +2348,236 @@ export type ViewsPcapResponses = {
      */
     200: unknown;
 };
+
+export type EventsSearchData = {
+    body: SearchRequest;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/events/search';
+};
+
+export type EventsSearchErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type EventsSearchError = EventsSearchErrors[keyof EventsSearchErrors];
+
+export type EventsSearchResponses = {
+    /**
+     * Successful Response
+     */
+    200: EventPage;
+};
+
+export type EventsSearchResponse = EventsSearchResponses[keyof EventsSearchResponses];
+
+export type EventsFacetsData = {
+    body: FacetsRequest;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/events/facets';
+};
+
+export type EventsFacetsErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type EventsFacetsError = EventsFacetsErrors[keyof EventsFacetsErrors];
+
+export type EventsFacetsResponses = {
+    /**
+     * Successful Response
+     */
+    200: FacetsResponse;
+};
+
+export type EventsFacetsResponse = EventsFacetsResponses[keyof EventsFacetsResponses];
+
+export type EventsHistogramData = {
+    body: HistogramRequest;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/events/histogram';
+};
+
+export type EventsHistogramErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type EventsHistogramError = EventsHistogramErrors[keyof EventsHistogramErrors];
+
+export type EventsHistogramResponses = {
+    /**
+     * Successful Response
+     */
+    200: Histogram;
+};
+
+export type EventsHistogramResponse = EventsHistogramResponses[keyof EventsHistogramResponses];
+
+export type EventsDetailData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+        /**
+         * Event Id
+         */
+        event_id: string;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/events/{event_id}';
+};
+
+export type EventsDetailErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type EventsDetailError = EventsDetailErrors[keyof EventsDetailErrors];
+
+export type EventsDetailResponses = {
+    /**
+     * Successful Response
+     */
+    200: EventDetail;
+};
+
+export type EventsDetailResponse = EventsDetailResponses[keyof EventsDetailResponses];
+
+export type QueryValidateData = {
+    body: QueryValidateRequest;
+    path?: never;
+    query?: never;
+    url: '/api/query/validate';
+};
+
+export type QueryValidateErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type QueryValidateError = QueryValidateErrors[keyof QueryValidateErrors];
+
+export type QueryValidateResponses = {
+    /**
+     * Successful Response
+     */
+    200: QueryValidation;
+};
+
+export type QueryValidateResponse = QueryValidateResponses[keyof QueryValidateResponses];
+
+export type QueryFieldsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Prefix
+         *
+         * Typed text; empty lists the whole catalog.
+         */
+        prefix?: string;
+    };
+    url: '/api/query/fields';
+};
+
+export type QueryFieldsErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type QueryFieldsError = QueryFieldsErrors[keyof QueryFieldsErrors];
+
+export type QueryFieldsResponses = {
+    /**
+     * Response Query Fields
+     *
+     * Successful Response
+     */
+    200: Array<FieldRead>;
+};
+
+export type QueryFieldsResponse = QueryFieldsResponses[keyof QueryFieldsResponses];
+
+export type QueryValuesData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query: {
+        /**
+         * Field
+         *
+         * A keyword field or alias.
+         */
+        field: string;
+        /**
+         * Prefix
+         *
+         * Matched case-insensitively.
+         */
+        prefix?: string;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/analyses/{analysis_id}/query/values';
+};
+
+export type QueryValuesErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type QueryValuesError = QueryValuesErrors[keyof QueryValuesErrors];
+
+export type QueryValuesResponses = {
+    /**
+     * Successful Response
+     */
+    200: FieldValues;
+};
+
+export type QueryValuesResponse = QueryValuesResponses[keyof QueryValuesResponses];
 
 export type SystemWsMessageSchemasData = {
     body?: never;

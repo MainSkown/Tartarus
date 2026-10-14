@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
+import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -201,6 +201,109 @@ export const viewsScreenshot = <ThrowOnError extends boolean = false>(options: O
  * The guest's network capture, raw.
  */
 export const viewsPcap = <ThrowOnError extends boolean = false>(options: Options<ViewsPcapData, ThrowOnError>): RequestResult<ViewsPcapResponses, ViewsPcapErrors, ThrowOnError> => (options.client ?? client).get<ViewsPcapResponses, ViewsPcapErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/pcap', ...options });
+
+/**
+ * Search
+ *
+ * One page of the analysis's events matching the query, the chips and the other filters.
+ *
+ * Sorted by time, then by the event's own order, then by id, so the order is total. `total`
+ * is exact; `next_cursor` is opaque, null on the last page, and goes back as `search_after`
+ * for the next one. `422` for a query or chip that does not compile (its `error.details.errors`
+ * lists each problem with its span) or for a malformed cursor. An analysis with no events yet
+ * answers with an empty page.
+ */
+export const eventsSearch = <ThrowOnError extends boolean = false>(options: Options<EventsSearchData, ThrowOnError>): RequestResult<EventsSearchResponses, EventsSearchErrors, ThrowOnError> => (options.client ?? client).post<EventsSearchResponses, EventsSearchErrors, ThrowOnError>({
+    url: '/api/analyses/{analysis_id}/events/search',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Facets
+ *
+ * The ten most common values of each requested field, and how many events have a value
+ * for it, over the events the filter keeps.
+ *
+ * Fields are catalog names or aliases; a text, flat-object or unsearchable field, a composite
+ * alias such as `domain` and an unknown field are refused with `422`.
+ */
+export const eventsFacets = <ThrowOnError extends boolean = false>(options: Options<EventsFacetsData, ThrowOnError>): RequestResult<EventsFacetsResponses, EventsFacetsErrors, ThrowOnError> => (options.client ?? client).post<EventsFacetsResponses, EventsFacetsErrors, ThrowOnError>({
+    url: '/api/analyses/{analysis_id}/events/facets',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Histogram
+ *
+ * Event counts per time bucket, split by lane, and the detections, for the timeline.
+ *
+ * `interval` is `auto` (the smallest of 1, 2, 5, ... ms, s, min, h, days that makes at most 120
+ * buckets) or milliseconds, widened where needed to keep to 2000 buckets. The buckets are
+ * contiguous from the one holding `from` to the one holding `to` (the time range where it names
+ * an end, else the first and last matching event), empty ones included, so they sum to `total`.
+ * `detections` are the matching alerts, at most 500, oldest first.
+ */
+export const eventsHistogram = <ThrowOnError extends boolean = false>(options: Options<EventsHistogramData, ThrowOnError>): RequestResult<EventsHistogramResponses, EventsHistogramErrors, ThrowOnError> => (options.client ?? client).post<EventsHistogramResponses, EventsHistogramErrors, ThrowOnError>({
+    url: '/api/analyses/{analysis_id}/events/histogram',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Detail
+ *
+ * One event: its typed fields, its whole stored document (`source`, with the raw record
+ * that searches leave out) and `related`.
+ *
+ * `related.references` are the events this one names as its triggers (a detection's
+ * `related.events`); `related.referenced_by` are the detections that name this one. Each
+ * lists at most 50 and counts them all. The id may contain slashes and colons, encoded or not.
+ * `404` for an unknown analysis or event.
+ */
+export const eventsDetail = <ThrowOnError extends boolean = false>(options: Options<EventsDetailData, ThrowOnError>): RequestResult<EventsDetailResponses, EventsDetailErrors, ThrowOnError> => (options.client ?? client).get<EventsDetailResponses, EventsDetailErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/events/{event_id}', ...options });
+
+/**
+ * Validate
+ *
+ * Whether the query compiles, with each problem as a span of the text and, for an unknown
+ * field, the closest name. An empty query is fine.
+ */
+export const queryValidate = <ThrowOnError extends boolean = false>(options: Options<QueryValidateData, ThrowOnError>): RequestResult<QueryValidateResponses, QueryValidateErrors, ThrowOnError> => (options.client ?? client).post<QueryValidateResponses, QueryValidateErrors, ThrowOnError>({
+    url: '/api/query/validate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Fields
+ *
+ * The field catalog for autocomplete. With a prefix, only searchable fields whose name or
+ * alias starts with it, then those that contain it, at most 50.
+ */
+export const queryFields = <ThrowOnError extends boolean = false>(options?: Options<QueryFieldsData, ThrowOnError>): RequestResult<QueryFieldsResponses, QueryFieldsErrors, ThrowOnError> => (options?.client ?? client).get<QueryFieldsResponses, QueryFieldsErrors, ThrowOnError>({ url: '/api/query/fields', ...options });
+
+/**
+ * Values
+ *
+ * The most common values of a keyword field that start with the prefix, as indexed
+ * (lowercase). The composite alias `domain` merges its two fields. `422` for a field that is
+ * not a keyword.
+ */
+export const queryValues = <ThrowOnError extends boolean = false>(options: Options<QueryValuesData, ThrowOnError>): RequestResult<QueryValuesResponses, QueryValuesErrors, ThrowOnError> => (options.client ?? client).get<QueryValuesResponses, QueryValuesErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/query/values', ...options });
 
 /**
  * Ws Message Schemas
