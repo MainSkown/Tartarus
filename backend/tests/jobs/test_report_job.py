@@ -35,9 +35,11 @@ class Rig:
     gathered_with: list[tuple[ReportSources, ReportInclude]] = field(default_factory=list)
     rendered: list[str] = field(default_factory=list)
 
-    def context(self, params: dict[str, Any], analysis_id: int | None = None) -> JobContext:
+    def context(
+        self, params: dict[str, Any], analysis_id: int | None = None, job_id: int = 11
+    ) -> JobContext:
         return JobContext(
-            job_id=11,
+            job_id=job_id,
             analysis_id=self.analysis.id if analysis_id is None else analysis_id,
             params=params,
             exports_dir=self.exports,
@@ -52,8 +54,9 @@ class Rig:
             attack_table=ATTACK_TABLE,
         )
 
-    async def run(self, format_: str = "pdf", **include: bool) -> dict[str, Any]:
-        return await self.handler()(self.context({"format": format_, "include": include}))
+    async def run(self, format_: str = "pdf", job_id: int = 11, **include: bool) -> dict[str, Any]:
+        params = {"format": format_, "include": include}
+        return await self.handler()(self.context(params, job_id=job_id))
 
     @property
     def files(self) -> list[str]:
@@ -102,7 +105,7 @@ async def test_a_pdf_report_is_saved_under_the_analysis_and_described_for_downlo
 
     name = f"tartarus-report-{rig.analysis.id}.pdf"
     assert result == {
-        "file": f"{rig.analysis.id}/{name}",
+        "file": f"{rig.analysis.id}/job-11-{name}",
         "filename": name,
         "media_type": "application/pdf",
     }
@@ -171,7 +174,7 @@ async def test_the_file_appears_whole_or_not_at_all(
 
     [before_rename] = seen_while_writing
     assert [name.endswith(".part") for name in before_rename] == [True]
-    assert rig.files == [f"tartarus-report-{rig.analysis.id}.pdf"]
+    assert rig.files == [f"job-11-tartarus-report-{rig.analysis.id}.pdf"]
 
 
 async def test_a_failed_save_leaves_no_temporary_file_and_keeps_the_earlier_report(
@@ -205,18 +208,22 @@ async def test_a_render_that_fails_says_why_and_leaves_nothing_behind(
     assert rig.files == []
 
 
-async def test_a_second_run_replaces_the_first_report(
+async def test_a_second_report_leaves_the_first_jobs_file_as_it_was(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    await rig.run("pdf")
+    first = await rig.run("pdf", job_id=11)
     monkeypatch.setattr(job, "render_pdf", lambda _model: b"%PDF-1.7 second")
 
-    result = await rig.run("pdf")
+    second = await rig.run("pdf", job_id=12)
 
-    produced = resolve_export(rig.exports, result["file"])
-    assert produced is not None
-    assert produced.read_bytes() == b"%PDF-1.7 second"
-    assert len(rig.files) == 1
+    assert first["file"] != second["file"]
+    assert second["filename"] == first["filename"]
+    first_file = resolve_export(rig.exports, first["file"])
+    second_file = resolve_export(rig.exports, second["file"])
+    assert first_file is not None
+    assert second_file is not None
+    assert first_file.read_bytes() == FAKE_PDF
+    assert second_file.read_bytes() == b"%PDF-1.7 second"
 
 
 async def test_the_pdf_and_the_html_report_of_one_analysis_live_side_by_side(rig: Rig) -> None:
@@ -224,8 +231,8 @@ async def test_the_pdf_and_the_html_report_of_one_analysis_live_side_by_side(rig
     await rig.run("html")
 
     assert rig.files == [
-        f"tartarus-report-{rig.analysis.id}.html",
-        f"tartarus-report-{rig.analysis.id}.pdf",
+        f"job-11-tartarus-report-{rig.analysis.id}.html",
+        f"job-11-tartarus-report-{rig.analysis.id}.pdf",
     ]
 
 

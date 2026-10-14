@@ -47,7 +47,8 @@ def export_report_handler(
         content = await asyncio.to_thread(_render, model, request.format)
         context.report_progress("Saving the file", SAVE_START_PERCENT)
         filename = f"tartarus-report-{context.analysis_id}.{request.format.value}"
-        produced = context.analysis_dir() / filename
+        # Each job keeps its own file: the download of an earlier job must not serve a later report.
+        produced = context.analysis_dir() / f"job-{context.job_id}-{filename}"
         await asyncio.to_thread(_save_whole, produced, content, context.job_id)
         return file_result(context.exports_dir, produced, filename, MEDIA_TYPES[request.format])
 
