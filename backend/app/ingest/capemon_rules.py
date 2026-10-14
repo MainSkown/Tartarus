@@ -1,6 +1,7 @@
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from app.ingest.capemon_calls import Call
@@ -52,14 +53,49 @@ class Derived:
 
 @dataclass
 class DerivationRun:
-    """What derivation rules need to remember between calls of one report."""
+    """What derivation rules need to remember between calls of one report.
 
-    processes: dict[int, ProcessIdentity]
+    Every process seen is kept in the order it was seen, so a pid the guest reused names
+    the process that held it at the time asked about.
+    """
+
     created_children: set[int] = field(default_factory=set)
+    _seen: dict[int, list[ProcessIdentity]] = field(default_factory=dict)
+
+    @classmethod
+    def of(cls, processes: Iterable[ProcessIdentity]) -> "DerivationRun":
+        run = cls()
+        for identity in processes:
+            run.remember(identity)
+        return run
+
+    def remember(self, identity: ProcessIdentity) -> None:
+        """Adds a process; one with the start time of the last of its pid replaces that one."""
+        history = self._seen.setdefault(identity.pid, [])
+        if history and history[-1].start == identity.start:
+            history[-1] = identity
+        else:
+            history.append(identity)
+
+    def knows(self, pid: int) -> bool:
+        return pid in self._seen
+
+    def latest(self, pid: int) -> ProcessIdentity | None:
+        return self._seen[pid][-1] if pid in self._seen else None
+
+    def process_at(self, pid: int, when: datetime) -> ProcessIdentity | None:
+        """The process that held `pid` at `when`; the first one seen if `when` precedes them all."""
+        history = self._seen.get(pid)
+        if not history:
+            return None
+        started = [process for process in history if process.start is None or process.start <= when]
+        return started[-1] if started else history[0]
 
 
 Handler = Callable[[Call], Derived | None]
+RunHandler = Callable[[Call, DerivationRun], Derived | None]
 HANDLERS: dict[str, Handler] = {}
+RUN_HANDLERS: dict[str, RunHandler] = {}
 
 
 def _derives(*apis: str) -> Callable[[Handler], Handler]:
@@ -102,7 +138,7 @@ def _process_created(call: Call, run: DerivationRun) -> Derived | None:
     if child_pid in run.created_children:
         return None
     run.created_children.add(child_pid)
-    child = _child_identity(call, child_pid, run.processes.get(child_pid))
+    child = _child_identity(call, child_pid, run.latest(child_pid))
     summary = f"{call.label} started {child.command_line or child.name or f'pid {child_pid}'}"
     return Derived(PROCESS_CREATED, summary, {}, process=child)
 
@@ -119,6 +155,8 @@ def _child_identity(call: Call, child_pid: int, known: ProcessIdentity | None) -
         command_line=call.text("CommandLine") or known.command_line,
         start=known.start,
         parent_name=call.process.name,
+        parent_executable=call.process.executable,
+        parent_command_line=call.process.command_line,
     )
 
 
@@ -243,26 +281,48 @@ def _http_request(call: Call) -> Derived | None:
     return Derived(HTTP_REQUEST, f"{call.label} requested {url}", {"url": {"full": url}})
 
 
-def _injection_handler(shape: EventShape, verb: str, *, needs_pid: bool = False) -> Handler:
-    def derive(call: Call) -> Derived | None:
+def _injected_process_fields(target_pid: int, call: Call, run: DerivationRun) -> dict[str, Any]:
+    target = run.process_at(target_pid, call.timestamp)
+    named = {
+        "target_name": target and target.name,
+        "target_executable": target and target.executable,
+        "target_command_line": target and target.command_line,
+    }
+    return {key: value for key, value in named.items() if value}
+
+
+def _injection_handler(shape: EventShape, verb: str, *, needs_pid: bool = False) -> RunHandler:
+    def derive(call: Call, run: DerivationRun) -> Derived | None:
         foreign, target_pid = _foreign_target(call)
         if not call.succeeded or not foreign or (needs_pid and target_pid is None):
             return None
-        target = "another process" if target_pid is None else f"pid {target_pid}"
-        extra = {} if target_pid is None else {"inject": {"target_pid": target_pid}}
-        return Derived(shape, f"{call.label} {verb} {target}", {}, tartarus=extra)
+        if target_pid is None:
+            return Derived(shape, f"{call.label} {verb} another process", {})
+        inject = {"target_pid": target_pid, **_injected_process_fields(target_pid, call, run)}
+        summary = f"{call.label} {verb} pid {target_pid}"
+        return Derived(shape, summary, {}, tartarus={"inject": inject})
 
     return derive
 
 
-_derives("NtWriteVirtualMemory", "WriteProcessMemory")(
+def _derives_with_run(*apis: str) -> Callable[[RunHandler], RunHandler]:
+    def register(handler: RunHandler) -> RunHandler:
+        RUN_HANDLERS.update(dict.fromkeys(apis, handler))
+        return handler
+
+    return register
+
+
+_derives_with_run("NtWriteVirtualMemory", "WriteProcessMemory")(
     _injection_handler(INJECT_WRITE_MEMORY, "wrote memory of")
 )
-_derives("NtCreateThreadEx", "NtCreateThread", "CreateRemoteThread", "CreateRemoteThreadEx")(
-    _injection_handler(INJECT_THREAD, "started a thread in")
+_derives_with_run(
+    "NtCreateThreadEx", "NtCreateThread", "CreateRemoteThread", "CreateRemoteThreadEx"
+)(_injection_handler(INJECT_THREAD, "started a thread in"))
+_derives_with_run("NtMapViewOfSection")(
+    _injection_handler(INJECT_MAP_SECTION, "mapped a section into")
 )
-_derives("NtMapViewOfSection")(_injection_handler(INJECT_MAP_SECTION, "mapped a section into"))
-_derives("NtQueueApcThread", "NtQueueApcThreadEx", "QueueUserAPC")(
+_derives_with_run("NtQueueApcThread", "NtQueueApcThreadEx", "QueueUserAPC")(
     _injection_handler(INJECT_APC, "queued an APC in", needs_pid=True)
 )
 
@@ -270,5 +330,7 @@ _derives("NtQueueApcThread", "NtQueueApcThreadEx", "QueueUserAPC")(
 def derive(call: Call, run: DerivationRun) -> Derived | None:
     if call.api in PROCESS_CREATING_APIS:
         return _process_created(call, run)
+    if run_handler := RUN_HANDLERS.get(call.api):
+        return run_handler(call, run)
     handler = HANDLERS.get(call.api)
     return handler(call) if handler else None

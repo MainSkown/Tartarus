@@ -43,7 +43,13 @@ def test_only_the_raw_record_is_marked_not_searchable() -> None:
 
 
 def test_a_prefix_finds_fields_by_name() -> None:
-    assert names("process.p") == ["process.pid", "process.parent.pid", "process.parent.name"]
+    assert names("process.p") == [
+        "process.pid",
+        "process.parent.pid",
+        "process.parent.name",
+        "process.parent.executable",
+        "process.parent.command_line",
+    ]
 
 
 def test_a_prefix_is_case_insensitive() -> None:

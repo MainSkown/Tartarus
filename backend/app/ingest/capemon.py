@@ -75,7 +75,7 @@ class CapemonNormalizer:
         self, report: Mapping[str, Any], context: IngestContext
     ) -> Iterator[dict[str, Any]]:
         processes, calls = _read(report, context)
-        run = DerivationRun({process.identity.pid: process.identity for process in processes})
+        run = DerivationRun.of(process.identity for process in processes)
         factory = EventFactory(context, source=SOURCE, source_file=SOURCE_FILE, module=SOURCE)
         for call in calls:
             yield from call_events(factory, call, run, context.analysis_id)

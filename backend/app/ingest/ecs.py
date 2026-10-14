@@ -103,6 +103,8 @@ class ProcessIdentity:
     command_line: str | None = None
     start: datetime | None = None
     parent_name: str | None = None
+    parent_executable: str | None = None
+    parent_command_line: str | None = None
 
 
 def process_fields(
@@ -119,7 +121,12 @@ def process_fields(
         "start": None if process.start is None else format_timestamp(process.start),
     }
     fields |= {key: value for key, value in optional.items() if value is not None}
-    parent = {"pid": process.parent_pid, "name": process.parent_name}
+    parent = {
+        "pid": process.parent_pid,
+        "name": process.parent_name,
+        "executable": process.parent_executable,
+        "command_line": process.parent_command_line,
+    }
     parent = {key: value for key, value in parent.items() if value is not None}
     if parent:
         fields["parent"] = parent

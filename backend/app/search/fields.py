@@ -98,6 +98,18 @@ _PROCESS = (
     ),
     FieldDefinition("process.parent.name", _K, "Parent process image file name", "explorer.exe"),
     FieldDefinition(
+        "process.parent.executable",
+        _KT,
+        "Full path of the parent process image",
+        r"C:\Windows\explorer.exe",
+    ),
+    FieldDefinition(
+        "process.parent.command_line",
+        _KT,
+        "Command line the parent process was started with",
+        r"C:\Windows\Explorer.EXE",
+    ),
+    FieldDefinition(
         "process.executable",
         _KT,
         "Full path of the process image",
@@ -124,6 +136,27 @@ _PROCESS = (
         _LONG,
         "Pid of the process an injection call acts on",
         "4412",
+        Lane.PROCESS,
+    ),
+    FieldDefinition(
+        "tartarus.inject.target_name",
+        _K,
+        "Image file name of the process an injection call acts on",
+        "svchost.exe",
+        Lane.PROCESS,
+    ),
+    FieldDefinition(
+        "tartarus.inject.target_executable",
+        _KT,
+        "Full path of the image of the process an injection call acts on",
+        r"C:\Windows\System32\svchost.exe",
+        Lane.PROCESS,
+    ),
+    FieldDefinition(
+        "tartarus.inject.target_command_line",
+        _KT,
+        "Command line of the process an injection call acts on",
+        r"C:\Windows\System32\svchost.exe -k netsvcs",
         Lane.PROCESS,
     ),
 )
@@ -353,6 +386,12 @@ _DETECTION = (
         FieldType.TEXT,
         "Text of the matched condition",
         "CommandLine contains 'powershell'",
+    ),
+    FieldDefinition(
+        "tartarus.detection.repeated",
+        _LONG,
+        "How many repeats of this detection the 60 s suppression window swallowed",
+        "3",
     ),
 )
 

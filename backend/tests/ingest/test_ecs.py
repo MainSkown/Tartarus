@@ -155,6 +155,22 @@ def test_process_fields_describe_the_process_and_its_parent() -> None:
     }
 
 
+def test_process_fields_give_the_parent_its_path_and_command_line() -> None:
+    identity = ProcessIdentity(
+        pid=9632,
+        parent_pid=10116,
+        parent_name="benign.exe",
+        parent_executable="C:\\Temp\\benign.exe",
+        parent_command_line="benign.exe --go",
+    )
+    assert process_fields(identity, analysis_id=6)["parent"] == {
+        "pid": 10116,
+        "name": "benign.exe",
+        "executable": "C:\\Temp\\benign.exe",
+        "command_line": "benign.exe --go",
+    }
+
+
 def test_process_fields_omit_what_is_unknown() -> None:
     assert process_fields(ProcessIdentity(pid=7), analysis_id=6) == {
         "pid": 7,

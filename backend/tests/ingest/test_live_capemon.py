@@ -4,6 +4,7 @@ import copy
 import json
 import random
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import groupby
 from pathlib import Path
@@ -28,6 +29,7 @@ from app.live.bson_log import (
 )
 from app.live.log_values import clock_text
 from tests.ingest.contract import assert_increasing_sequence, assert_unique_ids, check_common_fields
+from tests.ingest.reports import call, first_seen_at, process, report_of
 
 Event = dict[str, Any]
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "cape" / "live_logs_45"
@@ -239,6 +241,110 @@ def test_the_only_thing_the_logs_cannot_say_is_the_registry_value_type(
     assert [e["event"]["action"] for e in differing] == ["reg-value-set"]
     assert differing[0]["registry"]["data"].pop("type") == "REG_SZ"
     assert differing[0]["registry"] == live_by_id[differing[0]["event"]["id"]]["registry"]
+
+
+# --- the fields of the process context, on a scripted run ------------------------------------
+
+
+@dataclass(frozen=True)
+class ScriptedProcess:
+    pid: int
+    name: str
+    command_line: str
+    first_seen: datetime
+    parent_pid: int = 4
+    calls: tuple[tuple[str, dict[str, str], datetime], ...] = ()
+
+
+def after(seconds: int) -> datetime:
+    return FIRST_SEEN + timedelta(seconds=seconds)
+
+
+SCRIPT = (
+    ScriptedProcess(
+        100,
+        "parent.exe",
+        "parent.exe --go",
+        after(0),
+        calls=(
+            ("NtCreateUserProcess", {"ProcessId": "200", "CommandLine": "child.exe /x"}, after(1)),
+            ("NtWriteVirtualMemory", {"ProcessId": "200"}, after(2)),
+            ("NtWriteVirtualMemory", {"ProcessId": "300"}, after(3)),
+            ("NtWriteVirtualMemory", {"ProcessId": "4242"}, after(10)),
+            ("NtWriteVirtualMemory", {"ProcessId": "4242"}, after(40)),
+        ),
+    ),
+    ScriptedProcess(200, "child.exe", "child.exe /x", after(1), parent_pid=100),
+    ScriptedProcess(4242, "old.exe", "old.exe", after(5)),
+    ScriptedProcess(4242, "new.exe", "new.exe", after(30)),
+)
+
+
+def scripted_logs(script: tuple[ScriptedProcess, ...]) -> dict[str, list[LogRecord]]:
+    return {
+        f"{scripted.pid}-{scripted.name}.bson": [
+            process_record(
+                scripted.pid,
+                name=scripted.name,
+                parent_pid=scripted.parent_pid,
+                first_seen=scripted.first_seen,
+            ),
+            EnvironRecord({"CommandLine": scripted.command_line}),
+            *(
+                call_record(position, api, at=at, **arguments)
+                for position, (api, arguments, at) in enumerate(scripted.calls)
+            ),
+        ]
+        for scripted in script
+    }
+
+
+def scripted_report(script: tuple[ScriptedProcess, ...]) -> dict[str, Any]:
+    return report_of(
+        *(
+            first_seen_at(
+                process(
+                    scripted.pid,
+                    [
+                        call(
+                            api,
+                            arguments,
+                            thread_id="1",
+                            id=position,
+                            timestamp=clock_text(at),
+                        )
+                        for position, (api, arguments, at) in enumerate(scripted.calls)
+                    ],
+                    name=scripted.name,
+                    parent_id=scripted.parent_pid,
+                    command_line=scripted.command_line,
+                ),
+                clock_text(scripted.first_seen),
+            )
+            for scripted in script
+        )
+    )
+
+
+@pytest.fixture(scope="module")
+def scripted_context() -> IngestContext:
+    return IngestContext(analysis_id=ANALYSIS_ID, started_at=FIRST_SEEN.replace(tzinfo=UTC))
+
+
+@pytest.mark.parametrize("batch_size", BATCH_SIZES)
+def test_the_parent_and_injection_target_fields_are_the_same_live_and_final(
+    batch_size: int, scripted_context: IngestContext
+) -> None:
+    final = list(CapemonNormalizer().normalise(scripted_report(SCRIPT), scripted_context))
+    live = LiveCapemon(scripted_context)
+    arrivals = in_order_of_arrival(scripted_logs(SCRIPT))
+    events = feed(live, arrivals, batch_size) + live.flush()
+
+    assert by_id(events) == by_id(final)
+    [created] = [e for e in final if e["event"]["action"] == "process-created"]
+    assert created["process"]["parent"]["command_line"] == "parent.exe --go"
+    injected = [e["tartarus"]["inject"] for e in final if "inject" in e["tartarus"]]
+    assert [i.get("target_name") for i in injected] == ["child.exe", None, "old.exe", "new.exe"]
 
 
 # --- order of arrival ----------------------------------------------------------------------

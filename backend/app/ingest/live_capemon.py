@@ -46,7 +46,7 @@ class LiveCapemon:
         self._pid_of_file: dict[str, int] = {}
         self._entries: dict[int, dict[str, Any]] = {}
         self._names: dict[int | None, str | None] = {}
-        self._run = DerivationRun(processes={})
+        self._run = DerivationRun()
         self._awaiting_child: dict[int, list[Call]] = {}
 
     @property
@@ -98,7 +98,7 @@ class LiveCapemon:
         self._remember_identity(record.pid)
 
     def _remember_identity(self, pid: int) -> None:
-        self._run.processes[pid] = self._identity(pid)
+        self._run.remember(self._identity(pid))
 
     def _identity(self, pid: int) -> ProcessIdentity:
         return read_identity(self._entries[pid], self._names, self._offset or timedelta(0))
@@ -123,11 +123,13 @@ class LiveCapemon:
 
     def _unseen_child(self, call: Call) -> int | None:
         child_pid = created_child_pid(call) if call.api in PROCESS_CREATING_APIS else None
-        known = child_pid in self._run.processes or child_pid in self._run.created_children
+        known = child_pid in self._run.created_children or (
+            child_pid is not None and self._run.knows(child_pid)
+        )
         return None if known else child_pid
 
     def _release_known_children(self) -> list[Event]:
-        return self._release([pid for pid in self._awaiting_child if pid in self._run.processes])
+        return self._release([pid for pid in self._awaiting_child if self._run.knows(pid)])
 
     def _release(self, child_pids: list[int]) -> list[Event]:
         events: list[Event] = []

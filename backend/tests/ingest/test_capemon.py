@@ -7,7 +7,7 @@ import pytest
 
 from app.ingest.capemon import CapemonNormalizer, api_event_id, call_lane, read_calls
 from app.ingest.protocol import IngestContext
-from tests.ingest.reports import call, process, report_of, report_with
+from tests.ingest.reports import call, first_seen_at, process, report_of, report_with
 
 Event = dict[str, Any]
 CHILD_PATH = "C:\\Users\\Analyst\\AppData\\Local\\Temp\\tartarus-benign.txt"
@@ -518,7 +518,12 @@ def test_process_created_by_either_call_alone(context: IngestContext) -> None:
         assert event["event"]["action"] == "process-created"
         assert event["process"]["pid"] == 200
         assert event["process"]["command_line"] == "x.exe /y"
-        assert event["process"]["parent"] == {"pid": 100, "name": "sample.exe"}
+        assert event["process"]["parent"] == {
+            "pid": 100,
+            "name": "sample.exe",
+            "executable": "C:\\Temp\\sample.exe",
+            "command_line": "sample.exe",
+        }
 
 
 def test_the_earliest_creating_call_wins_even_if_listed_later(context: IngestContext) -> None:
@@ -586,6 +591,105 @@ def test_only_a_process_ending_itself_is_process_terminated(
     assert [e["event"]["action"] for e in derived] == (
         ["process-terminated"] if terminates_itself else []
     )
+
+
+def created_child(parent: dict[str, Any], context: IngestContext) -> Event:
+    return only_derived(report_of(parent), context)
+
+
+def creating_call(child_pid: int = 200, **fields: Any) -> dict[str, Any]:
+    return call("NtCreateUserProcess", {"ProcessId": str(child_pid)}, **fields)
+
+
+def test_a_child_has_its_parents_path_and_command_line(context: IngestContext) -> None:
+    parent = process(
+        100, [creating_call()], name="parent.exe", command_line='"C:\\Temp\\parent.exe" --go'
+    )
+    assert created_child(parent, context)["process"]["parent"] == {
+        "pid": 100,
+        "name": "parent.exe",
+        "executable": "C:\\Temp\\parent.exe",
+        "command_line": '"C:\\Temp\\parent.exe" --go',
+    }
+
+
+def test_a_parent_the_report_does_not_describe_leaves_those_fields_out(
+    context: IngestContext,
+) -> None:
+    parent = process(100, [creating_call()], name="parent.exe")
+    del parent["module_path"], parent["environ"]
+    assert created_child(parent, context)["process"]["parent"] == {"pid": 100, "name": "parent.exe"}
+
+
+def test_a_reused_pid_gives_each_child_the_parent_that_created_it(context: IngestContext) -> None:
+    first = process(100, [creating_call(200, id=1)], name="first.exe", command_line="first.exe")
+    second = first_seen_at(
+        process(
+            100,
+            [creating_call(300, id=2, timestamp="2026-10-13 10:13:00,000")],
+            name="second.exe",
+            command_line="second.exe",
+        ),
+        "2026-10-13 10:12:59,000",
+    )
+    children = derived_of(normalise(report_of(first, second), context))
+    assert [e["process"]["parent"]["command_line"] for e in children] == [
+        "first.exe",
+        "second.exe",
+    ]
+
+
+INJECTION_INTO_4242 = call("NtWriteVirtualMemory", {"ProcessHandle": "0x2c4", "ProcessId": "4242"})
+
+
+def test_an_injection_event_names_the_process_it_acts_on(context: IngestContext) -> None:
+    victim = process(4242, [], name="victim.exe", command_line="victim.exe -k net")
+    event = only_derived(report_of(process(100, [INJECTION_INTO_4242]), victim), context)
+    assert event["tartarus"]["inject"] == {
+        "target_pid": 4242,
+        "target_name": "victim.exe",
+        "target_executable": "C:\\Temp\\victim.exe",
+        "target_command_line": "victim.exe -k net",
+    }
+
+
+def test_an_injection_target_the_report_does_not_know_stays_a_bare_pid(
+    context: IngestContext,
+) -> None:
+    event = only_derived(report_of(process(100, [INJECTION_INTO_4242])), context)
+    assert event["tartarus"]["inject"] == {"target_pid": 4242}
+
+
+def test_an_injection_target_lacking_a_command_line_leaves_only_that_field_out(
+    context: IngestContext,
+) -> None:
+    victim = process(4242, [], name="victim.exe")
+    del victim["environ"]
+    event = only_derived(report_of(process(100, [INJECTION_INTO_4242]), victim), context)
+    assert set(event["tartarus"]["inject"]) == {"target_pid", "target_name", "target_executable"}
+
+
+def test_a_reused_pid_resolves_to_the_process_current_at_the_injection(
+    context: IngestContext,
+) -> None:
+    early = call("NtWriteVirtualMemory", {"ProcessId": "4242"}, id=1)
+    late = call(
+        "NtWriteVirtualMemory", {"ProcessId": "4242"}, id=2, timestamp="2026-10-13 10:13:30,000"
+    )
+    old_victim = first_seen_at(process(4242, [], name="old.exe"), "2026-10-13 10:12:30,000")
+    new_victim = first_seen_at(process(4242, [], name="new.exe"), "2026-10-13 10:13:00,000")
+    injections = derived_of(
+        normalise(report_of(process(100, [early, late]), old_victim, new_victim), context)
+    )
+    assert [e["tartarus"]["inject"]["target_name"] for e in injections] == ["old.exe", "new.exe"]
+
+
+def test_an_injection_before_any_holder_of_the_pid_started_names_the_first_one(
+    context: IngestContext,
+) -> None:
+    victim = first_seen_at(process(4242, [], name="victim.exe"), "2026-10-13 10:13:00,000")
+    event = only_derived(report_of(process(100, [INJECTION_INTO_4242]), victim), context)
+    assert event["tartarus"]["inject"]["target_name"] == "victim.exe"
 
 
 def test_registry_key_created_only_when_the_key_is_new(context: IngestContext) -> None:

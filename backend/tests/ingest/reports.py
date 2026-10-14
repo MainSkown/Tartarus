@@ -38,6 +38,10 @@ def process(
     }
 
 
+def first_seen_at(entry: dict[str, Any], first_seen: str) -> dict[str, Any]:
+    return {**entry, "first_seen": first_seen}
+
+
 def report_of(*processes: dict[str, Any]) -> dict[str, Any]:
     return {"behavior": {"processes": list(processes)}}
 

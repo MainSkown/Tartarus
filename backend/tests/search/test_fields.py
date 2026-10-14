@@ -34,6 +34,8 @@ PROCESS = [
     "process.thread.id",
     "process.name",
     "process.parent.name",
+    "process.parent.executable",
+    "process.parent.command_line",
     "process.executable",
     "process.command_line",
     "process.entity_id",
@@ -103,8 +105,14 @@ DETECTION = [
     "related.ip",
     "related.hosts",
     "tartarus.detection.match",
+    "tartarus.detection.repeated",
 ]
-INJECTION = ["tartarus.inject.target_pid"]
+INJECTION = [
+    "tartarus.inject.target_pid",
+    "tartarus.inject.target_name",
+    "tartarus.inject.target_executable",
+    "tartarus.inject.target_command_line",
+]
 SPEC_FIELDS = COMMON + PROCESS + INJECTION + FILE + REGISTRY + NETWORK + API + MEMORY + DETECTION
 
 
@@ -145,6 +153,12 @@ def test_every_field_is_described_and_has_an_example() -> None:
         ("process.name", FieldType.KEYWORD),
         ("process.command_line", FieldType.KEYWORD_WITH_TEXT),
         ("process.executable", FieldType.KEYWORD_WITH_TEXT),
+        ("process.parent.executable", FieldType.KEYWORD_WITH_TEXT),
+        ("process.parent.command_line", FieldType.KEYWORD_WITH_TEXT),
+        ("tartarus.inject.target_name", FieldType.KEYWORD),
+        ("tartarus.inject.target_executable", FieldType.KEYWORD_WITH_TEXT),
+        ("tartarus.inject.target_command_line", FieldType.KEYWORD_WITH_TEXT),
+        ("tartarus.detection.repeated", FieldType.LONG),
         ("file.path", FieldType.KEYWORD_WITH_TEXT),
         ("tartarus.summary", FieldType.KEYWORD_WITH_TEXT),
         ("source.ip", FieldType.IP),
@@ -166,6 +180,9 @@ def test_fields_carry_their_lane_only_when_the_spec_assigns_one() -> None:
     assert field_by_name("api.name").lane is Lane.API
     assert field_by_name("tartarus.memory.plugin").lane is Lane.MEMORY
     assert field_by_name("tartarus.inject.target_pid").lane is Lane.PROCESS
+    assert field_by_name("tartarus.inject.target_name").lane is Lane.PROCESS
+    assert field_by_name("tartarus.inject.target_executable").lane is Lane.PROCESS
+    assert field_by_name("tartarus.inject.target_command_line").lane is Lane.PROCESS
     assert field_by_name("event.id").lane is None
     assert field_by_name("rule.name").lane is None
 

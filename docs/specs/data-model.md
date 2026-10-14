@@ -103,10 +103,13 @@ Process context (on every event that has one):
 | `process.pid`, `process.parent.pid`, `process.thread.id` | long |
 | `process.name`, `process.parent.name` | keyword |
 | `process.executable`, `process.command_line` | keyword + text subfield |
+| `process.parent.executable`, `process.parent.command_line` | keyword + text subfield: the parent's path and command line, on `process-created` events only (Sigma `ParentImage`, `ParentCommandLine`) |
 | `process.entity_id` | keyword (`<analysis>:<pid>@<start_ts>`) |
 | `process.start` | date |
 | `process.integrity_level` | keyword (custom) |
 | `tartarus.inject.target_pid` | long: the process an `inject-*` event acts on, when the call names it (lane `process`) |
+| `tartarus.inject.target_name` | keyword: that process's image file name, when the run has seen it (lane `process`) |
+| `tartarus.inject.target_executable`, `tartarus.inject.target_command_line` | keyword + text subfield: its path and command line, when the run has seen them (lane `process`) |
 
 Category fields:
 
@@ -129,6 +132,7 @@ detections track):
 | `related.events` | `event.id`s that triggered it |
 | `related.hash`, `related.ip`, `related.hosts` | Pivots |
 | `tartarus.detection.match` | Text of the matched condition, for the detail view |
+| `tartarus.detection.repeated` | long: how many repeats of this detection the 60 s suppression window swallowed |
 
 ### Mapping from sources
 
@@ -176,7 +180,7 @@ nothing and never raises. "Ok" means the call's `status` is true.
 
 | Calls | Derives | Condition | Fields from the call |
 |---|---|---|---|
-| `NtCreateUserProcess`, `CreateProcessInternalW` | `process-created` | Ok, `ProcessId` > 0, and no earlier call (by timestamp, then call id) created the same pid | `process` is the **child** (pid `ProcessId`, `parent.pid` the caller, `command_line` from `CommandLine`, executable and start from the child's own process record, else `ImagePathName`/`ApplicationName`) |
+| `NtCreateUserProcess`, `CreateProcessInternalW` | `process-created` | Ok, `ProcessId` > 0, and no earlier call (by timestamp, then call id) created the same pid | `process` is the **child** (pid `ProcessId`, `parent.pid` the caller, `command_line` from `CommandLine`, executable and start from the child's own process record, else `ImagePathName`/`ApplicationName`); `parent.name`, `parent.executable` and `parent.command_line` are the calling process's own, each left out when the report does not carry it |
 | `NtTerminateProcess` | `process-terminated` | Ok and `ProcessHandle` is the current-process pseudo handle (`0xffffffff`); handle `0` (ending the other threads) and real handles derive nothing | owning process |
 | `NtWriteFile` | `file-written` | Ok and `HandleName` is a filesystem path (`C:\`, `\??\`, or a UNC `\\server\`); `\Device\ConDrv`, pipes and other devices derive nothing | `file.path` = `HandleName` |
 | `NtCreateFile` | `file-created` | Ok and `ExistedBefore` = `no` | `file.path` = `FileName` |
@@ -190,7 +194,7 @@ nothing and never raises. "Ok" means the call's `status` is true.
 | `DnsQuery_A/W/UTF8` (spec) | `dns-query` | `Name` present | `dns.question.name` = `Name` |
 | `connect`, `WSAConnect` (spec) | `network-connection` | `ip` present (an attempt counts) | `destination.ip` = `ip`, `destination.port` = `port` |
 | `InternetOpenUrlA/W` (spec) | `http-request` | `URL` present | `url.full` |
-| `NtWriteVirtualMemory`, `WriteProcessMemory` (spec) | `inject-write-memory` | Ok and the call targets another process (below) | owning process; the summary names the target pid; `tartarus.inject.target_pid` when the call carries a pid |
+| `NtWriteVirtualMemory`, `WriteProcessMemory` (spec) | `inject-write-memory` | Ok and the call targets another process (below) | owning process; the summary names the target pid; `tartarus.inject.target_pid` when the call carries a pid, and `target_name`, `target_executable`, `target_command_line` of the process that held that pid at the call's time (below) |
 | `NtCreateThreadEx`, `NtCreateThread`, `CreateRemoteThread(Ex)` (spec) | `inject-thread` | Ok and another process | as above |
 | `NtMapViewOfSection` (spec) | `inject-map-section` | Ok and another process | as above |
 | `NtQueueApcThread(Ex)`, `QueueUserAPC` (spec) | `inject-apc` | Ok and `ProcessId` names another process | as above |
@@ -198,6 +202,15 @@ nothing and never raises. "Ok" means the call's `status` is true.
 *Another process*: the target pid (`ProcessId`, else `ProcessIdentifier`) differs from the
 caller's; with no pid in the call, `ProcessHandle` is neither `0` nor the current-process pseudo
 handle. Handles are not resolved to pids.
+
+*Process context of the target*: the derivation keeps every process it has seen, in the order seen.
+`target_*` come from the process that held the pid at the call's time: the latest one that started
+at or before the call, else the first seen when the call precedes them all (a log can open a moment
+after the first write into a suspended child). A pid the run has not seen (a process capemon never
+logged) gets only `target_pid`; a missing field is left out, never empty and never guessed. A
+reused pid therefore names different processes at different times. The `process-created` parent
+needs no lookup: it is the process that made the call, so its identity is the caller's by
+construction, whatever the pid's history.
 
 Choices that differ from the mapping table above:
 - Network actions are `dns-query`, `network-connection` and `http-request`, the Sigma-facing names
@@ -225,6 +238,13 @@ Event fields on every capemon event:
   process's log as it grows, can compute the same id before it knows how long the other processes'
   logs will be. The live path matches the report path exactly except where CAPE merged consecutive
   identical calls (and renumbered the rest), which the live parser does not do.
+- The parent and injection-target fields are filled by the same derivation code (`DerivationRun`) in
+  both paths, so a live document equals the final one for the same calls (tested on a scripted run
+  with a creation, injections into a known, an unknown and a reused pid, fed in every batch size).
+  One exception: live resolves a target from the process logs opened so far, so an injection read
+  before the target's log has opened carries only `target_pid`; the final ingest, authoritative,
+  fills the rest. A `process-created` event waits for the child's log (above) but an injection does
+  not, since its target may never log.
 
 ### CAPE report normalisers (as built)
 
