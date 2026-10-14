@@ -8,9 +8,41 @@ spec](../specs/gui.md) (Notes tab, Export menu, tags on the Dashboard) describe.
 
 ## Status
 
-In progress, 2026-10-14. R0, N1 and X1 are built and committed; F13 is in progress. Decisions 2, 3 and 6
-were taken as accepted on the user's go-ahead (not separately confirmed); 6's key-events definition is
-replaced by R0's (see decision 6).
+Built 2026-10-14 and 2026-10-15; F13 approved by the user, F14 waits for the user's review of its
+screenshots. Decisions 2, 3 and 6 were taken as accepted on the user's go-ahead (not separately
+confirmed); 6's key-events definition is replaced by R0's (see decision 6).
+
+What changed against the plan while building:
+
+- **Tag names may hold one `:`** (`tlp:amber`): decision 1 forbade it while decision 8 needs `tlp:*` tags.
+- **There was no job mechanism**, contrary to decision 7. X2 became X2a (report content and renderers),
+  X2b (the `job` table, runner, `job` messages on `/ws/system`, `GET /jobs/{id}` and `/download`, the
+  `exports` volume) and X2c (the report job and endpoint).
+- **A report job writes `job-<id>-tartarus-report-<analysis>.<ext>`**, so an earlier job's download never
+  serves a later report; the name the analyst downloads is `tartarus-report-<analysis>.<ext>`.
+- **An IOC carries `first_seen`** (its first event's time) so the CSV column is filled; it is empty for
+  the sample hash and mutexes, which have no event.
+- **Key events** on analysis 193 come to 92, not R0's 146: gather caps citations at 5 per detection and
+  leaves out the sandbox network.
+- **The Dashboard row gained a menu** (Open, Re-ingest, Export, Delete) beside the existing delete and cancel
+  icons, which stay.
+
+What passed on a real run: `make e2e` against the rebuilt stack, 127 checks, 0 failed (annotations on the
+analysis, a process and an event; survival of the re-ingest with ids unchanged; the three IOC exports
+validated, STIX with `stix2`; an HTML and a PDF report as jobs, with and without notes; delete removing
+annotations, job rows and the exports directory; the browser flow of tag, note, STIX download, report
+download and Dashboard tag filter). The self-test Sigma rule must be enabled when the run starts.
+
+Open:
+
+- F14's screenshot review (Artifact) and any comments on it.
+- Event annotations are only for finished analyses (decision 3); the API refuses them on a live one.
+- A report that finishes within about 300 ms after its dialog is closed gets no toast.
+- The Dashboard table scrolls sideways between 700 and about 1250 px, with TAGS and the row actions off
+  screen at 800 px; it did before M5 and the TAGS column widens it a little.
+- The submit dialog's tags field from the GUI spec is not built (not in this plan); neither is a note on
+  more than one note per target in the UI (the API allows several).
+- Not tested: two report jobs on one analysis at once, a real browser print of a PDF, the guest wizard (M6).
 
 ## Outcome
 
