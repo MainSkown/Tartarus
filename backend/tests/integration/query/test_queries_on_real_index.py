@@ -16,6 +16,7 @@ import pytest
 from app.query.compiler import compile_query
 from tests.integration.views.conftest import ViewStack
 from tests.integration.views.fixture_events import fixture_events
+from tests.integration.views.helpers import indexed_events
 
 pytestmark = pytest.mark.integration
 
@@ -362,14 +363,6 @@ async def search_ids(stack: ViewStack, text: str) -> set[str]:
     response = await stack.index.search(stack.analysis_id, body)
     assert response["_shards"]["failed"] == 0, text
     return {hit["_id"] for hit in response["hits"]["hits"]}
-
-
-async def indexed_events(stack: ViewStack) -> dict[str, Event]:
-    """Every stored document by id, read back with a match-all, for the plain scan."""
-    response = await stack.index.search(
-        stack.analysis_id, {"size": 10_000, "query": {"match_all": {}}}
-    )
-    return {hit["_id"]: hit["_source"] for hit in response["hits"]["hits"]}
 
 
 def failures(

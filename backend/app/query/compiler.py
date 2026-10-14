@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any
 
-from app.query.ast import And, Comparison, Exists, FreeText, Node, Not, Or
+from app.query.ast import And, Comparison, Exists, Field, FreeText, Node, Not, Or, Span, Value
 from app.query.clauses import (
     ClauseError,
     any_of,
@@ -47,6 +47,24 @@ def compile_query(text: str) -> Compiled:
         return Compiled(None, [error.error])
     if limit_errors := shape_errors(root):
         return Compiled(None, limit_errors)
+    return _build(root)
+
+
+def compile_filter_chip(field: str, value: str) -> Compiled:
+    """Compiles a chip, `field` equal to `value`, exactly as the query `field:value` would.
+
+    The value is taken whole, so it needs no quoting; wildcards in it still work. Error spans
+    count characters of the text `field:value`.
+    """
+    value_start = len(field) + 1
+    value_span = Span(value_start, value_start + len(value))
+    chip = Comparison(
+        Field(field, Span(0, len(field))), ":", (Value(value, value_span),), Span(0, value_span.end)
+    )
+    return _build(chip)
+
+
+def _build(root: Node) -> Compiled:
     builder = _Builder()
     query = builder.build(root)
     if builder.errors:

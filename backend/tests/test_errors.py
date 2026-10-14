@@ -5,6 +5,8 @@ import pytest
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from app.errors import ApiError
+
 
 class ItemIn(BaseModel):
     name: str
@@ -20,6 +22,10 @@ def error_app(app: FastAPI) -> FastAPI:
     @app.get("/api/test/boom", tags=["test"])
     async def boom() -> None:
         raise RuntimeError("secret internals: password=hunter2")
+
+    @app.get("/api/test/refused", tags=["test"])
+    async def refused() -> None:
+        raise ApiError(422, "invalid_thing", "The thing is wrong", {"errors": [{"start": 0}]})
 
     return app
 
@@ -95,4 +101,19 @@ async def test_openapi_documents_the_error_envelope(client: httpx.AsyncClient) -
     health = schema["paths"]["/api/system/health"]["get"]
     assert health["responses"]["default"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/ErrorEnvelope"
+    }
+
+
+async def test_an_api_error_is_the_envelope_with_its_own_status_code_and_details(
+    error_client: httpx.AsyncClient,
+) -> None:
+    response = await error_client.get("/api/test/refused")
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "invalid_thing",
+            "message": "The thing is wrong",
+            "details": {"errors": [{"start": 0}]},
+        }
     }

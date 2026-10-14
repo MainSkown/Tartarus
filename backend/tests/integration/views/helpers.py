@@ -62,3 +62,11 @@ def synthetic_event(
         "tartarus": {"analysis_id": 6, "lane": lane, "phase": "final", "summary": action},
         **sections,
     }
+
+
+async def indexed_events(stack: ViewStack) -> dict[str, dict[str, Any]]:
+    """Every stored document by id, read back with a match-all, for the plain scan."""
+    response = await stack.index.search(
+        stack.analysis_id, {"size": 10_000, "query": {"match_all": {}}}
+    )
+    return {hit["_id"]: hit["_source"] for hit in response["hits"]["hits"]}

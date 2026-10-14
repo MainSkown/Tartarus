@@ -83,16 +83,16 @@ into `tartarus-events-<analysis id>`:
 ### Events and query
 | Method & path | Purpose |
 |---|---|
-| `POST /analyses/{id}/events/search` | Body: `{query, filters[], time_range?, lanes?, pids?, sort: "@timestamp"\|"-@timestamp", size ≤ 500, search_after?}`. Returns `{events[], total, next_cursor}`. Uses `search_after` paging so it works with millions of events. |
-| `POST /analyses/{id}/events/facets` | Same filter body plus `fields[]` (default: `process.name`, `tartarus.lane`, `event.action`, `api.name`, `destination.domain`, `rule.name`). Returns the top 10 values per field with counts. |
-| `POST /analyses/{id}/events/histogram` | Same filter body plus `{interval: auto\|ms}`. Returns buckets per lane (`date_histogram` × `terms(tartarus.lane)`) and detection markers, for the timeline. |
-| `GET /analyses/{id}/events/{event_id}` | Full event including `tartarus.raw`, annotations and related events |
-| `POST /query/validate` | `{query}` → `{ok, errors: [{start, end, message}], ast?}` |
-| `GET /query/fields` | Field catalog for autocomplete: name, type, aliases, description, example |
-| `GET /analyses/{id}/query/values?field=&prefix=` | Top values for value autocomplete (terms aggregation with `include` regex) |
+| `POST /analyses/{id}/events/search` | **Built.** Body: `{query, filters[], time_range?, lanes?, pids?, sort: "@timestamp"\|"-@timestamp", size ≤ 500, search_after?}`. Returns `{events[], total, next_cursor}`. Uses `search_after` paging so it works with millions of events. |
+| `POST /analyses/{id}/events/facets` | **Built.** Same filter body plus `fields[]` (default: `process.name`, `tartarus.lane`, `event.action`, `api.name`, `destination.domain`, `rule.name`). Returns the top 10 values per field with counts. |
+| `POST /analyses/{id}/events/histogram` | **Built.** Same filter body plus `{interval: auto\|ms}`. Returns buckets per lane (`date_histogram` × `terms(tartarus.lane)`) and detection markers, for the timeline. |
+| `GET /analyses/{id}/events/{event_id}` | **Built.** Full event including `tartarus.raw`, annotations and related events (annotations wait for M5). |
+| `POST /query/validate` | **Built.** `{query}` → `{ok, errors: [{start, end, message, suggestion}]}` (no `ast`). |
+| `GET /query/fields` | **Built.** Field catalog for autocomplete: name, type, aliases, description, example, lane, members, searchable. |
+| `GET /analyses/{id}/query/values?field=&prefix=&limit=` | **Built.** Top values for value autocomplete (terms aggregation with `include` regex). |
 
-`filters[]` items look like `{field, op: "is"|"is_not"|"exists"|"range", value}`. These are the
-quick-filter chips. The backend ANDs them with the compiled `query`.
+`filters[]` items are the quick-filter chips, `{field, value, negate}` as built (see "Events API (as
+built)"). The backend ANDs them with the compiled `query`.
 
 ### Analysis views
 | Method & path | Purpose |
@@ -341,9 +341,81 @@ every `field:*` counts), 25 wildcard terms (a leading wildcard is allowed and co
 counts as one because it is a contains search). Each is an error at the first place it is exceeded, and a
 query over a limit is not compiled further.
 
-`field_catalog()` and `suggest_fields(prefix)` in `fields_api.py` give the later autocomplete endpoint its
+`field_catalog()` and `suggest_fields(prefix)` in `fields_api.py` give the autocomplete endpoints their
 data: every field and composite alias with type, aliases, description, example and lane, and a prefix
 search by name, then by alias, then inside a name.
+
+### Events API (as built)
+
+Code: `app/api/events.py` and `app/api/query.py` (routers), `app/events/` (pure body builders and
+response readers: `filters.py`, `search.py`, `cursor.py`, `facets.py`, `histogram.py`, `detail.py`,
+`values.py`; `execution.py` runs a search; `service.py` chains several), `app/schemas/events_api.py`
+(request and response models). Operation ids are `events_search`, `events_facets`,
+`events_histogram`, `events_detail`, `query_validate`, `query_fields`, `query_values`.
+
+**The filter body** (search, facets, histogram) is `{query, filters[], time_range?, lanes?, pids?}`,
+all ANDed. A chip is `{field, value, negate}`: `field` is a catalog name or alias resolved by the query
+compiler's own resolution (`compile_filter_chip` in `app/query/compiler.py`), so a chip is exactly
+`field:value` with the value taken whole (no quoting, wildcards still work); `negate` puts it in
+`must_not`. `time_range` is `{from?, to?}`, both ends inclusive, a time without a zone is UTC, and
+the range is applied to `@timestamp` at millisecond precision. `lanes` is a list of lane names and
+`pids` of process ids; an empty list matches nothing. At most 50 chips and 1000 pids.
+
+**Errors** use the one envelope `{error: {code, message, details}}`. A query or chip that does not
+compile is `422` with `code: invalid_query` and `details.errors`: a list of `{start, end, message,
+suggestion, filter_index}`; `filter_index` is null for an error in the query text and the chip's
+position in `filters[]` for a chip, whose spans count characters of the text `field:value`. A
+malformed or foreign cursor is `422 invalid_cursor`; a facet field that cannot be aggregated (text,
+flat object, unsearchable, a composite alias, unknown) is `422 invalid_facet_field`; a values field
+that is not a keyword is `422 invalid_value_field`. An unknown analysis (or event) is `404 not_found`.
+An analysis whose index does not exist answers search, facets, histogram and values with empty
+results, not an error. Every search carries `timeout: 10s` and the client a 15 s request timeout;
+either, or a partial result, is `504 search_timeout`, and any other OpenSearch failure is `502
+search_failed` (logged; the OpenSearch error is not returned).
+
+**Search paging.** Events are sorted by `(@timestamp, event.sequence, event.id)`, all three in the
+direction of `sort`. The ingester numbers events uniquely, so the id only matters if two events share
+a time and a sequence (events without a sequence sort last), but it makes the order total, so paging
+reaches every event exactly once. The body asks for `size + 1` events: if the extra one arrives there
+is a next page, and `next_cursor` is built from the last event of the page; the last page, even a full
+one, has `next_cursor: null`. The cursor is `base64url(JSON {sort, after: [ms, sequence, id]})`
+without padding, sent back as `search_after`. A cursor issued for the other sort is refused.
+`total` is exact (`track_total_hits`). The page's events leave out `tartarus.raw`.
+
+**Event** (`Event`) is the typed subset the table needs: id, time, sequence, lane, kind, category,
+action, module, dataset, summary, severity (name), process `{pid, name, entity_id}`, api name, rule
+name and ruleset, destination `{ip, port, domain}`, DNS query, URL, file path and registry path.
+`GET events/{id}` returns `{event, source, related}`: `source` is the whole stored document including
+`tartarus.raw`; `related.references` are the events named in this event's `related.events` (at most 50,
+oldest first, `total` counting those that exist in the index) and `related.referenced_by` the events
+whose `related.events` names this one's id (at most 50, `total` all of them). The id is the path
+remainder (`{event_id:path}`), so slashes and colons work encoded or not.
+
+**Facets** return `{facets: [{field, values: [{value, count}], total}]}` in the order requested, `field`
+as requested, `total` the number of filtered events with any value. Booleans and dates come back as
+text. Fields default to the six of the table above; at most 20.
+
+**Histogram** returns `{interval_ms, from, to, total, buckets: [{time, total, by_lane}], detections}`.
+The span is the time range where it names an end, else the first and last matching event (`from` and
+`to` are null when nothing matches and the range gives none). `auto` is the smallest of a fixed list of
+steps (1, 2, 5, 10, 20, 50, 100, 200, 500 ms; 1, 2, 5, 10, 15, 30 s; 1, 2, 5, 10, 15, 30 min; 1, 2, 3,
+6, 12 h; 1, 2, 7, 14, 30 days) that makes at most 120 buckets; an explicit `interval` (ms, at least 1)
+is widened just enough to stay within 2000. Buckets are aligned to the epoch and contiguous from the
+one holding `from` to the one holding `to`, empty ones included; they sum to `total`, and each
+bucket's `by_lane` sums to its `total` (an event without a lane counts under `unknown`). `detections`
+are the matching `event.kind: alert` events, oldest first, at most 500, as `{time, id, name,
+severity, ruleset}`.
+
+**Query validation and catalog.** `POST /query/validate` runs the compiler without a search. `GET
+/query/fields` lists the whole catalog (including composite aliases and the unsearchable
+`tartarus.raw`, `searchable: false`); with `prefix` it is `suggest_fields`, searchable fields only, at
+most 50.
+
+**Value autocomplete** takes `field`, `prefix` and `limit` (1 to 50, default 10) and runs a `terms`
+aggregation per field with `include` set to the prefix, lowercased and with every Lucene regex
+character escaped, so the match is case-insensitive and literal. Only keyword fields are accepted; the
+composite alias `domain` queries both members and sums the counts of equal values. Values are as
+indexed, that is lowercase. It looks at the whole analysis, not at the current filter.
 
 ## Exports
 

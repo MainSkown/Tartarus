@@ -32,6 +32,23 @@ def error_response(
     return JSONResponse(envelope.model_dump(), status_code=status_code, headers=headers)
 
 
+class ApiError(Exception):
+    """A refusal with its own code and details, answered in the error envelope."""
+
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+        self.details = details or {}
+
+
 def _status_phrase(status_code: int) -> str:
     try:
         return HTTPStatus(status_code).phrase
@@ -44,6 +61,10 @@ def _code_from_phrase(phrase: str) -> str:
 
 
 def install_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ApiError)
+    async def handle_api_error(_: Request, exc: ApiError) -> JSONResponse:
+        return error_response(exc.status_code, exc.code, exc.message, exc.details)
+
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_exception(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         phrase = _status_phrase(exc.status_code)

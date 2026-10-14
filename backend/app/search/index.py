@@ -72,11 +72,13 @@ class EventIndex:
     async def refresh(self, analysis_id: int) -> None:
         await self._client.indices.refresh(index=index_name(analysis_id))
 
-    async def search(self, analysis_id: int, body: dict[str, Any]) -> dict[str, Any]:
+    async def search(
+        self, analysis_id: int, body: dict[str, Any], request_timeout: float | None = None
+    ) -> dict[str, Any]:
         """Runs a search on one analysis's index; an analysis with no index has no events."""
         try:
             response: dict[str, Any] = await self._client.search(
-                index=index_name(analysis_id), body=body
+                index=index_name(analysis_id), body=body, request_timeout=request_timeout
             )
         except NotFoundError:
             return {"hits": {"total": {"value": 0}, "hits": []}, "aggregations": {}}
