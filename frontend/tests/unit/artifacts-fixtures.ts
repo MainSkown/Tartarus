@@ -97,10 +97,10 @@ export function registryViewFixture(): RegistryView {
 export function iocsViewFixture(overrides: Partial<IocsView> = {}): IocsView {
   return {
     iocs: [
-      { type: 'hash', value: DROPPER_HASH, count: 1, context: 'Dropped file tartarus-benign.txt', source_event_ids: [], process: { pid: 9708, name: 'benign.exe' } },
-      { type: 'domain', value: 'tartarus-selftest.example', count: 2, context: 'benign.exe resolved tartarus-selftest.example', source_event_ids: ['a', 'b'], process: { pid: 9708, name: 'benign.exe' } },
-      { type: 'domain', value: 'outlook.office.com', count: 1, context: 'DNS query for outlook.office.com', source_event_ids: ['c'], process: null },
-      { type: 'url', value: 'http://www.msftconnecttest.com/connecttest.txt', count: 1, context: 'GET http://www.msftconnecttest.com/connecttest.txt', source_event_ids: ['d'], process: null },
+      { type: 'hash', value: DROPPER_HASH, count: 1, context: 'Dropped file tartarus-benign.txt', source_event_ids: [], process: { pid: 9708, name: 'benign.exe' }, first_seen: null },
+      { type: 'domain', value: 'tartarus-selftest.example', count: 2, context: 'benign.exe resolved tartarus-selftest.example', source_event_ids: ['a', 'b'], process: { pid: 9708, name: 'benign.exe' }, first_seen: null },
+      { type: 'domain', value: 'outlook.office.com', count: 1, context: 'DNS query for outlook.office.com', source_event_ids: ['c'], process: null, first_seen: null },
+      { type: 'url', value: 'http://www.msftconnecttest.com/connecttest.txt', count: 1, context: 'GET http://www.msftconnecttest.com/connecttest.txt', source_event_ids: ['d'], process: null, first_seen: null },
     ],
     truncated_types: [],
     ...overrides,

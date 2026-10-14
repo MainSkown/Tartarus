@@ -987,6 +987,10 @@ export type Ioc = {
      */
     source_event_ids: Array<string>;
     process: ProcessRef | null;
+    /**
+     * First Seen
+     */
+    first_seen: string | null;
 };
 
 /**
