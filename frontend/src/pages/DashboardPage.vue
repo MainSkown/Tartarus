@@ -77,6 +77,11 @@ async function deleteAnalysis(id: number): Promise<void> {
   if (!(await analyses.remove(id))) Notify.create({ type: 'tt-error', message: `Could not delete #${id}` })
 }
 
+async function reingestAnalysis(id: number): Promise<void> {
+  // A refusal (409 while another analysis is active) was already toasted with the backend's reason.
+  if (await analyses.reingest(id)) Notify.create({ type: 'tt-info', message: `Re-ingesting #${id}` })
+}
+
 async function cancelAnalysis(id: number): Promise<void> {
   const confirmed = await confirmDestructive({
     title: `Cancel #${id}`,
@@ -219,6 +224,7 @@ onUnmounted(() => {
         :analyses="analyses.items"
         @open="openAnalysis"
         @cancel="cancelAnalysis"
+        @reingest="reingestAnalysis"
         @remove="deleteAnalysis"
       />
       <p

@@ -63,6 +63,11 @@ export function isTerminalStatus(status: AnalysisStatus): boolean {
   return STATUS_META[status].terminal
 }
 
+/** The backend re-ingests only an analysis whose indexing ended, whether it finished or its report failed. */
+export function canReingest(status: AnalysisStatus): boolean {
+  return status === 'done' || status === 'report_failed'
+}
+
 export function severityMeta(severity: Severity): SeverityMeta {
   return SEVERITY_META[severity]
 }

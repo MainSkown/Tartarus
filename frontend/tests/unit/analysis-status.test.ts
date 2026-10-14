@@ -5,6 +5,7 @@ import {
   SEVERITIES,
   analysisStatusMeta,
   compareSeverity,
+  canReingest,
   isActiveStatus,
   isTerminalStatus,
   severityMeta,
@@ -91,5 +92,11 @@ describe('severity metadata', () => {
     expect([...shuffled].sort(compareSeverity)).toEqual(['info', 'low', 'medium', 'high', 'critical'])
     expect(compareSeverity('critical', 'high')).toBeGreaterThan(0)
     expect(compareSeverity('low', 'low')).toBe(0)
+  })
+})
+
+describe('canReingest', () => {
+  it.each(ANALYSIS_STATUSES)('is %s: only a done or report_failed analysis can be re-ingested', (status) => {
+    expect(canReingest(status)).toBe(status === 'done' || status === 'report_failed')
   })
 })

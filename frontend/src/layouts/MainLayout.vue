@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import HealthDot from '@/components/HealthDot.vue'
+import { useReportNotices } from '@/composables/use-report-notices'
 import { useGuestBlockReason } from '@/services/guest-gate'
 import { openSubmitDialog } from '@/services/submit-dialog'
 import { useSystemStore } from '@/stores/system'
@@ -48,6 +49,7 @@ const storeSubStatuses = computed(() => {
 })
 
 const submitDisabledReason = useGuestBlockReason()
+useReportNotices()
 </script>
 
 <template>

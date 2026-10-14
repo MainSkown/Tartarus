@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AnalysisRead } from '@/api'
+import AnalysisRowMenu from '@/components/AnalysisRowMenu.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagList from '@/components/TagList.vue'
@@ -13,6 +14,7 @@ defineProps<{ analyses: AnalysisRead[] }>()
 const emit = defineEmits<{
   open: [id: number]
   cancel: [id: number]
+  reingest: [id: number]
   remove: [id: number]
 }>()
 
@@ -105,6 +107,13 @@ function shaPrefix(sha256: string): string {
             />
           </td>
           <td class="col-actions">
+            <AnalysisRowMenu
+              :analysis="analysis"
+              @open="emit('open', $event)"
+              @reingest="emit('reingest', $event)"
+              @cancel="emit('cancel', $event)"
+              @remove="emit('remove', $event)"
+            />
             <q-btn
               v-if="isTerminalStatus(analysis.status)"
               flat
@@ -157,6 +166,7 @@ function shaPrefix(sha256: string): string {
 .col-actions {
   width: 1%;
   text-align: right;
+  white-space: nowrap;
 }
 
 .col-actions :deep(.q-btn) {

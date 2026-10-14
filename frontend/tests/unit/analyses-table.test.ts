@@ -3,6 +3,7 @@ import { Quasar } from 'quasar'
 import { describe, expect, it } from 'vitest'
 import type { AnalysisRead } from '@/api'
 import AnalysesTable from '@/components/AnalysesTable.vue'
+import AnalysisRowMenu from '@/components/AnalysisRowMenu.vue'
 import { formatTimestamp } from '@/services/format-time'
 
 const SUBMITTED_AT = new Date(2026, 9, 12, 14, 3).toISOString()
@@ -114,5 +115,21 @@ describe('AnalysesTable', () => {
     expect(wrapper.emitted('remove')).toEqual([[1]])
     expect(wrapper.emitted('cancel')).toEqual([[2]])
     expect(wrapper.emitted('open')).toBeUndefined()
+  })
+
+  it('has a row menu on every row, and passes what it asks for up as table events', async () => {
+    const wrapper = mountTable([analysis({ id: 1 }), analysis({ id: 2, status: 'running' })])
+    const menus = wrapper.findAllComponents(AnalysisRowMenu)
+    expect(menus.map((menu) => menu.props('analysis').id)).toEqual([1, 2])
+
+    menus[0]!.vm.$emit('open', 1)
+    menus[0]!.vm.$emit('reingest', 1)
+    menus[0]!.vm.$emit('remove', 1)
+    menus[1]!.vm.$emit('cancel', 2)
+
+    expect(wrapper.emitted('open')).toEqual([[1]])
+    expect(wrapper.emitted('reingest')).toEqual([[1]])
+    expect(wrapper.emitted('remove')).toEqual([[1]])
+    expect(wrapper.emitted('cancel')).toEqual([[2]])
   })
 })

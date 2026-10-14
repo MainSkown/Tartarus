@@ -4,7 +4,7 @@ import type { SystemHealth } from '@/api'
 
 vi.mock('@/api', () => ({ systemHealth: vi.fn().mockResolvedValue({ data: undefined }) }))
 vi.mock('@/services/ws', () => ({
-  createSystemHealthClient: () => ({
+  createSystemClient: () => ({
     state: { value: 'open' },
     lastMessage: { value: undefined },
     subscribe: () => () => undefined,

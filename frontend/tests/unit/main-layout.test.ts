@@ -18,12 +18,14 @@ vi.mock('@/api', () => ({
   analysesList: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
   analysesRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
   rulesList: vi.fn().mockResolvedValue({ data: [] }),
+  annotationsListTags: vi.fn().mockResolvedValue({ data: [] }),
+  annotationsRead: vi.fn().mockResolvedValue({ data: { tags: [], notes: [] } }),
 }))
 
 vi.mock('@/services/submit-dialog', () => ({ openSubmitDialog: vi.fn() }))
 
 vi.mock('@/services/ws', () => ({
-  createSystemHealthClient: () => ({
+  createSystemClient: () => ({
     state: { value: 'open' },
     lastMessage: { value: undefined },
     subscribe: () => () => undefined,

@@ -11,7 +11,7 @@ import {
 import type { NoteAnnotation, TagAnnotation, TargetType } from '@/api'
 import { errorMessage } from '@/services/api-error'
 import { quietOn } from '@/services/quiet-statuses'
-import { validationIssues } from '@/services/validation-errors'
+import { refusalMessage } from '@/services/validation-errors'
 import { useAnalysesStore } from '@/stores/analyses'
 
 export interface AnnotationTarget {
@@ -29,10 +29,6 @@ const DUPLICATE_MESSAGE = 'already on this target'
 
 const isOn = (target: AnnotationTarget) => (annotation: { target_type: TargetType; target_ref: string }) =>
   annotation.target_type === target.type && annotation.target_ref === target.ref
-
-function refusalMessage(error: unknown): string {
-  return validationIssues(error)[0]?.message ?? errorMessage(error)
-}
 
 /**
  * Every tag and note of the analysis the workspace has open, read once and kept in step with

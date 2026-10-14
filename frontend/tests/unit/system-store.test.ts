@@ -1,7 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { HealthMessage, HealthStatus, SystemHealth } from '@/api'
+import type { HealthStatus, JobProgress, SystemHealth } from '@/api'
+import type { SystemMessage } from '@/services/ws'
 
 const REST_HEALTH: SystemHealth = {
   postgres: { status: 'ok', message: null },
@@ -17,10 +18,10 @@ vi.mock('@/api', () => ({
 
 type FakeState = 'connecting' | 'open' | 'reconnecting' | 'closed'
 const wsState = ref<FakeState>('connecting')
-let pushHealth: ((message: HealthMessage) => void) | undefined
+let pushHealth: ((message: SystemMessage) => void) | undefined
 const connect = vi.fn()
 const disconnect = vi.fn()
-const subscribe = vi.fn((handler: (message: HealthMessage) => void) => {
+const subscribe = vi.fn((handler: (message: SystemMessage) => void) => {
   pushHealth = handler
   return () => {
     pushHealth = undefined
@@ -28,7 +29,7 @@ const subscribe = vi.fn((handler: (message: HealthMessage) => void) => {
 })
 
 vi.mock('@/services/ws', () => ({
-  createSystemHealthClient: () => ({
+  createSystemClient: () => ({
     state: wsState,
     lastMessage: ref(undefined),
     subscribe,
@@ -41,6 +42,16 @@ const { useSystemStore } = await import('@/stores/system')
 
 function pushMessage(data: SystemHealth): void {
   pushHealth?.({ type: 'health', ts: '2026-10-12T00:00:00Z', data })
+}
+
+const JOB: JobProgress = {
+  id: 3,
+  type: 'export_report',
+  analysis_id: 193,
+  status: 'running',
+  step: 'Rendering the PDF',
+  progress: 45,
+  result: null,
 }
 
 beforeEach(() => {
@@ -121,6 +132,31 @@ describe('useSystemStore', () => {
 
     pushMessage({ ...REST_HEALTH, guest: { status: 'ok', message: null } })
     expect(store.guestReady).toBe(true)
+    store.$dispose()
+  })
+
+  it('hands job pushes to the job handlers and keeps them out of the health snapshot', async () => {
+    const store = useSystemStore()
+    await vi.waitFor(() => expect(store.health).toEqual(REST_HEALTH))
+    const received: JobProgress[] = []
+    store.onJob((job) => received.push(job))
+
+    pushHealth?.({ type: 'job', job: JOB })
+
+    expect(received).toEqual([JOB])
+    expect(store.health).toEqual(REST_HEALTH)
+    store.$dispose()
+  })
+
+  it('stops calling a job handler that unsubscribed', async () => {
+    const store = useSystemStore()
+    const received: JobProgress[] = []
+    const unsubscribe = store.onJob((job) => received.push(job))
+    unsubscribe()
+
+    pushHealth?.({ type: 'job', job: JOB })
+
+    expect(received).toEqual([])
     store.$dispose()
   })
 })

@@ -4,6 +4,7 @@ import { Notify, Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisStatus } from '@/api'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
+import ExportMenu from '@/components/ExportMenu.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagInput from '@/components/TagInput.vue'
 import { ANALYSIS_TARGET } from '@/stores/annotations'
@@ -119,6 +120,18 @@ describe('AnalysisHeader actions', () => {
     await queued.find('.analysis-header__delete').trigger('click')
     expect(queued.emitted('cancel')).toHaveLength(1)
     expect(queued.emitted('delete')).toHaveLength(1)
+  })
+
+  it('offers the Export menu for the analysis in every status, before the delete button', () => {
+    for (const status of ANALYSIS_STATUSES) {
+      const wrapper = mountHeader(analysisWithStatus(status, { id: 193 }))
+      const menu = wrapper.findComponent(ExportMenu)
+      expect(menu.exists(), status).toBe(true)
+      expect(menu.props('analysis')).toMatchObject({ id: 193, status })
+    }
+    const actions = mountHeader().find('.analysis-header__actions')
+    const order = actions.findAll('button').map((button) => button.text())
+    expect(order).toEqual(['[EXPORT]', '[DELETE]'])
   })
 
   it('disables the actions while one is in flight', () => {

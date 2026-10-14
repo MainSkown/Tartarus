@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
-import { analysesCancel, analysesCreate, analysesDelete, analysesList, analysesRead } from '@/api'
+import { analysesCancel, analysesCreate, analysesDelete, analysesList, analysesRead, analysesReingest } from '@/api'
 import type { AnalysesListData, AnalysisRead, Route } from '@/api'
 import { errorMessage } from '@/services/api-error'
 import { isTerminalStatus } from '@/services/analysis-status'
@@ -142,6 +142,14 @@ export const useAnalysesStore = defineStore('analyses', () => {
     return true
   }
 
+  async function reingest(id: number): Promise<boolean> {
+    const { data, error } = await analysesReingest({ path: { analysis_id: id } })
+    if (error || !data) return false
+    replaceEverywhere(data)
+    startPolling()
+    return true
+  }
+
   async function remove(id: number): Promise<boolean> {
     const { error } = await analysesDelete({ path: { analysis_id: id } })
     if (error) return false
@@ -214,6 +222,7 @@ export const useAnalysesStore = defineStore('analyses', () => {
     submit,
     setTags,
     cancel,
+    reingest,
     remove,
     startPolling,
     stopPolling,

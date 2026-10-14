@@ -7,12 +7,14 @@ const analysesCreateMock = vi.fn()
 const analysesReadMock = vi.fn()
 const analysesCancelMock = vi.fn()
 const analysesDeleteMock = vi.fn()
+const analysesReingestMock = vi.fn()
 vi.mock('@/api', () => ({
   analysesList: (...args: unknown[]) => analysesListMock(...args),
   analysesCreate: (...args: unknown[]) => analysesCreateMock(...args),
   analysesRead: (...args: unknown[]) => analysesReadMock(...args),
   analysesCancel: (...args: unknown[]) => analysesCancelMock(...args),
   analysesDelete: (...args: unknown[]) => analysesDeleteMock(...args),
+  analysesReingest: (...args: unknown[]) => analysesReingestMock(...args),
 }))
 
 const { SubmissionRejected, useAnalysesStore } = await import('@/stores/analyses')
@@ -262,6 +264,34 @@ describe('cancel', () => {
     analysesCancelMock.mockResolvedValue(failed('conflict', 'Only a queued analysis can be cancelled'))
     expect(await store.cancel(1)).toBe(false)
     expect(store.items[0]?.status).toBe('running')
+  })
+})
+
+describe('reingest', () => {
+  it('replaces the analysis in items and current with the one now ingesting, and polls it', async () => {
+    analysesListMock.mockResolvedValue(succeeded(page(analysis(2, 'done'), analysis(1, 'done'))))
+    analysesReadMock.mockResolvedValue(succeeded(analysis(2, 'done')))
+    await store.fetchList()
+    await store.fetchOne(2)
+    store.startPolling()
+    analysesReingestMock.mockResolvedValue(succeeded(analysis(2, 'ingesting')))
+
+    expect(await store.reingest(2)).toBe(true)
+    expect(analysesReingestMock).toHaveBeenCalledWith({ path: { analysis_id: 2 } })
+    expect(store.items.map((item) => item.status)).toEqual(['ingesting', 'done'])
+    expect(store.current?.status).toBe('ingesting')
+
+    analysesListMock.mockClear()
+    await vi.advanceTimersByTimeAsync(POLL_MS)
+    expect(analysesListMock).toHaveBeenCalled()
+  })
+
+  it('reports false and changes nothing when the backend refuses', async () => {
+    analysesListMock.mockResolvedValue(succeeded(page(analysis(1, 'done'))))
+    await store.fetchList()
+    analysesReingestMock.mockResolvedValue(failed('conflict', 'Another analysis is active', [], 409))
+    expect(await store.reingest(1)).toBe(false)
+    expect(store.items[0]?.status).toBe('done')
   })
 })
 

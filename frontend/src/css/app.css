@@ -726,7 +726,8 @@ pre,
   box-shadow: var(--shadow-blue-medium);
 }
 
-.q-notification.tt-toast .q-notification__icon { color: var(--blue-primary); }
+.q-notification.tt-toast .q-notification__icon,
+.q-notification.tt-toast .q-notification__spinner { color: var(--blue-primary); }
 
 .q-notification.tt-toast--success { border-color: var(--status-success); box-shadow: var(--shadow-success); }
 .q-notification.tt-toast--success:hover { border-color: var(--status-success); box-shadow: var(--shadow-success-strong); }

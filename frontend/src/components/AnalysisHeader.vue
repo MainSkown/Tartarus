@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { AnalysisRead } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
+import ExportMenu from '@/components/ExportMenu.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagInput from '@/components/TagInput.vue'
 import { isActiveStatus } from '@/services/analysis-status'
@@ -52,6 +53,7 @@ const duration = computed(() => {
           :disable="busy"
           @click="emit('cancel')"
         />
+        <ExportMenu :analysis="analysis" />
         <q-btn
           v-if="canDelete"
           outline

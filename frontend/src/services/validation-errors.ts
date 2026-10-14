@@ -1,3 +1,5 @@
+import { errorMessage } from '@/services/api-error'
+
 export interface ValidationIssue {
   // Last segment of the 422 `location` (e.g. "disk_warn_gb" for ["body", "disk_warn_gb"]),
   // empty when the server gave no usable location.
@@ -31,4 +33,9 @@ export function validationIssues(error: unknown): ValidationIssue[] {
   const fields = (error as { error?: { details?: { fields?: unknown } } } | undefined)?.error?.details?.fields
   if (!Array.isArray(fields)) return []
   return fields.map(toIssue).filter(isIssue)
+}
+
+/** The first per-field message of a 422, else the envelope's own message: one line to show beside what was refused. */
+export function refusalMessage(error: unknown): string {
+  return validationIssues(error)[0]?.message ?? errorMessage(error)
 }

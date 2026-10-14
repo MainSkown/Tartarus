@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
-import type { HealthMessage } from '@/api'
+import type { HealthMessage, JobMessage } from '@/api'
+import { JOB_STATUSES } from '@/services/job-status'
 
 export type WsConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed'
 
@@ -148,8 +149,32 @@ export function parseHealthMessage(raw: unknown): HealthMessage | undefined {
   return raw as HealthMessage
 }
 
-export function createSystemHealthClient(
-  webSocketFactory?: WebSocketFactory,
-): ReconnectingWebSocketClient<HealthMessage> {
-  return new ReconnectingWebSocketClient('/ws/system', parseHealthMessage, webSocketFactory)
+function isJobProgress(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const job = value as Record<string, unknown>
+  return (
+    typeof job.id === 'number' &&
+    typeof job.type === 'string' &&
+    (job.analysis_id === null || typeof job.analysis_id === 'number') &&
+    JOB_STATUSES.includes(job.status as never) &&
+    typeof job.step === 'string' &&
+    typeof job.progress === 'number'
+  )
+}
+
+/** Validates a `/ws/system` `job` push at runtime, for the same reason as `parseHealthMessage`. */
+export function parseJobMessage(raw: unknown): JobMessage | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const { type, job } = raw as Record<string, unknown>
+  return type === 'job' && isJobProgress(job) ? (raw as JobMessage) : undefined
+}
+
+export type SystemMessage = HealthMessage | JobMessage
+
+function parseSystemMessage(raw: unknown): SystemMessage | undefined {
+  return parseHealthMessage(raw) ?? parseJobMessage(raw)
+}
+
+export function createSystemClient(webSocketFactory?: WebSocketFactory): ReconnectingWebSocketClient<SystemMessage> {
+  return new ReconnectingWebSocketClient('/ws/system', parseSystemMessage, webSocketFactory)
 }

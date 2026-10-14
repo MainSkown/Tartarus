@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSystemHealthClient, parseHealthMessage } from '@/services/ws'
-import type { HealthMessage } from '@/api'
+import { createSystemClient, parseHealthMessage, parseJobMessage } from '@/services/ws'
+import type { HealthMessage, JobMessage } from '@/api'
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = []
@@ -56,6 +56,19 @@ const HEALTH_MESSAGE: HealthMessage = {
   },
 }
 
+const JOB_MESSAGE: JobMessage = {
+  type: 'job',
+  job: {
+    id: 9,
+    type: 'export_report',
+    analysis_id: 193,
+    status: 'running',
+    step: 'Rendering the PDF',
+    progress: 45,
+    result: null,
+  },
+}
+
 beforeEach(() => {
   FakeWebSocket.instances = []
   vi.useFakeTimers()
@@ -83,10 +96,46 @@ describe('parseHealthMessage', () => {
   })
 })
 
-describe('createSystemHealthClient', () => {
+describe('parseJobMessage', () => {
+  it('accepts a well-formed job message', () => {
+    expect(parseJobMessage(JOB_MESSAGE)).toEqual(JOB_MESSAGE)
+  })
+
+  it('accepts a job whose analysis and result are null', () => {
+    const job = { ...JOB_MESSAGE.job, analysis_id: null, result: null }
+    expect(parseJobMessage({ type: 'job', job })).toEqual({ type: 'job', job })
+  })
+
+  it.each([
+    ['a missing job', { type: 'job' }],
+    ['another type', { type: 'health', job: JOB_MESSAGE.job }],
+    ['a non-numeric id', { type: 'job', job: { ...JOB_MESSAGE.job, id: '9' } }],
+    ['an unknown status', { type: 'job', job: { ...JOB_MESSAGE.job, status: 'paused' } }],
+    ['a missing progress', { type: 'job', job: { ...JOB_MESSAGE.job, progress: undefined } }],
+    ['a non-object payload', 'job'],
+  ])('rejects %s', (_label, raw) => {
+    expect(parseJobMessage(raw)).toBeUndefined()
+  })
+})
+
+describe('createSystemClient', () => {
+  it('delivers a parsed job message next to the health messages, on the one socket', () => {
+    const client = createSystemClient(fakeFactory())
+    const received: unknown[] = []
+    client.subscribe((message) => received.push(message))
+
+    client.connect()
+    FakeWebSocket.instances[0]?.onopen?.()
+    FakeWebSocket.instances[0]?.serverPush(HEALTH_MESSAGE)
+    FakeWebSocket.instances[0]?.serverPush(JOB_MESSAGE)
+
+    expect(received).toEqual([HEALTH_MESSAGE, JOB_MESSAGE])
+    expect(FakeWebSocket.instances).toHaveLength(1)
+  })
+
   it('delivers a parsed health message to subscribers', () => {
-    const client = createSystemHealthClient(fakeFactory())
-    const received: HealthMessage[] = []
+    const client = createSystemClient(fakeFactory())
+    const received: unknown[] = []
     client.subscribe((message) => received.push(message))
 
     client.connect()
@@ -98,8 +147,8 @@ describe('createSystemHealthClient', () => {
   })
 
   it('does not deliver or throw on a malformed message', () => {
-    const client = createSystemHealthClient(fakeFactory())
-    const received: HealthMessage[] = []
+    const client = createSystemClient(fakeFactory())
+    const received: unknown[] = []
     client.subscribe((message) => received.push(message))
 
     client.connect()
@@ -110,7 +159,7 @@ describe('createSystemHealthClient', () => {
   })
 
   it('starts in "connecting" and moves to "open" on connect', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     client.connect()
     expect(client.state.value).toBe('connecting')
 
@@ -119,7 +168,7 @@ describe('createSystemHealthClient', () => {
   })
 
   it('transitions through "reconnecting" and opens a new socket after the backoff delay', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     client.connect()
     FakeWebSocket.instances[0]?.onopen?.()
 
@@ -132,7 +181,7 @@ describe('createSystemHealthClient', () => {
   })
 
   it('increases backoff across consecutive failures and caps it', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout')
 
     client.connect()
@@ -151,7 +200,7 @@ describe('createSystemHealthClient', () => {
   })
 
   it('stops reconnecting once disconnect() is called', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     client.connect()
     FakeWebSocket.instances[0]?.onopen?.()
 
@@ -165,7 +214,7 @@ describe('createSystemHealthClient', () => {
 
 describe('ReconnectingWebSocketClient sending', () => {
   it('writes a JSON message to an open socket', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     client.connect()
     FakeWebSocket.instances[0]!.open()
 
@@ -174,7 +223,7 @@ describe('ReconnectingWebSocketClient sending', () => {
   })
 
   it('sends nothing, and says so, while the socket is not open', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     expect(client.send({ type: 'ping' })).toBe(false)
 
     client.connect()
@@ -185,7 +234,7 @@ describe('ReconnectingWebSocketClient sending', () => {
 
 describe('ReconnectingWebSocketClient close handlers', () => {
   it('tells a handler the close code and still reconnects', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     const codes: number[] = []
     client.onClose((code) => codes.push(code))
     client.connect()
@@ -198,7 +247,7 @@ describe('ReconnectingWebSocketClient close handlers', () => {
   })
 
   it('stops reconnecting when a handler disconnects the client', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     client.onClose(() => client.disconnect())
     client.connect()
 
@@ -210,7 +259,7 @@ describe('ReconnectingWebSocketClient close handlers', () => {
   })
 
   it('stops calling a handler that unsubscribed', () => {
-    const client = createSystemHealthClient(fakeFactory())
+    const client = createSystemClient(fakeFactory())
     const codes: number[] = []
     const unsubscribe = client.onClose((code) => codes.push(code))
     unsubscribe()

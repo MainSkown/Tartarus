@@ -23,7 +23,7 @@ vi.mock('@/api', () => ({
 }))
 
 vi.mock('@/services/ws', () => ({
-  createSystemHealthClient: () => ({
+  createSystemClient: () => ({
     state: { value: 'open' },
     lastMessage: { value: undefined },
     subscribe: () => () => undefined,

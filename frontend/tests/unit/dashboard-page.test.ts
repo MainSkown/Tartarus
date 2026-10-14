@@ -4,6 +4,7 @@ import { Notify, Quasar, QSelect } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import type { AnalysisRead, SystemHealth } from '@/api'
+import AnalysisRowMenu from '@/components/AnalysisRowMenu.vue'
 
 vi.mock('@/api', () => ({
   analysesList: vi.fn(),
@@ -11,12 +12,13 @@ vi.mock('@/api', () => ({
   analysesCreate: vi.fn(),
   analysesCancel: vi.fn(),
   analysesDelete: vi.fn(),
+  analysesReingest: vi.fn(),
   systemHealth: vi.fn().mockResolvedValue({ data: undefined }),
   annotationsListTags: vi.fn(),
 }))
 
 vi.mock('@/services/ws', () => ({
-  createSystemHealthClient: () => ({
+  createSystemClient: () => ({
     state: { value: 'open' },
     lastMessage: { value: undefined },
     subscribe: () => () => undefined,
@@ -28,7 +30,7 @@ vi.mock('@/services/ws', () => ({
 vi.mock('@/services/confirm', () => ({ confirmDestructive: vi.fn() }))
 vi.mock('@/services/submit-dialog', () => ({ openSubmitDialog: vi.fn() }))
 
-const { analysesList, analysesCancel, analysesDelete, annotationsListTags } = await import('@/api')
+const { analysesList, analysesCancel, analysesDelete, analysesReingest, annotationsListTags } = await import('@/api')
 const { confirmDestructive } = await import('@/services/confirm')
 const { openSubmitDialog } = await import('@/services/submit-dialog')
 const { useSystemStore } = await import('@/stores/system')
@@ -401,6 +403,53 @@ describe('DashboardPage row actions', () => {
     await flushPromises()
 
     expect(analysesCancel).not.toHaveBeenCalled()
+  })
+})
+
+describe('DashboardPage row menu', () => {
+  function rowMenu(wrapper: Awaited<ReturnType<typeof mountDashboard>>['wrapper']) {
+    return wrapper.getComponent(AnalysisRowMenu)
+  }
+
+  it('opens the analysis from the menu', async () => {
+    vi.mocked(analysesList).mockResolvedValue(listed([analysis({ id: 5 })]))
+    const { wrapper, router } = await mountDashboard()
+
+    rowMenu(wrapper).vm.$emit('open', 5)
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe('/analyses/5')
+  })
+
+  it('re-ingests and shows the analysis ingesting again', async () => {
+    vi.mocked(analysesList).mockResolvedValue(listed([analysis({ id: 5 })]))
+    vi.mocked(analysesReingest).mockResolvedValue({
+      data: analysis({ id: 5, status: 'ingesting' }),
+      error: undefined,
+    } as unknown as Awaited<ReturnType<typeof analysesReingest>>)
+    const { wrapper } = await mountDashboard()
+
+    rowMenu(wrapper).vm.$emit('reingest', 5)
+    await flushPromises()
+
+    expect(analysesReingest).toHaveBeenCalledWith({ path: { analysis_id: 5 } })
+    expect(wrapper.find('tbody tr .status-badge').text()).toContain('INGESTING')
+    expect(Notify.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'tt-info', message: 'Re-ingesting #5' }))
+  })
+
+  it('adds no toast of its own when the re-ingest is refused, since the API error toast says why', async () => {
+    vi.mocked(analysesList).mockResolvedValue(listed([analysis({ id: 5 })]))
+    vi.mocked(analysesReingest).mockResolvedValue({
+      data: undefined,
+      error: { error: { message: 'Another analysis is active' } },
+    } as unknown as Awaited<ReturnType<typeof analysesReingest>>)
+    const { wrapper } = await mountDashboard()
+
+    rowMenu(wrapper).vm.$emit('reingest', 5)
+    await flushPromises()
+
+    expect(Notify.create).not.toHaveBeenCalled()
+    expect(wrapper.find('tbody tr .status-badge').text()).toContain('DONE')
   })
 })
 
