@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { test as base, expect } from '@playwright/test'
 import type { Page, Route } from '@playwright/test'
-import type { AnalysisRead, ErrorEnvelope, SettingsBody, SystemHealth } from '../../src/api/types.gen'
+import type { AnalysisRead, ErrorEnvelope, FieldRead, FieldValues, QueryErrorRead, SettingsBody, SystemHealth } from '../../src/api/types.gen'
 
 // An /api request no scenario mocked would fall through to the dev server's proxy (no backend
 // behind it) and paint an error toast into the screenshot, so a mock whose URL drifted from
@@ -501,5 +501,107 @@ export async function mockEvolvingAnalysis(page: Page, current: () => AnalysisRe
   await page.route(ANALYSIS_URL, async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     await route.fulfill({ json: current() })
+  })
+}
+
+// ---------- The query bar: the real field catalog (79 fields, exported from the backend) and plausible values ----------
+
+const QUERY_FIELDS_URL = atPath('/api/query/fields')
+const QUERY_VALIDATE_URL = atPath('/api/query/validate')
+const QUERY_VALUES_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/query\/values$/.test(url.pathname)
+const FIELD_REFERENCE = /(?<![\w."@:-])([A-Za-z@][\w.@-]*)(?=:|\s*(?:>=|<=|>|<))/g
+const MAX_SUGGESTION_DISTANCE = 3
+
+export function realFieldCatalog(): FieldRead[] {
+  return JSON.parse(readFileSync(path.join(DATA_DIR, 'query', 'fields.json'), 'utf8')) as FieldRead[]
+}
+
+function realValues(): Record<string, { value: string; count: number }[]> {
+  return JSON.parse(readFileSync(path.join(DATA_DIR, 'query', 'values.json'), 'utf8'))
+}
+
+/** `suggest_fields` of the backend: by name prefix, then alias prefix, then inside a name. */
+function suggestFields(catalog: FieldRead[], prefix: string): FieldRead[] {
+  const needle = prefix.toLowerCase()
+  const searchable = catalog.filter((field) => field.searchable)
+  const byName = searchable.filter((field) => field.name.toLowerCase().startsWith(needle))
+  const byAlias = searchable.filter((field) => !byName.includes(field) && field.aliases.some((alias) => alias.startsWith(needle)))
+  const inside = searchable.filter((field) => ![...byName, ...byAlias].includes(field) && field.name.toLowerCase().includes(needle))
+  return [...byName, ...byAlias, ...inside].slice(0, 50)
+}
+
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i]
+    for (let j = 1; j <= b.length; j++) {
+      row.push(Math.min(previous[j]! + 1, row[j - 1]! + 1, previous[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1)))
+    }
+    previous = row
+  }
+  return previous[b.length]!
+}
+
+/** What the backend's compiler answers for an unknown field: its span and the closest known name. */
+function unknownFieldErrors(catalog: FieldRead[], query: string): QueryErrorRead[] {
+  const known = catalog.flatMap((field) => [field.name, ...field.aliases])
+  const errors: QueryErrorRead[] = []
+  for (const match of query.matchAll(FIELD_REFERENCE)) {
+    const name = match[1]!
+    const insideQuotes = (query.slice(0, match.index).match(/"/g)?.length ?? 0) % 2 === 1
+    if (insideQuotes || known.some((candidate) => candidate.toLowerCase() === name.toLowerCase())) continue
+    const closest = known
+      .map((candidate) => ({ candidate, distance: editDistance(name.toLowerCase(), candidate.toLowerCase()) }))
+      .filter(({ distance }) => distance <= MAX_SUGGESTION_DISTANCE)
+      .sort((a, b) => a.distance - b.distance)[0]?.candidate
+    errors.push({
+      start: match.index,
+      end: match.index + name.length,
+      message: closest ? `unknown field '${name}'; did you mean '${closest}'?` : `unknown field '${name}'`,
+      suggestion: closest ?? null,
+    })
+  }
+  return errors
+}
+
+export interface QueryMockOptions {
+  /** Replaces the default validator (unknown fields only) for a scenario that needs another error. */
+  validate?: (query: string) => QueryErrorRead[]
+  /** Makes `GET /query/fields` and the values answer slowly, to catch the bar in its loading state. */
+  delayMs?: number
+}
+
+/**
+ * Serves the query bar's three endpoints: the field catalog with its prefix search, the values of a
+ * keyword field, and validation (by default it only finds unknown fields, with a "did you mean").
+ * Register it after `mockAnalyses`.
+ */
+export async function mockQuery(page: Page, options: QueryMockOptions = {}): Promise<void> {
+  const catalog = realFieldCatalog()
+  const values = realValues()
+  const validate = options.validate ?? ((query: string) => unknownFieldErrors(catalog, query))
+
+  await page.route(QUERY_FIELDS_URL, async (route) => {
+    await pause(options.delayMs)
+    const prefix = new URL(route.request().url()).searchParams.get('prefix')
+    await route.fulfill({ json: prefix ? suggestFields(catalog, prefix) : catalog })
+  })
+
+  await page.route(QUERY_VALIDATE_URL, async (route) => {
+    const { query } = route.request().postDataJSON() as { query: string }
+    const errors = validate(query)
+    await route.fulfill({ json: { ok: errors.length === 0, errors } })
+  })
+
+  await page.route(QUERY_VALUES_URL, async (route) => {
+    await pause(options.delayMs)
+    const params = new URL(route.request().url()).searchParams
+    const requested = (params.get('field') ?? '').toLowerCase()
+    const field = catalog.find((entry) => entry.name.toLowerCase() === requested || entry.aliases.includes(requested))
+    const prefix = (params.get('prefix') ?? '').toLowerCase()
+    const limit = Number(params.get('limit') ?? 10)
+    const matching = (field ? (values[field.name] ?? []) : []).filter((entry) => entry.value.startsWith(prefix))
+    const body: FieldValues = { values: matching.slice(0, limit) }
+    await route.fulfill({ json: body })
   })
 }

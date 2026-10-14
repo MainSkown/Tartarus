@@ -4,6 +4,7 @@ import {
   DEFAULT_TAB,
   LIVE_TAB,
   isLiveStatus,
+  isQueryableTab,
   listedTabs,
   nextLiveSession,
   selectableTab,
@@ -25,6 +26,18 @@ describe('listedTabs', () => {
     const others = listedTabs(true).slice(1).map((tab) => tab.key)
     expect(others).toEqual(listedTabs(false).map((tab) => tab.key))
     expect(others).toEqual(ANALYSIS_TABS.filter((tab) => tab.key !== LIVE_TAB).map((tab) => tab.key))
+  })
+})
+
+describe('queryable tabs', () => {
+  it('are the timeline and the events tab, the two the query bar filters', () => {
+    expect(ANALYSIS_TABS.filter((tab) => tab.queryable).map((tab) => tab.key)).toEqual(['timeline', 'events'])
+  })
+
+  it('is told by key, false for a tab that does not exist', () => {
+    expect(isQueryableTab('events')).toBe(true)
+    expect(isQueryableTab('network')).toBe(false)
+    expect(isQueryableTab('nope')).toBe(false)
   })
 })
 
@@ -53,7 +66,7 @@ describe('selectableTab', () => {
   })
 
   it('still falls back for a tab that is not built, whatever the session', () => {
-    expect(selectableTab('events', true)).toBe(DEFAULT_TAB)
+    expect(selectableTab('timeline', true)).toBe(DEFAULT_TAB)
   })
 })
 

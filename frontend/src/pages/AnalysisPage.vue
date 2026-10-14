@@ -5,9 +5,11 @@ import { useRoute, useRouter } from 'vue-router'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import AnalysisSummaryTab from '@/components/AnalysisSummaryTab.vue'
 import AnalysisTabs from '@/components/AnalysisTabs.vue'
+import QueryHeader from '@/components/QueryHeader.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { TAB_VIEWS } from '@/components/tabs'
-import { DEFAULT_TAB, LIVE_TAB, arrivalNote, nextLiveSession } from '@/services/analysis-tabs'
+import { useQueryUrlSync } from '@/composables/use-query-url-sync'
+import { DEFAULT_TAB, LIVE_TAB, arrivalNote, isQueryableTab, nextLiveSession } from '@/services/analysis-tabs'
 import { confirmDestructive } from '@/services/confirm'
 import { deleteConfirmation } from '@/services/delete-confirmation'
 import { NOT_FOUND_STATUS } from '@/services/quiet-statuses'
@@ -27,6 +29,9 @@ const activeTab = computed(() => requestedTab.value ?? (liveSession.value ? LIVE
 // LIVE asked for outside a live session (an analysis opened already finished) is not offered: SUMMARY shows instead.
 const viewTab = computed(() => (activeTab.value === LIVE_TAB && !liveSession.value ? DEFAULT_TAB : activeTab.value))
 const loadFailed = computed(() => store.loadError !== undefined && !store.loading)
+const showQueryBar = computed(
+  () => isQueryableTab(viewTab.value) && TAB_VIEWS[viewTab.value] !== undefined && analysis.value?.status === 'done',
+)
 const notFound = computed(
   () => analysisId.value === undefined || (loadFailed.value && store.loadErrorStatus === NOT_FOUND_STATUS),
 )
@@ -58,8 +63,10 @@ async function deleteAnalysis(): Promise<void> {
 }
 
 function selectTab(tab: string): void {
-  void router.push({ name: 'analysis-workspace', params: { id: String(analysisId.value), tab } })
+  void router.push({ name: 'analysis-workspace', params: { id: String(analysisId.value), tab }, query: route.query })
 }
+
+useQueryUrlSync(() => analysisId.value)
 
 watch(analysisId, () => (liveSession.value = false), { flush: 'sync' })
 watch(analysis, (current) => (liveSession.value = nextLiveSession(liveSession.value, current)), {
@@ -89,6 +96,10 @@ onBeforeUnmount(store.stopPolling)
         :active="activeTab"
         :live="liveSession"
         @select="selectTab"
+      />
+      <QueryHeader
+        v-if="showQueryBar"
+        :analysis-id="analysis.id"
       />
       <AnalysisSummaryTab
         v-if="viewTab === DEFAULT_TAB"

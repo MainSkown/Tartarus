@@ -669,6 +669,20 @@ pre,
 .q-chip.filter-chip.is-negated {
   color: var(--status-high);
   border-color: rgba(249, 115, 22, 0.5);
+}
+/* Glow means focus: a chip that can be toggled glows under the pointer and the keyboard focus. */
+.q-chip.filter-chip.cursor-pointer:hover,
+.q-chip.filter-chip:focus-visible {
+  border-color: var(--blue-primary);
+  box-shadow: var(--shadow-blue-weak);
+}
+.q-chip.filter-chip.is-negated.cursor-pointer:hover,
+.q-chip.filter-chip.is-negated:focus-visible {
+  border-color: var(--status-high);
+  box-shadow: 0 0 8px rgba(249, 115, 22, 0.25);
+}
+/* The strike-through is on the value only: running it through the NOT marker and the × would hide both. */
+.q-chip.filter-chip.is-negated .filter-chip__label {
   text-decoration: line-through;
 }
 

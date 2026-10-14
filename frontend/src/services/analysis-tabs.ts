@@ -9,6 +9,8 @@ export interface AnalysisTab {
   arrivesWith?: string
   /** Listed only during a live session (see `nextLiveSession`), never for an analysis opened already finished. */
   liveOnly?: boolean
+  /** Filtered by the shared query bar and chips, which the page shows under the tab strip. */
+  queryable?: boolean
 }
 
 export const DEFAULT_TAB = 'summary'
@@ -18,13 +20,17 @@ export const ANALYSIS_TABS: AnalysisTab[] = [
   { key: LIVE_TAB, label: 'LIVE', available: true, liveOnly: true },
   { key: DEFAULT_TAB, label: 'SUMMARY', available: true },
   { key: 'processes', label: 'PROCESSES', available: true },
-  { key: 'timeline', label: 'TIMELINE', available: false, arrivesWith: 'M3' },
-  { key: 'events', label: 'EVENTS', available: false, arrivesWith: 'M3' },
+  { key: 'timeline', label: 'TIMELINE', available: false, arrivesWith: 'M3', queryable: true },
+  { key: 'events', label: 'EVENTS', available: true, queryable: true },
   { key: 'network', label: 'NETWORK', available: true },
   { key: 'artifacts', label: 'ARTIFACTS', available: true },
   { key: 'detections', label: 'DETECTIONS', available: true },
   { key: 'notes', label: 'NOTES', available: false, arrivesWith: 'M4' },
 ]
+
+export function isQueryableTab(key: string): boolean {
+  return ANALYSIS_TABS.some((tab) => tab.key === key && tab.queryable === true)
+}
 
 /** Whether a run is still going on, from queued to ingesting: the states the LIVE tab exists for. */
 export function isLiveStatus(status: AnalysisStatus): boolean {

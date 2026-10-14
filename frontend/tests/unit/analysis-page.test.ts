@@ -37,7 +37,19 @@ vi.mock('@/components/tabs', async () => {
   return {
     TAB_VIEWS: {
       live,
-      ...Object.fromEntries(['processes', 'network', 'artifacts', 'detections'].map((tab) => [tab, stub(tab)])),
+      ...Object.fromEntries(['processes', 'events', 'network', 'artifacts', 'detections'].map((tab) => [tab, stub(tab)])),
+    },
+  }
+})
+
+// The bar is tested on its own; here only where the page puts it and what it is bound to.
+vi.mock('@/components/QueryHeader.vue', async () => {
+  const { h } = await import('vue')
+  return {
+    default: {
+      props: { analysisId: { type: Number, required: true } },
+      setup: (props: { analysisId: number }) => () =>
+        h('div', { class: 'query-header-stub', 'data-analysis': props.analysisId }),
     },
   }
 })
@@ -47,15 +59,20 @@ vi.mock('@/services/confirm', () => ({
   confirmDestructive: (...args: unknown[]) => confirmDestructiveMock(...args),
 }))
 
-const route = reactive<{ params: { id: string; tab?: string } }>({ params: { id: '42' } })
+const route = reactive<{ params: { id: string; tab?: string }; query: Record<string, string | string[]> }>({
+  params: { id: '42' },
+  query: {},
+})
 const push = vi.fn()
+const replace = vi.fn()
 vi.mock('vue-router', () => ({
   useRoute: () => route,
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace }),
 }))
 
 const { deleteConfirmation } = await import('@/services/delete-confirmation')
 const { default: AnalysisPage } = await import('@/pages/AnalysisPage.vue')
+const { useQueryStateStore } = await import('@/stores/query-state')
 
 const POLL_MS = 2_000
 
@@ -78,6 +95,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   setActivePinia(createPinia())
   route.params = { id: '42' }
+  route.query = {}
   Notify.create = vi.fn()
 })
 
@@ -187,13 +205,13 @@ describe('AnalysisPage tabs', () => {
   })
 
   it('shows a placeholder, saying when, for a tab that is not built yet', async () => {
-    route.params = { id: '42', tab: 'events' }
+    route.params = { id: '42', tab: 'timeline' }
     const wrapper = await mountPage()
     expect(wrapper.find('.analysis-summary').exists()).toBe(false)
-    expect(wrapper.text()).toContain('events arrives with M3')
+    expect(wrapper.text()).toContain('timeline arrives with M3')
   })
 
-  it.each(['processes', 'network', 'artifacts', 'detections'])('shows the %s view of a finished analysis', async (tab) => {
+  it.each(['processes', 'events', 'network', 'artifacts', 'detections'])('shows the %s view of a finished analysis', async (tab) => {
     route.params = { id: '42', tab }
     const wrapper = await mountPage()
     await vi.waitFor(() => expect(wrapper.find(`[data-tab="${tab}"]`).exists()).toBe(true))
@@ -209,7 +227,7 @@ describe('AnalysisPage tabs', () => {
   })
 
   it('leaves SUMMARY marked, and marks nothing else, for a tab that is not built yet', async () => {
-    route.params = { id: '42', tab: 'events' }
+    route.params = { id: '42', tab: 'timeline' }
     const wrapper = await mountPage()
     const selected = wrapper.findAll('.analysis-tabs [aria-selected="true"]')
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
@@ -219,7 +237,72 @@ describe('AnalysisPage tabs', () => {
     route.params = { id: '42', tab: 'processes' }
     const wrapper = await mountPage()
     await wrapper.find('.analysis-tabs button:not([disabled])').trigger('click')
-    expect(push).toHaveBeenCalledWith({ name: 'analysis-workspace', params: { id: '42', tab: 'summary' } })
+    expect(push).toHaveBeenCalledWith({ name: 'analysis-workspace', params: { id: '42', tab: 'summary' }, query: {} })
+  })
+
+  it('keeps the query, the chips and the selected process in the URL when a tab is selected', async () => {
+    route.params = { id: '42', tab: 'events' }
+    route.query = { q: 'lane:file', pid: '4120' }
+    const wrapper = await mountPage()
+    await wrapper.find('.analysis-tabs button:not([disabled])').trigger('click')
+    expect(push).toHaveBeenCalledWith({
+      name: 'analysis-workspace',
+      params: { id: '42', tab: 'summary' },
+      query: { q: 'lane:file', pid: '4120' },
+    })
+  })
+})
+
+describe('AnalysisPage query bar', () => {
+  it('shows the query bar under the tabs of the events tab, for this analysis', async () => {
+    route.params = { id: '42', tab: 'events' }
+    const wrapper = await mountPage()
+    const header = wrapper.find('.query-header-stub')
+    expect(header.attributes('data-analysis')).toBe('42')
+    expect(wrapper.find('.analysis-tabs').element.nextElementSibling).toBe(header.element)
+  })
+
+  it.each(['summary', 'processes', 'network', 'artifacts', 'detections'])('has no query bar on the %s tab', async (tab) => {
+    route.params = { id: '42', tab }
+    const wrapper = await mountPage()
+    expect(wrapper.find('.query-header-stub').exists()).toBe(false)
+  })
+
+  it('has no query bar on the timeline while that tab is not built', async () => {
+    route.params = { id: '42', tab: 'timeline' }
+    const wrapper = await mountPage()
+    expect(wrapper.find('.query-header-stub').exists()).toBe(false)
+  })
+
+  it('has no query bar before the analysis is done: there is nothing to query yet', async () => {
+    route.params = { id: '42', tab: 'events' }
+    const wrapper = await mountPage(analysisWithStatus('running', { finished_at: null }))
+    expect(wrapper.find('.query-header-stub').exists()).toBe(false)
+  })
+
+  it('fills the shared query state from the URL and binds it to the analysis', async () => {
+    route.params = { id: '42', tab: 'events' }
+    route.query = { q: 'lane:file', f: '-api:NtDelayExecution', pid: '4120' }
+    await mountPage()
+    const store = useQueryStateStore()
+    expect(store.analysisId).toBe(42)
+    expect(store.urlState).toEqual({
+      text: 'lane:file',
+      chips: [{ field: 'api', value: 'NtDelayExecution', negate: true }],
+      pids: [4120],
+      timeRange: null,
+    })
+  })
+
+  it('starts the state over for another analysis', async () => {
+    route.params = { id: '42', tab: 'events' }
+    route.query = { q: 'lane:file' }
+    await mountPage()
+    analysesReadMock.mockResolvedValue(succeeded(analysisWithStatus('done', { id: 43, summary: NO_DETECTIONS_SUMMARY })))
+    route.params = { id: '43', tab: 'events' }
+    route.query = {}
+    await flushPromises()
+    expect(useQueryStateStore().isEmpty).toBe(true)
   })
 })
 
@@ -319,7 +402,7 @@ describe('AnalysisPage live tab', () => {
   it('goes to the tab the live view asks for', async () => {
     const wrapper = await mountPage(active())
     await wrapper.find('.live-stub__summary').trigger('click')
-    expect(push).toHaveBeenCalledWith({ name: 'analysis-workspace', params: { id: '42', tab: 'summary' } })
+    expect(push).toHaveBeenCalledWith({ name: 'analysis-workspace', params: { id: '42', tab: 'summary' }, query: {} })
   })
 
   it('selects LIVE through the tab bar', async () => {

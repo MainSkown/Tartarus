@@ -11,3 +11,6 @@ export function isQuietFailure(response: Response | undefined, meta: Record<stri
   const quiet = meta?.quietStatuses
   return response !== undefined && Array.isArray(quiet) && quiet.includes(response.status)
 }
+
+/** Typing in the query bar asks for fields, values and validation on every pause: a failure there is not toast-worthy. */
+export const QUIET_ON_QUERY_FAILURES = quietOn(404, 422, 500, 502, 504)

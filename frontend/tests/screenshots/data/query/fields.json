@@ -1,0 +1,857 @@
+[
+  {
+    "name": "@timestamp",
+    "type": "date",
+    "aliases": [],
+    "description": "Guest event time in UTC",
+    "example": "2026-10-13T10:12:41.123Z",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.id",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Deterministic id of the event",
+    "example": "3f786850e387550fdab836ed",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.sequence",
+    "type": "long",
+    "aliases": [],
+    "description": "Order of the event within the analysis",
+    "example": "1042",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.kind",
+    "type": "keyword",
+    "aliases": [
+      "kind"
+    ],
+    "description": "`event`, or `alert` for detections",
+    "example": "alert",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.category",
+    "type": "keyword",
+    "aliases": [
+      "category"
+    ],
+    "description": "ECS categories of the event",
+    "example": "process",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.type",
+    "type": "keyword",
+    "aliases": [],
+    "description": "ECS types of the event",
+    "example": "start",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.action",
+    "type": "keyword",
+    "aliases": [
+      "action"
+    ],
+    "description": "Specific action performed",
+    "example": "process-created",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.module",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Source that produced the event",
+    "example": "capemon",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.dataset",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Dataset within the source",
+    "example": "capemon.api",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "event.severity",
+    "type": "integer",
+    "aliases": [
+      "severity",
+      "sev"
+    ],
+    "description": "0 info, 1 low, 2 medium, 3 high, 4 critical (alerts only)",
+    "example": "3",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.analysis_id",
+    "type": "long",
+    "aliases": [],
+    "description": "Id of the analysis the event belongs to",
+    "example": "6",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.lane",
+    "type": "keyword",
+    "aliases": [
+      "lane"
+    ],
+    "description": "Timeline lane: process, file, registry, network, memory or api",
+    "example": "file",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.phase",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Phase that produced the event: live or final",
+    "example": "final",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.summary",
+    "type": "keyword_with_text",
+    "aliases": [
+      "summary"
+    ],
+    "description": "One-line human summary of the event",
+    "example": "cmd.exe wrote C:\\Users\\victim\\a.ps1",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.raw",
+    "type": "object_disabled",
+    "aliases": [],
+    "description": "Original record, kept unindexed",
+    "example": "{...}",
+    "lane": null,
+    "members": [],
+    "searchable": false
+  },
+  {
+    "name": "process.pid",
+    "type": "long",
+    "aliases": [
+      "pid"
+    ],
+    "description": "Process id",
+    "example": "2184",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.parent.pid",
+    "type": "long",
+    "aliases": [
+      "ppid"
+    ],
+    "description": "Parent process id",
+    "example": "1020",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.thread.id",
+    "type": "long",
+    "aliases": [
+      "tid"
+    ],
+    "description": "Thread id",
+    "example": "3312",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.name",
+    "type": "keyword",
+    "aliases": [
+      "process",
+      "proc"
+    ],
+    "description": "Process image file name",
+    "example": "cmd.exe",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.parent.name",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Parent process image file name",
+    "example": "explorer.exe",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.executable",
+    "type": "keyword_with_text",
+    "aliases": [
+      "image"
+    ],
+    "description": "Full path of the process image",
+    "example": "C:\\Windows\\System32\\cmd.exe",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.command_line",
+    "type": "keyword_with_text",
+    "aliases": [
+      "cmdline",
+      "cmd"
+    ],
+    "description": "Command line the process was started with",
+    "example": "cmd.exe /c whoami",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.entity_id",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Unique process instance: <analysis>:<pid>@<start_ts>",
+    "example": "6:2184@1760350361",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.start",
+    "type": "date",
+    "aliases": [],
+    "description": "Process start time",
+    "example": "2026-10-13T10:12:41Z",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "process.integrity_level",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Windows integrity level",
+    "example": "High",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.inject.target_pid",
+    "type": "long",
+    "aliases": [],
+    "description": "Pid of the process an injection call acts on",
+    "example": "4412",
+    "lane": "process",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "file.path",
+    "type": "keyword_with_text",
+    "aliases": [
+      "path"
+    ],
+    "description": "Full file path",
+    "example": "C:\\Users\\victim\\a.ps1",
+    "lane": "file",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "file.name",
+    "type": "keyword",
+    "aliases": [
+      "filename"
+    ],
+    "description": "File name",
+    "example": "a.ps1",
+    "lane": "file",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "file.extension",
+    "type": "keyword",
+    "aliases": [],
+    "description": "File extension without the dot",
+    "example": "ps1",
+    "lane": "file",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "file.size",
+    "type": "long",
+    "aliases": [],
+    "description": "File size in bytes",
+    "example": "4096",
+    "lane": "file",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "file.hash.sha256",
+    "type": "keyword",
+    "aliases": [
+      "sha256"
+    ],
+    "description": "SHA-256 of the file",
+    "example": "e3b0c44298fc1c14...",
+    "lane": "file",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "file.target_path",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Destination path of a rename or move",
+    "example": "C:\\Temp\\b.ps1",
+    "lane": "file",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "registry.path",
+    "type": "keyword",
+    "aliases": [
+      "reg"
+    ],
+    "description": "Full registry path including hive, key and value",
+    "example": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater",
+    "lane": "registry",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "registry.hive",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Registry hive",
+    "example": "HKLM",
+    "lane": "registry",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "registry.key",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Registry key path without the hive",
+    "example": "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+    "lane": "registry",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "registry.value",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Registry value name",
+    "example": "Updater",
+    "lane": "registry",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "registry.data.type",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Registry value type",
+    "example": "REG_SZ",
+    "lane": "registry",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "registry.data.strings",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Registry value data as strings",
+    "example": "C:\\Temp\\a.exe",
+    "lane": "registry",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "source.ip",
+    "type": "ip",
+    "aliases": [
+      "src.ip"
+    ],
+    "description": "Source address",
+    "example": "192.168.56.10",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "source.port",
+    "type": "long",
+    "aliases": [
+      "src.port"
+    ],
+    "description": "Source port",
+    "example": "49732",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "destination.ip",
+    "type": "ip",
+    "aliases": [
+      "dst.ip",
+      "ip"
+    ],
+    "description": "Destination address",
+    "example": "93.184.216.34",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "destination.port",
+    "type": "long",
+    "aliases": [
+      "dst.port",
+      "port"
+    ],
+    "description": "Destination port",
+    "example": "443",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "destination.domain",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Destination domain name",
+    "example": "example.com",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "network.transport",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Transport protocol",
+    "example": "tcp",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "network.protocol",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Application protocol",
+    "example": "http",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "dns.question.name",
+    "type": "keyword",
+    "aliases": [
+      "dns"
+    ],
+    "description": "Name asked in a DNS query",
+    "example": "example.com",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "dns.question.type",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Type of a DNS query",
+    "example": "A",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "dns.answers.data",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Data of the DNS answers",
+    "example": "93.184.216.34",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "url.full",
+    "type": "keyword",
+    "aliases": [
+      "url"
+    ],
+    "description": "Full URL",
+    "example": "http://example.com/a.bin",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "http.request.method",
+    "type": "keyword",
+    "aliases": [],
+    "description": "HTTP request method",
+    "example": "GET",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "http.response.status_code",
+    "type": "long",
+    "aliases": [],
+    "description": "HTTP response status",
+    "example": "200",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "user_agent.original",
+    "type": "keyword",
+    "aliases": [
+      "user_agent"
+    ],
+    "description": "HTTP User-Agent header",
+    "example": "Mozilla/5.0",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tls.server.sni",
+    "type": "keyword",
+    "aliases": [],
+    "description": "TLS server name indication",
+    "example": "example.com",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tls.server.ja3s",
+    "type": "keyword",
+    "aliases": [],
+    "description": "JA3S fingerprint of the TLS server",
+    "example": "ec74a5c51106f0419184d0dd08fb05bc",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tls.client.ja3",
+    "type": "keyword",
+    "aliases": [],
+    "description": "JA3 fingerprint of the TLS client",
+    "example": "e7d705a3286e19ea42f587b344ee6865",
+    "lane": "network",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "api.name",
+    "type": "keyword",
+    "aliases": [
+      "api"
+    ],
+    "description": "Name of the API call",
+    "example": "NtWriteFile",
+    "lane": "api",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "api.category",
+    "type": "keyword",
+    "aliases": [],
+    "description": "capemon category of the call",
+    "example": "filesystem",
+    "lane": "api",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "api.status",
+    "type": "boolean",
+    "aliases": [],
+    "description": "Whether the call succeeded",
+    "example": "true",
+    "lane": "api",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "api.return_value",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Return value of the call",
+    "example": "0",
+    "lane": "api",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "api.arguments",
+    "type": "flat_object",
+    "aliases": [],
+    "description": "Arguments of the call by name",
+    "example": "{\"FileName\": \"a.ps1\"}",
+    "lane": "api",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "api.repeated",
+    "type": "long",
+    "aliases": [],
+    "description": "Count when capemon collapsed repeated calls",
+    "example": "12",
+    "lane": "api",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.memory.plugin",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Volatility plugin that found it",
+    "example": "malfind",
+    "lane": "memory",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.memory.address",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Memory address of the finding",
+    "example": "0x7ff612340000",
+    "lane": "memory",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.memory.protection",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Memory protection of the region",
+    "example": "PAGE_EXECUTE_READWRITE",
+    "lane": "memory",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.memory.dump_ref",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Artifact id of the memory dump",
+    "example": "dump-3",
+    "lane": "memory",
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "rule.id",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Id of the rule that fired",
+    "example": "5a9a1d6e-0b6b-4a3c-8d3e-1c2f3a4b5c6d",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "rule.name",
+    "type": "keyword",
+    "aliases": [
+      "rule"
+    ],
+    "description": "Name of the rule that fired",
+    "example": "creates_exe_in_temp",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "rule.description",
+    "type": "text",
+    "aliases": [],
+    "description": "What the rule detects",
+    "example": "Creates an executable in a temp directory",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "rule.ruleset",
+    "type": "keyword",
+    "aliases": [
+      "ruleset"
+    ],
+    "description": "sigma, cape, yara or suricata",
+    "example": "cape",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "rule.reference",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Reference URLs of the rule",
+    "example": "https://attack.mitre.org/techniques/T1055/",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "threat.technique.id",
+    "type": "keyword",
+    "aliases": [
+      "technique",
+      "attack"
+    ],
+    "description": "ATT&CK technique id",
+    "example": "T1055",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "threat.technique.name",
+    "type": "keyword",
+    "aliases": [],
+    "description": "ATT&CK technique name",
+    "example": "Process Injection",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "threat.tactic.name",
+    "type": "keyword",
+    "aliases": [
+      "tactic"
+    ],
+    "description": "ATT&CK tactic name",
+    "example": "Defense Evasion",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "related.events",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Ids of the events that triggered the detection",
+    "example": "3f786850e387550fdab836ed",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "related.hash",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Hashes related to the detection",
+    "example": "e3b0c44298fc1c14...",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "related.ip",
+    "type": "ip",
+    "aliases": [],
+    "description": "Addresses related to the detection",
+    "example": "93.184.216.34",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "related.hosts",
+    "type": "keyword",
+    "aliases": [],
+    "description": "Hosts related to the detection",
+    "example": "example.com",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "tartarus.detection.match",
+    "type": "text",
+    "aliases": [],
+    "description": "Text of the matched condition",
+    "example": "CommandLine contains 'powershell'",
+    "lane": null,
+    "members": [],
+    "searchable": true
+  },
+  {
+    "name": "domain",
+    "type": "keyword",
+    "aliases": [],
+    "description": "dns.question.name or destination.domain",
+    "example": "example.com",
+    "lane": "network",
+    "members": [
+      "dns.question.name",
+      "destination.domain"
+    ],
+    "searchable": true
+  }
+]

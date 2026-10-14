@@ -1,0 +1,486 @@
+{
+ "process.name": [
+  {
+   "value": "benign.exe",
+   "count": 412
+  },
+  {
+   "value": "cmd.exe",
+   "count": 208
+  },
+  {
+   "value": "conhost.exe",
+   "count": 96
+  },
+  {
+   "value": "svchost.exe",
+   "count": 71
+  },
+  {
+   "value": "powershell.exe",
+   "count": 54
+  },
+  {
+   "value": "explorer.exe",
+   "count": 33
+  },
+  {
+   "value": "rundll32.exe",
+   "count": 12
+  },
+  {
+   "value": "regsvr32.exe",
+   "count": 5
+  },
+  {
+   "value": "program files updater.exe",
+   "count": 2
+  }
+ ],
+ "process.parent.name": [
+  {
+   "value": "benign.exe",
+   "count": 208
+  },
+  {
+   "value": "explorer.exe",
+   "count": 96
+  },
+  {
+   "value": "cmd.exe",
+   "count": 54
+  },
+  {
+   "value": "services.exe",
+   "count": 12
+  }
+ ],
+ "process.executable": [
+  {
+   "value": "c:\\users\\analyst\\appdata\\local\\temp\\benign.exe",
+   "count": 412
+  },
+  {
+   "value": "c:\\windows\\system32\\cmd.exe",
+   "count": 208
+  },
+  {
+   "value": "c:\\windows\\system32\\conhost.exe",
+   "count": 96
+  },
+  {
+   "value": "c:\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+   "count": 54
+  }
+ ],
+ "process.command_line": [
+  {
+   "value": "cmd.exe /c ver",
+   "count": 208
+  },
+  {
+   "value": "c:\\windows\\system32\\conhost.exe 0xffffffff -forcev1",
+   "count": 96
+  },
+  {
+   "value": "powershell.exe -nop -w hidden -enc sqbfafgaiaaoae4azqb3ac0atwbiagoazqbjahqa",
+   "count": 54
+  }
+ ],
+ "tartarus.lane": [
+  {
+   "value": "api",
+   "count": 11214
+  },
+  {
+   "value": "file",
+   "count": 3702
+  },
+  {
+   "value": "registry",
+   "count": 2231
+  },
+  {
+   "value": "process",
+   "count": 611
+  },
+  {
+   "value": "network",
+   "count": 480
+  },
+  {
+   "value": "memory",
+   "count": 194
+  }
+ ],
+ "event.action": [
+  {
+   "value": "api-call",
+   "count": 11214
+  },
+  {
+   "value": "file-written",
+   "count": 1802
+  },
+  {
+   "value": "file-created",
+   "count": 1210
+  },
+  {
+   "value": "registry-value-set",
+   "count": 1534
+  },
+  {
+   "value": "process-created",
+   "count": 611
+  },
+  {
+   "value": "dns-query",
+   "count": 120
+  },
+  {
+   "value": "connection",
+   "count": 360
+  },
+  {
+   "value": "file-deleted",
+   "count": 96
+  }
+ ],
+ "event.kind": [
+  {
+   "value": "event",
+   "count": 17002
+  },
+  {
+   "value": "alert",
+   "count": 12
+  }
+ ],
+ "event.category": [
+  {
+   "value": "process",
+   "count": 611
+  },
+  {
+   "value": "file",
+   "count": 3702
+  },
+  {
+   "value": "registry",
+   "count": 2231
+  },
+  {
+   "value": "network",
+   "count": 480
+  },
+  {
+   "value": "intrusion_detection",
+   "count": 12
+  }
+ ],
+ "event.module": [
+  {
+   "value": "capemon",
+   "count": 15321
+  },
+  {
+   "value": "pcap",
+   "count": 480
+  },
+  {
+   "value": "sigma",
+   "count": 12
+  }
+ ],
+ "api.name": [
+  {
+   "value": "NtWriteFile",
+   "count": 1204
+  },
+  {
+   "value": "NtCreateFile",
+   "count": 980
+  },
+  {
+   "value": "NtDelayExecution",
+   "count": 788
+  },
+  {
+   "value": "NtQueryValueKey",
+   "count": 640
+  },
+  {
+   "value": "NtWriteVirtualMemory",
+   "count": 212
+  },
+  {
+   "value": "NtCreateThreadEx",
+   "count": 58
+  },
+  {
+   "value": "NtProtectVirtualMemory",
+   "count": 41
+  },
+  {
+   "value": "NtOpenProcess",
+   "count": 37
+  }
+ ],
+ "api.category": [
+  {
+   "value": "filesystem",
+   "count": 4120
+  },
+  {
+   "value": "registry",
+   "count": 2210
+  },
+  {
+   "value": "process",
+   "count": 611
+  },
+  {
+   "value": "synchronisation",
+   "count": 900
+  },
+  {
+   "value": "network",
+   "count": 96
+  }
+ ],
+ "file.path": [
+  {
+   "value": "c:\\users\\analyst\\appdata\\roaming\\microsoft\\windows\\a.ps1",
+   "count": 14
+  },
+  {
+   "value": "c:\\users\\analyst\\appdata\\local\\temp\\benign.exe",
+   "count": 9
+  },
+  {
+   "value": "c:\\windows\\system32\\drivers\\etc\\hosts",
+   "count": 6
+  },
+  {
+   "value": "c:\\users\\analyst\\documents\\program files notes.txt",
+   "count": 2
+  }
+ ],
+ "file.name": [
+  {
+   "value": "a.ps1",
+   "count": 14
+  },
+  {
+   "value": "benign.exe",
+   "count": 9
+  },
+  {
+   "value": "hosts",
+   "count": 6
+  },
+  {
+   "value": "desktop.ini",
+   "count": 4
+  }
+ ],
+ "file.extension": [
+  {
+   "value": "exe",
+   "count": 31
+  },
+  {
+   "value": "dll",
+   "count": 24
+  },
+  {
+   "value": "ps1",
+   "count": 14
+  },
+  {
+   "value": "txt",
+   "count": 9
+  },
+  {
+   "value": "tmp",
+   "count": 7
+  }
+ ],
+ "registry.path": [
+  {
+   "value": "hklm\\software\\microsoft\\windows\\currentversion\\run\\updater",
+   "count": 3
+  },
+  {
+   "value": "hkcu\\software\\classes\\ms-settings\\shell\\open\\command",
+   "count": 2
+  },
+  {
+   "value": "hklm\\system\\currentcontrolset\\services\\tcpip\\parameters\\hostname",
+   "count": 1
+  }
+ ],
+ "registry.hive": [
+  {
+   "value": "hklm",
+   "count": 1920
+  },
+  {
+   "value": "hkcu",
+   "count": 311
+  }
+ ],
+ "dns.question.name": [
+  {
+   "value": "www.msftconnecttest.com",
+   "count": 42
+  },
+  {
+   "value": "ipv6.msftconnecttest.com",
+   "count": 36
+  },
+  {
+   "value": "outlook.office.com",
+   "count": 20
+  },
+  {
+   "value": "staging.to-do.officeppe.com",
+   "count": 14
+  },
+  {
+   "value": "tartarus-selftest.example",
+   "count": 8
+  }
+ ],
+ "destination.domain": [
+  {
+   "value": "www.msftconnecttest.com",
+   "count": 42
+  },
+  {
+   "value": "outlook.office.com",
+   "count": 20
+  },
+  {
+   "value": "tartarus-selftest.example",
+   "count": 8
+  }
+ ],
+ "domain": [
+  {
+   "value": "www.msftconnecttest.com",
+   "count": 84
+  },
+  {
+   "value": "ipv6.msftconnecttest.com",
+   "count": 36
+  },
+  {
+   "value": "outlook.office.com",
+   "count": 40
+  },
+  {
+   "value": "staging.to-do.officeppe.com",
+   "count": 14
+  },
+  {
+   "value": "tartarus-selftest.example",
+   "count": 16
+  }
+ ],
+ "url.full": [
+  {
+   "value": "http://ipv6.msftconnecttest.com/connecttest.txt",
+   "count": 18
+  },
+  {
+   "value": "http://www.msftconnecttest.com/connecttest.txt",
+   "count": 24
+  }
+ ],
+ "network.protocol": [
+  {
+   "value": "dns",
+   "count": 120
+  },
+  {
+   "value": "http",
+   "count": 42
+  },
+  {
+   "value": "tls",
+   "count": 18
+  }
+ ],
+ "network.transport": [
+  {
+   "value": "udp",
+   "count": 132
+  },
+  {
+   "value": "tcp",
+   "count": 348
+  }
+ ],
+ "rule.name": [
+  {
+   "value": "recon_systeminfo",
+   "count": 3
+  },
+  {
+   "value": "creates_exe_in_temp",
+   "count": 2
+  },
+  {
+   "value": "injection_createremotethread",
+   "count": 1
+  },
+  {
+   "value": "persistence_autorun",
+   "count": 1
+  }
+ ],
+ "rule.ruleset": [
+  {
+   "value": "cape",
+   "count": 8
+  },
+  {
+   "value": "sigma",
+   "count": 3
+  },
+  {
+   "value": "yara",
+   "count": 1
+  }
+ ],
+ "threat.technique.id": [
+  {
+   "value": "t1055",
+   "count": 2
+  },
+  {
+   "value": "t1547.001",
+   "count": 1
+  },
+  {
+   "value": "t1082",
+   "count": 3
+  }
+ ],
+ "threat.tactic.name": [
+  {
+   "value": "defense evasion",
+   "count": 2
+  },
+  {
+   "value": "persistence",
+   "count": 1
+  },
+  {
+   "value": "discovery",
+   "count": 3
+  }
+ ]
+}
