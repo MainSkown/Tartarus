@@ -3,9 +3,9 @@ from typing import Any
 
 import pytest
 
-from app.ingest.cape_signatures import MATCH_LIMIT, CapeSignaturesNormalizer
+from app.ingest.cape_signatures import CapeSignaturesNormalizer
 from app.ingest.capemon import CapemonNormalizer
-from app.ingest.ecs import event_id
+from app.ingest.ecs import MATCH_LIMIT, event_id
 from app.ingest.protocol import IngestContext
 from tests.ingest.reports import call, process, report_of
 

@@ -76,7 +76,7 @@ class TestTheEmittedAlert:
         }
         assert alert["related"] == {"events": ["evt-1"]}
         assert alert["tartarus"]["analysis_id"] == 7
-        assert alert["tartarus"]["detection"]["match"] == "selection"
+        assert alert["tartarus"]["detection"]["match"] == "process.command_line: run evil.exe"
 
     @pytest.mark.parametrize(
         ("level", "severity"),

@@ -97,7 +97,7 @@ export const DETECTIONS_VIEW: DetectionsView = {
           references: ['https://attack.mitre.org/techniques/T1055/'],
         }),
         // The shape the backend's Sigma detection builder writes for the shipped self-test rule:
-        // level informational, the matched condition (not the selection), one triggering event.
+        // level informational, the matching registry value, one triggering event.
         detectionFixture({
           id: SIGMA_SELFTEST_ID,
           name: 'Tartarus Self-Test Registry Marker Written',
@@ -106,7 +106,7 @@ export const DETECTIONS_VIEW: DetectionsView = {
           severity: 'info',
           ruleset: 'sigma',
           techniques: ['T1112'],
-          match: 'selection',
+          match: 'registry.path: HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest',
           time: '2026-10-13T15:39:51.100000Z',
           related_events: [SELFTEST_EVENT],
           related_event_total: 1,

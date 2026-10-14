@@ -11,6 +11,7 @@ from app.ingest.ecs import (
     EventShape,
     Phase,
     SourceRecord,
+    detection_match,
     related_events,
 )
 from app.ingest.protocol import IngestContext
@@ -81,15 +82,22 @@ class DetectionBuilder:
             sections["threat"] = _threat_section(attack.techniques, attack.tactics)
         if isinstance(process := trigger.get("process"), Mapping):
             sections["process"] = copy.deepcopy(dict(process))
+        match = _match_text(rule, trigger)
+        tartarus = {"detection": {"match": match}} if match else None
         shape = EventShape(ACTION, ("intrusion_detection",), ("info",), lane, DATASET, "alert")
         return self._factory.build(
             shape,
             record,
             rule.title,
             severity=SEVERITY_ORDER.index(SEVERITY_BY_LEVEL.get(rule.level or "", DEFAULT_LEVEL)),
-            tartarus={"detection": {"match": rule.condition}} if rule.condition else None,
+            tartarus=tartarus,
             **sections,
         )
+
+
+def _match_text(rule: Rule, trigger: Event) -> str | None:
+    pieces = rule.explain(trigger) if rule.explain else []
+    return detection_match(pieces) or rule.condition
 
 
 def _lane_of(trigger: Event) -> str:

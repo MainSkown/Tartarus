@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from sigma.conditions import ConditionFieldEqualsValueExpression, ConditionNOT
 from sigma.rule import SigmaRule
 
 from app.ingest.protocol import IngestContext
@@ -142,6 +143,40 @@ def test_a_shipped_rule_fires_on_an_event_built_from_its_own_selection(stem: str
     assert isinstance(outcomes[0], Emit)
     assert outcomes[0].detection["rule"]["id"] == rule.id
     assert rule in RuleMatcher(shipped_rules()).match(document)
+
+
+def positive_fields(node: object) -> set[str]:
+    """Fields of the leaves outside any `not`: the ones a match text may name."""
+    if isinstance(node, ConditionFieldEqualsValueExpression):
+        return {node.field}
+    if isinstance(node, ConditionNOT):
+        return set()
+    return {name for child in getattr(node, "args", []) for name in positive_fields(child)}
+
+
+def match_text_of(rule: Rule) -> str:
+    [outcome] = SigmaEngine([rule], CONTEXT).process(build_event(rule, firing_fields(rule)))
+    assert isinstance(outcome, Emit)
+    return str(outcome.detection["tartarus"]["detection"]["match"])
+
+
+@pytest.mark.parametrize("stem", rule_ids())
+def test_a_shipped_rules_match_text_names_a_field_of_its_selection_and_a_value(stem: str) -> None:
+    rule = rule_named(stem)
+    fields = positive_fields(mapped_tree(rule))
+
+    match = match_text_of(rule)
+
+    assert any(match.startswith(f"{name}: ") or f"; {name}: " in match for name in fields)
+    assert match != rule.condition
+
+
+def test_no_shipped_rule_falls_back_to_its_condition_text() -> None:
+    fallbacks = [
+        rule.path.stem for rule in shipped_rules() if match_text_of(rule) == rule.condition
+    ]
+
+    assert fallbacks == []
 
 
 @pytest.mark.parametrize("stem", rule_ids())

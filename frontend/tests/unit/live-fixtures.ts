@@ -36,7 +36,7 @@ export function sigmaAlert(overrides: Partial<LiveEvent> & { id?: string; severi
   return {
     '@timestamp': '2026-10-13T15:39:51.100Z',
     event: { id, action: 'rule-matched', sequence: 7, severity, kind: 'alert' },
-    tartarus: { lane: 'registry', summary: 'Tartarus Self-Test Registry Marker Written', detection: { match: 'selection', repeated: 3 } },
+    tartarus: { lane: 'registry', summary: 'Tartarus Self-Test Registry Marker Written', detection: { match: 'registry.path: HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest', repeated: 3 } },
     process: { pid: 9708, name: 'benign.exe' },
     rule: { id: '6c17e2ec-0203-4f72-8760-b1b2a72336db', name: 'Tartarus Self-Test Registry Marker Written', ruleset: 'sigma' },
     threat: { technique: { id: ['T1112'] }, tactic: { name: ['Stealth'] } },

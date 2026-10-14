@@ -152,11 +152,11 @@ describe('DetectionsTab detail', () => {
     expect(row.text()).toContain('benign.exe (9708)')
   })
 
-  it('shows a real Sigma alert whole: ruleset, technique, the matched condition and its registry event', async () => {
+  it('shows a real Sigma alert whole: ruleset, technique, what matched and its registry event', async () => {
     const wrapper = await openDetection('Tartarus Self-Test Registry Marker Written')
     expect(wrapper.find('.detection-detail__ruleset').text()).toBe('SIGMA')
     expect(wrapper.find('.detection-detail__facts').text()).toContain('T1112')
-    expect(wrapper.find('pre.code-block').text()).toBe('selection')
+    expect(wrapper.find('pre.code-block').text()).toBe('registry.path: HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest')
     const row = wrapper.find('.related-event')
     expect(row.text()).toContain('REGISTRY')
     expect(row.text()).toContain('benign.exe set HKCU\\Software\\Tartarus\\SelfTest')

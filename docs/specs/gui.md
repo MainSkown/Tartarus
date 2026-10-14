@@ -258,7 +258,7 @@ badge, its name, a hit count and the technique ids.
 
 **Right:** the selected detection.
 - Description and references.
-- The matched condition (code block).
+- What matched (code block).
 - Triggering events (links).
 - An `ATT&CK` view toggle that switches to the matrix (tactic columns × technique cells), with
   hit cells in severity colours and labelled with counts.

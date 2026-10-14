@@ -7,7 +7,14 @@ from typing import Any
 from app.ingest.capemon import api_event_id, call_lane, read_calls
 from app.ingest.capemon_calls import Call
 from app.ingest.clock import analysis_ended
-from app.ingest.ecs import EventFactory, EventShape, SourceRecord, related_events, severity_level
+from app.ingest.ecs import (
+    EventFactory,
+    EventShape,
+    SourceRecord,
+    detection_match,
+    related_events,
+    severity_level,
+)
 from app.ingest.protocol import IngestContext
 from app.ingest.reading import mapping_list, text_or_none, to_int
 
@@ -15,8 +22,6 @@ SOURCE = "cape-signatures"
 MODULE = "cape"
 DATASET = "cape.signature"
 SOURCE_FILE = "signatures"
-MATCH_LIMIT = 300
-ELLIPSIS = "…"
 
 CallKey = tuple[int, int]
 
@@ -118,16 +123,12 @@ def _referenced_calls(data: object, calls: Mapping[CallKey, Call]) -> list[Call]
 
 
 def _match_text(data: object) -> str | None:
-    pieces: dict[str, None] = {}
-    for entry in mapping_list(data):
-        if entry.get("type") != "call":
-            pieces.update(
-                dict.fromkeys(f"{key}: {_as_text(value)}" for key, value in entry.items())
-            )
-    text = "; ".join(pieces)
-    if len(text) > MATCH_LIMIT:
-        text = text[: MATCH_LIMIT - len(ELLIPSIS)] + ELLIPSIS
-    return text or None
+    return detection_match(
+        piece
+        for entry in mapping_list(data)
+        if entry.get("type") != "call"
+        for piece in _pieces(entry)
+    )
 
 
 def _pieces(entry: Mapping[str, Any]) -> Iterator[str]:

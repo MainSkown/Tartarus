@@ -3,6 +3,7 @@ from typing import Any
 
 type Event = Mapping[str, Any]
 type Predicate = Callable[[Event], bool]
+type Explainer = Callable[[Event], list[str]]
 
 
 def values_at(event: Event, path: tuple[str, ...]) -> list[Any]:

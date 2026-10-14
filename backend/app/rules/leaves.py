@@ -23,11 +23,15 @@ from sigma.types import (
     SpecialChars,
 )
 
+from app.ingest.ecs import truncate
 from app.rules.predicate import Event, Predicate, values_at
 from app.rules.regexes import RegexLimits, compile_regex
 from app.rules.rule import unsupported
 
 type ValueTest = Callable[[Any], bool]
+type LeafExplainer = Callable[[Event], list[str] | None]
+
+PIECE_VALUE_LIMIT = 120
 
 COMPARISONS = {
     CompareOperators.LT: operator.lt,
@@ -45,11 +49,8 @@ UNSUPPORTED_VALUES: dict[type[SigmaType], str] = {
 def compile_leaf(field: str, value: SigmaType, limits: RegexLimits) -> Predicate:
     """A predicate that is true when the event has `field` and one of its values matches `value`."""
     path = tuple(field.split("."))
-    if isinstance(value, SigmaNull):
-        return lambda event: not _non_null_values(event, path)
-    if isinstance(value, SigmaExists):
-        wanted = value.exists
-        return lambda event: bool(_non_null_values(event, path)) == wanted
+    if (presence := _presence_test(value, path)) is not None:
+        return presence
     test = value_test(value, limits)
 
     def leaf(event: Event) -> bool:
@@ -59,6 +60,51 @@ def compile_leaf(field: str, value: SigmaType, limits: RegexLimits) -> Predicate
         return False
 
     return leaf
+
+
+def compile_leaf_explainer(field: str, value: SigmaType, limits: RegexLimits) -> LeafExplainer:
+    """`field: value` pieces for the values of an event that make the leaf hold, else `None`.
+
+    Run only on events the rule already matched, never on the matching hot path. A leaf that
+    holds by absence (`null`, `exists: false`) holds with no pieces.
+    """
+    path = tuple(field.split("."))
+    if (presence := _presence_test(value, path)) is not None:
+        names_values = isinstance(value, SigmaExists) and value.exists
+
+        def explain_presence(event: Event) -> list[str] | None:
+            if not presence(event):
+                return None
+            if not names_values:
+                return []
+            return [_piece(field, found) for found in _non_null_values(event, path)]
+
+        return explain_presence
+    test = value_test(value, limits)
+
+    def explain(event: Event) -> list[str] | None:
+        pieces = [
+            _piece(field, found)
+            for found in values_at(event, path)
+            if found is not None and test(found)
+        ]
+        return pieces or None
+
+    return explain
+
+
+def _presence_test(value: SigmaType, path: tuple[str, ...]) -> Predicate | None:
+    if isinstance(value, SigmaNull):
+        return lambda event: not _non_null_values(event, path)
+    if isinstance(value, SigmaExists):
+        wanted = value.exists
+        return lambda event: bool(_non_null_values(event, path)) == wanted
+    return None
+
+
+def _piece(field: str, found: Any) -> str:
+    text = _text_of(found)
+    return f"{field}: {truncate(str(found) if text is None else text, PIECE_VALUE_LIMIT)}"
 
 
 def value_test(value: SigmaType, limits: RegexLimits) -> ValueTest:

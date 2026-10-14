@@ -1,6 +1,6 @@
 import hashlib
 import itertools
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -11,6 +11,8 @@ from app.ingest.protocol import IngestContext
 LANES = ("process", "file", "registry", "network", "memory", "api")
 RESERVED_SECTIONS = ("@timestamp", "event")
 type Phase = Literal["live", "final"]
+MATCH_LIMIT = 300
+ELLIPSIS = "…"
 REGISTRY_HIVES = {
     "HKEY_LOCAL_MACHINE": "HKLM",
     "HKEY_CURRENT_USER": "HKCU",
@@ -44,6 +46,15 @@ def severity_level(cape_severity: object) -> int:
 
 def related_events(*event_ids: str) -> dict[str, Any]:
     return {"events": list(event_ids)}
+
+
+def truncate(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - len(ELLIPSIS)] + ELLIPSIS
+
+
+def detection_match(pieces: Iterable[str]) -> str | None:
+    """`tartarus.detection.match`: identical pieces once, joined by `; `, cut to `MATCH_LIMIT`."""
+    return truncate("; ".join(dict.fromkeys(pieces)), MATCH_LIMIT) or None
 
 
 def base_name(path: str) -> str:

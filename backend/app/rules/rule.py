@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from app.rules.predicate import Predicate
+from app.rules.predicate import Explainer, Predicate
 
 
 class Validity(StrEnum):
@@ -48,3 +48,4 @@ class Rule:
     references: tuple[str, ...] = ()
     condition: str | None = None
     predicate: Predicate | None = field(default=None, repr=False, compare=False)
+    explain: Explainer | None = field(default=None, repr=False, compare=False)

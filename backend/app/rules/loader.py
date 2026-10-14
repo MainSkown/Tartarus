@@ -12,8 +12,9 @@ from sigma.rule import SigmaRule
 
 from app.rules.categories import SUPPORTED_CATEGORIES, SUPPORTED_PRODUCT
 from app.rules.compiler import compile_sigma_rule
+from app.rules.explain import explain_sigma_rule
 from app.rules.mapping import map_fields
-from app.rules.predicate import Predicate
+from app.rules.predicate import Explainer, Predicate
 from app.rules.regexes import DEFAULT_LIMITS, RegexLimits
 from app.rules.rule import Rule, RuleProblem, Validity, invalid, unsupported
 
@@ -58,7 +59,7 @@ def load_rule_file(path: Path, limits: RegexLimits = DEFAULT_LIMITS) -> Rule:
         category = _check_logsource(document)
         sigma_rule = _parse(document)
         map_fields(sigma_rule, category)
-        predicate = compile_sigma_rule(sigma_rule, limits)
+        compiled = (compile_sigma_rule(sigma_rule, limits), explain_sigma_rule(sigma_rule, limits))
     except RuleProblem as problem:
         return _rule(path, content, document, problem)
     except Exception as error:  # decision 9: nothing a rule contains may stop the engine
@@ -66,7 +67,7 @@ def load_rule_file(path: Path, limits: RegexLimits = DEFAULT_LIMITS) -> Rule:
         return _rule(
             path, content, document, invalid(f"unexpected {type(error).__name__}: {error}")
         )
-    return _rule(path, content, document, None, predicate)
+    return _rule(path, content, document, None, compiled)
 
 
 def _single_document(content: bytes) -> Mapping[str, Any]:
@@ -129,7 +130,7 @@ def _rule(
     content: bytes,
     document: Mapping[str, Any],
     problem: RuleProblem | None,
-    predicate: Predicate | None = None,
+    compiled: tuple[Predicate, Explainer] | None = None,
 ) -> Rule:
     logsource = document.get("logsource")
     category = logsource.get("category") if isinstance(logsource, Mapping) else None
@@ -147,7 +148,8 @@ def _rule(
         error=problem.reason if problem else None,
         references=_texts(document.get("references")),
         condition=_condition_text(document.get("detection")),
-        predicate=predicate,
+        predicate=compiled[0] if compiled else None,
+        explain=compiled[1] if compiled else None,
     )
 
 

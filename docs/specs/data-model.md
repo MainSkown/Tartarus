@@ -131,7 +131,7 @@ detections track):
 | `threat.technique.id` / `.name`, `threat.tactic.name` | ATT&CK mapping (Sigma tags `attack.t1055` â†’ `T1055`) |
 | `related.events` | `event.id`s that triggered it |
 | `related.hash`, `related.ip`, `related.hosts` | Pivots |
-| `tartarus.detection.match` | Text of the matched condition, for the detail view |
+| `tartarus.detection.match` | What matched, as `field: value` pieces, for the detail view (CAPE: the signature's data; Sigma: the triggering event's matching values, see [Sigma field mapping](#sigma-field-mapping)) |
 | `tartarus.detection.repeated` | long: how many repeats of this detection the 60 s suppression window swallowed |
 
 ### Mapping from sources
@@ -370,6 +370,17 @@ Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` â†
 A Sigma alert's `event.id` is derived from the analysis, the rule and the triggering event
 (`related.events[0]`), so the live collector and the final ingest give the same alert the same
 id; the final one replaces the live one in the index. `tartarus.phase` says which wrote it.
+
+A Sigma alert's `tartarus.detection.match` names what matched in the triggering event: for every leaf
+of the rule's condition that held, positively, a piece `<catalog field>: <the event's value>`, in
+condition order. For a field holding a list (`registry.data.strings`) it is the element or elements
+that matched; an `or` lists only the branches that held and a `1 of selection*` the selections that
+held; a leaf under a `not` is never listed (it held because something was absent or different), nor
+a `null` leaf, while an `exists: true` leaf shows its value. Each value is cut to 120 characters
+with an ellipsis; identical pieces appear once, joined by `; `, cut to 300 characters like a CAPE
+signature's. A rule that matched but yields no piece shows its condition text instead. The pieces
+are computed only for an event that matched, by an explainer compiled beside the rule's predicate
+(`app/rules/explain.py`) from the same value tests.
 
 ## Filesystem artefacts
 
