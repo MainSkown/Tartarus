@@ -47,6 +47,7 @@ from app.db.analysis_repository import (
     list_analyses,
     queue_positions,
 )
+from app.db.annotation_repository import analysis_level_tags
 from app.db.models import Analysis, Sample
 from app.db.models.analysis import ACTIVE_STATUSES, AnalysisStatus
 from app.db.session import get_session
@@ -121,15 +122,19 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
 
 
 @router.get("", name="list")
-async def list_all(
+async def list_all(  # noqa: PLR0913 - one parameter per filter
     session: Annotated[AsyncSession, Depends(get_session)],
+    *,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     q: Annotated[str | None, Query(description="Substring of the file name or the SHA256.")] = None,
     status: AnalysisStatus | None = None,
+    tag: Annotated[
+        str | None, Query(description="Only analyses carrying this tag on the analysis itself.")
+    ] = None,
 ) -> AnalysisPage:
     """Newest first; `total` counts every match, not just this page."""
-    filters = AnalysisFilter(q=q, status=status)
+    filters = AnalysisFilter(q=q, status=status, tag=tag)
     items = await list_analyses(session, filters, limit=limit, offset=offset)
     return AnalysisPage(
         items=await _read_all(session, items),
@@ -251,10 +256,12 @@ def _reason_not_finishable(analysis: Analysis) -> str:
 
 
 async def _read_all(session: AsyncSession, analyses: Sequence[Analysis]) -> list[AnalysisRead]:
-    positions = await queue_positions(session, [analysis.id for analysis in analyses])
+    ids = [analysis.id for analysis in analyses]
+    positions = await queue_positions(session, ids)
+    tags = await analysis_level_tags(session, ids)
     return [
         AnalysisRead.model_validate(analysis).model_copy(
-            update={"queue_position": positions.get(analysis.id)}
+            update={"queue_position": positions.get(analysis.id), "tags": tags.get(analysis.id, [])}
         )
         for analysis in analyses
     ]

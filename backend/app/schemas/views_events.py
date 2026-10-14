@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from pydantic import Field
+
 from app.db.models.analysis import Severity
 from app.schemas.base import ApiModel
 
@@ -26,6 +28,10 @@ class ProcessSummary(ApiModel):
     injected_into: list[int]
     network_hosts: list[str]
     event_counts_by_lane: dict[str, int]
+    tags: list[str] = Field(
+        default_factory=list, description="The analyst's tags on this pid, sorted by name."
+    )
+    note_count: int = Field(default=0, description="The analyst's notes on this pid.")
 
 
 class ProcessNode(ProcessSummary):

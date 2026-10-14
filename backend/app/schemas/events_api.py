@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 from pydantic import ConfigDict, Field
 
 from app.db.models.analysis import Severity
+from app.schemas.annotations import Annotations
 from app.schemas.base import ApiModel
 from app.schemas.views_events import Listing
 from app.search.fields import FieldType, Lane
@@ -184,6 +185,9 @@ class EventDetail(ApiModel):
     event: Event
     source: dict[str, Any]
     related: RelatedEvents
+    annotations: Annotations = Field(
+        default_factory=Annotations, description="The analyst's tags and notes on this event."
+    )
 
 
 class QueryValidateRequest(ApiModel):

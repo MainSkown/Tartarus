@@ -6,9 +6,11 @@ from typing import Any, TypedDict, Unpack
 from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import annotation_repository
 from app.db.base import utc_now
-from app.db.models import Analysis, Sample
+from app.db.models import Analysis, Sample, Tag, TagLink
 from app.db.models.analysis import ACTIVE_STATUSES, AnalysisPhase, AnalysisStatus, Severity
+from app.db.models.annotation import TargetType
 
 # The one definition of "who goes next", shared by the runner and the position shown to users.
 _QUEUE_ORDER = (Analysis.submitted_at, Analysis.id)
@@ -70,7 +72,6 @@ async def get_analysis(session: AsyncSession, analysis_id: int) -> Analysis | No
 class AnalysisFilter:
     q: str | None = None
     status: AnalysisStatus | None = None
-    # Accepted for the API contract, not applied: tags have no table before the annotations work.
     tag: str | None = None
 
 
@@ -85,7 +86,18 @@ def _matching(filters: AnalysisFilter | None) -> list[ColumnElement[bool]]:
         )
     if filters.status is not None:
         criteria.append(Analysis.status == filters.status)
+    if filters.tag:
+        criteria.append(_tagged(filters.tag))
     return criteria
+
+
+def _tagged(tag_name: str) -> ColumnElement[bool]:
+    tagged_analyses = (
+        select(TagLink.analysis_id)
+        .join(Tag, Tag.id == TagLink.tag_id)
+        .where(Tag.name == tag_name.lower(), TagLink.target_type == TargetType.ANALYSIS)
+    )
+    return Analysis.id.in_(tagged_analyses)
 
 
 async def list_analyses(
@@ -132,6 +144,7 @@ async def delete_analysis(session: AsyncSession, analysis_id: int) -> bool:
         return False
     await session.delete(analysis)
     await session.commit()
+    await annotation_repository.delete_unused_tags(session)
     return True
 
 

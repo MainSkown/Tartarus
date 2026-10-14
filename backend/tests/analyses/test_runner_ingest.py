@@ -10,10 +10,13 @@ from app.analyses.ports import (
     ReportUnreadableError,
 )
 from app.analyses.runner import Runner
+from app.annotations.validation import Target
 from app.cape.errors import CapeTaskNotFound
 from app.db import analysis_repository as repository
+from app.db import annotation_repository
 from app.db.base import utc_now
 from app.db.models.analysis import AnalysisPhase, AnalysisStatus
+from app.db.models.annotation import TargetType
 from tests.analyses.fakes import FakeCape, FakeIngester, FakeReports
 from tests.analyses.helpers import adopt_by_cape, load
 
@@ -115,6 +118,34 @@ async def test_an_analysis_put_back_to_ingesting_is_ingested_again_from_cape_s_r
     assert again.status is AnalysisStatus.DONE
     assert again.event_count == 1204
     assert ingester.requests == [(analysis_id, REPORT_PATH)]
+
+
+async def test_a_reingest_keeps_the_tags_and_notes_of_the_analysis(
+    runner: Runner,
+    session_factory: Factory,
+    cape: FakeCape,
+    reports: FakeReports,
+    ingester: FakeIngester,
+) -> None:
+    ingester.result = INDEXED
+    analysis_id = await reported_analysis(session_factory, cape, reports)
+    async with session_factory() as session:
+        await annotation_repository.add_tag(
+            session, analysis_id, Target(TargetType.EVENT, "evt-1"), "c2"
+        )
+        await annotation_repository.add_note(
+            session, analysis_id, Target(TargetType.ANALYSIS), "kept"
+        )
+        await repository.update_analysis(session, analysis_id, status=AnalysisStatus.DONE)
+        assert await repository.begin_reingest(session, analysis_id)
+
+    await runner.run_once()
+
+    async with session_factory() as session:
+        kept = await annotation_repository.annotations_of_analysis(session, analysis_id)
+    assert (await load(session_factory, analysis_id)).status is AnalysisStatus.DONE
+    assert [(t.tag, t.target_ref) for t in kept.tags] == [("c2", "evt-1")]
+    assert [note.body for note in kept.notes] == ["kept"]
 
 
 async def test_a_reingest_of_a_task_cape_has_forgotten_ends_report_failed_instead_of_hanging(

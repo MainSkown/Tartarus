@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api import (
     analyses,
+    annotations,
     events,
     export,
     query,
@@ -23,3 +24,4 @@ api_router.include_router(query.router)
 api_router.include_router(rules.router)
 api_router.include_router(rules.analysis_router)
 api_router.include_router(export.router)
+api_router.include_router(annotations.router)

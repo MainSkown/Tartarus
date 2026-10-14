@@ -13,6 +13,7 @@ from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.annotations.validation import Target
 from app.api import analyses as analyses_api
 from app.api.analyses import router as analyses_router
 from app.api.dependencies import (
@@ -27,9 +28,11 @@ from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
 from app.cape.errors import CapeBadResponse, CapeRejected, CapeTaskNotFound, CapeUnreachable
 from app.db import analysis_repository as repository
+from app.db import annotation_repository
 from app.db.base import Base
 from app.db.models import Analysis, Sample
 from app.db.models.analysis import AnalysisStatus
+from app.db.models.annotation import TargetType
 from app.errors import install_error_handlers
 from app.health import ComponentHealth, HealthStatus
 from app.samples.store import SampleStore
@@ -441,6 +444,65 @@ async def test_listing_filters_by_status(harness: Harness) -> None:
 
     assert [item["id"] for item in body["items"]] == [running["id"]]
     assert queued["id"] not in [item["id"] for item in body["items"]]
+
+
+async def tag_analysis(harness: Harness, analysis_id: int, *names: str) -> None:
+    async with harness.factory() as session:
+        for name in names:
+            await annotation_repository.add_tag(
+                session, analysis_id, Target(TargetType.ANALYSIS), name
+            )
+
+
+async def test_listing_filters_by_a_tag_on_the_analysis_itself(harness: Harness) -> None:
+    tagged = (await harness.upload(name="a.exe")).json()
+    other = (await harness.upload(content=OTHER_CONTENT, name="b.exe")).json()
+    await tag_analysis(harness, tagged["id"], "emotet")
+    async with harness.factory() as session:
+        await annotation_repository.add_tag(
+            session, other["id"], Target(TargetType.PROCESS, "4"), "emotet"
+        )
+
+    body = (await harness.client.get("/api/analyses", params={"tag": "Emotet"})).json()
+
+    assert [item["id"] for item in body["items"]] == [tagged["id"]]
+    assert body["total"] == 1
+
+
+async def test_listing_and_reading_show_the_tags_on_the_analysis_in_name_order(
+    harness: Harness,
+) -> None:
+    tagged = (await harness.upload(name="a.exe")).json()
+    plain = (await harness.upload(content=OTHER_CONTENT, name="b.exe")).json()
+    await tag_analysis(harness, tagged["id"], "zeta", "alpha")
+    async with harness.factory() as session:
+        await annotation_repository.add_tag(
+            session, plain["id"], Target(TargetType.EVENT, "e1"), "on-an-event"
+        )
+
+    listed = (await harness.client.get("/api/analyses")).json()["items"]
+    read = (await harness.client.get(f"/api/analyses/{tagged['id']}")).json()
+
+    assert {item["id"]: item["tags"] for item in listed} == {
+        tagged["id"]: ["alpha", "zeta"],
+        plain["id"]: [],
+    }
+    assert read["tags"] == ["alpha", "zeta"]
+
+
+async def test_a_listing_reads_the_tags_of_all_its_analyses_in_one_query(
+    harness: Harness,
+) -> None:
+    for number in range(4):
+        created = (await harness.upload(content=bytes([number]) * 8, name=f"{number}.exe")).json()
+        await tag_analysis(harness, created["id"], "emotet")
+    statements: list[str] = []
+    engine = harness.factory.kw["bind"].sync_engine
+    event.listen(engine, "before_cursor_execute", lambda *args: statements.append(args[2]))
+
+    await harness.client.get("/api/analyses")
+
+    assert sum("tag_link" in statement for statement in statements) == 1
 
 
 @pytest.mark.parametrize(

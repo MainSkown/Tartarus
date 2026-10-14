@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.annotations.read import load_event_annotations
 from app.api.dependencies import get_event_index, require_analysis
 from app.db.session import get_session
 from app.events.execution import run_search
@@ -84,10 +85,12 @@ async def detail(analysis_id: int, event_id: str, session: Session, events: Even
     `related.references` are the events this one names as its triggers (a detection's
     `related.events`); `related.referenced_by` are the detections that name this one. Each
     lists at most 50 and counts them all. The id may contain slashes and colons, encoded or not.
-    `404` for an unknown analysis or event.
+    `annotations` are the analyst's tags and notes on this event. `404` for an unknown analysis
+    or event.
     """
     await require_analysis(session, analysis_id)
     found = await load_event_detail(events, analysis_id, event_id)
     if found is None:
         raise HTTPException(404, f"Event {event_id} not found in analysis {analysis_id}")
-    return found
+    annotations = await load_event_annotations(session, analysis_id, found.event.id)
+    return found.model_copy(update={"annotations": annotations})

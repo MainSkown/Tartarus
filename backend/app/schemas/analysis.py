@@ -28,6 +28,9 @@ class AnalysisRead(ApiModel):
     started_at: datetime | None
     finished_at: datetime | None
     summary: ReportSummary | None
+    tags: list[str] = Field(
+        default_factory=list, description="The analyst's tags on the analysis itself, by name."
+    )
     queue_position: int | None = Field(
         default=None, description="1 for the analysis served next; null unless `queued`."
     )

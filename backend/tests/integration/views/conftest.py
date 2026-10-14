@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from opensearchpy import AsyncOpenSearch
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.api.annotations import router as annotations_router
 from app.api.dependencies import get_event_index
 from app.api.events import router as events_api_router
 from app.api.operation_ids import generate_operation_id
@@ -79,6 +80,7 @@ async def view_stack(
     app.include_router(findings_router, prefix="/api")
     app.include_router(events_api_router, prefix="/api")
     app.include_router(query_router, prefix="/api")
+    app.include_router(annotations_router, prefix="/api")
     app.dependency_overrides[get_event_index] = lambda: index
     async with make_client(app) as client:
         yield ViewStack(app, client, created.id, index, session_factory, tmp_path / "storage")

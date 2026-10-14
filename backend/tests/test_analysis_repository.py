@@ -169,18 +169,6 @@ async def test_list_pages_with_limit_and_offset(session: AsyncSession) -> None:
     assert [row.id for row in page] == newest_first[1:3]
 
 
-async def test_tag_filter_is_accepted_but_not_applied_until_tags_are_stored(
-    session: AsyncSession,
-) -> None:
-    await seeded_analysis(session, "one.exe")
-    await seeded_analysis(session, "two.exe")
-
-    tagged = await repository.list_analyses(session, AnalysisFilter(tag="ransomware"))
-
-    assert len(tagged) == 2
-    assert await repository.count_analyses(session, AnalysisFilter(tag="ransomware")) == 2
-
-
 async def test_count_respects_the_same_filters_as_list(session: AsyncSession) -> None:
     await seeded_analysis(session, "invoice.exe", sha256=SHA_A)
     await seeded_analysis(session, "other.exe", sha256=SHA_B)

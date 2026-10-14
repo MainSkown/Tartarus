@@ -3,7 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.annotations.read import mark_process_tree, mark_processes
 from app.api.dependencies import get_event_index, require_analysis
+from app.db.annotation_repository import process_marks
 from app.db.session import get_session
 from app.schemas.views_events import NetworkView, ProcessDetail, ProcessTree, RegistryView
 from app.search.index import EventIndex
@@ -24,22 +26,26 @@ async def processes(analysis_id: int, session: Session, events: Events) -> Proce
     """The process tree as nested roots. A process whose parent is not in the analysis is a root.
 
     Each node carries its lifetime, detections, injection targets, network hosts and event counts
-    per lane. `integrity` is null: no source reports it yet.
+    per lane, and the analyst's `tags` and `note_count`. `integrity` is null: no source reports
+    it yet.
     """
     await require_analysis(session, analysis_id)
-    return await process_tree(events, analysis_id)
+    tree = await process_tree(events, analysis_id)
+    await mark_process_tree(session, analysis_id, tree.roots)
+    return tree
 
 
 @router.get("/{analysis_id}/processes/{pid}")
 async def process(analysis_id: int, pid: int, session: Session, events: Events) -> ProcessDetail:
     """One process (the first, if the pid was reused) with its loaded modules, its 15 most called
     APIs, and its 200 most recent file, registry, network and process events (newest first) with
-    the total. `404` for a pid the analysis never saw.
+    the total, and the analyst's `tags` and `note_count`. `404` for a pid the analysis never saw.
     """
     await require_analysis(session, analysis_id)
     found = await process_detail(events, analysis_id, pid)
     if found is None:
         raise HTTPException(404, f"Process {pid} not found in analysis {analysis_id}")
+    mark_processes([found], await process_marks(session, analysis_id))
     return found
 
 
