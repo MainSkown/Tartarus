@@ -61,8 +61,9 @@ automatic exports, YARA and Suricata rule management, the guest wizard (M6).
    lane, at most 5 per detection with an "N more" note), then the first network event per destination.
    The definition first written (the events detections cite) gave 20 events on both real analyses, because
    detections cite almost only API-lane events; this one gives 146 and 149.
-7. **Exports run on the existing job mechanism** (`job` table, `export_report` type, progress over the
-   system WebSocket's `job` messages). The finished file is written to a new `exports` volume and
+7. **Exports run as a job.** There is no job mechanism yet (found when X2 was planned: the `job` table,
+   a runner and the `job` message of `/ws/system` are all unbuilt), so X2b builds the generic one:
+   `job` table, `export_report` type, progress over the system WebSocket's `job` messages. The finished file is written to a new `exports` volume and
    removed with its analysis. IOC exports are small and are built in the request.
 8. **MISP defaults:** `tlp:amber` unless the analyst has put a `tlp:*` tag on the analysis; the analyst's
    tags are added as MISP tags; ATT&CK techniques become `misp-galaxy:mitre-attack-pattern` tags only for
@@ -99,9 +100,11 @@ Artifact per screen (rule 4).
 
 | ID | Task | Model | Deliverables | Tests first |
 |---|---|---|---|---|
-| **X2** | Report | Sonnet, **care** | The report model (summary, score, families, ATT&CK, process tree SVG, key events, network, IOCs, detections, screenshots, tags and notes), the Jinja2 template and print stylesheet, HTML and PDF renderers, the `export_report` job, `POST /analyses/{id}/export/report`, `GET /jobs/{id}/download`, the `exports` volume and its cleanup on analysis delete | The model builder against a fixture analysis; the template renders every section and honours the include options; the HTML is one file with no external reference; the PDF opens and has the text; the job reports progress and failure; delete removes the file |
+| **X2a** | Report content, **care** | Sonnet, **care** | `weasyprint` as a prod dependency and the backend image (apt packages, `--no-cache`); `app/export/report/`: the report model (summary, score, families, ATT&CK, process tree SVG, key events by decision 6, network, IOCs, detections, screenshots, tags and notes) and the function that gathers it from the existing views, the Jinja2 template and print stylesheet, the HTML and PDF renderers (PDF in a thread). Pure rendering: no job, no endpoint | The model builder against a fixture analysis; the template renders every section and honours the include options; the HTML is one file with no external reference; the PDF opens and has the text; the tree SVG caps and escapes; the key-events order and cap |
+| **X2b** | Job mechanism and delivery | Sonnet | `job` migration, model and repository; a runner that executes registered handlers off the event loop with progress and a log tail, marks interrupted jobs on restart; the `job` message on `/ws/system`; `GET /jobs/{id}` and `GET /jobs/{id}/download`; the `exports` volume (compose, backend mount); cleanup of an analysis's export files on delete | Repository and runner tests with fake handlers: progress, failure, interruption on restart; the WebSocket message; download of a finished file, 404 and 409 cases; delete removes the files |
+| **X2c** | Report job and endpoint | Sonnet | `export_report` handler (X2a's renderers on X2b's runner) and `POST /analyses/{id}/export/report` | Endpoint validation, progress steps, failure, the file under `exports`, delete removes it |
 
-The planner regenerates the API client after N1, X1 and X2.
+X2a and X2b run in parallel (disjoint files); X2c follows both. The planner regenerates the API client after N1, X1 and X2c.
 
 ### Wave 4 (frontend, parallel where the files are disjoint)
 
