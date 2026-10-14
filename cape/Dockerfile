@@ -131,6 +131,16 @@ RUN rm -rf /etc/libvirt/qemu \
     && ln -s /var/lib/libvirt/definitions /etc/libvirt/qemu \
     && ln -s /var/lib/libvirt/tartarus/kvm.conf.d /opt/CAPEv2/custom/conf/kvm.conf.d
 
+# In an interactive analysis the analyzer injects the monitor into everything Explorer starts, and a
+# Store app (the Windows 11 Notepad) then hangs in ntdll waits and never opens a window. The
+# analyzer is zipped from this directory and uploaded to the guest for every task, so patching it here
+# fixes that without touching the guest. The patch fails the build if CAPE_REF moved its anchors.
+COPY patches/skip-packaged-apps.py /tmp/skip-packaged-apps.py
+RUN python3 /tmp/skip-packaged-apps.py /opt/CAPEv2/analyzer/windows/analyzer.py \
+    && python3 -c "import ast; ast.parse(open('/opt/CAPEv2/analyzer/windows/analyzer.py').read())" \
+    && grep -q 'skips_packaged_app(filepath, self.analyzer.package_name)' /opt/CAPEv2/analyzer/windows/analyzer.py \
+    && rm /tmp/skip-packaged-apps.py
+
 COPY libvirt/qemu.conf /etc/libvirt/qemu.conf
 COPY supervisord.conf /etc/supervisor/conf.d/cape.conf
 COPY templates/ /usr/local/lib/tartarus/templates/

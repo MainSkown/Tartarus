@@ -19,6 +19,7 @@ with `make verify-cape`.
 | libvirt | Local UNIX socket only, for CAPE inside the container. The TCP endpoint is **off** (`libvirtd` runs without `--listen`): it has no authentication, and nothing needs it before the guest wizard (see Findings). `security_driver = "none"` and `cgroup_controllers = [ ]` in `qemu.conf`. |
 | Guest network | `tt-guest` is a transient libvirt network rebuilt on every start: isolated (no forward), libvirt's DNS off so INetSim owns port 53, DHCP offering only `.10` with router and DNS `.1`. The Windows guest uses a static IP instead, because the rooter's INetSim route DNATs DHCP renewals. |
 | INetSim | Ubuntu's 1.3.2, patched at build time because its DNS service dies with the Net::DNS in Ubuntu 24.04 (`main_loop` becomes `loop_once`); the build fails if the patch stops applying. |
+| Analyzer patch | CAPE zips `analyzer/windows` and uploads it to the guest for every task, so the image patches it (`cape/patches/skip-packaged-apps.py`, run by the Dockerfile; it fails the build if CAPE's code moved) to not inject the monitor into Store apps in an interactive analysis, see "Store apps" under Interactive desktop. No change to the guest or its snapshot. |
 | Databases | The `cape` database on the `postgres` service. No Mongo: `web.conf [web_reporting]` and `reporting.conf [mongodb]` stay disabled. `pymongo` stays installed because CAPE imports `bson` unconditionally. The entrypoint creates the schema once before any process starts, because CAPE's processes race on `CREATE TYPE`. |
 | Volumes | `cape-storage` at `/opt/CAPEv2/storage` (the backend mounts it read-only). `guest-images` at `/var/lib/libvirt`, with `/etc/libvirt/qemu` symlinked into it, so domain XML, snapshots and the guest's registration survive recreating the container. |
 | Compose | Part of the default stack (`make up`, `make dev`); `backend` waits for its health check. Publishes no ports. Without `/dev/kvm`, start the rest with `docker compose up -d --no-deps postgres opensearch backend frontend`. |
@@ -238,6 +239,30 @@ failed step shows its log and a Retry button.
   last screenshot.
 - Clipboard sync between the host and the guest is **disabled**, both ways. Drag-and-drop and
   file transfer are disabled too.
+
+### Store apps are not monitored in an interactive analysis
+
+Opening a text file from the desktop starts the packaged Windows 11 Notepad
+(`C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_...\Notepad.exe`; `HKCU\...\FileExts\.txt\UserChoice`
+names it, so even the legacy `notepad.exe` ends up there). With CAPE's monitor injected the process
+stops after loading `AppxDeploymentClient` (a stack dump shows the main thread and two others blocked
+in ntdll lock waits): 7 threads instead of about 20, no window, no taskbar button, every time. The same app opens normally without the monitor.
+
+- **Fix:** in an interactive analysis the analyzer does not inject into a process whose image is
+  under `\Program Files\WindowsApps\` (the image path CAPE reads is an NT path, so the match is on
+  the part after the volume). It logs `Interactive mode: not injecting into packaged app ...`; the
+  process is not counted as injected and is not waited for. The patch is applied to the pinned
+  analyzer when the `cape` image is built.
+- **Not skipped:** non-interactive analyses, and any analysis whose package is `msix`, because that
+  package runs the sample itself as a Store app.
+- **Cost:** a Store app the analyst opens is not in the process tree or the event stream, and neither
+  are its children. Processes whose image is outside `WindowsApps` are still injected, including
+  `backgroundTaskHost.exe` (`System32`), which also fails to initialise the monitor; that one is not
+  addressed and does not block anything visible.
+- **Why not a monitor option:** `zerohook=1` (no hooks except the essential two) lets Notepad open
+  with the monitor injected, so the hooks are what stops it, but it also leaves the sample
+  unmonitored. No option that keeps the hooks was found (only `zerohook=1` was tried, on one run), so
+  `INTERACTIVE_OPTIONS` stays `interactive=1,nohuman=yes`.
 
 ## Windows hosts (post-v1, experimental)
 

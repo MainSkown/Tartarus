@@ -609,3 +609,29 @@ then 2 (one constant, if an option wins), 3, 4.
   amid a Windows Update burst of `backgroundTaskHost` injections; the VM had used 1327 CPU-seconds in
   about 12 minutes and the analyzer's own `pythonw` 385 s by 23:50). I cannot say whether my script or that burst froze the guest. The idea is still
   the cheapest way to try several options in one run, but it needs a better-tested script first.
+
+### Fix attempts (2026-10-14, three of the four allowed interactive runs)
+
+Reproduction on every run: put `test.txt` on the desktop, kill the hidden Notepad CAPE's `disguise`
+module starts, press Win+D **once** (it toggles: a second press brings the windows back), `t` selects
+the icon, Enter; then `EnumWindows` by pid and a `virsh screenshot`. A 64-bit PowerShell
+(`C:\Windows\sysnative\WindowsPowerShell\v1.0\powershell.exe`) is needed to inspect a 64-bit process:
+the agent starts a 32-bit one.
+
+| Run | How submitted | Options | Result |
+|---|---|---|---|
+| 1 (CAPE task 140) | straight to CAPE | `interactive=1,nohuman=yes,zerohook=1` | **Notepad opens**: `8376.ini` exists (injected, "Hooked 2 out of 2 functions"), 22 threads, `EnumWindows` lists `test.txt - Notatnik` visible, screenshot shows the window. So the hooks are what stops it, not the injection or the pipe. Unusable as a fix: the sample would be unmonitored too |
+| 2 (task 141) | straight to CAPE | `interactive=1,nohuman=yes` | reproduced (pid 1736, 7 threads, `.ini` present, no window, empty desktop in the screenshot). A stack dump (suspend each thread, read its stack, map return addresses to modules) shows the main thread, one threadpool thread and one more blocked in ntdll lock waits, with no capemon frame on any stack (hook trampolines are not in a module, so they would not show). I could not resolve the ntdll offsets without symbols, so which hook and which lock is unknown |
+| 3 (analysis 153, task 142) | **Tartarus API**, after rebuilding `cape` with the patch | `interactive=1,nohuman=yes` (the backend's) | **Notepad opens**: pid 10024, 19 threads, no `.ini`, `EnumWindows` lists `test.txt - Notatnik` visible, screenshot shows the window; analysis.log: `Interactive mode: not injecting into packaged app Notepad.exe (pid 10024)`; the analysis then finished normally (`done`, 7030 events) |
+
+The fourth run was not needed. Of the candidates, only `zerohook=1` was tried; `no-iat`, `native`, `minhook`,
+`hook-type`, `exclude-apis` and `exclude-dlls` were not (run 1 shows the injection method is not the
+problem, so `no-iat` was dropped; the others all cut what the sample is monitored with, or need the
+stalling hook to be known first). Chosen fix is candidate B: `cape/patches/skip-packaged-apps.py`,
+applied to the analyzer by `cape/Dockerfile`, documented in `docs/specs/cape-integration.md`; test:
+`scripts/tests/test_analyzer_patch.sh`.
+
+Still unverified: that the explorer-launched path is the *only* one that matters (a Store app started
+some other way, e.g. by the sample, is skipped just the same); that nothing the analyst needs from a Store
+app's activity is lost; that a CAPE_REF bump keeps the anchors (the build fails if not);
+`backgroundTaskHost.exe` (image in `System32`) still fails to initialise the monitor.
