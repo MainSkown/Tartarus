@@ -1,0 +1,42 @@
+// The query grammar of docs/specs/backend.md, as an LALR grammar over a contextual lexer.
+// Which terminals are tried depends on the parser state, so the same text lexes differently
+// as free text, as a value after a colon and as an alternative inside a value group.
+
+?start: or_expr
+
+or_expr: and_expr (OR and_expr)*
+and_expr: not_expr (AND? not_expr)*
+not_expr: NOT not_expr | primary
+primary: LPAR or_expr RPAR | comparison | free_text
+
+comparison: FIELD COLON STAR -> exists
+          | FIELD COLON value_group
+          | FIELD COMPARATOR value
+value_group: value | LPAR alternative (OR alternative)* RPAR
+value: VALUE | QUOTED
+alternative: GVALUE | QUOTED
+free_text: WORD | QUOTED
+
+// A keyword ends at whitespace, a parenthesis, a quote or the end of the text.
+AND.3: /AND(?=[\s()"]|$)/i
+OR.3: /OR(?=[\s()"]|$)/i
+NOT.3: /NOT(?=[\s()"]|$)/i
+
+LPAR: "("
+RPAR: ")"
+COLON: ":"
+COMPARATOR: />=|<=|>|</
+STAR.4: /\*(?=[\s()"]|$)/
+
+// A field name is a word directly followed by a colon or a comparison operator.
+FIELD.2: /[@\w][\w.@-]*(?=\s*(?::|[<>]))/
+
+// A backslash pair (\\ or \") is one unit; any other backslash is an ordinary character.
+// Lark turns a backslash followed by a quote inside a regex literal into a bare quote, so the
+// character classes list the quote first.
+QUOTED: /"(?:\\["\\]|[^"\\]|\\(?!["\\]))*"/
+VALUE: /(?:\\["\\]|[^\s()"\\]|\\(?!["\\]))+/
+GVALUE: /(?!or(?=[\s()"]|$))(?:\\["\\]|[^\s()"\\]|\\(?!["\\]))+/i
+WORD.1: /(?!(?:and|or|not)(?=[\s()"]|$))(?![<>])(?:\\["\\]|[^\s()"\\]|\\(?!["\\]))+/i
+
+%ignore /\s+/

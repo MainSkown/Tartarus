@@ -269,6 +269,82 @@ Rules:
   backslash.
 - Errors return `{start, end, message}` so the GUI can underline the exact span.
 
+### Query language (as built)
+
+Code: `app/query/` (`grammar.lark`, `parser.py`, `compiler.py`, `clauses.py`, `limits.py`,
+`field_resolution.py`, `fields_api.py`), the field and alias tables in `app/search/fields.py`.
+`compile_query(text)` returns `Compiled(query, errors)`: `query` is the OpenSearch query (`None` for an
+empty query, which matches everything, and whenever `errors` is not empty), and a bad query is an error
+value, never an exception. Where the grammar above is silent:
+
+**Tokens.**
+- A word directly followed by `:` or a comparison operator is a field name. Text that contains a colon
+  (`http://x`, `C:\dir`) is written in quotes to be searched as free text; after `field:` a value may
+  hold colons freely (`url:http://x/a?b=c`).
+- Keywords are recognised wherever a term can start, so a free-text search for the word `or` is
+  `"or"`. After `field:` they are plain values (`process.name:and`); inside `field:( ... )` only `OR`
+  is a keyword.
+- Bare words and quoted strings share one backslash rule: `\\` is one backslash, `\"` is a quote, any
+  other backslash stays. The spec's `file.path:*\\AppData\\Roaming\\*.exe` and the single-backslash
+  `*\AppData\Roaming\*.exe` are the same query; a UNC path needs four leading backslashes. A quoted
+  string cannot end in a single backslash.
+- `*` and `?` are wildcards in bare and quoted values and cannot be escaped. A bare `*` after `field:`
+  is the exists test (`field:"*"` is a wildcard value). There is no regular-expression syntax:
+  `/a.*b/` is a wildcard pattern.
+- Field names and aliases are case-insensitive. Values are case-insensitive on keyword and flat-object
+  fields, so `process.name:CMD.EXE` works; the argument name in `api.arguments.FileName` keeps its case.
+- Precedence is `NOT`, then `AND` (explicit or adjacent), then `OR`.
+
+**Field types.**
+
+| Type | `field:value` | Ranges `> >= < <=` | Wildcards |
+|---|---|---|---|
+| keyword | `term` on the lowercased value | error | `wildcard`, case-insensitive |
+| keyword with text (`file.path`, `process.command_line`, `process.executable`, `tartarus.summary`) | the exact value (`term`) OR a `match_phrase` on `<field>.text` | error | `wildcard` on the keyword |
+| text (`rule.description`, `tartarus.detection.match`) | `match_phrase` | error | per-word `wildcard`; error if the pattern holds spaces |
+| number | `term` | `range` | error |
+| date | `range` with the value on both bounds, so `@timestamp:2026-10-13` is the whole day | `range`; ISO 8601 (date required) or epoch milliseconds (all digits) | error |
+| boolean | `term`, `true` or `false` | error | error |
+| ip | `term`, a CIDR range works | `range` on one address | error (use a CIDR range) |
+| flat object (`api.arguments`) | case-insensitive `term` on any argument value; `api.arguments.<Name>:value` on one argument (verified on the real mapping) | error | `wildcard` |
+| disabled object (`tartarus.raw`) | error: stored but not searchable | error | error |
+
+A group of plain values on a keyword, number, boolean or ip field is one `terms` query; any other group
+is a `bool` `should`. Wildcard patterns have their backslashes doubled, because OpenSearch gives `\` the
+meaning of an escape inside a pattern (found on the real index: `c:\users*` matched nothing, `c:\\users*`
+matched). Keyword values are lowercased code point by code point, as Lucene's lowercase filter does.
+
+**Boolean structure.** `AND` is `bool.filter`, with its negated terms folded into `must_not`; `OR` is
+`bool.should` with `minimum_should_match: 1`; `NOT` is `must_not`. Nested ANDs and nested ORs are
+merged. `NOT x` alone matches every event without `x`, including events that lack the field.
+
+**Free text** is searched as "contains", case-insensitively, in `tartarus.summary`,
+`process.command_line`, `file.path`, `url.full` and every value of `api.arguments`: a `wildcard`
+`*word*` on each keyword (and on the flat object), plus a `match_phrase` on the `.text` subfield for the
+fields that have one. `powershell -enc` is two ANDed searches.
+
+**Aliases.** The catalog's aliases: `pid`, `ppid`, `tid`, `proc` and `process` (process.name), `cmd` and
+`cmdline`, `image`, `api`, `path`, `filename`, `sha256`, `reg`, `ip` and `dst.ip`, `port` and `dst.port`,
+`src.ip`, `src.port`, `dns` (dns.question.name), `url`, `user_agent`, `lane`, `action`, `kind`,
+`category`, `summary`, `rule`, `ruleset`, `sev` and `severity`, `technique` and `attack`, `tactic`. The
+one composite alias is `domain` = `dns.question.name` OR `destination.domain` (`COMPOSITE_ALIASES` in
+`fields.py`; it is no longer an alias of `destination.domain` alone).
+
+**Errors** are `{start, end, message, suggestion}` with character offsets into the query text, one
+syntax error at a time and every unknown field and bad value of a well-formed query together. An
+unknown field suggests the closest names and aliases (`suggestion` is the best one, `message` lists up to
+three); a value that does not fit its field's type is underlined at the value, a range operator on a
+field that cannot take it at the whole comparison.
+
+**Limits:** 2000 characters, 20 levels of `AND`/`OR`/`NOT` nesting, 100 terms (every value of a group and
+every `field:*` counts), 25 wildcard terms (a leading wildcard is allowed and counted; a free-text word
+counts as one because it is a contains search). Each is an error at the first place it is exceeded, and a
+query over a limit is not compiled further.
+
+`field_catalog()` and `suggest_fields(prefix)` in `fields_api.py` give the later autocomplete endpoint its
+data: every field and composite alias with type, aliases, description, example and lane, and a prefix
+search by name, then by alias, then inside a name.
+
 ## Exports
 
 | Format | Content |

@@ -15,6 +15,9 @@ class FieldType(StrEnum):
     OBJECT_DISABLED = "object_disabled"
 
 
+TEXT_SUBFIELD = "text"
+
+
 class Lane(StrEnum):
     PROCESS = "process"
     FILE = "file"
@@ -63,7 +66,7 @@ _COMMON = (
         FieldType.INTEGER,
         "0 info, 1 low, 2 medium, 3 high, 4 critical (alerts only)",
         "3",
-        aliases=("severity",),
+        aliases=("severity", "sev"),
     ),
     FieldDefinition("tartarus.analysis_id", _LONG, "Id of the analysis the event belongs to", "6"),
     FieldDefinition(
@@ -106,7 +109,7 @@ _PROCESS = (
         _KT,
         "Command line the process was started with",
         "cmd.exe /c whoami",
-        aliases=("cmdline",),
+        aliases=("cmdline", "cmd"),
     ),
     FieldDefinition(
         "process.entity_id",
@@ -157,6 +160,7 @@ _REGISTRY = (
         "Full registry path including hive, key and value",
         r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run\Updater",
         Lane.REGISTRY,
+        aliases=("reg",),
     ),
     FieldDefinition("registry.hive", _K, "Registry hive", "HKLM", Lane.REGISTRY),
     FieldDefinition(
@@ -211,7 +215,6 @@ _NETWORK = (
         "Destination domain name",
         "example.com",
         Lane.NETWORK,
-        aliases=("domain",),
     ),
     FieldDefinition("network.transport", _K, "Transport protocol", "tcp", Lane.NETWORK),
     FieldDefinition("network.protocol", _K, "Application protocol", "http", Lane.NETWORK),
@@ -364,6 +367,11 @@ FIELDS: tuple[FieldDefinition, ...] = (
     *_DETECTION,
 )
 
+# A query alias that stands for several fields at once; the query compiler ORs them.
+COMPOSITE_ALIASES: dict[str, tuple[str, ...]] = {
+    "domain": ("dns.question.name", "destination.domain"),
+}
+
 _BY_NAME = {field.name: field for field in FIELDS}
 _BY_NAME_OR_ALIAS = {
     **_BY_NAME,
@@ -377,3 +385,7 @@ def field_by_name(name: str) -> FieldDefinition:
 
 def resolve_field(name_or_alias: str) -> FieldDefinition | None:
     return _BY_NAME_OR_ALIAS.get(name_or_alias)
+
+
+def resolve_composite(alias: str) -> tuple[FieldDefinition, ...]:
+    return tuple(_BY_NAME[name] for name in COMPOSITE_ALIASES.get(alias, ()))

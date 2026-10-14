@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.search.fields import FIELDS, FieldDefinition, FieldType
+from app.search.fields import FIELDS, TEXT_SUBFIELD, FieldDefinition, FieldType
 
 TEMPLATE_NAME = "tartarus-events"
 INDEX_PREFIX = f"{TEMPLATE_NAME}-"
@@ -31,7 +31,7 @@ def _field_mapping(field: FieldDefinition) -> dict[str, Any]:
     if field.type is FieldType.KEYWORD:
         return dict(_KEYWORD)
     if field.type is FieldType.KEYWORD_WITH_TEXT:
-        return {**_KEYWORD, "fields": {"text": {"type": "text"}}}
+        return {**_KEYWORD, "fields": {TEXT_SUBFIELD: {"type": "text"}}}
     return dict(_SIMPLE_MAPPINGS[field.type])
 
 

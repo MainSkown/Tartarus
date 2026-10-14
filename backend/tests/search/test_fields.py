@@ -1,11 +1,13 @@
 import pytest
 
 from app.search.fields import (
+    COMPOSITE_ALIASES,
     FIELDS,
     FieldDefinition,
     FieldType,
     Lane,
     field_by_name,
+    resolve_composite,
     resolve_field,
 )
 
@@ -191,3 +193,56 @@ def test_field_definitions_are_immutable() -> None:
 
 def test_every_field_has_the_catalog_record_type() -> None:
     assert all(isinstance(field, FieldDefinition) for field in FIELDS)
+
+
+SPEC_ALIASES = {
+    "pid": "process.pid",
+    "ppid": "process.parent.pid",
+    "proc": "process.name",
+    "cmd": "process.command_line",
+    "api": "api.name",
+    "path": "file.path",
+    "reg": "registry.path",
+    "ip": "destination.ip",
+    "port": "destination.port",
+    "url": "url.full",
+    "lane": "tartarus.lane",
+    "action": "event.action",
+    "rule": "rule.name",
+    "sev": "event.severity",
+    "technique": "threat.technique.id",
+}
+
+
+@pytest.mark.parametrize(("alias", "name"), sorted(SPEC_ALIASES.items()))
+def test_every_alias_of_the_query_spec_resolves_to_its_field(alias: str, name: str) -> None:
+    assert resolve_field(alias) is field_by_name(name)
+
+
+def test_existing_aliases_are_kept() -> None:
+    assert resolve_field("cmdline") is field_by_name("process.command_line")
+    assert resolve_field("severity") is field_by_name("event.severity")
+    assert resolve_field("process") is field_by_name("process.name")
+
+
+def test_domain_is_a_composite_alias_and_no_single_field_alias() -> None:
+    assert COMPOSITE_ALIASES["domain"] == ("dns.question.name", "destination.domain")
+    assert resolve_field("domain") is None
+    assert [f.name for f in resolve_composite("domain")] == [
+        "dns.question.name",
+        "destination.domain",
+    ]
+
+
+def test_resolve_composite_returns_nothing_for_a_plain_name() -> None:
+    assert resolve_composite("process.name") == ()
+
+
+def test_composite_aliases_collide_with_no_field_name_or_alias() -> None:
+    singles = {field.name for field in FIELDS} | {a for f in FIELDS for a in f.aliases}
+    assert singles.isdisjoint(COMPOSITE_ALIASES)
+
+
+def test_composite_members_are_catalog_fields() -> None:
+    members = {name for names in COMPOSITE_ALIASES.values() for name in names}
+    assert members <= {field.name for field in FIELDS}
