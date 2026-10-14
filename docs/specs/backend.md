@@ -221,7 +221,7 @@ Pushes `health`, `queue`, `disk` and `job` (progress and step for guest builds a
   category.
 - Correlation and aggregation rules (`count() > n`, Sigma correlation rules) are **not
   supported in v1**. They are listed as unsupported.
-- **Default ruleset (proposed, still an open question):** ship a curated subset of SigmaHQ `rules/windows/` (process_creation,
+- **Default ruleset (decided: a curated subset, see [M4](../plans/m4-sigma.md)):** ship a curated subset of SigmaHQ `rules/windows/` (process_creation,
   file_event, registry_*, network_connection, dns_query, image_load, create_remote_thread,
   process_access) with status `stable` or `test`. The user can add their own rules to
   `rules/sigma/custom/`.

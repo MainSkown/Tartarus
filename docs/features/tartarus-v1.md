@@ -148,7 +148,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
    is only set at submission.
 3. **Sysmon timing:** CAPE probably collects the Sysmon EVTX only at the end of the run, so
    Sysmon events would be final-phase only. Add a live forwarder in the guest later?
-4. **Default Sigma ruleset:** ship a curated SigmaHQ subset (proposed) or start empty?
+4. **Default Sigma ruleset (decided 2026-10-14: a curated SigmaHQ subset, see [M4](../plans/m4-sigma.md)).**
 5. **Defender: how the choice is offered (decided: optional, on by default; details for M6).**
    Defender's state is a property of the analysis environment, so the guest wizard offers it as an
    option, and the default build leaves it on, which needs no manual step. Turning it off cannot
