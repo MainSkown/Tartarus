@@ -8,8 +8,7 @@ spec](../specs/gui.md) (Notes tab, Export menu, tags on the Dashboard) describe.
 
 ## Status
 
-Built 2026-10-14 and 2026-10-15; F13 approved by the user, F14 waits for the user's review of its
-screenshots. Decisions 2, 3 and 6 were taken as accepted on the user's go-ahead (not separately
+Built 2026-10-14 and 2026-10-15; F13 and F14 approved by the user after their screenshot reviews. M5 is done. Decisions 2, 3 and 6 were taken as accepted on the user's go-ahead (not separately
 confirmed); 6's key-events definition is replaced by R0's (see decision 6).
 
 What changed against the plan while building:
@@ -35,7 +34,6 @@ download and Dashboard tag filter). The self-test Sigma rule must be enabled whe
 
 Open:
 
-- F14's screenshot review (Artifact) and any comments on it.
 - Event annotations are only for finished analyses (decision 3); the API refuses them on a live one.
 - A report that finishes within about 300 ms after its dialog is closed gets no toast.
 - The Dashboard table scrolls sideways between 700 and about 1250 px, with TAGS and the row actions off
