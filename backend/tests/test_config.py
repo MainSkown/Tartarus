@@ -17,6 +17,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CAPE_API_TOKEN",
         "CAPE_STORAGE_PATH",
         "SAMPLE_STORE_PATH",
+        "RULES_PATH",
         "GUEST_LABEL",
         "GUACD_HOST",
         "GUACD_PORT",
@@ -88,6 +89,7 @@ def test_cape_settings_have_the_documented_defaults() -> None:
     assert settings.cape_api_token is None
     assert settings.cape_storage_path == Path("/cape-storage")
     assert settings.sample_store_path == Path("/data/samples")
+    assert settings.rules_path == Path("/rules/sigma")
     assert settings.guest_label == "win"
 
 
@@ -98,6 +100,7 @@ def test_cape_settings_are_read_from_the_environment(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("CAPE_CONTROL_URL", "http://localhost:8001")
     monkeypatch.setenv("CAPE_STORAGE_PATH", "/mnt/cape")
     monkeypatch.setenv("SAMPLE_STORE_PATH", "/mnt/samples")
+    monkeypatch.setenv("RULES_PATH", "/mnt/rules")
     monkeypatch.setenv("GUEST_LABEL", "win11")
 
     settings = Settings()
@@ -108,6 +111,7 @@ def test_cape_settings_are_read_from_the_environment(monkeypatch: pytest.MonkeyP
     assert settings.cape_api_token.get_secret_value() == "s3cret"
     assert settings.cape_storage_path == Path("/mnt/cape")
     assert settings.sample_store_path == Path("/mnt/samples")
+    assert settings.rules_path == Path("/mnt/rules")
     assert settings.guest_label == "win11"
 
 

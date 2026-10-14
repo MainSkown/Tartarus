@@ -1062,6 +1062,7 @@ dependencies = [
     { name = "pyzipper" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "watchfiles" },
 ]
 
 [package.dev-dependencies]
@@ -1091,6 +1092,7 @@ requires-dist = [
     { name = "pyzipper", specifier = ">=0.4.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.4" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
+    { name = "watchfiles", specifier = ">=1.3.0" },
 ]
 
 [package.metadata.requires-dev]

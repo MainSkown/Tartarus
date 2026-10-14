@@ -22,6 +22,7 @@ from app.ingest.ingester import ReportIngester
 from app.live.hub import LiveHub
 from app.live.manager import LiveCollectionManager
 from app.logging_config import configure_logging
+from app.rules.registry import RuleRegistry
 from app.samples.store import SampleStore
 from app.search.client import create_opensearch_client
 from app.search.index import EventIndex
@@ -76,6 +77,9 @@ def _build_lifespan(
         )
         app.state.live_hub = live_hub
         app.state.live_collection = live_collection
+        rule_registry = RuleRegistry(resolved.rules_path, app.state.session_factory)
+        app.state.rule_registry = rule_registry
+        await rule_registry.start()
         runner = build_runner(
             app.state.session_factory,
             cape,
@@ -92,6 +96,7 @@ def _build_lifespan(
             yield
         finally:
             await runner.stop()
+            await rule_registry.stop()
             await live_collection.aclose()
             await cape.aclose()
             await cape_control.aclose()

@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from app.api import analyses, events, query, settings, system, views_events, views_findings
+from app.api import (
+    analyses,
+    events,
+    query,
+    rules,
+    settings,
+    system,
+    views_events,
+    views_findings,
+)
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(system.router)
@@ -10,3 +19,5 @@ api_router.include_router(views_events.router)
 api_router.include_router(views_findings.router)
 api_router.include_router(events.router)
 api_router.include_router(query.router)
+api_router.include_router(rules.router)
+api_router.include_router(rules.analysis_router)

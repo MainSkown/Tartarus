@@ -12,6 +12,7 @@ from app.cape.control import CapeControl
 from app.cape.health import CapeCheck, GuestCheck
 from app.db.session import get_session
 from app.health import ComponentHealth, HealthStatus, PostgresCheck, evaluate
+from app.rules.registry import RuleRegistry
 from app.samples.store import SampleStore
 from app.search.index import EventIndex
 
@@ -26,6 +27,7 @@ async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAP
         assert isinstance(app.state.sample_store, SampleStore)
         assert isinstance(app.state.event_index, EventIndex)
         assert isinstance(app.state.runner, Runner)
+        assert isinstance(app.state.rule_registry, RuleRegistry)
         assert set(app.state.health_checks) == {"postgres", "opensearch", "cape", "guest"}
         assert isinstance(app.state.health_checks["postgres"], PostgresCheck)
         assert isinstance(app.state.health_checks["cape"], CapeCheck)
@@ -64,15 +66,32 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
 
     monkeypatch.setattr(CapeClient, "aclose", record_cape_close)
     monkeypatch.setattr(CapeControl, "aclose", record_control_close)
+
+    stop_registry = RuleRegistry.stop
+
+    async def record_registry_stop(self: RuleRegistry) -> None:
+        released.append("rule_registry")
+        await stop_registry(self)
+
     monkeypatch.setattr(Runner, "stop", record_runner_stop)
+    monkeypatch.setattr(RuleRegistry, "stop", record_registry_stop)
 
     async with app.router.lifespan_context(app):
         assert released == []
 
-    assert sorted(released) == ["cape", "cape_control", "engine", "opensearch", "runner"]
+    assert sorted(released) == [
+        "cape",
+        "cape_control",
+        "engine",
+        "opensearch",
+        "rule_registry",
+        "runner",
+    ]
     # A tick in progress still uses the CAPE client and the database, so it must end first.
     assert released.index("runner") < released.index("cape")
     assert released.index("runner") < released.index("engine")
+    # A reload in progress writes to the database.
+    assert released.index("rule_registry") < released.index("engine")
 
 
 async def test_session_dependency_yields_a_session_and_closes_it(app: FastAPI) -> None:

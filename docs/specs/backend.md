@@ -121,10 +121,11 @@ built)"). The backend ANDs them with the compiled `query`.
 ### Rules
 | Method & path | Purpose |
 |---|---|
-| `GET /rules` | Sigma rules with validity, enabled, level and the total hit count across analyses |
-| `PATCH /rules/{id}` | `{enabled}` |
-| `POST /rules/reload` | Re-scan `rules/sigma/` (also done automatically on file change) |
-| `GET /analyses/{id}/rules/hits` | Hit counts per rule for one analysis |
+| `GET /rules` | Every loaded rule as `{id, title, description, level, status, tags[], logsource_category, validity (valid\|invalid\|unsupported), error, enabled, path, hits}`; `hits` is the total Sigma detections across analyses, one terms aggregation over `tartarus-events-*` on `rule.id` (`event.kind: alert`, `rule.ruleset: sigma`), never stored. Filtering is the client's |
+| `GET /rules/{id}` | The same plus `yaml`, the text of the rule's file; `404` for an unknown rule or a file that is gone or resolves outside the rules directory |
+| `PATCH /rules/{id}` | `{enabled}`; answers with the rule. The flag is stored and survives reloads and restarts |
+| `POST /rules/reload` | Re-scan `rules/sigma/` (also done automatically on file change, debounced) and answer as `GET /rules` |
+| `GET /analyses/{id}/rules/hits` | `[{rule_id, count}]` for one analysis, most hit first, from that analysis's index |
 
 ### Export
 | Method & path | Purpose |

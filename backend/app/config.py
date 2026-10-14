@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     cape_api_token: SecretStr | None = None
     cape_storage_path: Path = Path("/cape-storage")
     sample_store_path: Path = Path("/data/samples")
+    rules_path: Path = Path("/rules/sigma")
     guest_label: str = "win"
     guacd_host: str = "cape"
     guacd_port: int = 4822

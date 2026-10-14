@@ -55,7 +55,7 @@ short run; if reuse is detected, the process key becomes `pid@start_ts`.
 ### Rules, guest, jobs, settings
 | Table | Columns |
 |---|---|
-| `sigma_rule` | `id` (the Sigma rule UUID), `title`, `level`, `status` (Sigma status), `path`, `content_sha256`, `enabled` bool (default true), `valid` bool, `error` text, `loaded_at` |
+| `sigma_rule` | `id` (the Sigma rule UUID), `title`, `level`, `status` (Sigma status), `path`, `content_sha256`, `enabled` bool (default true; the analyst's, kept across reloads), `validity` (`valid`, `invalid` or `unsupported`, a check-constrained text, so the GUI can tell a wrong rule from valid Sigma this engine cannot run), `error` text, `loaded_at`. The file owns every column but `enabled`; a rule whose file is gone is deleted |
 | `guest_vm` | `id`, `name`, `os_label` (e.g. "Windows 11 23H2 Pro"), `vcpus`, `ram_mb`, `disk_gb`, `ip`, `snapshot`, `state` enum(`building`,`ready`,`broken`), `last_check` jsonb, `created_at` |
 | `job` | `id`, `type` enum(`guest_build`,`ingest`,`reingest`,`export_report`,`delete_analysis`), `analysis_id` nullable, `status` enum(`pending`,`running`,`done`,`failed`,`interrupted`), `step` text, `progress` 0–100, `log` text (tail), `result` jsonb, `created_at`, `updated_at` |
 | `setting` | `key` text PK, `value` jsonb: default route, default timeout, default interactive, disk warn/block thresholds, timeline aggregation threshold |

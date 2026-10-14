@@ -84,6 +84,13 @@ class EventIndex:
             return {"hits": {"total": {"value": 0}, "hits": []}, "aggregations": {}}
         return response
 
+    async def search_all(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Runs a search over the indices of every analysis; no analysis yet is no events."""
+        response: dict[str, Any] = await self._client.search(
+            index=f"{INDEX_PREFIX}*", body=body, ignore_unavailable=True
+        )
+        return response
+
     async def bulk_index(
         self, analysis_id: int, events: Iterable[dict[str, Any]], chunk_size: int = 1000
     ) -> int:
