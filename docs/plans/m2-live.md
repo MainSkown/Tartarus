@@ -456,3 +456,156 @@ real screen is 16:10, so the panel needs a 16:10 box, or it letterboxes.
 - **Open:** a failed browser end-to-end test leaves its analysis behind (cleanup cannot delete a running
   one), which then blocks the next run's precondition; `default_interactive` is on, so a plain submit
   holds the guest for the whole timeout; the guest's clock runs 5 to 8 s behind the host's.
+
+## Notepad findings
+
+The user opened `test.txt` on the guest's desktop through the desktop panel and "Notepad never showed
+up" (analysis 144). Investigation on 2026-10-14 (host clock; guest clock 2026-10-13, 5 to 8 s behind).
+Everything below was run through the real API and the guest agent; no repo code, guest definition or
+snapshot was touched. CAPE reverts the guest to `tartarus-clean` for every task, so **everything done
+inside the guest is gone**; analyses 151 and 152 (CAPE tasks 138 and 139) were deleted afterwards and only
+45 and 144 remain.
+
+### What was run, and how far it got
+
+- **Run 1** (analysis 151, task 138, timeout 300): basic facts only (below). I lost it to tooling
+  problems and it ended by its own timeout before I got to the experiments.
+- **Run 2** (analysis 152, task 139, timeout 1200, the API's maximum): all the experiments below. It
+  ended early: after the experiments I tried to rebuild the injection by hand (see "Not determined");
+  the guest stopped answering at about 23:53 guest time, and CAPE destroyed it at 23:56:20.
+  The budget of two interactive runs is therefore spent, and **no fix was tested on a real run**.
+- Tooling lessons, so the next session does not repeat them: `/execute` runs `shlex.split` on the
+  command, which eats every backslash (`dir C:\Users` becomes `C:Users`); PowerShell given on the
+  command line with `-Command`/`-EncodedCommand` hung the agent twice (it is single threaded). What
+  worked: `POST /store` a `.ps1` file, then `POST /execute` `powershell -NoProfile -ExecutionPolicy
+  Bypass -File C:/Windows/Temp/x.ps1` with `shell=1` and `async=1`, writing the output to a file and
+  fetching it with `POST /retrieve`. The scripts are in the session scratchpad (`np/`), not in the repo.
+  A new top-level window was listed with `EnumWindows` (P/Invoke, filtered by process id), not with
+  `MainWindowHandle`, which is 0 for a process whose window the shell hides.
+- A detail of the report: the file the user opened was **`test.txt.txt`** (both Notepad command lines in
+  analysis 144 end in `\Desktop\test.txt.txt`; Explorer hides known extensions). It is not the cause
+  (run 2 used a real `test.txt`) but it explains the name in the screenshots.
+
+### Observations
+
+Guest facts (run 2, from the agent):
+
+- `.txt`: `HKCR\.txt` is `txtfilelegacy`, but `HKCU\...\FileExts\.txt\UserChoice` names
+  `AppX4ztfk9wxr86nxmzzq47px0nh0e58b8fw`, the Store Notepad's handler. UserChoice wins, so a double
+  click starts the **packaged** Notepad `Microsoft.WindowsNotepad_11.2501.31.0_x64__8wekyb3d8bbwe`
+  (`Get-AppxPackage`: Status `Ok`, `SignatureKind` Store).
+- Even the "legacy" path ends in the packaged app: CAPE's `disguise` auxiliary module launches
+  `C:\Windows\System32\notepad.exe` hidden at the start of every analysis (`disguise.py:271`; analysis.log
+  "Launched background process notepad.exe hidden"), and that process's image is the packaged
+  `...\WindowsNotepad_...\Notepad\Notepad.exe`. `C:\Windows\notepad.exe` (360448 bytes, "Notatnik",
+  10.0.26100.1) also exists; **I did not run it**.
+- AppX infrastructure is healthy: `AppXSvc`, `StateRepository`, `ClipSVC`, `AppReadiness`,
+  `BrokerInfrastructure`, `DcomLaunch` all Running; `Get-AppxPackage -AllUsers` lists 103 packages,
+  all `Ok`. The guest is Windows 10.0.26200 (25H2), user `desktop-7a3k2p9\analyst`, session 1.
+
+Experiments, each followed by a screenshot (`np/`, session scratchpad):
+
+| # | Launch | Monitored by capemon? | Result |
+|---|---|---|---|
+| X1 | the hidden Notepad CAPE's `disguise` module started at boot (pid 9632) | no (`disguise` is not injected; analysis.log has no "Announced" for it) | a normal Notepad window exists: class `Notepad`, title "Bez tytulu - Notatnik", rect 52,52,1012,595 (hidden by `SW_HIDE`), plus a visible `Xaml_WindowedPopupClass`; 14 threads |
+| X2 | `Start-Process C:\Users\Analyst\Desktop\test.txt` from a PowerShell the agent started (ShellExecute, UserChoice -> packaged Notepad) | no (child of the agent) | **opens**: window `test.txt - Notatnik`, visible, 20 threads. In the screenshot (`s02_unmon_shellexec.png`) it is only a flashing taskbar button because a maximized Edge window (INetSim page, "restore pages" bubble) was in front: a window created by a background process does not take the foreground. X2 also left a second Notepad process (5 threads, no window of its own) next to the working one, probably the activation forwarder of a single-instance app; not investigated. Edge was open at boot in runs 1 and 2 but not in analysis 144's screenshots, where this does not apply |
+| X3 | Win+D, `t` (type-ahead selects the `test` icon, screenshot `s03a_desktop_selected.png`), Enter, all by `keybd_event`/`SendKeys` from the agent: the monitored `explorer.exe` (pid 4336) opens the file, exactly the user's double click | **yes**: `C:\a950garg\dll\5840.ini` written, analysis.log "Injected into 64-bit <Process 5840 Notepad.exe>", cuckoo.log "Process 5840 (parent 4336): Notepad.exe" | **reproduces the report**: process 5840 exists, `Responding` True, CPU 0.27 s, **7 threads** (a healthy one has 14 to 20), `EnumWindows` finds **no window at all** for it, no taskbar button; 10 s later, still nothing (`s03b_monitored_enter.png`) |
+
+The injected process is stuck at the same instruction every time. The CAPE report of the monitored
+Notepad has exactly **1797 calls in run 2 (pid 5840) and 1797 and 1798 in analysis 144 (pids 1768 and
+5448)**, all within 0.3 to 0.4 s of the process start, the same API counts, and the same last event
+in all three: capemon's `DllLoadNotification` for `C:\WINDOWS\SYSTEM32\AppxDeploymentClient`, after
+`MrmCoreR`, `windows.staterepositoryclient`/`core`, `profapi`, `imagehlp` and the registry reads of
+`...\AppModel\StateRepository\Cache` and `Mrt\CachedMergedResourcesPriFileName`. Nothing follows, in a
+run that went on for minutes. The monitor itself initialised fine ("Hooked 692 out of 693 functions",
+"Monitor initialised" at 23:46:54,987; `LockResource` is the one that always fails, in every process).
+
+Other monitored packaged processes behave the same way: in run 2 CAPE announced and injected 15
+distinct `backgroundTaskHost.exe` processes (the Windows Update orchestrator starts them in bursts),
+and **none of them reached "Monitor initialised"** (14 other processes did), none appears in the
+behaviour report; in analysis 144 they are root nodes with a single `process` event and no API calls.
+
+### The candidates
+
+| | Candidate | Verdict |
+|---|---|---|
+| (a) | capemon injection breaks the packaged Notepad | **Supported, not proven in isolation.** Monitored: fails three times out of three (144 twice, run 2 once), deterministic stall point. Not monitored: works both times (X1, X2). What I could not do is switch the monitor off for the *same* launch path: X2 and X3 differ in the launcher (agent vs explorer) as well as in the monitor |
+| (b) | the AppX/Store infrastructure cannot start packaged apps offline | **Refuted** for Notepad: it starts and shows a window under the same guest, same user, same offline network, when not monitored. The grey Start-menu tiles in the screenshots were not investigated; they are not needed to explain this |
+| (c) | window created but off-screen, minimised or in another session | **Refuted.** The monitored process has no top-level window of any kind (`EnumWindows` by pid), it runs in session 1, and has no taskbar entry. The unmonitored window is at 52,52 on screen |
+| (d) | interactive-mode configuration (`Human`, new-window handling) | **Not the cause.** `analysis.conf` shows `options = interactive=1,nohuman=yes`; `interactive` only makes the analyzer inject `explorer.exe` and not stop on an empty process list (`analyzer.py:636`, `:782`), and is forwarded to every monitor as `interactive=1` (visible in `5840.ini`). The analyzer does nothing about new windows. The stall is inside the process, before any window exists |
+| (e) | the legacy Win32 notepad works and only the packaged one fails | **Not tested.** `System32\notepad.exe` resolves to the packaged app (X1's image path), so only `C:\Windows\notepad.exe` could be a different program, and I never started it |
+
+### Root cause
+
+**Proven:** with CAPE's monitor injected, the Store Notepad process starts, loads `AppxDeploymentClient`
+and then stops making progress (7 threads, no window, no further API calls), identically on every try;
+the same operation without the monitor works. The analyzer injects it because it injects everything
+`explorer.exe` starts in interactive mode (`analyzer.py:1414` `_handle_process`; its only exclusions are
+a short list of names, `Files.PROTECTED_NAMES`, and the analyzer's own folders).
+
+**Inferred, not shown:** that the monitor is the *only* difference (see (a)), and which part of it:
+the hooks, the IAT-patch injection (analysis.log: "InjectDllViaIAT: Successfully patched IAT" then
+"RestoreHeaders"), or loader-lock work in the DLL-load callback. There is no source for the monitor in
+the container, only the binary (`capemon_x64.dll`), and no log after the stall point. The list of
+options that exist is in the monitor's strings and in `docs/book/src/usage/submit.rst`.
+
+### Recommended fixes, least invasive first
+
+None of these was tried on a real run (budget spent). Verification for each is the same two-step
+check, on one interactive run: put `test.txt` on the desktop, open it the way the user did (Win+D,
+`t`, Enter through the agent, or a real double click through the panel), and take a `virsh screenshot`:
+a Notepad window must be visible and `EnumWindows` must list it; `5840`-style `.ini` files in the
+analyzer's `dll\` folder show whether it was injected.
+
+1. **Leave it and document it (touches nothing).** In an interactive analysis, Store apps that CAPE
+   injects (Notepad, Paint, Terminal; probably any `WindowsApps` package) may start without a window.
+   Cost: the analyst cannot open a text file in the GUI. The workaround for the analyst is to avoid
+   packaged apps, but I do not know which classic editor in this guest works (`C:\Windows\notepad.exe`
+   is the one to try first).
+2. **A monitor option in the submission (touches `INTERACTIVE_OPTIONS` in
+   `backend/app/cape/client.py`, one string; no guest change).** Candidates, from CAPE's option list,
+   that change how the monitor hooks or injects, all **unproven**: `no-iat=1` (inject by APC instead
+   of patching the import table), `hook-type=safe`, `native=1` (ntdll hooks only), `minhook=1` or
+   `zerohook=1`. They apply to every monitored process, not just Notepad, and the last three cut what an
+   analysis sees, so they would need a per-option decision. **To test without changing any code**: CAPE
+   accepts any option string, so submit straight to CAPE (`POST apiv2/tasks/create/file/` with
+   `options=interactive=1,nohuman=yes,no-iat=1`, `machine=win`, a long timeout) and run the check
+   above; one option per run. The backend's API rejects unknown keys by design, so only a winning
+   option needs a code change.
+3. **Do not inject Store apps in interactive mode (touches the CAPE image: a patch to the guest-side
+   analyzer, `cape/Dockerfile`; no guest change).** In `_handle_process` skip injection when the image
+   path is under `C:\Program Files\WindowsApps\` and `INTERACTIVE_MODE` is set. This reproduces
+   "not monitored", which worked (X1, X2). Cost: apps the analyst opens from `WindowsApps` are not
+   monitored (they are tools, not the sample), and the repo starts to carry a patch on a pinned upstream
+   (`CAPE_REF`). The sample itself and an MSIX sample analysed with the `msix` package are unaffected if
+   the rule is limited to interactive mode. I infer, but did not test, that the explorer-launched path
+   then behaves like X2.
+4. **Change the guest (needs the snapshot retaken).** Either remove the Store Notepad
+   (`Get-AppxPackage Microsoft.WindowsNotepad | Remove-AppxPackage -AllUsers` and its provisioned
+   package) or delete the `UserChoice` key and point `.txt` at a classic handler. Added as a step to
+   `guest/provision/provision.ps1` it means `make build-guest` (reinstall). Without reinstalling Windows:
+   start `win` outside CAPE from its disk, apply the change through the agent, shut it down cleanly and
+   take `tartarus-clean` again (the `take_clean_snapshot`/`snapshot_and_register` functions in
+   `scripts/build-guest.sh` do exactly the last part; it would want a `resnapshot` subcommand). I did
+   not try it and it is the only option here that touches the guest, so it needs the user's go-ahead.
+   It also relies on `System32\notepad.exe` falling back to a classic binary once the package is gone,
+   which is unverified.
+
+My ranking of likelihood to work: 3 (equivalent to a case that worked) over 4 over 2; of effort: 1,
+then 2 (one constant, if an option wins), 3, 4.
+
+### Not determined
+
+- Whether the monitor is the sole cause (no same-launcher toggle) and what inside it stalls the process.
+- Whether any option of the monitor lets a packaged app through (none tried on a real run).
+- Whether `C:\Windows\notepad.exe` and other classic programs work under the monitor.
+- Whether the hidden Notepad CAPE's `disguise` module starts at boot matters: it was present in analysis
+  144 and killed by me before X2 and X3, and the symptom was the same, so it does not cause it. In
+  the user's case it also means two Notepad processes exist after a click, not one.
+- My attempt to inject by hand (create the Notepad suspended, announce it to the analyzer's pipe with
+  `PROCESS:<pid>,0`, append option lines to its `dll\<pid>.ini`, then resume it) never produced a result:
+  a P/Invoke `CreateProcessW` in PowerShell killed the PowerShell host twice, and the Python version
+  was followed by the guest becoming unreachable about a minute later (analysis.log stops at 23:53:11,
+  amid a Windows Update burst of `backgroundTaskHost` injections; the VM had used 1327 CPU-seconds in
+  about 12 minutes and the analyzer's own `pythonw` 385 s by 23:50). I cannot say whether my script or that burst froze the guest. The idea is still
+  the cheapest way to try several options in one run, but it needs a better-tested script first.
