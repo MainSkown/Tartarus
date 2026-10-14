@@ -1,0 +1,246 @@
+{%- macro sev(severity) -%}
+<span class="sev sev-{{ severity.value }}">{{ severity.value|upper }}</span>
+{%- endmacro -%}
+{%- macro process_name(name, pid) -%}
+{%- if pid is not none -%}{{ name or "unknown" }} ({{ pid }}){%- endif -%}
+{%- endmacro -%}
+{%- macro more(count, noun) -%}
+{{ count }} more {{ noun }}{{ "" if count == 1 else "s" }}
+{%- endmacro -%}
+{%- macro shown_of(listing, noun) -%}
+{%- if listing.total > listing.items|length -%}
+<p class="meta">Showing the first {{ listing.items|length }} of {{ listing.total }} {{ noun }}.</p>
+{%- endif -%}
+{%- endmacro -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tartarus analysis #{{ model.header.analysis_id }}: {{ model.header.sample_name }}</title>
+<style>{{ tokens }}</style>
+<style>{{ stylesheet }}</style>
+{%- if variant == "pdf" %}
+<style>@page { @bottom-left { content: "Tartarus analysis #{{ model.header.analysis_id }}"; font: 8pt var(--font-mono); color: var(--muted); } }</style>
+{%- endif %}
+</head>
+<body class="variant-{{ variant }}">
+<main class="report">
+<header>
+<p class="eyebrow">Tartarus &middot; analysis #{{ model.header.analysis_id }}</p>
+<h1>{{ model.header.sample_name }}</h1>
+<dl class="facts">
+<dt>sha256</dt><dd class="mono">{{ model.header.sha256 }}</dd>
+{%- if model.header.md5 %}<dt>md5</dt><dd class="mono">{{ model.header.md5 }}</dd>{% endif %}
+{%- if model.header.sha1 %}<dt>sha1</dt><dd class="mono">{{ model.header.sha1 }}</dd>{% endif %}
+{%- if model.header.sample_type %}<dt>type</dt><dd>{{ model.header.sample_type }}</dd>{% endif %}
+<dt>status</dt><dd>{{ model.header.status.value }}</dd>
+<dt>submitted</dt><dd>{{ model.header.submitted_at|stamp }}</dd>
+{%- if model.header.started_at %}<dt>started</dt><dd>{{ model.header.started_at|stamp }}</dd>{% endif %}
+{%- if model.header.finished_at %}<dt>finished</dt><dd>{{ model.header.finished_at|stamp }}</dd>{% endif %}
+{%- if model.header.duration_s is not none %}<dt>duration</dt><dd>{{ model.header.duration_s|duration }}</dd>{% endif %}
+{%- if model.header.route %}<dt>route</dt><dd>{{ model.header.route }}</dd>{% endif %}
+</dl>
+{%- if model.tags %}
+<ul class="tags">{% for tag in model.tags %}<li class="tag">{{ tag }}</li>{% endfor %}</ul>
+{%- endif %}
+</header>
+
+<section id="summary">
+<h2>Summary</h2>
+<div class="tiles">
+<div class="tile"><b>{{ model.score if model.score is not none else "n/a" }}</b><span class="label">score</span></div>
+<div class="tile"><b>{% if model.max_severity %}{{ sev(model.max_severity) }}{% else %}none{% endif %}</b><span class="label">max severity</span></div>
+<div class="tile"><b>{{ model.counts.events }}</b><span class="label">events</span></div>
+<div class="tile"><b>{{ model.counts.processes }}</b><span class="label">processes</span></div>
+<div class="tile"><b>{{ model.counts.detections }}</b><span class="label">detections</span></div>
+</div>
+<dl class="facts">
+<dt>families</dt><dd>{{ model.families|join(", ") if model.families else "none detected" }}</dd>
+<dt>files written</dt><dd>{{ model.counts.files_written }}</dd>
+<dt>registry keys written</dt><dd>{{ model.counts.registry_keys_written }}</dd>
+<dt>network</dt><dd>{{ model.counts.dns_queries }} DNS queries, {{ model.counts.hosts }} hosts, {{ model.counts.tcp_flows }} TCP flows{% if model.network.simulated %} (routed through INetSim, so the hosts are simulated){% endif %}</dd>
+</dl>
+</section>
+
+{% if model.include.notes -%}
+<section id="notes">
+<h2>Analyst notes</h2>
+{%- for group in model.notes %}
+<h3>{{ group.title }}</h3>
+{%- if group.detail %}<p class="meta">{{ group.detail }}</p>{% endif %}
+{%- for body in group.notes %}
+<div class="note">{{ body }}</div>
+{%- endfor %}
+{%- else %}
+<p class="empty">No notes were written.</p>
+{%- endfor %}
+</section>
+{%- endif %}
+
+<section id="attack">
+<h2>ATT&amp;CK techniques</h2>
+{%- if model.techniques %}
+<div class="table-wrap"><table class="t-attack">
+<thead><tr><th>Tactic</th><th>Technique</th><th>Severity</th><th>Hits</th><th>Raised by</th></tr></thead>
+<tbody>
+{%- for technique in model.techniques %}
+<tr><td>{{ technique.tactic }}</td><td class="mono">{{ technique.id }}{% if technique.name %} {{ technique.name }}{% endif %}</td><td>{{ sev(technique.severity) }}</td><td>{{ technique.hit_count }}</td><td>{{ technique.signatures|join(", ") }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{%- else %}
+<p class="empty">No ATT&amp;CK techniques were raised.</p>
+{%- endif %}
+</section>
+
+<section id="process-tree">
+<h2>Process tree</h2>
+{%- if tree_svgs %}
+{%- for svg in tree_svgs %}
+<div class="tree-window">{{ svg }}</div>
+{%- endfor %}
+{%- if model.process_tree|selectattr("hidden")|list %}
+<p class="meta">The tree is limited to {{ max_tree_rows }} rows and {{ max_tree_depth }} levels; a +N more row stands for the processes left out below it.</p>
+{%- endif %}
+{%- else %}
+<p class="empty">No processes were recorded.</p>
+{%- endif %}
+</section>
+
+<section id="detections">
+<h2>Detections</h2>
+{%- for group in model.detections %}
+<h3>{{ group.ruleset|upper }}</h3>
+{%- for detection in group.detections %}
+<article class="detection">
+<h4>{{ sev(detection.severity) }} {{ detection.name }}</h4>
+<p class="meta">{{ detection.ruleset }}{% if detection.process %} &middot; {{ process_name(detection.process.name, detection.process.pid) }}{% endif %} &middot; {{ detection.time|clock }}</p>
+{%- if detection.description %}<p>{{ detection.description }}</p>{% endif %}
+{%- if detection.match %}<div class="match">{{ detection.match }}</div>{% endif %}
+{%- if detection.techniques %}<p class="meta">techniques: {{ detection.techniques|join(", ") }}</p>{% endif %}
+{%- if detection.references %}<p class="meta">references: {{ detection.references|join(", ") }}</p>{% endif %}
+{%- if detection.cited_events %}
+<ul>
+{%- for event in detection.cited_events %}
+<li><span class="mono">{{ event.time|clock }}</span> {{ event.lane }}: {{ event.summary }}</li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- if detection.more_events %}<p class="meta">{{ more(detection.more_events, "cited event") }}</p>{% endif %}
+</article>
+{%- endfor %}
+{%- else %}
+<p class="empty">No detections.</p>
+{%- endfor %}
+</section>
+
+<section id="key-events">
+<h2>Key events</h2>
+<p class="meta">{{ model.key_events.events|length }} of {{ model.counts.events }} events: every alert, then process, file and registry events, the events the detections cite and the first network event per destination, in time order.{% if model.key_events.cut %} {{ model.key_events.cut }} further events were left out to keep the list at {{ max_key_events }}.{% endif %}</p>
+{%- if model.key_events.events %}
+<div class="table-wrap"><table class="t-events">
+<thead><tr><th>Time</th><th>Why</th><th>Lane</th><th>Severity</th><th>Process</th><th>Summary</th></tr></thead>
+<tbody>
+{%- for event in model.key_events.events %}
+<tr><td class="mono nowrap">{{ event.time|clock }}</td><td class="nowrap">{{ event.reason.value }}</td><td class="mono nowrap">{{ event.lane }}</td><td>{% if event.severity %}{{ sev(event.severity) }}{% endif %}</td><td class="mono">{{ process_name(event.process_name, event.pid) }}</td><td>{{ event.summary }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{%- endif %}
+</section>
+
+<section id="network">
+<h2>Network</h2>
+<h3>DNS ({{ model.network.dns.total }})</h3>
+{%- if model.network.dns.items %}
+<div class="table-wrap"><table class="t-dns">
+<thead><tr><th>Time</th><th>Query</th><th>Type</th><th>Answers</th></tr></thead>
+<tbody>
+{%- for row in model.network.dns.items %}
+<tr><td class="mono nowrap">{{ row.time|clock }}</td><td class="mono">{{ row.query }}</td><td>{{ row.type or "" }}</td><td class="mono">{{ row.answers|join(", ") }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{{ shown_of(model.network.dns, "queries") }}
+{%- else %}
+<p class="empty">No DNS queries.</p>
+{%- endif %}
+<h3>HTTP ({{ model.network.http.total }})</h3>
+{%- if model.network.http.items %}
+<div class="table-wrap"><table class="t-http">
+<thead><tr><th>Time</th><th>Method</th><th>URL</th><th>Status</th><th>User agent</th></tr></thead>
+<tbody>
+{%- for row in model.network.http.items %}
+<tr><td class="mono nowrap">{{ row.time|clock }}</td><td>{{ row.method or "" }}</td><td class="mono">{{ row.url }}</td><td>{{ row.status if row.status is not none else "" }}</td><td>{{ row.user_agent or "" }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{{ shown_of(model.network.http, "requests") }}
+{%- else %}
+<p class="empty">No HTTP requests.</p>
+{%- endif %}
+<h3>Hosts ({{ model.network.hosts.total }})</h3>
+{%- if model.network.hosts.items %}
+<div class="table-wrap"><table class="t-hosts">
+<thead><tr><th>Host</th><th>Kind</th><th>Events</th><th>Related</th></tr></thead>
+<tbody>
+{%- for row in model.network.hosts.items %}
+<tr><td class="mono">{{ row.host }}</td><td>{{ row.kind }}</td><td>{{ row.count }}</td><td class="mono">{{ row.related|join(", ") }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{{ shown_of(model.network.hosts, "hosts") }}
+{%- else %}
+<p class="empty">No hosts were contacted.</p>
+{%- endif %}
+<h3>Flows ({{ model.network.flows.total }})</h3>
+{%- if model.network.flows.items %}
+<div class="table-wrap"><table class="t-flows">
+<thead><tr><th>Time</th><th>Protocol</th><th>Source</th><th>Destination</th><th>Process</th></tr></thead>
+<tbody>
+{%- for row in model.network.flows.items %}
+<tr><td class="mono nowrap">{{ row.time|clock }}</td><td>{{ row.transport or "" }}</td><td class="mono">{{ row.source_ip }}:{{ row.source_port }}</td><td class="mono">{{ row.destination_ip }}:{{ row.destination_port }}</td><td class="mono">{% if row.process %}{{ process_name(row.process.name, row.process.pid) }}{% endif %}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{{ shown_of(model.network.flows, "flows") }}
+{%- else %}
+<p class="empty">No flows.</p>
+{%- endif %}
+</section>
+
+<section id="iocs">
+<h2>Indicators of compromise</h2>
+{%- if not model.include.raw_iocs %}
+<p class="meta">Values are limited to the first {{ ioc_sample }} of each type; the IOC export has the full list.</p>
+{%- endif %}
+{%- for group in model.iocs %}
+<h3>{{ ioc_labels[group.type.value] }} ({{ group.total }})</h3>
+<div class="table-wrap"><table class="t-iocs">
+<thead><tr><th>Value</th><th>Seen</th><th>Context</th><th>Process</th></tr></thead>
+<tbody>
+{%- for ioc in group.shown %}
+<tr><td class="mono">{{ ioc.value }}</td><td>{{ ioc.count }}</td><td>{{ ioc.context }}</td><td class="mono">{% if ioc.process %}{{ process_name(ioc.process.name, ioc.process.pid) }}{% endif %}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{%- if group.more %}<p class="meta">{{ group.more }} more not listed.</p>{% endif %}
+{%- if group.truncated %}<p class="meta">The IOC view itself stopped at its limit for this type.</p>{% endif %}
+{%- else %}
+<p class="empty">No indicators.</p>
+{%- endfor %}
+</section>
+
+{% if model.include.screenshots -%}
+<section id="screenshots">
+<h2>Screenshots</h2>
+{%- if model.screenshots %}
+<div class="shots">
+{%- for shot in model.screenshots %}
+<figure><img src="{{ shot.data_uri }}" alt="Screenshot {{ shot.n }}"><figcaption>Screenshot {{ shot.n }}</figcaption></figure>
+{%- endfor %}
+</div>
+{%- else %}
+<p class="empty">No screenshots were captured.</p>
+{%- endif %}
+</section>
+{%- endif %}
+
+<p class="footer">Generated {{ model.header.generated_at|stamp }} by Tartarus &middot; analysis #{{ model.header.analysis_id }}</p>
+</main>
+</body>
+</html>

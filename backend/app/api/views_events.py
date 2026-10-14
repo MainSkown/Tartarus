@@ -9,13 +9,11 @@ from app.db.annotation_repository import process_marks
 from app.db.session import get_session
 from app.schemas.views_events import NetworkView, ProcessDetail, ProcessTree, RegistryView
 from app.search.index import EventIndex
-from app.views.network import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, network_view
+from app.views.network import DEFAULT_LIST_LIMIT, INETSIM_ROUTE, MAX_LIST_LIMIT, network_view
 from app.views.processes import process_detail, process_tree
 from app.views.registry import registry_view
 
 router = APIRouter(prefix="/analyses", tags=["views"])
-
-INETSIM_ROUTE = "inetsim"
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 Events = Annotated[EventIndex, Depends(get_event_index)]

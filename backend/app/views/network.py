@@ -30,6 +30,7 @@ NETWORK_EVENT_CAP = 10_000
 DEFAULT_LIST_LIMIT = 500
 MAX_LIST_LIMIT = 2000
 CALL_DERIVED_MODULE = "capemon"
+INETSIM_ROUTE = "inetsim"
 
 
 def _key_of(event: Source) -> Key | None:

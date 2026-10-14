@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.143.0",
     "google-re2>=1.1.20251105",
     "httpx>=0.28.1",
+    "jinja2>=3.1.6",
     "lark>=1.3.1",
     "opensearch-py[async]>=3.2.0",
     "pydantic>=2.14.1",
@@ -19,6 +20,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.1.4",
     "uvicorn[standard]>=0.54.0",
     "watchfiles>=1.3.0",
+    "weasyprint>=70.0",
 ]
 
 [dependency-groups]
@@ -26,6 +28,7 @@ dev = [
     "aiosqlite>=0.22.1",
     "jsonschema>=4.26.0",
     "mypy>=2.4.0",
+    "pypdf>=6.20.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pyyaml>=6.0.3",
@@ -81,3 +84,7 @@ ignore_missing_imports = true  # ships no type information
 [[tool.mypy.overrides]]
 module = "re2"
 ignore_missing_imports = true  # google-re2 ships no type information
+
+[[tool.mypy.overrides]]
+module = "weasyprint"
+ignore_missing_imports = true  # ships no type information

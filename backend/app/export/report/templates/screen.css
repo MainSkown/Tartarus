@@ -1,0 +1,21 @@
+:root {
+  color-scheme: dark;
+  --base-size: 15px;
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --text: #ffffff;
+  --heading: #ffffff;
+  --muted: #a3a3a3;
+  --accent: #38bdf8;
+  --accent-strong: #7dd3fc;
+  --code: #bae6fd;
+  --border: rgba(56, 189, 248, 0.5);
+  --soft-border: rgba(56, 189, 248, 0.2);
+}
+/* A wide table scrolls inside its box on a screen; on paper the fixed columns wrap instead. */
+.table-wrap, .tree-window { overflow-x: auto; }
+.table-wrap table { min-width: 640px; }
+@media (max-width: 640px) {
+  .shots figure { width: 100%; margin-right: 0; }
+  .report { padding: 1em; }
+}

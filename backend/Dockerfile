@@ -11,8 +11,15 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH="/opt/venv/bin:$PATH"
 
 RUN useradd --system --create-home --uid 1000 tartarus \
-    && mkdir -p /app /opt/venv /data/samples \
-    && chown tartarus:tartarus /app /opt/venv /data/samples
+    && mkdir -p /app /opt/venv /data/samples /data/exports \
+    && chown tartarus:tartarus /app /opt/venv /data/samples /data/exports
+
+# WeasyPrint's text layout (Pango) and the report's print fonts: Liberation matches the design
+# system's Courier New / Arial, DejaVu is the per-glyph fallback.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpango-1.0-0 libpangoft2-1.0-0 fonts-liberation fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 USER tartarus
@@ -24,7 +31,7 @@ EXPOSE 8000
 
 FROM base AS dev
 
-RUN uv sync --frozen
+RUN uv sync --frozen --no-cache
 COPY --chown=tartarus:tartarus app ./app
 COPY --chown=tartarus:tartarus alembic ./alembic
 COPY --chown=tartarus:tartarus alembic.ini ./
@@ -33,7 +40,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload
 
 FROM base AS prod
 
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-cache
 COPY --chown=tartarus:tartarus app ./app
 COPY --chown=tartarus:tartarus alembic ./alembic
 COPY --chown=tartarus:tartarus alembic.ini ./

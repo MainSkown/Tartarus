@@ -1,0 +1,23 @@
+:root {
+  --base-size: 9.5pt;
+  --bg: #ffffff;
+  --panel: #f0f9ff;
+  --text: #111827;
+  --heading: #0c4a6e;
+  --muted: #6b7280;
+  --accent: #0369a1;
+  --accent-strong: #0369a1;
+  --code: #0c4a6e;
+  --border: #38bdf8;
+  --soft-border: #dbeafe;
+}
+@page {
+  size: A4;
+  margin: 16mm 14mm 18mm 14mm;
+  @bottom-right { content: "page " counter(page) " / " counter(pages); font: 8pt var(--font-mono); color: var(--muted); }
+}
+.report { max-width: none; padding: 0; }
+h2 { border-left-color: var(--border); }
+h2.new-page { break-before: page; }
+.tag { border-color: var(--border); }
+.tile { border-color: var(--border); }
