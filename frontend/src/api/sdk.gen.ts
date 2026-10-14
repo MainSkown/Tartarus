@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, AnnotationsAddNoteData, AnnotationsAddNoteErrors, AnnotationsAddNoteResponses, AnnotationsAddTagData, AnnotationsAddTagErrors, AnnotationsAddTagResponses, AnnotationsDeleteNoteData, AnnotationsDeleteNoteErrors, AnnotationsDeleteNoteResponses, AnnotationsListTagsData, AnnotationsListTagsErrors, AnnotationsListTagsResponses, AnnotationsReadData, AnnotationsReadErrors, AnnotationsReadResponses, AnnotationsRemoveTagData, AnnotationsRemoveTagErrors, AnnotationsRemoveTagResponses, AnnotationsUpdateNoteData, AnnotationsUpdateNoteErrors, AnnotationsUpdateNoteResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, ExportIocsData, ExportIocsErrors, ExportIocsResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, RulesHitsData, RulesHitsErrors, RulesHitsResponses, RulesListData, RulesListErrors, RulesListResponses, RulesReadData, RulesReadErrors, RulesReadResponses, RulesReloadData, RulesReloadErrors, RulesReloadResponses, RulesUpdateData, RulesUpdateErrors, RulesUpdateResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
+import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, AnnotationsAddNoteData, AnnotationsAddNoteErrors, AnnotationsAddNoteResponses, AnnotationsAddTagData, AnnotationsAddTagErrors, AnnotationsAddTagResponses, AnnotationsDeleteNoteData, AnnotationsDeleteNoteErrors, AnnotationsDeleteNoteResponses, AnnotationsListTagsData, AnnotationsListTagsErrors, AnnotationsListTagsResponses, AnnotationsReadData, AnnotationsReadErrors, AnnotationsReadResponses, AnnotationsRemoveTagData, AnnotationsRemoveTagErrors, AnnotationsRemoveTagResponses, AnnotationsUpdateNoteData, AnnotationsUpdateNoteErrors, AnnotationsUpdateNoteResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, ExportIocsData, ExportIocsErrors, ExportIocsResponses, ExportReportData, ExportReportErrors, ExportReportResponses, JobsDownloadData, JobsDownloadErrors, JobsDownloadResponses, JobsReadData, JobsReadErrors, JobsReadResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, RulesHitsData, RulesHitsErrors, RulesHitsResponses, RulesListData, RulesListErrors, RulesListResponses, RulesReadData, RulesReadErrors, RulesReadResponses, RulesReloadData, RulesReloadErrors, RulesReloadResponses, RulesUpdateData, RulesUpdateErrors, RulesUpdateResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -71,7 +71,8 @@ export const analysesCreate = <ThrowOnError extends boolean = false>(options: Op
 /**
  * Delete
  *
- * Removes the analysis, its CAPE task, its event index, and its sample once unused.
+ * Removes the analysis, its CAPE task, its event index, its exported files, and its sample
+ * once unused. `409` while the analysis is active or has a job (an export) in progress.
  */
 export const analysesDelete = <ThrowOnError extends boolean = false>(options: Options<AnalysesDeleteData, ThrowOnError>): RequestResult<AnalysesDeleteResponses, AnalysesDeleteErrors, ThrowOnError> => (options.client ?? client).delete<AnalysesDeleteResponses, AnalysesDeleteErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}', ...options });
 
@@ -364,6 +365,25 @@ export const rulesHits = <ThrowOnError extends boolean = false>(options: Options
 export const exportIocs = <ThrowOnError extends boolean = false>(options: Options<ExportIocsData, ThrowOnError>): RequestResult<ExportIocsResponses, ExportIocsErrors, ThrowOnError> => (options.client ?? client).get<ExportIocsResponses, ExportIocsErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/export/iocs', ...options });
 
 /**
+ * Report
+ *
+ * Starts building the report of a finished analysis as a self-contained HTML page or a PDF,
+ * and answers `202` with the pending job. Follow the job on `/ws/system` or `GET /jobs/{id}`;
+ * when it is `done`, `GET /jobs/{id}/download` returns the file. `include` leaves sections out
+ * (the analyst's notes, the screenshots, the raw IOC lists); all three default to included.
+ * `404` for an unknown analysis, `409` unless it is `done`, `422` for a format that is neither
+ * `html` nor `pdf`.
+ */
+export const exportReport = <ThrowOnError extends boolean = false>(options: Options<ExportReportData, ThrowOnError>): RequestResult<ExportReportResponses, ExportReportErrors, ThrowOnError> => (options.client ?? client).post<ExportReportResponses, ExportReportErrors, ThrowOnError>({
+    url: '/api/analyses/{analysis_id}/export/report',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * List Tags
  *
  * Every tag in use with the number of links using it across all analyses, most used first,
@@ -442,14 +462,29 @@ export const annotationsUpdateNote = <ThrowOnError extends boolean = false>(opti
 });
 
 /**
+ * Read
+ *
+ * The job's status, step, progress, log tail and result. `404` when unknown.
+ */
+export const jobsRead = <ThrowOnError extends boolean = false>(options: Options<JobsReadData, ThrowOnError>): RequestResult<JobsReadResponses, JobsReadErrors, ThrowOnError> => (options.client ?? client).get<JobsReadResponses, JobsReadErrors, ThrowOnError>({ url: '/api/jobs/{job_id}', ...options });
+
+/**
+ * Download
+ *
+ * The file a finished job produced, named by the job's result. `404` when the job is
+ * unknown, produced no file, or the file is gone; `409` unless the job is `done`.
+ */
+export const jobsDownload = <ThrowOnError extends boolean = false>(options: Options<JobsDownloadData, ThrowOnError>): RequestResult<JobsDownloadResponses, JobsDownloadErrors, ThrowOnError> => (options.client ?? client).get<JobsDownloadResponses, JobsDownloadErrors, ThrowOnError>({ url: '/api/jobs/{job_id}/download', ...options });
+
+/**
  * Ws Message Schemas
  *
  * Not a real endpoint — never called by the frontend.
  *
  * FastAPI only adds a Pydantic model to `/openapi.json`'s `components.schemas` for models
  * attached to an HTTP route it documents; it never introspects WebSocket handlers. Giving this
- * route `HealthMessage` as its response model is the only way to get that type (and `queue`/
- * `disk`/`job` once they exist) into the generated OpenAPI schema, so `@hey-api/openapi-ts`
+ * route the message types as its response model is the only way to get them (and `queue`/
+ * `disk` once they exist) into the generated OpenAPI schema, so `@hey-api/openapi-ts`
  * emits a TypeScript type for it (see backend spec, "API client").
  */
 export const systemWsMessageSchemas = <ThrowOnError extends boolean = false>(options?: Options<SystemWsMessageSchemasData, ThrowOnError>): RequestResult<SystemWsMessageSchemasResponses, SystemWsMessageSchemasErrors, ThrowOnError> => (options?.client ?? client).get<SystemWsMessageSchemasResponses, SystemWsMessageSchemasErrors, ThrowOnError>({ url: '/api/system/ws-schema', ...options });

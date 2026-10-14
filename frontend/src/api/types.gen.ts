@@ -1008,6 +1008,104 @@ export type IocsView = {
     truncated_types: Array<IocType>;
 };
 
+/**
+ * JobMessage
+ *
+ * `/ws/system`'s `job` push: sent whenever a job is submitted, starts, reports progress or
+ * ends, and once per still-active job when a client connects.
+ */
+export type JobMessage = {
+    /**
+     * Type
+     */
+    type?: 'job';
+    job: JobProgress;
+};
+
+/**
+ * JobProgress
+ *
+ * A job as `/ws/system` pushes it: where it stands, without the log.
+ */
+export type JobProgress = {
+    /**
+     * Id
+     */
+    id: number;
+    type: JobType;
+    /**
+     * Analysis Id
+     */
+    analysis_id: number | null;
+    status: JobStatus;
+    /**
+     * Step
+     */
+    step: string;
+    /**
+     * Progress
+     */
+    progress: number;
+    /**
+     * Result
+     */
+    result: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * JobRead
+ */
+export type JobRead = {
+    /**
+     * Id
+     */
+    id: number;
+    type: JobType;
+    /**
+     * Analysis Id
+     */
+    analysis_id: number | null;
+    status: JobStatus;
+    /**
+     * Step
+     */
+    step: string;
+    /**
+     * Progress
+     */
+    progress: number;
+    /**
+     * Result
+     */
+    result: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Log
+     */
+    log: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * JobStatus
+ */
+export type JobStatus = 'pending' | 'running' | 'done' | 'failed' | 'interrupted';
+
+/**
+ * JobType
+ */
+export type JobType = 'guest_build' | 'ingest' | 'reingest' | 'export_report' | 'delete_analysis';
+
 export type JsonValue = string | number | number | boolean | Array<JsonValue> | {
     [key: string]: JsonValue;
 } | null;
@@ -1615,6 +1713,37 @@ export type RelatedEvents = {
 };
 
 /**
+ * ReportInclude
+ *
+ * The sections the analyst may leave out. Tags stay either way: they are the header's
+ * metadata, and a `tlp:*` tag says how the report may be shared.
+ */
+export type ReportInclude = {
+    /**
+     * Notes
+     */
+    notes?: boolean;
+    /**
+     * Screenshots
+     */
+    screenshots?: boolean;
+    /**
+     * Raw Iocs
+     */
+    raw_iocs?: boolean;
+};
+
+/**
+ * ReportRequest
+ *
+ * What a report is asked to be: its file format and the sections it may leave out.
+ */
+export type ReportRequest = {
+    format: ReportVariant;
+    include?: ReportInclude;
+};
+
+/**
  * ReportSummary
  *
  * What the Dashboard and the analysis summary tab show; stored as `analysis.summary`.
@@ -1653,6 +1782,11 @@ export type ReportSummary = {
         [key: string]: number;
     };
 };
+
+/**
+ * ReportVariant
+ */
+export type ReportVariant = 'html' | 'pdf';
 
 export type Route = 'none' | 'drop' | 'internet' | 'inetsim' | 'tor' | 'vpn' | 'wireguard' | 'socks5';
 
@@ -3093,6 +3227,36 @@ export type ExportIocsResponses = {
     200: unknown;
 };
 
+export type ExportReportData = {
+    body: ReportRequest;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/export/report';
+};
+
+export type ExportReportErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ExportReportError = ExportReportErrors[keyof ExportReportErrors];
+
+export type ExportReportResponses = {
+    /**
+     * Successful Response
+     */
+    202: JobRead;
+};
+
+export type ExportReportResponse = ExportReportResponses[keyof ExportReportResponses];
+
 export type AnnotationsListTagsData = {
     body?: never;
     path?: never;
@@ -3315,6 +3479,64 @@ export type AnnotationsUpdateNoteResponses = {
 
 export type AnnotationsUpdateNoteResponse = AnnotationsUpdateNoteResponses[keyof AnnotationsUpdateNoteResponses];
 
+export type JobsReadData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}';
+};
+
+export type JobsReadErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type JobsReadError = JobsReadErrors[keyof JobsReadErrors];
+
+export type JobsReadResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobRead;
+};
+
+export type JobsReadResponse = JobsReadResponses[keyof JobsReadResponses];
+
+export type JobsDownloadData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: never;
+    url: '/api/jobs/{job_id}/download';
+};
+
+export type JobsDownloadErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type JobsDownloadError = JobsDownloadErrors[keyof JobsDownloadErrors];
+
+export type JobsDownloadResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
 export type SystemWsMessageSchemasData = {
     body?: never;
     path?: never;
@@ -3333,9 +3555,11 @@ export type SystemWsMessageSchemasError = SystemWsMessageSchemasErrors[keyof Sys
 
 export type SystemWsMessageSchemasResponses = {
     /**
+     * Response System Ws Message Schemas
+     *
      * Successful Response
      */
-    200: HealthMessage;
+    200: HealthMessage | JobMessage;
 };
 
 export type SystemWsMessageSchemasResponse = SystemWsMessageSchemasResponses[keyof SystemWsMessageSchemasResponses];
