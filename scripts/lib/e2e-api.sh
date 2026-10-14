@@ -135,6 +135,12 @@ remove_analyses() { # id...
     return "$left_behind"
 }
 
+reingest_answers() { # id expected-code
+    http POST "/api/analyses/$1/reingest"
+    [[ $HTTP_CODE == "$2" ]] || { echo "answered $HTTP_CODE (wanted $2): $(body)"; return 1; }
+    echo "answered $HTTP_CODE"
+}
+
 analyses_of_sample() { # sha256 -> one analysis id per line
     http GET "/api/analyses?limit=200"
     body | json_eval '"\n".join(str(a["id"]) for a in v["items"] if a["sample_sha256"] == "'"$1"'")'

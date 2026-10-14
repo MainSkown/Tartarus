@@ -2,12 +2,15 @@
 # End-to-end check of the stack against the REAL services (`make up` first, guest built and registered):
 # submits a harmless sample through the frontend's published port and follows it through the
 # queue, the guest and the report. On the finished analysis of step (a) it checks the event index,
-# every analysis view (processes, network, detections, ATT&CK, IOCs, artifacts) and the query API:
+# every analysis view (processes, network, detections, ATT&CK, IOCs, artifacts), the Sigma rules (the
+# shipped set loads and is valid, the benign sample raises the Tartarus self-test rule's one alert in
+# the final index, and disabling the rule then re-ingesting removes it) and the query API:
 # validation, the field catalog, search with paging in both sorts, query/chip/lane narrowing, the
 # error answers, facets, the histogram, one event with its related events, value autocomplete and
 # extra columns, each compared with the analysis record's own counts (scripts/lib/e2e-query.sh).
-# The live feed is always checked on the same analysis. Then it checks the queue order and
-# cancelling, deleting a finished analysis, and a browser run of the submit flow
+# The live feed is always checked on the same analysis, Sigma alert included: it must arrive in the
+# batch of the event that caused it and equal the final one by rule and triggering call. Then it
+# checks the queue order and cancelling, deleting a finished analysis, and a browser run of the submit flow
 # (frontend/tests/e2e/submit-flow.spec.ts: the tabs, and the Events and Timeline tabs filtering the
 # real index) on a second analysis. Step (j) always ends an interactive run early through POST /finish.
 # `E2E_DRILLS=1` adds the failure drills, which stop cape or opensearch and restart the backend
@@ -36,6 +39,7 @@ source "$REPO/scripts/lib/benign-sample.sh"
 source "$REPO/scripts/lib/e2e-api.sh"
 source "$REPO/scripts/lib/e2e-views.sh"
 source "$REPO/scripts/lib/e2e-query.sh"
+source "$REPO/scripts/lib/e2e-rules.sh"
 source "$REPO/scripts/lib/e2e-live.sh"
 source "$REPO/scripts/lib/e2e-finish.sh"
 
@@ -46,9 +50,10 @@ CREATED_IDS=()
 
 remember() { CREATED_IDS+=("$1"); }
 
-# Always runs: puts cape, opensearch and the backend back, then removes what the run created. An
-# analysis that is still running is waited for (see remove_analysis), so a failed step does not leave
-# one behind to block the next run; a second interrupt skips the wait.
+# Always runs: puts cape, opensearch and the backend back, enables the Sigma self-test rule again if a
+# step left it disabled, then removes what the run created. An analysis that is still running is
+# waited for (see remove_analysis), so a failed step does not leave one behind to block the next run;
+# a second interrupt skips the wait.
 cleanup() {
     trap - EXIT
     stop_live_watch
@@ -56,6 +61,7 @@ cleanup() {
     if [[ -n ${BASE:-} ]]; then
         wait_for_health cape ok "$RESTORE_TIMEOUT" >/dev/null 2>&1 || info "cape is not healthy after the run"
         wait_for_health opensearch ok "$RESTORE_TIMEOUT" >/dev/null 2>&1 || info "opensearch is not healthy after the run"
+        restore_selftest_rule >/dev/null 2>&1 || info "the Sigma self-test rule is still disabled; enable it with PATCH /api/rules/$SELFTEST_RULE_ID {\"enabled\": true}"
     fi
     remove_analyses "${CREATED_IDS[@]}" >/dev/null 2>&1
     rm -rf "$WORK_DIR" "$RESPONSE_FILE"
@@ -145,6 +151,14 @@ step_a_sample_runs_to_done() {
 step_h_live_feed() {
     [[ -s ${LIVE_SUMMARY:-} ]] || { fail "(h) skipped: step (a) recorded no live feed"; return 1; }
     check_live_feed "$A_ID" "$LIVE_SUMMARY" "$(basename "$A_FILE")"
+}
+
+# --- (k) the Sigma rules ------------------------------------------------------------------------
+
+# Before step (b): re-ingesting needs the stack to have no other analysis active, and step (d) deletes A.
+step_k_sigma_rules() {
+    [[ -n ${A_ID:-} ]] || { fail "(k) skipped: step (a) produced no analysis"; return 1; }
+    check_sigma_rules "$A_ID"
 }
 
 # --- (b) and (c) strict order, and cancelling a queued analysis ---------------
@@ -401,12 +415,6 @@ failed_ingest_left_nothing_behind() { # id
     index_is_gone "$1"
 }
 
-reingest_answers() { # id expected-code
-    http POST "/api/analyses/$1/reingest"
-    [[ $HTTP_CODE == "$2" ]] || { echo "answered $HTTP_CODE (wanted $2): $(body)"; return 1; }
-    echo "answered $HTTP_CODE"
-}
-
 step_g_reingest_after_index_outage() {
     local failed_id busy_id
     submit_and_remember "$(unique_sample e2e-g-failed.exe)" && failed_id=$SUBMITTED_ID ||
@@ -443,6 +451,8 @@ main() {
     step_a_sample_runs_to_done
     echo "== (h) the live feed of step (a)"
     step_h_live_feed
+    echo "== (k) the Sigma rules"
+    step_k_sigma_rules
     echo "== (b, c) order and cancel"
     step_bc_order_and_cancel
     echo "== (d) delete"

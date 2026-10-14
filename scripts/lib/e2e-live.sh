@@ -52,11 +52,13 @@ live_assert() { # summary-file; stdin: the Python block
     json_assert
 }
 
-# Puts {"live": <summary>, "final": [<ids of the index's capemon events>]} where json_assert reads it.
+# Puts {"live": <summary>, "final": [<ids of the index's capemon events>], "final_calls": [...], "final_alerts": [...]}
+# where json_assert reads it. An alert names its triggering events by id; each is resolved to the call it is, as the
+# live client does for the alerts it saw, so the two sides can be compared by call and not by an id that may shift.
 summary_with_index_ids() { # summary-file id
     local ids
     ids=$(opensearch_curl -XPOST -H 'content-type: application/json' \
-        -d "{\"size\":$LIVE_FINAL_ID_LIMIT,\"_source\":[\"process.pid\",\"@timestamp\",\"event.action\",\"api.name\"],\"query\":{\"term\":{\"event.module\":\"capemon\"}}}" \
+        -d "{\"size\":$LIVE_FINAL_ID_LIMIT,\"_source\":[\"process.pid\",\"@timestamp\",\"event.action\",\"event.module\",\"event.kind\",\"api.name\",\"rule.id\",\"rule.ruleset\",\"related.events\"],\"query\":{\"bool\":{\"minimum_should_match\":1,\"should\":[{\"term\":{\"event.module\":\"capemon\"}},{\"bool\":{\"filter\":[{\"term\":{\"event.kind\":\"alert\"}},{\"term\":{\"rule.ruleset\":\"sigma\"}}]}}]}}}" \
         "localhost:9200/$(index_name "$2")/_search") || return 1
     python3 -I -c '
 import json, sys
@@ -70,7 +72,13 @@ def call_key(source):
     api = source.get("api") or {}
     return "|".join(str(part) for part in (process.get("pid"), source["@timestamp"], source["event"]["action"], api.get("name")))
 hits = answer["hits"]["hits"]
-print(json.dumps({"live": live, "final": [hit["_id"] for hit in hits], "final_calls": [call_key(hit["_source"]) for hit in hits]}))' "$1" "$ids" >"$RESPONSE_FILE"
+calls = [hit for hit in hits if hit["_source"]["event"]["module"] == "capemon"]
+call_by_id = {hit["_id"]: call_key(hit["_source"]) for hit in calls}
+def alert_of(source):
+    related_ids = source["related"]["events"]
+    return {"rule_id": source["rule"]["id"], "related_ids": related_ids, "related_calls": [call_by_id[i] for i in related_ids if i in call_by_id]}
+alerts = [alert_of(hit["_source"]) for hit in hits if hit["_source"]["event"]["kind"] == "alert"]
+print(json.dumps({"live": live, "final": [hit["_id"] for hit in calls], "final_calls": list(call_by_id.values()), "final_alerts": alerts}))' "$1" "$ids" >"$RESPONSE_FILE"
 }
 
 # --- (h) the live feed of an analysis followed from submit to done -----------------------------
@@ -157,14 +165,51 @@ offset = sorted(single)[len(single) // 2]
 assert abs(offset) <= $LIVE_CLOCK_MAX_OFFSET_SECONDS, f"live times are {offset:.1f} s off the final ones, more than the rounded calibration allows"
 def same_call(live_when, final_when):
     return abs(live_when - final_when - offset) <= $LIVE_CLOCK_TOLERANCE_SECONDS
-absent = [key for key, whens in live_times.items() for when in whens if not any(same_call(when, other) for other in final_times.get(key, []))]
+
+def live_without_final(live_by_key, final_by_key):
+    return [key for key, whens in live_by_key.items() for when in whens if not any(same_call(when, other) for other in final_by_key.get(key, []))]
+
+def final_without_live(final_by_key, live_by_key):
+    return [key for key, whens in final_by_key.items() for when in whens if not any(same_call(other, when) for other in live_by_key.get(key, []))]
+
+absent = live_without_final(live_times, final_times)
 assert not absent, f"{len(absent)} live events have no matching call in the final index, e.g. {absent[:2]}"
-never_live = [key for key, whens in final_times.items() for when in whens if not any(same_call(other, when) for other in live_times.get(key, []))]
+never_live = final_without_live(final_times, live_times)
 assert not never_live, f"{len(never_live)} calls of the final index never arrived live, e.g. {sorted(never_live)[:2]}"
+
+# A Sigma alert is the same alert live and final when its rule and the call that triggered it are, the
+# trigger's time carrying the same offset as any other call.
+live_alerts = [alert for m in events for alert in m["alerts"] if alert["ruleset"] == "sigma"]
+final_alerts = v["final_alerts"]
+for side, alerts, where in (("live", live_alerts, "its batch"), ("final", final_alerts, "the capemon events of the index")):
+    unresolved = [alert["rule_id"] for alert in alerts if not alert["related_ids"] or len(alert["related_calls"]) != len(alert["related_ids"])]
+    assert not unresolved, f"{side} Sigma alerts of rules {unresolved} name an event that is not in {where}"
+
+def alert_calls(alerts):
+    return times_by_call(f"{alert['rule_id'].lower()}/{call}" for alert in alerts for call in alert["related_calls"])
+
+live_alert_times, final_alert_times = alert_calls(live_alerts), alert_calls(final_alerts)
+unmatched_live = live_without_final(live_alert_times, final_alert_times)
+assert not unmatched_live, f"{len(unmatched_live)} Sigma alerts seen live have no match in the final index, e.g. {unmatched_live[:2]}"
+unmatched_final = final_without_live(final_alert_times, live_alert_times)
+assert not unmatched_final, f"{len(unmatched_final)} Sigma alerts of the final index never arrived live, e.g. {sorted(unmatched_final)[:2]}"
 missing = final - live_ids
-detail = f"{len(live_ids)} live events, {len(final)} capemon events in the index, {len(missing)} not seen live under their id, {len(shifted)} live ids shifted by merged repeats; live times {offset:.1f} s off the final ones"
+detail = f"{len(live_ids)} live events, {len(final)} capemon events in the index, {len(missing)} not seen live under their id, {len(shifted)} live ids shifted by merged repeats; live times {offset:.1f} s off the final ones; {len(live_alerts)} Sigma alerts live and {len(final_alerts)} final, matched by rule and triggering call"
 if missing:
     detail += ": " + ", ".join(sorted(missing))
+PY
+}
+
+# The Outcome promises a live match reaches the feed in the batch of the event that caused it.
+live_feed_saw_the_alert_of_rule() { # summary-file rule-id
+    live_assert "$1" <<PY
+rule = "$2"
+arrivals = [(m["t"], alert) for m in v["messages"] if m["type"] == "events" for alert in m["alerts"] if alert["ruleset"] == "sigma" and alert["rule_id"] == rule]
+assert arrivals, f"no live alert of rule {rule}"
+assert len(arrivals) == 1, f"{len(arrivals)} live alerts of rule {rule}; the sample triggers it once"
+at, alert = arrivals[0]
+assert alert["related_ids"] and len(alert["related_calls"]) == len(alert["related_ids"]), f"the event it names is not in its batch: {alert['related_ids']}"
+detail = f"arrived at {at} s with its triggering event in the same batch"
 PY
 }
 
@@ -250,7 +295,8 @@ check_live_feed() { # id summary-file sample-file-name
     local id=$1 summary=$2 sample=$3
     check "(h) the live status goes through running to done, in order" ranked_statuses_never_go_back "$summary"
     check "(h) process add messages arrive for the sample and its cmd.exe child, each end after its add" processes_arrive_in_order "$summary" "$sample"
-    check "(h) every call seen live is in the final index, ids may shift where CAPE merged repeats" live_events_are_in_the_final_index "$summary" "$id"
+    check "(h) every call seen live is in the final index, ids may shift where CAPE merged repeats, and the Sigma alerts agree by rule and triggering call" live_events_are_in_the_final_index "$summary" "$id"
+    check "(h) the self-test rule's Sigma alert arrived live once, in the batch of the event that triggered it" live_feed_saw_the_alert_of_rule "$summary" "$SELFTEST_RULE_ID"
     check "(h) the first events arrived before the status was processing" events_began_before_processing "$summary"
     check "(h) phase final arrived once, as the last message" phase_final_is_last_and_single "$summary"
     check "(h) the socket closed with 1000, once" closed_normally_once "$summary"

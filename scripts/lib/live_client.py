@@ -50,6 +50,21 @@ def call_key(event: dict[str, Any]) -> str:
     return f"{process.get('pid')}|{event['@timestamp']}|{event['event']['action']}|{(event.get('api') or {}).get('name')}"
 
 
+def describe_alert(alert: dict[str, Any], batch: list[dict[str, Any]]) -> dict[str, Any]:
+    """An alert's rule and the calls it names, found in its own batch: an alert reaches the feed
+    with the event that triggered it, so a named event missing from the batch is a finding."""
+    rule = alert.get("rule") or {}
+    related_ids = (alert.get("related") or {}).get("events", [])
+    call_by_id = {event["event"]["id"]: call_key(event) for event in batch}
+    return {
+        "id": alert["event"]["id"],
+        "rule_id": rule.get("id"),
+        "ruleset": rule.get("ruleset"),
+        "related_ids": related_ids,
+        "related_calls": [call_by_id[event_id] for event_id in related_ids if event_id in call_by_id],
+    }
+
+
 def describe(message: dict[str, Any], seconds: float, connection: int) -> dict[str, Any]:
     kind, data = message["type"], message["data"]
     record: dict[str, Any] = {"t": round(seconds, 2), "conn": connection, "type": kind}
@@ -57,12 +72,15 @@ def describe(message: dict[str, Any], seconds: float, connection: int) -> dict[s
         record.update(status=data["status"], phase=data["phase"])
     elif kind == "events":
         events = data["events"]
+        alerts = [event for event in events if event["event"].get("kind") == "alert"]
+        calls = [event for event in events if event["event"].get("kind") != "alert"]
         record.update(
             n=len(events),
             dropped=data["dropped"],
-            ids=[event["event"]["id"] for event in events],
-            calls=[call_key(event) for event in events],
-            api=sum(event["tartarus"]["lane"] == "api" for event in events),
+            ids=[event["event"]["id"] for event in calls],
+            calls=[call_key(event) for event in calls],
+            api=sum(event["tartarus"]["lane"] == "api" for event in calls),
+            alerts=[describe_alert(alert, calls) for alert in alerts],
         )
     elif kind == "process":
         node = data["node"]
