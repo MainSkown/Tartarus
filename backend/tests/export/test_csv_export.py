@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import UTC, datetime
 
 import pytest
 
@@ -44,8 +45,18 @@ def test_a_process_without_a_name_is_called_unknown(make_input) -> None:
     assert parse(render_csv(make_input(iocs=(ioc,))))[0]["source_process"] == "unknown (17)"
 
 
-def test_first_seen_is_blank_because_an_ioc_carries_no_time(make_input) -> None:
-    assert {row["first_seen"] for row in parse(render_csv(make_input()))} == {""}
+def test_first_seen_is_the_time_of_the_first_event_in_utc(make_input) -> None:
+    ioc = make_ioc(IocType.DOMAIN, "a.example").model_copy(
+        update={"first_seen": datetime(2026, 10, 13, 12, 12, 41, 383000, tzinfo=UTC)}
+    )
+
+    assert parse(render_csv(make_input(iocs=(ioc,))))[0]["first_seen"] == "2026-10-13T12:12:41.383Z"
+
+
+def test_first_seen_is_blank_for_an_ioc_that_has_no_event(make_input) -> None:
+    ioc = make_ioc(IocType.HASH, "a" * 64)
+
+    assert parse(render_csv(make_input(iocs=(ioc,))))[0]["first_seen"] == ""
 
 
 def test_commas_quotes_and_newlines_in_the_context_survive(make_input) -> None:

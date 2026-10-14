@@ -1,5 +1,6 @@
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from app.db.models import Analysis
@@ -77,7 +78,14 @@ def _aggregation(spec: _EventIoc) -> dict[str, Any]:
         "size": EVENTS_PER_IOC,
         "sort": TIME_ORDER,
         "_source": {
-            "includes": ["event.id", spec.field, "tartarus.summary", "process.pid", "process.name"]
+            "includes": [
+                "@timestamp",
+                "event.id",
+                spec.field,
+                "tartarus.summary",
+                "process.pid",
+                "process.name",
+            ]
         },
     }
     return {
@@ -102,7 +110,13 @@ def _ioc(spec: _EventIoc, bucket: Mapping[str, Any]) -> Ioc:
         context=_context(events),
         source_event_ids=[str(dig(event, "event", "id")) for event in events],
         process=next((ref for event in events if (ref := process_ref(event))), None),
+        first_seen=_first_seen(events),
     )
+
+
+def _first_seen(events: list[Source]) -> datetime | None:
+    stamp = text_at(events[0], "@timestamp") if events else None
+    return datetime.fromisoformat(stamp) if stamp else None
 
 
 def _context(events: list[Source]) -> str:

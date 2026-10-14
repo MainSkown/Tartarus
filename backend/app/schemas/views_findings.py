@@ -77,6 +77,7 @@ class Ioc(ApiModel):
     context: str
     source_event_ids: list[str]
     process: ProcessRef | None
+    first_seen: datetime | None = None
 
 
 class IocsView(ApiModel):
