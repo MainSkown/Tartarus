@@ -364,7 +364,7 @@ Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` â†
 | `network-connection` | `network_connection` |
 | `dns-query` | `dns_query` |
 | `image-loaded` | `image_load` |
-| `create-remote-thread` / `inject-*` | `create_remote_thread` |
+| `create-remote-thread` / `inject-thread` | `create_remote_thread` |
 | `process-access` | `process_access` |
 
 ## Filesystem artefacts
