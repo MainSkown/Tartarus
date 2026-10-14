@@ -6,6 +6,7 @@ import { debounced } from '@/services/debounced'
 import { createRequestSequence } from '@/services/request-sequence'
 import { quietOn } from '@/services/quiet-statuses'
 import { searchFailure, type SearchFailure } from '@/services/search-failure'
+import { useEventColumnsStore } from '@/stores/event-columns'
 import { useQueryStateStore } from '@/stores/query-state'
 
 export const EVENTS_PAGE_SIZE = 100
@@ -23,6 +24,7 @@ type Step = 1 | -1
  */
 export const useEventsStore = defineStore('events', () => {
   const query = useQueryStateStore()
+  const columns = useEventColumnsStore()
   const events = ref<Event[]>([])
   const total = ref(0)
   const nextCursor = ref<string | null>(null)
@@ -41,13 +43,19 @@ export const useEventsStore = defineStore('events', () => {
 
   const hasMore = computed(() => nextCursor.value !== null)
   const requestKey = computed(() =>
-    query.analysisId === undefined ? undefined : JSON.stringify([query.analysisId, query.searchFilter, sort.value]),
+    query.analysisId === undefined ? undefined : JSON.stringify([query.analysisId, query.searchFilter, sort.value, columns.chosen]),
   )
 
   function search(analysisId: number, searchAfter?: string) {
     return eventsSearch({
       path: { analysis_id: analysisId },
-      body: { ...query.searchFilter, sort: sort.value, size: EVENTS_PAGE_SIZE, ...(searchAfter && { search_after: searchAfter }) },
+      body: {
+        ...query.searchFilter,
+        sort: sort.value,
+        size: EVENTS_PAGE_SIZE,
+        ...(columns.chosen.length > 0 && { columns: [...columns.chosen] }),
+        ...(searchAfter && { search_after: searchAfter }),
+      },
       meta: QUIET_ON_EVENT_FAILURES,
     })
   }
@@ -60,15 +68,19 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   async function load(): Promise<void> {
-    const key = requestKey.value
-    if (key === undefined || query.analysisId === undefined) return
+    if (requestKey.value === undefined || query.analysisId === undefined) return
     const request = requests.next()
-    requestedKey = key
+    requestedKey = requestKey.value
     requestedAnalysisId = query.analysisId
     loading.value = true
     loadingMore.value = false
     error.value = undefined
     loadMoreError.value = undefined
+    await columns.validate()
+    if (!requests.isCurrent(request)) return
+    const key = requestKey.value
+    requestedKey = key
+    if (key === undefined || query.analysisId === undefined) return
     const { data, error: failure, response } = await search(query.analysisId)
     if (!requests.isCurrent(request)) return
     loading.value = false

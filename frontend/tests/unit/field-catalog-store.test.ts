@@ -39,6 +39,16 @@ beforeEach(() => {
   catalog = useFieldCatalogStore()
 })
 
+describe('canonicalName', () => {
+  it('names the field an alias stands for, in any case, and leaves a canonical name or an unknown one as it is', async () => {
+    await catalog.load()
+    expect(catalog.canonicalName('proc')).toBe('process.name')
+    expect(catalog.canonicalName('PORT')).toBe('destination.port')
+    expect(catalog.canonicalName('process.name')).toBe('process.name')
+    expect(catalog.canonicalName('nope')).toBe('nope')
+  })
+})
+
 describe('loading', () => {
   it('asks for the whole catalog, without a prefix', async () => {
     await catalog.load()

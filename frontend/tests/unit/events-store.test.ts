@@ -4,10 +4,15 @@ import type { EventPage } from '@/api'
 import { eventList, eventPage } from './events-fixtures'
 
 const eventsSearchMock = vi.fn()
-vi.mock('@/api', () => ({ eventsSearch: (...args: unknown[]) => eventsSearchMock(...args) }))
+const queryFieldsMock = vi.fn()
+vi.mock('@/api', () => ({
+  eventsSearch: (...args: unknown[]) => eventsSearchMock(...args),
+  queryFields: (...args: unknown[]) => queryFieldsMock(...args),
+}))
 
 const { useEventsStore, EVENTS_PAGE_SIZE, EVENTS_DEBOUNCE_MS } = await import('@/stores/events')
 const { useQueryStateStore } = await import('@/stores/query-state')
+const { useEventColumnsStore, COLUMNS_STORAGE_KEY } = await import('@/stores/event-columns')
 
 let events: ReturnType<typeof useEventsStore>
 let query: ReturnType<typeof useQueryStateStore>
@@ -47,6 +52,11 @@ async function afterDebounce() {
 beforeEach(() => {
   vi.useFakeTimers()
   eventsSearchMock.mockReset()
+  queryFieldsMock.mockReset()
+  queryFieldsMock.mockResolvedValue({
+    data: ['file.path', 'api.name'].map((name) => ({ name, type: 'keyword', aliases: [], description: '', example: '', lane: null, members: [], searchable: true })),
+  })
+  window.localStorage.clear()
   eventsSearchMock.mockResolvedValue(ok(eventPage(eventList(3))))
   setActivePinia(createPinia())
   query = useQueryStateStore()
@@ -111,6 +121,59 @@ describe('the first page', () => {
     expect(events.loaded).toBe(false)
     await startOn()
     expect(events.loaded).toBe(true)
+  })
+})
+
+describe('columns', () => {
+  it('asks for the chosen extra columns with every search, and for none by default', async () => {
+    await startOn()
+    expect(lastRequest().body.columns).toBeUndefined()
+    useEventColumnsStore().toggle('file.path')
+    useEventColumnsStore().toggle('api.name')
+    await afterDebounce()
+    expect(lastRequest().body.columns).toEqual(['file.path', 'api.name'])
+  })
+
+  it('starts the list over from the first page when the columns change', async () => {
+    eventsSearchMock.mockResolvedValueOnce(ok(eventPage(eventList(100), { total: 250, next_cursor: 'c1' })))
+    await startOn()
+    useEventColumnsStore().toggle('file.path')
+    await afterDebounce()
+    expect(lastRequest().body.search_after).toBeUndefined()
+    expect(eventsSearchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks for the same columns on the following pages', async () => {
+    eventsSearchMock.mockResolvedValueOnce(ok(eventPage(eventList(100), { total: 250, next_cursor: 'c1' })))
+    useEventColumnsStore().toggle('file.path')
+    await startOn()
+    await events.loadMore()
+    expect(lastRequest().body).toMatchObject({ search_after: 'c1', columns: ['file.path'] })
+  })
+
+  it('drops the answer to an older choice of columns that arrives late', async () => {
+    await startOn()
+    const slow = deferred<unknown>()
+    eventsSearchMock.mockReturnValueOnce(slow.promise)
+    useEventColumnsStore().toggle('file.path')
+    await afterDebounce()
+    eventsSearchMock.mockResolvedValueOnce(ok(eventPage(eventList(1, 50), { total: 1 })))
+    useEventColumnsStore().toggle('api.name')
+    await afterDebounce()
+    slow.resolve(ok(eventPage(eventList(9), { total: 9 })))
+    await settle()
+    expect(events.events.map((event) => event.id)).toEqual(['e50'])
+  })
+
+  it('forgets a remembered column the catalog no longer has before the first search, so the search is not refused', async () => {
+    window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(['file.path', 'gone.field']))
+    setActivePinia(createPinia())
+    query = useQueryStateStore()
+    events = useEventsStore()
+    await startOn()
+    await afterDebounce()
+    expect(eventsSearchMock).toHaveBeenCalledTimes(1)
+    expect(lastRequest().body.columns).toEqual(['file.path'])
   })
 })
 

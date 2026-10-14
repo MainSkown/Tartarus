@@ -494,6 +494,14 @@ export type Event = {
      * Registry Path
      */
     registry_path: string | null;
+    /**
+     * Fields
+     *
+     * The requested `columns` by canonical field name; a column the event has no value for is absent.
+     */
+    fields: {
+        [key: string]: JsonValue;
+    };
 };
 
 /**
@@ -970,6 +978,10 @@ export type IocsView = {
      */
     truncated_types: Array<IocType>;
 };
+
+export type JsonValue = string | number | number | boolean | Array<JsonValue> | {
+    [key: string]: JsonValue;
+} | null;
 
 /**
  * Lane
@@ -1596,6 +1608,12 @@ export type SearchRequest = {
      * The `next_cursor` of the previous page.
      */
     search_after?: string | null;
+    /**
+     * Columns
+     *
+     * Catalog fields or aliases to return under `fields` of each event, on top of the typed ones.
+     */
+    columns?: Array<string>;
 };
 
 /**

@@ -8,14 +8,13 @@ import ProcessChip from '@/components/ProcessChip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import ViewState from '@/components/ViewState.vue'
-import { useEventColumns } from '@/composables/use-event-columns'
 import { columnValue } from '@/services/event-columns'
 import { eventProcess } from '@/services/event-display'
-import { fieldLabel } from '@/services/event-fields'
 import { formatCount } from '@/services/format-number'
 import { formatClockTime } from '@/services/format-time'
 import { laneMeta } from '@/services/lanes'
 import { scrollTopToReveal, shouldLoadMore } from '@/services/virtual-paging'
+import { useEventColumnsStore } from '@/stores/event-columns'
 
 const ROW_HEIGHT = 28
 // Rows rendered at least, so a fast scroll never shows blank rows before the list has re-measured.
@@ -49,7 +48,7 @@ const emit = defineEmits<{
   clear: []
 }>()
 
-const columns = useEventColumns()
+const columns = useEventColumnsStore()
 const list = ref<InstanceType<typeof QVirtualScroll>>()
 const lastRendered = ref(0)
 
@@ -58,7 +57,7 @@ const isEmpty = computed(() => !props.loading && props.events.length === 0)
 const isStale = computed(() => props.loading && props.events.length > 0)
 const ascending = computed(() => props.sort === '@timestamp')
 
-const extraColumns = computed(() => columns.chosen.value.map((field) => ({ field, label: fieldLabel(field) })))
+const extraColumns = computed(() => columns.chosen.map((field) => ({ field, label: field.toUpperCase() })))
 const gridColumns = computed(() => {
   const { time, lane, process, action, summary, severity } = DEFAULT_COLUMN_REMS
   const extras = extraColumns.value.map(() => `${EXTRA_COLUMN_REM}rem`)
@@ -148,7 +147,8 @@ watch(
         aria-live="polite"
       >{{ counter }}</span>
       <EventColumnChooser
-        :chosen="columns.chosen.value"
+        :chosen="columns.chosen"
+        :at-limit="columns.atLimit"
         @toggle="columns.toggle"
         @clear="columns.clear"
       />

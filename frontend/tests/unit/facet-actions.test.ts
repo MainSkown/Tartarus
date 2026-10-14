@@ -23,8 +23,8 @@ describe('facetChipAction', () => {
     expect(facetChipAction([NOT_API], 'api.name', 'NtDelayExecution', false)).toEqual({ kind: 'remove', index: 0 })
   })
 
-  it('turns an included value into a filter out when asked to filter it out', () => {
-    expect(facetChipAction([CMD], 'process.name', 'cmd.exe', true)).toEqual({ kind: 'add', chip: { ...CMD, negate: true } })
+  it('turns an included value around when asked to filter it out, keeping the chip where it is', () => {
+    expect(facetChipAction([NOT_API, CMD], 'process.name', 'cmd.exe', true)).toEqual({ kind: 'toggle', index: 1 })
   })
 
   it('does not mistake the same value of another field for the chip', () => {

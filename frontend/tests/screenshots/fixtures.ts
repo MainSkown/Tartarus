@@ -19,7 +19,6 @@ import type {
   SettingsBody,
   SystemHealth,
 } from '../../src/api/types.gen'
-import { columnValue } from '../../src/services/event-columns'
 
 // An /api request no scenario mocked would fall through to the dev server's proxy (no backend
 // behind it) and paint an error toast into the screenshot, so a mock whose URL drifted from
@@ -627,7 +626,6 @@ export async function mockQuery(page: Page, options: QueryMockOptions = {}): Pro
 const EVENTS_SEARCH_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/search$/.test(url.pathname)
 const EVENTS_FACETS_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/facets$/.test(url.pathname)
 const EVENT_DETAIL_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith('/search')
-const SEVERITY_RANK = ['info', 'low', 'medium', 'high', 'critical']
 const FACET_TOP = 10
 
 interface RelatedSpec {
@@ -648,41 +646,46 @@ interface EventsSample {
 }
 
 export function sampleEvents(): Event[] {
-  return JSON.parse(readFileSync(path.join(DATA_DIR, 'events', 'events.json'), 'utf8')) as Event[]
+  const typed = JSON.parse(readFileSync(path.join(DATA_DIR, 'events', 'events.json'), 'utf8')) as Omit<Event, 'fields'>[]
+  return typed.map((event) => ({ ...event, fields: {} }))
 }
 
 export function sampleEventDetails(): EventsSample {
   return JSON.parse(readFileSync(path.join(DATA_DIR, 'events', 'details.json'), 'utf8')) as EventsSample
 }
 
-const FIELD_ALIASES: Record<string, string> = {
-  lane: 'tartarus.lane',
-  process: 'process.name',
-  proc: 'process.name',
-  pid: 'process.pid',
-  action: 'event.action',
-  kind: 'event.kind',
-  summary: 'tartarus.summary',
-  api: 'api.name',
-  rule: 'rule.name',
-  sev: 'event.severity',
-  severity: 'event.severity',
+type Source = Record<string, unknown>
+
+const MAX_COLUMNS = 12
+
+function sampleSources(): Record<string, Source> {
+  return JSON.parse(readFileSync(path.join(DATA_DIR, 'events', 'sources.json'), 'utf8')) as Record<string, Source>
 }
 
-/** The values an event has for a catalog field or alias, for the fields the sample queries and chips use. */
-function fieldValues(event: Event, requested: string): string[] {
-  const field = FIELD_ALIASES[requested.toLowerCase()] ?? requested
-  const own: Record<string, unknown> = {
-    'tartarus.lane': event.lane,
-    'process.name': event.process?.name,
-    'process.pid': event.process?.pid,
-    'event.action': event.action,
-    'event.kind': event.kind,
-    'tartarus.summary': event.summary,
-    'event.severity': event.severity === null ? null : SEVERITY_RANK.indexOf(event.severity),
-  }
-  const value = field in own ? own[field] : columnValue(event, field)
-  return value === null || value === undefined || value === '' ? [] : [String(value)]
+/** The value at a dotted catalog name of a stored document, read by its nested path. */
+function valueAt(source: Source, field: string): unknown {
+  if (field in source) return source[field]
+  return field.split('.').reduce<unknown>((node, key) => (node && typeof node === 'object' ? (node as Source)[key] : undefined), source)
+}
+
+function leafTexts(value: unknown): string[] {
+  if (value === null || value === undefined || value === '') return []
+  if (Array.isArray(value)) return value.flatMap(leafTexts)
+  return typeof value === 'object' ? [] : [String(value)]
+}
+
+/** The query compiler's resolution of a name or alias: the catalog fields it stands for (a composite alias has several). */
+function resolveFields(requested: string): string[] {
+  const wanted = requested.toLowerCase()
+  const field = realFieldCatalog().find((entry) => entry.name.toLowerCase() === wanted || entry.aliases.includes(wanted))
+  if (!field) return [requested]
+  return field.members.length > 0 ? field.members : [field.name]
+}
+
+/** The values an event has for a catalog field or alias, as text, from its stored document. */
+function fieldValues(sources: Record<string, Source>, event: Event, requested: string): string[] {
+  const source = sources[event.id]
+  return source ? resolveFields(requested).flatMap((field) => leafTexts(valueAt(source, field))) : []
 }
 
 function wildcard(pattern: string): RegExp {
@@ -690,13 +693,13 @@ function wildcard(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`, 'i')
 }
 
-function matchesChip(event: Event, chip: FilterChip): boolean {
-  const matches = fieldValues(event, chip.field).some((value) => wildcard(chip.value).test(value))
+function matchesChip(sources: Record<string, Source>, event: Event, chip: FilterChip): boolean {
+  const matches = fieldValues(sources, event, chip.field).some((value) => wildcard(chip.value).test(value))
   return chip.negate ? !matches : matches
 }
 
 /** The query language reduced to what a sample needs: ANDed `field:value` terms and free words, with NOT. */
-function matchesQuery(event: Event, query: string): boolean {
+function matchesQuery(sources: Record<string, Source>, event: Event, query: string): boolean {
   const terms = query.match(/NOT\s+|[^\s"]+:"[^"]*"|[^\s]+/g) ?? []
   let negate = false
   for (const term of terms) {
@@ -708,7 +711,7 @@ function matchesQuery(event: Event, query: string): boolean {
     const split = term.indexOf(':')
     const hit =
       split > 0
-        ? fieldValues(event, term.slice(0, split)).some((value) => wildcard(term.slice(split + 1).replace(/^"|"$/g, '')).test(value))
+        ? fieldValues(sources, event, term.slice(0, split)).some((value) => wildcard(term.slice(split + 1).replace(/^"|"$/g, '')).test(value))
         : (event.summary ?? '').toLowerCase().includes(term.replace(/"/g, '').toLowerCase())
     if (hit === negate) return false
     negate = false
@@ -716,12 +719,14 @@ function matchesQuery(event: Event, query: string): boolean {
   return true
 }
 
-function filterEvents(events: Event[], body: Partial<FacetsRequest>): Event[] {
+/** `ownFields`: the chips on these catalog fields are left out, as the backend does for a facet's own field. */
+function filterEvents(sources: Record<string, Source>, events: Event[], body: Partial<FacetsRequest>, ownFields: string[] = []): Event[] {
   const { query, filters = [], time_range: range, lanes, pids } = body
+  const applied = filters.filter((chip) => !resolveFields(chip.field).some((field) => ownFields.includes(field)))
   return events.filter(
     (event) =>
-      (!query || matchesQuery(event, query)) &&
-      filters.every((chip) => matchesChip(event, chip)) &&
+      (!query || matchesQuery(sources, event, query)) &&
+      applied.every((chip) => matchesChip(sources, event, chip)) &&
       (!range?.from || event.time >= range.from) &&
       (!range?.to || event.time <= range.to) &&
       (!lanes || lanes.includes(event.lane as never)) &&
@@ -729,13 +734,13 @@ function filterEvents(events: Event[], body: Partial<FacetsRequest>): Event[] {
   )
 }
 
-function facetsOf(events: Event[], fields: string[]): FacetsResponse {
+function facetsOf(sources: Record<string, Source>, events: Event[], body: FacetsRequest): FacetsResponse {
   return {
-    facets: fields.map((field) => {
+    facets: (body.fields ?? []).map((field) => {
       const counts = new Map<string, number>()
       let total = 0
-      for (const event of events) {
-        const values = fieldValues(event, field)
+      for (const event of filterEvents(sources, events, body, resolveFields(field))) {
+        const values = fieldValues(sources, event, field)
         if (values.length > 0) total++
         for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1)
       }
@@ -748,28 +753,36 @@ function facetsOf(events: Event[], fields: string[]): FacetsResponse {
   }
 }
 
-function sourceOf(event: Event): Record<string, unknown> {
-  return {
-    '@timestamp': event.time,
-    event: { id: event.id, sequence: event.sequence, kind: event.kind, category: event.category, action: event.action, module: event.module, dataset: event.dataset },
-    tartarus: { analysis_id: 45, lane: event.lane, phase: 'final', summary: event.summary, raw: { note: 'original record' } },
-    ...(event.process && { process: { pid: event.process.pid, name: event.process.name, entity_id: event.process.entity_id } }),
-    ...(event.api_name && { api: { name: event.api_name } }),
-    ...(event.file_path && { file: { path: event.file_path } }),
-    ...(event.registry_path && { registry: { path: event.registry_path } }),
-    ...(event.destination && { destination: event.destination }),
-    ...(event.dns_query && { dns: { question: { name: event.dns_query } } }),
-    ...(event.url && { url: { full: event.url } }),
-    ...(event.rule_name && { rule: { name: event.rule_name, ruleset: event.rule_ruleset } }),
+/** The canonical names of the requested columns, or the 422 the backend answers for one it cannot show. */
+function resolveColumns(columns: string[]): { names: string[] } | { invalid: string } {
+  if (columns.length > MAX_COLUMNS) return { invalid: `at most ${MAX_COLUMNS} columns` }
+  const catalog = realFieldCatalog()
+  const names: string[] = []
+  for (const column of columns) {
+    const wanted = column.toLowerCase()
+    const field = catalog.find((entry) => entry.name.toLowerCase() === wanted || entry.aliases.includes(wanted))
+    if (!field || !field.searchable || field.members.length > 0) return { invalid: column }
+    if (!names.includes(field.name)) names.push(field.name)
   }
+  return { names }
 }
 
-function detailOf(event: Event, all: Event[], spec: DetailSpec | undefined): EventDetail {
+function withColumns(sources: Record<string, Source>, event: Event, names: string[]): Event {
+  const source = sources[event.id]
+  const fields: Event['fields'] = {}
+  for (const name of names) {
+    const value = source ? valueAt(source, name) : undefined
+    if (value !== undefined && value !== null && value !== '') fields[name] = value as Event['fields'][string]
+  }
+  return { ...event, fields }
+}
+
+function detailOf(sources: Record<string, Source>, event: Event, all: Event[], spec: DetailSpec | undefined): EventDetail {
   const listing = (related: RelatedSpec | undefined) => ({
     items: (related?.ids ?? []).map((id) => all.find((known) => known.id === id)).filter((known): known is Event => known !== undefined),
     total: related?.total ?? 0,
   })
-  return { event, source: spec?.source ?? sourceOf(event), related: { references: listing(spec?.references), referenced_by: listing(spec?.referenced_by) } }
+  return { event, source: spec?.source ?? sources[event.id] ?? {}, related: { references: listing(spec?.references), referenced_by: listing(spec?.referenced_by) } }
 }
 
 export interface EventsMockOptions {
@@ -797,13 +810,14 @@ export interface EventsMock {
 /**
  * Serves the Events tab's three endpoints from the sample events: `events/search` (the chips, the
  * simple query terms, pids, a time range and both sorts, paged by an opaque cursor), `events/facets`
- * (the top ten of each field over the filtered events) and `events/{id}` (a hand-written document for
- * a few events, a generic one for the rest, and the related events resolved from the sample).
+ * (the top ten of each field over the filtered events, ignoring the chips on the field itself) and `events/{id}` (a hand-written document for
+ * a few events, the stored sample document for the rest, and the related events resolved from the sample).
  * Register it after `mockAnalyses` and `mockQuery`.
  */
 export async function mockEvents(page: Page, options: EventsMockOptions = {}): Promise<EventsMock> {
   const all = options.events ?? sampleEvents()
   const { details } = sampleEventDetails()
+  const sources = sampleSources()
   const mock: EventsMock = { searches: [], facetRequests: [], detailRequests: [] }
   const failure = (route: Route, error: { status: number; code: string; message: string }) =>
     route.fulfill({ status: error.status, json: errorEnvelope(error.code, error.message) })
@@ -813,13 +827,15 @@ export async function mockEvents(page: Page, options: EventsMockOptions = {}): P
     mock.searches.push(body)
     await pause(body.search_after ? options.nextPageDelayMs ?? options.searchDelayMs : options.searchDelayMs)
     if (options.searchFailure) return failure(route, options.searchFailure)
-    const matched = filterEvents(all, body)
+    const columns = resolveColumns(body.columns ?? [])
+    if ('invalid' in columns) return failure(route, { status: 422, code: 'invalid_column', message: `${columns.invalid} cannot be shown as a column` })
+    const matched = filterEvents(sources, all, body)
     const sorted = body.sort === '-@timestamp' ? [...matched].reverse() : matched
     const offset = body.search_after ? Number(JSON.parse(Buffer.from(body.search_after, 'base64url').toString()).after) : 0
     const size = body.size ?? 100
     const next = offset + size
     const pageBody: EventPage = {
-      events: sorted.slice(offset, next),
+      events: sorted.slice(offset, next).map((event) => withColumns(sources, event, columns.names)),
       total: sorted.length,
       next_cursor: next < sorted.length ? Buffer.from(JSON.stringify({ sort: body.sort, after: next })).toString('base64url') : null,
     }
@@ -831,7 +847,7 @@ export async function mockEvents(page: Page, options: EventsMockOptions = {}): P
     mock.facetRequests.push(body)
     await pause(options.facetsDelayMs)
     if (options.facetsFailure) return failure(route, options.facetsFailure)
-    await route.fulfill({ json: facetsOf(filterEvents(all, body), body.fields ?? []) })
+    await route.fulfill({ json: facetsOf(sources, all, body) })
   })
 
   await page.route(EVENT_DETAIL_URL, async (route) => {
@@ -843,7 +859,7 @@ export async function mockEvents(page: Page, options: EventsMockOptions = {}): P
     if (forced) return failure(route, forced)
     const event = all.find((known) => known.id === id)
     if (!event) return failure(route, { status: 404, code: 'not_found', message: `Event ${id} not found` })
-    await route.fulfill({ json: detailOf(event, all, details[id]) })
+    await route.fulfill({ json: detailOf(sources, event, all, details[id]) })
   })
 
   return mock

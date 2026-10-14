@@ -4,7 +4,7 @@ import { Quasar, QVirtualScroll } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import type { Event } from '@/api'
-import { COLUMNS_STORAGE_KEY } from '@/composables/use-event-columns'
+import { COLUMNS_STORAGE_KEY } from '@/stores/event-columns'
 import { eventFixture, eventList } from './events-fixtures'
 
 vi.mock('@/api', () => ({ queryFields: vi.fn().mockResolvedValue({ data: [] }) }))
@@ -119,6 +119,22 @@ describe('the rows', () => {
     expect(wrapper.find('[data-event-id="b"]').classes()).toContain('is-selected')
     expect(wrapper.find('[data-event-id="b"]').attributes('aria-selected')).toBe('true')
     expect(wrapper.find('[data-event-id="a"]').attributes('aria-selected')).toBe('false')
+  })
+
+  it('shows a column the search returned under fields, with the whole value on hover', () => {
+    window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(['process.command_line']))
+    const wrapper = mountTable({
+      events: [eventFixture({ id: 'a', fields: { 'process.command_line': 'cmd.exe /c whoami & ' + 'x'.repeat(200) } })],
+      total: 1,
+    })
+    const cell = wrapper.find('[data-event-id="a"] [data-column="process.command_line"]')
+    expect(cell.text()).toContain('cmd.exe /c whoami')
+    expect(cell.attributes('title')).toContain('x'.repeat(200))
+  })
+
+  it('heads an extra column with its whole field name, so DOMAIN is not taken for another field', () => {
+    window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(['destination.domain']))
+    expect(mountTable().findAll('[role="columnheader"]').map((header) => header.text())).toContain('DESTINATION.DOMAIN')
   })
 
   it('shows the extra columns the viewer chose, after the default ones', () => {

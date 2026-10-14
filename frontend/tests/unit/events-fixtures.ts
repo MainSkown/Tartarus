@@ -21,6 +21,7 @@ export function eventFixture(overrides: Partial<Event> & { id: string }): Event 
     url: null,
     file_path: null,
     registry_path: null,
+    fields: {},
     ...overrides,
   }
 }

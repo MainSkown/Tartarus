@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { columnFieldGroups, offeredColumnFields } from '@/services/event-columns'
+import { MAX_COLUMNS, columnFieldGroups, offeredColumnFields } from '@/services/event-columns'
 import { useFieldCatalogStore } from '@/stores/field-catalog'
 
-defineProps<{ chosen: string[] }>()
+defineProps<{ chosen: string[]; atLimit: boolean }>()
 const emit = defineEmits<{ toggle: [field: string]; clear: [] }>()
 
 const catalog = useFieldCatalogStore()
@@ -44,6 +44,13 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
           placeholder="find a field"
           aria-label="Find a field"
         />
+        <p
+          v-if="atLimit"
+          class="column-chooser__limit text-mono"
+          role="status"
+        >
+          {{ MAX_COLUMNS }} columns is the most a search returns: remove one to add another
+        </p>
         <div class="column-chooser__list scrollable-panel">
           <p
             v-if="groups.length === 0"
@@ -68,6 +75,7 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
                 type="checkbox"
                 class="checkbox-input"
                 :checked="chosen.includes(field.name)"
+                :disabled="atLimit && !chosen.includes(field.name)"
                 @change="emit('toggle', field.name)"
               >
               <span class="column-chooser__name text-mono">{{ field.name }}</span>
@@ -116,6 +124,8 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
   gap: var(--spacing-sm);
   width: 20rem;
   max-width: 90vw;
+  /* Quasar caps the menu to the room left in the window; the list takes what the rest leaves. */
+  max-height: inherit;
   padding: var(--spacing-sm);
 }
 
@@ -125,8 +135,8 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
 }
 
 .column-chooser__list {
-  max-height: min(20rem, calc(100vh - 28rem));
-  min-height: 6rem;
+  flex: 1 1 auto;
+  min-height: 5rem;
 }
 
 .column-chooser__group {
@@ -144,6 +154,20 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-xs);
   cursor: pointer;
+}
+
+.column-chooser__field:has(:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.column-chooser__limit {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--status-medium);
+  color: var(--status-medium);
+  font-size: 0.7rem;
+  line-height: 1.3;
 }
 
 .column-chooser__field:hover {

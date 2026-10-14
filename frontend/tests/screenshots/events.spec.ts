@@ -112,28 +112,33 @@ test('events-e2-facets-failed-table-still-works', async ({ page }) => {
 })
 
 test('events-f-facet-values-filtered-on-and-out', async ({ page }) => {
-  await openLoadedEvents(page, 'f=process.name:cmd.exe')
-  const cmd = facetValue(page, 'process.name', 'cmd.exe')
-  await expect(cmd).toHaveClass(/is-included/)
-  const stale = await openFacetFilterOutHeld(page)
-  await expect(stale).toHaveClass(/is-excluded/)
+  // Both chips are typed with aliases, as a bookmark or the query bar would have them.
+  const mock = await openLoadedEvents(page, 'f=lane:api&f=-proc:cmd.exe')
+  await expect(page.locator('.filter-chip.is-negated')).toHaveCount(1)
+  const laneFacet = page.locator('.facet-group', { has: page.locator('[title="tartarus.lane"]') })
+  await expect(laneFacet.locator('.facet-value')).toHaveCount(6)
+  await expect(facetValue(page, 'tartarus.lane', 'api')).toHaveClass(/is-included/)
+  await expect(facetValue(page, 'process.name', 'cmd.exe')).toHaveClass(/is-excluded/)
+  await expect(facetValue(page, 'process.name', 'cmd.exe').locator('.facet-value__count')).toHaveText(/\d+/)
+  expect(mock.facetRequests.at(-1)?.filters).toEqual([
+    { field: 'lane', value: 'api', negate: false },
+    { field: 'proc', value: 'cmd.exe', negate: true },
+  ])
   await expectNoVerticalScroll(page)
-  await capture(page, '06-facets-included-value-and-a-value-being-filtered-out')
+  await capture(page, '06-facets-alias-chips-included-api-and-excluded-cmd')
 })
 
-// Facet counts follow the whole filter, so a value filtered out leaves its list once the counts refresh; the
-// strike-through is what the old counts show until then. Hold the refresh to see it.
-async function openFacetFilterOutHeld(page: Page): Promise<Locator> {
-  await page.unroute((url) => /\/events\/facets$/.test(url.pathname))
-  await page.route(
-    (url) => /\/events\/facets$/.test(url.pathname),
-    () => new Promise(() => undefined),
-  )
-  const apiLane = facetValue(page, 'tartarus.lane', 'api')
-  await apiLane.locator('.facet-value__pick').click({ modifiers: ['Alt'] })
+test('events-f2-facet-click-adds-removes-and-turns-around', async ({ page }) => {
+  await openLoadedEvents(page, 'f=proc:cmd.exe')
+  await facetValue(page, 'process.name', 'cmd.exe').locator('.facet-value__pick').click()
+  await expect(page.locator('.filter-chip')).toHaveCount(0)
+  await facetValue(page, 'tartarus.lane', 'file').locator('.facet-value__pick').click({ modifiers: ['Alt'] })
   await expect(page.locator('.filter-chip.is-negated')).toHaveCount(1)
-  return apiLane
-}
+  await expect(facetValue(page, 'tartarus.lane', 'file')).toHaveClass(/is-excluded/)
+  await facetValue(page, 'tartarus.lane', 'file').hover()
+  await facetValue(page, 'tartarus.lane', 'file').locator('.facet-value__pick').click()
+  await expect(page.locator('.filter-chip')).toHaveCount(0)
+})
 
 test('events-g-facet-panel-collapsed', async ({ page }) => {
   await openLoadedEvents(page)
@@ -145,21 +150,55 @@ test('events-g-facet-panel-collapsed', async ({ page }) => {
   await expect(page.locator('.event-facets')).toHaveClass(/is-collapsed/)
 })
 
+const TWELVE_COLUMNS = [
+  'process.command_line', 'process.executable', 'process.parent.name', 'file.name', 'file.size', 'registry.hive',
+  'registry.value', 'api.arguments', 'api.category', 'destination.port', 'event.module', 'dns.question.type',
+]
+
 test('events-h-column-chooser-and-extra-columns', async ({ page }) => {
-  await openLoadedEvents(page)
+  const mock = await openLoadedEvents(page)
   await page.getByRole('button', { name: /COLUMNS/ }).click()
   await expect(page.locator('.column-chooser__field').first()).toBeVisible()
-  await capture(page, '08-column-chooser-open')
-  await page.locator('.column-chooser__field', { hasText: 'file.path' }).click()
-  await page.locator('.column-chooser__field', { hasText: 'destination.domain' }).click()
-  await page.locator('.column-chooser__field', { hasText: 'api.name' }).click()
-  await capture(page, '08b-column-chooser-three-chosen')
+  await expect(page.locator('.column-chooser__field', { hasText: 'process.command_line' })).toBeVisible()
+  await capture(page, '08-column-chooser-open-every-field')
+  await page.getByRole('textbox', { name: 'Find a field' }).fill('process')
+  await expect(page.locator('.column-chooser__field', { hasText: 'process.command_line' })).toBeVisible()
+  await expect(page.locator('.column-chooser__field', { hasText: 'file.path' })).toHaveCount(0)
+  await capture(page, '08a-column-chooser-searching-process')
+  for (const field of ['process.command_line', 'api.arguments', 'file.path', 'destination.domain']) {
+    await page.getByRole('textbox', { name: 'Find a field' }).fill(field)
+    await page.locator('.column-chooser__field', { hasText: field }).first().click()
+  }
+  await page.getByRole('textbox', { name: 'Find a field' }).fill('')
+  await capture(page, '08b-column-chooser-four-chosen')
   await page.keyboard.press('Escape')
-  await expect(page.locator('[role="columnheader"]', { hasText: 'FILE.PATH' })).toBeVisible()
+  await expect(page.locator('[role="columnheader"]', { hasText: 'PROCESS.COMMAND_LINE' })).toBeVisible()
+  await expect(page.locator('[data-event-id]').first().locator('[data-column="process.command_line"]')).not.toBeEmpty()
+  expect(mock.searches.at(-1)?.columns).toEqual(['process.command_line', 'api.arguments', 'file.path', 'destination.domain'])
+  await expect(page.locator('.event-table__count')).toHaveText('100 of 250 events')
   await expectNoVerticalScroll(page)
-  await capture(page, '08c-three-extra-columns-shown')
+  await capture(page, '08c-extra-columns-command-line-and-api-arguments')
+  await page.getByRole('grid', { name: 'Events' }).evaluate((element) => element.parentElement!.scrollTo(element.scrollWidth, 0))
+  await capture(page, '08e-extra-columns-scrolled-right')
   await page.reload()
-  await expect(page.locator('[role="columnheader"]', { hasText: 'FILE.PATH' })).toBeVisible()
+  await expect(page.locator('[role="columnheader"]', { hasText: 'API.ARGUMENTS' })).toBeVisible()
+})
+
+test('events-h2-column-limit-message', async ({ page }) => {
+  await page.addInitScript((columns) => window.localStorage.setItem('tartarus.events.columns', JSON.stringify(columns)), TWELVE_COLUMNS)
+  const mock = await openLoadedEvents(page)
+  expect(mock.searches[0]!.columns).toEqual(TWELVE_COLUMNS)
+  await page.getByRole('button', { name: /COLUMNS/ }).click()
+  await expect(page.locator('.column-chooser__limit')).toBeVisible()
+  await expect(page.locator('.column-chooser__field input:disabled').first()).toBeDisabled()
+  await capture(page, '08d-column-chooser-at-the-limit-of-12')
+})
+
+test('events-h3-remembered-column-that-is-gone-is-dropped', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('tartarus.events.columns', JSON.stringify(['file.path', 'gone.field'])))
+  const mock = await openLoadedEvents(page)
+  expect(mock.searches).toHaveLength(1)
+  expect(mock.searches[0]!.columns).toEqual(['file.path'])
 })
 
 test('events-i-drawer-api-event', async ({ page }) => {

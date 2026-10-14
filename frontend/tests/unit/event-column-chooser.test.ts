@@ -13,11 +13,11 @@ function field(name: string, overrides: Partial<FieldRead> = {}): FieldRead {
   return { name, type: 'keyword', aliases: [], description: `about ${name}`, example: '', lane: null, members: [], searchable: true, ...overrides }
 }
 
-const CATALOG = [field('file.path'), field('api.name'), field('destination.port', { type: 'long' }), field('process.command_line')]
+const CATALOG = [field('file.path'), field('api.name'), field('destination.port', { type: 'long' }), field('process.command_line'), field('domain', { members: ['dns.question.name'] })]
 
-async function openChooser(chosen: string[] = []) {
+async function openChooser(chosen: string[] = [], atLimit = false) {
   setActivePinia(createPinia())
-  const wrapper = mount(EventColumnChooser, { props: { chosen }, attachTo: document.body, global: { plugins: [Quasar] } })
+  const wrapper = mount(EventColumnChooser, { props: { chosen, atLimit }, attachTo: document.body, global: { plugins: [Quasar] } })
   await wrapper.find('button').trigger('click')
   await flushPromises()
   return wrapper
@@ -36,14 +36,15 @@ describe('EventColumnChooser', () => {
     await openChooser()
     expect(queryFieldsMock).toHaveBeenCalledTimes(1)
     const groups = [...menu().querySelectorAll('.column-chooser__group')].map((group) => group.textContent)
-    expect(groups).toEqual(['file', 'api', 'destination'])
-    expect(menu().textContent).not.toContain('process.command_line')
+    expect(groups).toEqual(['file', 'api', 'destination', 'process'])
+    expect(menu().textContent).toContain('process.command_line')
+    expect(menu().textContent).not.toContain('domain')
   })
 
   it('shows which fields are chosen and says how many on the button', async () => {
     const wrapper = await openChooser(['api.name'])
     const boxes = [...menu().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
-    expect(boxes.map((box) => box.checked)).toEqual([false, true, false])
+    expect(boxes.map((box) => box.checked)).toEqual([false, true, false, false])
     expect(wrapper.find('.column-chooser__count').text()).toBe('+1')
   })
 
@@ -60,6 +61,18 @@ describe('EventColumnChooser', () => {
     input.dispatchEvent(new Event('input'))
     await flushPromises()
     expect([...menu().querySelectorAll('.column-chooser__name')].map((name) => name.textContent)).toEqual(['destination.port'])
+  })
+
+  it('says nothing about a limit while there is room', async () => {
+    await openChooser()
+    expect(menu().querySelector('.column-chooser__limit')).toBeNull()
+  })
+
+  it('says the limit is reached and disables the fields not chosen, keeping the chosen ones free to remove', async () => {
+    await openChooser(['api.name'], true)
+    expect(menu().querySelector('.column-chooser__limit')!.textContent).toContain('12')
+    const boxes = [...menu().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    expect(boxes.map((box) => box.disabled)).toEqual([true, false, true, true])
   })
 
   it('resets the choice, and cannot when nothing is chosen', async () => {

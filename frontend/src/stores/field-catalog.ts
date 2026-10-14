@@ -40,6 +40,11 @@ export const useFieldCatalogStore = defineStore('field-catalog', () => {
     return fields.value.find((field) => field.name.toLowerCase() === wanted || field.aliases.includes(wanted))
   }
 
+  /** The catalog name a name or alias stands for; a name the catalog does not know comes back as it is. */
+  function canonicalName(nameOrAlias: string): string {
+    return find(nameOrAlias)?.name ?? nameOrAlias
+  }
+
   function offersValues(nameOrAlias: string): boolean {
     const field = find(nameOrAlias)
     return field !== undefined && field.searchable && VALUE_TYPES.has(field.type)
@@ -54,5 +59,5 @@ export const useFieldCatalogStore = defineStore('field-catalog', () => {
     return rows.sort((a, b) => a.alias.localeCompare(b.alias))
   })
 
-  return { fields, load, find, offersValues, aliasRows }
+  return { fields, load, find, canonicalName, offersValues, aliasRows }
 })

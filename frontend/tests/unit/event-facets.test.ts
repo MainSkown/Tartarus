@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { facetFixture, facetsResponse } from './events-fixtures'
 
 const eventsFacetsMock = vi.fn()
-vi.mock('@/api', () => ({ eventsFacets: (...args: unknown[]) => eventsFacetsMock(...args) }))
+const queryFieldsMock = vi.fn()
+vi.mock('@/api', () => ({
+  eventsFacets: (...args: unknown[]) => eventsFacetsMock(...args),
+  queryFields: (...args: unknown[]) => queryFieldsMock(...args),
+}))
 
 const { default: EventFacets } = await import('@/components/EventFacets.vue')
 const { useQueryStateStore } = await import('@/stores/query-state')
@@ -37,7 +41,14 @@ async function mountPanel(open = true) {
   return wrapper
 }
 
+const CATALOG = [
+  { name: 'process.name', aliases: ['proc', 'process'] },
+  { name: 'tartarus.lane', aliases: ['lane'] },
+].map((entry) => ({ ...entry, type: 'keyword', description: '', example: '', lane: null, members: [], searchable: true }))
+
 beforeEach(() => {
+  queryFieldsMock.mockReset()
+  queryFieldsMock.mockResolvedValue({ data: CATALOG })
   eventsFacetsMock.mockReset()
   eventsFacetsMock.mockResolvedValue({ data: FACETS, error: undefined, response: { status: 200 } })
 })
@@ -96,6 +107,34 @@ describe('the panel', () => {
     await wrapper.find('.event-facets__retry').trigger('click')
     await flushPromises()
     expect(wrapper.findAll('.facet-value').length).toBeGreaterThan(0)
+  })
+})
+
+describe('chips typed with an alias', () => {
+  it('mark the value of the field the alias stands for', async () => {
+    const wrapper = await mountPanel()
+    query.addChip({ field: 'proc', value: 'cmd.exe', negate: false })
+    query.addChip({ field: 'lane', value: 'file', negate: true })
+    await flushPromises()
+    expect(wrapper.findAll('.facet-value')[0]!.classes()).toContain('is-included')
+    const laneValue = wrapper.findAll('.facet-group')[1]!.find('.facet-value')
+    expect(laneValue.classes()).toContain('is-excluded')
+  })
+
+  it('are removed by clicking the marked value, whatever they were typed as', async () => {
+    const wrapper = await mountPanel()
+    query.addChip({ field: 'proc', value: 'cmd.exe', negate: false })
+    await flushPromises()
+    await wrapper.findAll('.facet-value__pick')[0]!.trigger('click')
+    expect(query.chips).toEqual([])
+  })
+
+  it('are turned around in place by the minus button, not duplicated', async () => {
+    const wrapper = await mountPanel()
+    query.addChip({ field: 'proc', value: 'cmd.exe', negate: false })
+    await flushPromises()
+    await wrapper.findAll('.facet-value__exclude')[0]!.trigger('click')
+    expect(query.chips).toEqual([{ field: 'proc', value: 'cmd.exe', negate: true }])
   })
 })
 

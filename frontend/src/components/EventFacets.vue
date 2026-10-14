@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
 import FacetGroup from '@/components/FacetGroup.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
 import { FACET_FIELDS } from '@/services/event-fields'
 import { facetChipAction } from '@/services/facet-actions'
 import { useEventFacetsStore } from '@/stores/event-facets'
+import { useFieldCatalogStore } from '@/stores/field-catalog'
 import { useQueryStateStore } from '@/stores/query-state'
 
 defineProps<{ open: boolean }>()
@@ -11,12 +13,19 @@ const emit = defineEmits<{ toggle: [] }>()
 
 const facets = useEventFacetsStore()
 const query = useQueryStateStore()
+const catalog = useFieldCatalogStore()
+
+// A chip may have been typed with an alias (`lane:file`); the facets know fields by their catalog name.
+const canonicalChips = computed(() => query.chips.map((chip) => ({ ...chip, field: catalog.canonicalName(chip.field) })))
 
 function pick(field: string, value: string, negate: boolean): void {
-  const action = facetChipAction(query.chips, field, value, negate)
+  const action = facetChipAction(canonicalChips.value, field, value, negate)
   if (action.kind === 'add') query.addChip(action.chip)
+  else if (action.kind === 'toggle') query.toggleChip(action.index)
   else query.removeChip(action.index)
 }
+
+onMounted(() => void catalog.load())
 </script>
 
 <template>
@@ -77,7 +86,7 @@ function pick(field: string, value: string, negate: boolean): void {
           :field="field"
           :facet="facets.byField(field)"
           :loading="facets.loading"
-          :chips="query.chips"
+          :chips="canonicalChips"
           @pick="(value, negate) => pick(field, value, negate)"
         />
       </template>

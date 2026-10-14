@@ -25,23 +25,15 @@ const CATALOG: FieldRead[] = [
 describe('offeredColumnFields', () => {
   const offered = offeredColumnFields(CATALOG).map((entry) => entry.name)
 
-  it('offers the searchable fields the event carries', () => {
-    expect(offered).toEqual(expect.arrayContaining(['event.module', 'process.entity_id', 'file.path', 'destination.port', 'destination.domain', 'api.name']))
-  })
-
-  it('leaves out the fields the event does not carry, which the table has no values for', () => {
-    expect(offered).not.toContain('process.command_line')
+  it('offers every searchable field, including those the typed event does not carry', () => {
+    expect(offered).toEqual(
+      expect.arrayContaining(['process.command_line', 'event.module', 'file.path', 'destination.port', 'api.name', 'process.name', 'event.action']),
+    )
   })
 
   it('leaves out composite aliases and unsearchable fields', () => {
     expect(offered).not.toContain('domain')
     expect(offered).not.toContain('tartarus.raw')
-  })
-
-  it('leaves out the fields the default columns already show', () => {
-    expect(offered).not.toContain('@timestamp')
-    expect(offered).not.toContain('event.action')
-    expect(offered).not.toContain('process.name')
   })
 })
 
@@ -56,12 +48,36 @@ describe('columnValue', () => {
     dns_query: 'example.com',
     file_path: 'C:\\Users\\a.ps1',
     registry_path: null,
+    fields: {
+      'process.command_line': 'cmd.exe /c whoami',
+      'event.sequence': 7,
+      'api.status': true,
+      'event.category': ['a', 'b'],
+      'api.arguments': { FileName: 'a.ps1', Handle: 12, Nested: { x: 1 } },
+      'file.size': null,
+    },
+  })
+
+  it('shows a scalar the search returned as text, numbers and booleans too', () => {
+    expect(columnValue(event, 'process.command_line')).toBe('cmd.exe /c whoami')
+    expect(columnValue(event, 'api.status')).toBe('true')
+  })
+
+  it('prefers the returned value over the typed one', () => {
+    expect(columnValue(event, 'event.sequence')).toBe('7')
+    expect(columnValue(event, 'event.category')).toBe('a, b')
+  })
+
+  it('joins an array with a comma and a space', () => {
+    expect(columnValue(eventFixture({ id: 'x', fields: { 'dns.answers.data': ['1.1.1.1', '2.2.2.2'] } }), 'dns.answers.data')).toBe('1.1.1.1, 2.2.2.2')
+  })
+
+  it('writes an object as compact key=value pairs', () => {
+    expect(columnValue(event, 'api.arguments')).toBe('FileName=a.ps1, Handle=12, Nested={"x":1}')
   })
 
   it.each([
     ['event.module', 'capemon'],
-    ['event.category', 'file, process'],
-    ['event.sequence', '0'],
     ['event.id', 'e1'],
     ['api.name', 'NtWriteFile'],
     ['destination.ip', '93.184.216.34'],
@@ -69,25 +85,28 @@ describe('columnValue', () => {
     ['destination.domain', 'example.com'],
     ['dns.question.name', 'example.com'],
     ['file.path', 'C:\\Users\\a.ps1'],
-  ])('reads %s from the event', (name, expected) => {
+    ['process.name', 'cmd.exe'],
+    ['process.pid', '2476'],
+    ['tartarus.lane', 'process'],
+    ['event.action', 'process-created'],
+    ['@timestamp', '2026-10-13T15:39:33.863Z'],
+  ])('falls back to the typed event for %s', (name, expected) => {
     expect(columnValue(event, name)).toBe(expected)
   })
 
-  it('is empty for a value the event does not have', () => {
+  it('is empty for a value the event does not have, a null, or a field it knows nothing about', () => {
     expect(columnValue(event, 'registry.path')).toBe('')
+    expect(columnValue(event, 'file.size')).toBe('')
+    expect(columnValue(event, 'http.request.method')).toBe('')
     expect(columnValue(eventFixture({ id: 'x', destination: null }), 'destination.port')).toBe('')
-  })
-
-  it('is empty for a field it knows nothing about', () => {
-    expect(columnValue(event, 'process.command_line')).toBe('')
   })
 })
 
 describe('columnFieldGroups', () => {
   const fields = offeredColumnFields(CATALOG)
 
-  it('groups the fields by what comes before the first dot, in catalog order', () => {
-    expect(columnFieldGroups(fields, '').map((group) => group.name)).toEqual(['event', 'process', 'file', 'destination', 'api'])
+  it('groups the fields by what comes before the first dot, in catalog order, a field with no dot going under "common"', () => {
+    expect(columnFieldGroups(fields, '').map((group) => group.name)).toEqual(['common', 'event', 'process', 'file', 'destination', 'api'])
   })
 
   it('narrows to the fields whose name or description holds the search, in any case', () => {
