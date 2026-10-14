@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
+import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, RulesHitsData, RulesHitsErrors, RulesHitsResponses, RulesListData, RulesListErrors, RulesListResponses, RulesReadData, RulesReadErrors, RulesReadResponses, RulesReloadData, RulesReloadErrors, RulesReloadResponses, RulesUpdateData, RulesUpdateErrors, RulesUpdateResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -306,6 +306,50 @@ export const queryFields = <ThrowOnError extends boolean = false>(options?: Opti
  * not a keyword.
  */
 export const queryValues = <ThrowOnError extends boolean = false>(options: Options<QueryValuesData, ThrowOnError>): RequestResult<QueryValuesResponses, QueryValuesErrors, ThrowOnError> => (options.client ?? client).get<QueryValuesResponses, QueryValuesErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/query/values', ...options });
+
+/**
+ * List
+ *
+ * Every loaded rule, valid or not, with the analyst's enabled flag and the number of Sigma
+ * detections it raised across all analyses. Filtering is left to the client.
+ */
+export const rulesList = <ThrowOnError extends boolean = false>(options?: Options<RulesListData, ThrowOnError>): RequestResult<RulesListResponses, RulesListErrors, ThrowOnError> => (options?.client ?? client).get<RulesListResponses, RulesListErrors, ThrowOnError>({ url: '/api/rules', ...options });
+
+/**
+ * Reload
+ *
+ * Re-reads the rules directory now (it is also watched) and lists the rules as `GET /rules`.
+ */
+export const rulesReload = <ThrowOnError extends boolean = false>(options?: Options<RulesReloadData, ThrowOnError>): RequestResult<RulesReloadResponses, RulesReloadErrors, ThrowOnError> => (options?.client ?? client).post<RulesReloadResponses, RulesReloadErrors, ThrowOnError>({ url: '/api/rules/reload', ...options });
+
+/**
+ * Read
+ *
+ * One rule with the text of its file. `404` for an unknown rule, or one whose file is gone
+ * or lies outside the rules directory.
+ */
+export const rulesRead = <ThrowOnError extends boolean = false>(options: Options<RulesReadData, ThrowOnError>): RequestResult<RulesReadResponses, RulesReadErrors, ThrowOnError> => (options.client ?? client).get<RulesReadResponses, RulesReadErrors, ThrowOnError>({ url: '/api/rules/{rule_id}', ...options });
+
+/**
+ * Update
+ *
+ * Enables or disables a rule; the choice survives reloads and restarts.
+ */
+export const rulesUpdate = <ThrowOnError extends boolean = false>(options: Options<RulesUpdateData, ThrowOnError>): RequestResult<RulesUpdateResponses, RulesUpdateErrors, ThrowOnError> => (options.client ?? client).patch<RulesUpdateResponses, RulesUpdateErrors, ThrowOnError>({
+    url: '/api/rules/{rule_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Hits
+ *
+ * Sigma detections per rule in one analysis, most hit first. A rule with no hit is left out.
+ */
+export const rulesHits = <ThrowOnError extends boolean = false>(options: Options<RulesHitsData, ThrowOnError>): RequestResult<RulesHitsResponses, RulesHitsErrors, ThrowOnError> => (options.client ?? client).get<RulesHitsResponses, RulesHitsErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/rules/hits', ...options });
 
 /**
  * Ws Message Schemas
