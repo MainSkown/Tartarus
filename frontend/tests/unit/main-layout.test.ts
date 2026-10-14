@@ -77,6 +77,41 @@ describe('MainLayout', () => {
     expect(wrapper.findComponent(QDrawer).props('behavior')).toBe('desktop')
   })
 
+  describe('nav drawer hover', () => {
+    async function drawerOf(path: string) {
+      const { wrapper } = await mountShellAt(path)
+      const drawer = wrapper.find('.nav-drawer')
+      const isMini = () => wrapper.findComponent(QDrawer).props('mini') as boolean
+      return { wrapper, drawer, isMini }
+    }
+
+    it('starts collapsed, expands when the pointer enters it and collapses when it leaves', async () => {
+      const { wrapper, drawer, isMini } = await drawerOf('/')
+      expect(isMini()).toBe(true)
+      await drawer.trigger('mouseenter')
+      expect(isMini()).toBe(false)
+      await drawer.trigger('mouseleave')
+      expect(isMini()).toBe(true)
+      wrapper.unmount()
+    })
+
+    // mouseout bubbles from every child: moving between a nav item and its label fires one with
+    // the pointer still inside the drawer. Collapsing on it removed the label under the pointer,
+    // which fired the next one, and the drawer and the page beside it jiggled in a loop.
+    it('stays expanded while the pointer moves between elements inside it', async () => {
+      const { wrapper, drawer, isMini } = await drawerOf('/')
+      await drawer.trigger('mouseenter')
+      const items = wrapper.findAll('.nav-item')
+      await items[0]!.trigger('mouseout', { relatedTarget: items[1]!.element })
+      expect(isMini()).toBe(false)
+      await items[0]!.find('.q-item__section--main').trigger('mouseout', {
+        relatedTarget: items[0]!.element,
+      })
+      expect(isMini()).toBe(false)
+      wrapper.unmount()
+    })
+  })
+
   it('shows the wordmark and the three health dots', async () => {
     const { wrapper } = await mountShellAt('/')
     expect(wrapper.text()).toContain('TARTARUS')

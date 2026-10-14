@@ -118,8 +118,8 @@ const submitDisabledReason = useGuestBlockReason()
       :mini-width="56"
       bordered
       class="nav-drawer"
-      @mouseover="drawerExpanded = true"
-      @mouseout="drawerExpanded = false"
+      @mouseenter="drawerExpanded = true"
+      @mouseleave="drawerExpanded = false"
     >
       <q-list class="nav-list">
         <q-item
