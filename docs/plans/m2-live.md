@@ -78,6 +78,10 @@ carry the guest's time, so against pcap-derived network events they sit that muc
 corrected (the offset calibration rounds to a quarter hour, as designed); to be revisited when the
 timeline (M3) puts both sources on one axis.
 
+*Update (M3, T0):* the final index is now calibrated exactly (the skew is constant within a run and
+comes from the task's `cuckoo.log`, see the data model); the live stream stays on the rounded offset
+because CAPE buffers that log until the task ends.
+
 ## Decisions (made now so no agent has to guess)
 
 1. **The BSON log parser is written from the format, not copied.** CAPE's `netlog.py` is the

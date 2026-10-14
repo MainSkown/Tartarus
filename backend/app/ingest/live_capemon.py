@@ -81,7 +81,11 @@ class LiveCapemon:
         if self._offset is None:
             first_process = parse_clock(record.first_seen_text)
             if first_process is not None:
-                self._offset = calibrated_offset(self._context.started_at, first_process)
+                self._offset = calibrated_offset(
+                    self._context.started_at,
+                    first_process,
+                    self._context.host_registrations.get(record.pid),
+                )
         self._pid_of_file[file_key] = record.pid
         self._names[record.pid] = record.name
         self._entries[record.pid] = {

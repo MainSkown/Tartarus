@@ -1,7 +1,9 @@
 import json
+import shutil
 import threading
 from collections import Counter
 from collections.abc import Iterable
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,7 @@ from app.search.index import IndexingError
 from tests.ingest.conftest import ANALYSIS_ID, FULL_REPORT
 
 Event = dict[str, Any]
+TASK_6_LOG = Path(__file__).parent.parent / "fixtures" / "cape" / "clock" / "task_6.cuckoo.log"
 
 
 class FakeIndex:
@@ -209,3 +212,39 @@ async def test_the_report_is_parsed_off_the_event_loop(
 
     assert threads
     assert threading.get_ident() not in threads
+
+
+def storage_of_task_6(tmp_path: Path, *, with_log: bool) -> Path:
+    reports = tmp_path / "analyses" / "6" / "reports"
+    reports.mkdir(parents=True)
+    shutil.copy(FULL_REPORT, reports / "report.json")
+    if with_log:
+        shutil.copy(TASK_6_LOG, reports.parent / "cuckoo.log")
+    return reports / "report.json"
+
+
+def selftest_moments(events: list[Event]) -> dict[str, datetime]:
+    return {
+        event["event"]["module"]: datetime.fromisoformat(event["@timestamp"])
+        for event in events
+        if event["event"]["action"] == "dns-query"
+        and event["dns"]["question"]["name"] == "tartarus-selftest.example"
+    }
+
+
+async def test_the_task_log_beside_the_report_anchors_capemon_on_the_hosts_clock(
+    ingester: ReportIngester, index: FakeIndex, tmp_path: Path
+) -> None:
+    await ingester.ingest(ANALYSIS_ID, storage_of_task_6(tmp_path, with_log=True))
+
+    moments = selftest_moments(index.events)
+    assert abs(moments["capemon"] - moments["cape"]) < timedelta(seconds=1)
+
+
+async def test_without_a_task_log_the_ingest_still_works_on_the_rounded_offset(
+    ingester: ReportIngester, index: FakeIndex, tmp_path: Path
+) -> None:
+    await ingester.ingest(ANALYSIS_ID, storage_of_task_6(tmp_path, with_log=False))
+
+    moments = selftest_moments(index.events)
+    assert timedelta(seconds=4) < abs(moments["capemon"] - moments["cape"]) < timedelta(seconds=8)

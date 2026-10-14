@@ -81,6 +81,8 @@ class LiveCollector:
         self._store = store
         self._sink = sink
         self._poll_interval_s = poll_interval_s
+        # No host registrations: CAPE keeps the task's cuckoo.log in a write buffer until the task
+        # ends, so the clock stays on the rounded offset live and the final ingest anchors it.
         self._live = LiveCapemon(IngestContext(analysis_id, started_at))
         self._files: dict[str, _LogFile] = {}
         self._unknown_seen: Counter[str] = Counter()

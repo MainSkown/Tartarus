@@ -45,3 +45,9 @@ def test_context_normalises_the_start_time_to_utc() -> None:
     local = datetime(2026, 10, 13, 12, 12, 18, tzinfo=timezone(timedelta(hours=2)))
     assert IngestContext(analysis_id=6, started_at=local).started_at == STARTED
     assert IngestContext(analysis_id=6, started_at=local).started_at.utcoffset() == timedelta(0)
+
+
+def test_context_has_no_host_registrations_unless_given() -> None:
+    assert IngestContext(analysis_id=6, started_at=STARTED).host_registrations == {}
+    registered = {9708: STARTED}
+    assert IngestContext(6, STARTED, registered).host_registrations == registered

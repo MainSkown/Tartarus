@@ -1,5 +1,5 @@
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
@@ -11,10 +11,14 @@ class IngestContext:
     `started_at` is the analysis start in UTC, which is CAPE's `info.started` as it stands (the
     host's clock is UTC); a naive datetime is refused here rather than silently shifting a whole
     timeline.
+
+    `host_registrations` is when the host logged each process registering (pid to UTC time, see
+    `app.ingest.clock`); it anchors the guest clock exactly and may be empty.
     """
 
     analysis_id: int
     started_at: datetime
+    host_registrations: Mapping[int, datetime] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.started_at.tzinfo is None:

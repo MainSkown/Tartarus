@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from app.ingest.capemon import CapemonNormalizer
-from app.ingest.clock import parse_clock
+from app.ingest.clock import host_registrations, parse_clock
 from app.ingest.ecs import event_id
 from app.ingest.live_capemon import LiveCapemon
 from app.ingest.protocol import IngestContext
@@ -31,6 +31,8 @@ from tests.ingest.contract import assert_increasing_sequence, assert_unique_ids,
 
 Event = dict[str, Any]
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "cape" / "live_logs_45"
+HOST_LOG = Path(__file__).parent.parent / "fixtures" / "cape" / "clock" / "task_45.cuckoo.log"
+REAL_SKEW = timedelta(seconds=5, milliseconds=297)
 PIDS = (9708, 2476)
 ANALYSIS_ID = 45
 ONE_PER_CALL = 1
@@ -425,3 +427,41 @@ def test_the_offset_is_set_by_the_first_process_record_and_kept(context: IngestC
     [event] = live.update("200.bson", [call_record(0, "NtClose", at=earlier)])
     assert live.clock_offset == timedelta(hours=2)
     assert event["@timestamp"] == "2026-10-13T12:00:00.000Z"
+
+
+# --- the clock, anchored on the host's log -------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def anchored_context(context: IngestContext) -> IngestContext:
+    return IngestContext(
+        context.analysis_id, context.started_at, host_registrations(HOST_LOG.read_text())
+    )
+
+
+@pytest.mark.parametrize("batch_size", BATCH_SIZES)
+def test_anchored_on_the_hosts_log_the_live_path_still_gives_the_events_of_the_report_path(
+    batch_size: int,
+    records_by_file: dict[str, list[LogRecord]],
+    cape_report: dict[str, Any],
+    anchored_context: IngestContext,
+) -> None:
+    final = list(CapemonNormalizer().normalise(cape_report, anchored_context))
+    live = LiveCapemon(anchored_context)
+    events = feed(live, in_order_of_arrival(records_by_file), batch_size) + live.flush()
+
+    assert by_id(events) == by_id(final)
+
+
+def test_the_anchor_adds_the_skew_to_the_rounded_offset(anchored_context: IngestContext) -> None:
+    live = LiveCapemon(anchored_context)
+    live.update("100.bson", [process_record(9708, first_seen=FIRST_SEEN)])
+    assert live.clock_offset == timedelta(hours=2) + REAL_SKEW
+
+
+def test_a_first_process_the_log_does_not_know_is_calibrated_to_the_quarter_hour(
+    anchored_context: IngestContext,
+) -> None:
+    live = LiveCapemon(anchored_context)
+    live.update("100.bson", [process_record(1234, first_seen=FIRST_SEEN)])
+    assert live.clock_offset == timedelta(hours=2)

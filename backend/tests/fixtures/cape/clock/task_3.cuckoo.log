@@ -1,0 +1,2 @@
+2026-10-13 02:43:22,395 [lib.cuckoo.core.resultserver] INFO: Task 3: Process 3372 (parent 4336): benign.exe, path C:\Users\Analyst\AppData\Local\Temp\benign.exe
+2026-10-13 02:43:22,662 [lib.cuckoo.core.resultserver] INFO: Task 3: Process 8892 (parent 3372): cmd.exe, path C:\Windows\System32\cmd.exe

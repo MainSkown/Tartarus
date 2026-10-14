@@ -210,7 +210,8 @@ Choices that differ from the mapping table above:
 Event fields on every capemon event:
 - `@timestamp` is the call's `timestamp` plus the report's guest clock offset (below), so it is UTC.
   A call whose timestamp cannot be read takes the analysis start, which is already UTC and is not
-  shifted. `process.start` and the `entity_id` built from it use the same shifted `first_seen`.
+  shifted. `process.start` and the `entity_id` built from it use the same shifted `first_seen`, so an
+  `entity_id` carries the calibration: it changes if the clock offset does (live to final, see below).
 - `event.sequence` numbers the events in emission order: calls sorted by timestamp, then call id,
   then report order; a derived event directly follows its call.
 - `api.arguments` maps each argument name to its `value` (the first of a repeated name); the
@@ -235,21 +236,47 @@ position in the list)`.
 #### Time in a CAPE report
 
 True UTC is the CAPE host's: `info.started`/`ended` and the epoch floats of `network.*`. capemon's
-call timestamps and `behavior.processes[].first_seen` come from the guest monitor's clock, which was
-exactly the host's UTC offset behind in all four real reports checked (2 hours, in summer). The
-offset is therefore measured per report in `app/ingest/clock.py`, never assumed:
+call timestamps and `behavior.processes[].first_seen` come from the guest monitor's clock, which is
+behind the host's by two things, both measured per analysis in `app/ingest/clock.py`, never assumed:
 
-- `guest_clock_offset(report) = info.started - earliest process first_seen`, rounded to the nearest 15
-  minutes (the raw gap is the true offset minus the 13 to 23 seconds between machine start and the
-  first process). It is added to every capemon timestamp and process start.
+- **The host's UTC offset** (2 hours in summer, 1 in winter in Warsaw): `info.started - earliest
+  process first_seen`, rounded to the nearest 15 minutes (the raw gap is the true offset minus the 13
+  to 33 seconds between machine start and the first process).
+- **A skew of seconds**: CAPE sets the guest's clock to the task's creation time (`Date set to:` in
+  `analysis.log`, `task.clock`), not to the moment it is set, so the guest runs 4.4 to 7.1 s behind
+  the host (eight real analyses). The skew is **constant within a run** (7.143 to 7.147 s over the 12
+  processes and 140 s of an interactive run; the first and last process agree to 4 ms) and differs
+  between runs, so one number per analysis is exact.
+
+The exact anchor is the host's own record of a process registering: ResultServer logs
+`Task N: Process PID (parent P): name, path ...` in the task's `cuckoo.log` with a millisecond host
+time, and logs it before it writes the process's first bytes (`BsonStore.handle`). `registration time
+- first_seen` of the same process is the whole offset, skew included.
+
+- `host_registrations(log_text)` reads those lines into `{pid: host time}` (first registration of a
+  pid wins; any other line, garbage and a missing or unreadable file give nothing, never an error).
+  The ingester reads `<task folder>/cuckoo.log`, two levels above `reports/report.json`, into
+  `IngestContext.host_registrations`.
+- `guest_clock_offset(report, registrations)` uses the earliest process the log knows:
+  `registered_at - first_seen`, added to every capemon timestamp and process start. The anchor is
+  used only when it agrees with the rounded offset to within 5 minutes (`ANCHOR_TOLERANCE`), which
+  rejects a pid reused for another process or a log in another zone; otherwise, and when the log has
+  no process of the report, the offset is the rounded one (the previous behaviour).
 - A report that cannot be calibrated (no readable `info.started`, no process, a gap beyond 14 hours)
   has offset 0; the helper never raises.
 - `IngestContext.started_at` is `info.started` read as UTC (`analysis_started(report)`); the caller
   builds the context with it.
-- Calibration is hour-level. A residual of seconds remains: on the four real reports the pcap saw the
-  sample's own DNS lookup 4.4 to 5.7 seconds after capemon's `getaddrinfo` for it (guest clock skew or
-  resolver delay, not separable from the report). Events of different sources are never ordered
-  against each other closer than that.
+- **Live uses the rounded offset only.** CAPE's per-task `cuckoo.log` is opened buffered and never
+  flushed (`lib/cuckoo/core/log.py`, `TaskHandler`): its lines reach the disk 8 KiB at a time or when
+  the task ends, so there is nothing to read when the first process record arrives. The collector's
+  context has no registrations; live events sit the skew (5 to 7 s) earlier than the final index's,
+  and so do their `process.entity_id`s. The final ingest rebuilds the index and is authoritative. The
+  live and report paths are the same code and give identical events whenever both are given the same
+  registrations (tested on the real task 45 files).
+- Result on the eight real analyses (the sample's own `getaddrinfo` against the pcap's DNS record of
+  the same name): 4.4 to 7.1 s apart with the rounded offset, 11 to 51 ms with the anchor (the packet
+  leaves the guest a few milliseconds after the call). Events of different sources can be ordered
+  against each other at that precision.
 
 #### `cape-network`
 

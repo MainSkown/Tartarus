@@ -39,7 +39,7 @@ API_SHAPES = {
 def _read(
     report: Mapping[str, Any], context: IngestContext
 ) -> tuple[list[CapemonProcess], list[Call]]:
-    clock_offset = guest_clock_offset(report)
+    clock_offset = guest_clock_offset(report, context.host_registrations)
     processes = read_processes(report, clock_offset)
     return processes, calls_in_sequence_order(processes, clock_offset, context.started_at)
 

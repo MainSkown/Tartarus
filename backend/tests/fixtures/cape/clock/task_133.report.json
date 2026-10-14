@@ -1,0 +1,170 @@
+{
+ "info": {
+  "id": 133,
+  "started": "2026-10-13 22:47:27",
+  "ended": "2026-10-13 22:52:05",
+  "duration": 278
+ },
+ "behavior": {
+  "processes": [
+   {
+    "process_id": 4336,
+    "parent_id": 4296,
+    "process_name": "explorer.exe",
+    "module_path": "C:\\Windows\\explorer.exe",
+    "first_seen": "2026-10-13 20:47:50,437",
+    "calls": []
+   },
+   {
+    "process_id": 10024,
+    "parent_id": 4336,
+    "process_name": "benign.exe",
+    "module_path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+    "first_seen": "2026-10-13 20:48:04,297",
+    "calls": [
+     {
+      "timestamp": "2026-10-13 20:48:06,312",
+      "thread_id": "10004",
+      "caller": "0x7ff6668a15b2",
+      "parentcaller": "0x7ff6668a7de1",
+      "category": "network",
+      "api": "getaddrinfo",
+      "status": true,
+      "return": "0x00000000",
+      "arguments": [
+       {
+        "name": "NodeName",
+        "value": "tartarus-selftest.example"
+       },
+       {
+        "name": "ServiceName",
+        "value": "80"
+       }
+      ],
+      "repeated": 0,
+      "id": 68
+     }
+    ]
+   },
+   {
+    "process_id": 924,
+    "parent_id": 784,
+    "process_name": "svchost.exe",
+    "module_path": "C:\\Windows\\System32\\svchost.exe",
+    "first_seen": "2026-10-13 20:48:04,384",
+    "calls": []
+   },
+   {
+    "process_id": 10056,
+    "parent_id": 10024,
+    "process_name": "cmd.exe",
+    "module_path": "C:\\Windows\\System32\\cmd.exe",
+    "first_seen": "2026-10-13 20:48:05,616",
+    "calls": []
+   },
+   {
+    "process_id": 10224,
+    "parent_id": 924,
+    "process_name": "WmiPrvSE.exe",
+    "module_path": "C:\\Windows\\System32\\wbem\\WmiPrvSE.exe",
+    "first_seen": "2026-10-13 20:48:11,609",
+    "calls": []
+   },
+   {
+    "process_id": 9932,
+    "parent_id": 784,
+    "process_name": "svchost.exe",
+    "module_path": "C:\\Windows\\System32\\svchost.exe",
+    "first_seen": "2026-10-13 20:48:11,901",
+    "calls": []
+   },
+   {
+    "process_id": 8584,
+    "parent_id": 924,
+    "process_name": "dllhost.exe",
+    "module_path": "C:\\Windows\\System32\\dllhost.exe",
+    "first_seen": "2026-10-13 20:49:33,629",
+    "calls": []
+   },
+   {
+    "process_id": 9636,
+    "parent_id": 924,
+    "process_name": "dllhost.exe",
+    "module_path": "C:\\Windows\\System32\\dllhost.exe",
+    "first_seen": "2026-10-13 20:49:35,219",
+    "calls": []
+   },
+   {
+    "process_id": 6864,
+    "parent_id": 924,
+    "process_name": "dllhost.exe",
+    "module_path": "C:\\Windows\\System32\\dllhost.exe",
+    "first_seen": "2026-10-13 20:49:42,795",
+    "calls": []
+   },
+   {
+    "process_id": 1768,
+    "parent_id": 4336,
+    "process_name": "Notepad.exe",
+    "module_path": "C:\\Program Files\\WindowsApps\\Microsoft.WindowsNotepad_11.2501.31.0_x64__8wekyb3d8bbwe\\Notepad\\Notepad.exe",
+    "first_seen": "2026-10-13 20:49:47,255",
+    "calls": []
+   },
+   {
+    "process_id": 8680,
+    "parent_id": 924,
+    "process_name": "WmiPrvSE.exe",
+    "module_path": "C:\\Windows\\System32\\wbem\\WmiPrvSE.exe",
+    "first_seen": "2026-10-13 20:49:49,960",
+    "calls": []
+   },
+   {
+    "process_id": 5448,
+    "parent_id": 4336,
+    "process_name": "Notepad.exe",
+    "module_path": "C:\\Program Files\\WindowsApps\\Microsoft.WindowsNotepad_11.2501.31.0_x64__8wekyb3d8bbwe\\Notepad\\Notepad.exe",
+    "first_seen": "2026-10-13 20:50:02,099",
+    "calls": []
+   }
+  ]
+ },
+ "network": {
+  "dns": [
+   {
+    "request": "ipv6.msftconnecttest.com",
+    "type": "A",
+    "answers": [
+     {
+      "type": "A",
+      "data": "192.168.150.1"
+     }
+    ],
+    "first_seen": 1791931662.172308
+   },
+   {
+    "request": "www.msftconnecttest.com",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791931662.174371
+   },
+   {
+    "request": "outlook.office.com",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791931668.787107
+   },
+   {
+    "request": "staging.to-do.officeppe.com",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791931671.473465
+   },
+   {
+    "request": "tartarus-selftest.example",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791931693.406547
+   }
+  ]
+ }
+}

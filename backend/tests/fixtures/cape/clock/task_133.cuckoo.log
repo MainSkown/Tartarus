@@ -1,0 +1,12 @@
+2026-10-13 22:47:57,582 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 4336 (parent 4296): explorer.exe, path C:\Windows\explorer.exe
+2026-10-13 22:48:11,443 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 10024 (parent 4336): benign.exe, path C:\Users\Analyst\AppData\Local\Temp\benign.exe
+2026-10-13 22:48:11,527 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 924 (parent 784): svchost.exe, path C:\Windows\System32\svchost.exe
+2026-10-13 22:48:12,762 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 10056 (parent 10024): cmd.exe, path C:\Windows\System32\cmd.exe
+2026-10-13 22:48:18,754 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 10224 (parent 924): WmiPrvSE.exe, path C:\Windows\System32\wbem\WmiPrvSE.exe
+2026-10-13 22:48:19,045 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 9932 (parent 784): svchost.exe, path C:\Windows\System32\svchost.exe
+2026-10-13 22:49:40,774 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 8584 (parent 924): dllhost.exe, path C:\Windows\System32\dllhost.exe
+2026-10-13 22:49:42,364 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 9636 (parent 924): dllhost.exe, path C:\Windows\System32\dllhost.exe
+2026-10-13 22:49:49,942 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 6864 (parent 924): dllhost.exe, path C:\Windows\System32\dllhost.exe
+2026-10-13 22:49:54,400 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 1768 (parent 4336): Notepad.exe, path C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2501.31.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+2026-10-13 22:49:57,104 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 8680 (parent 924): WmiPrvSE.exe, path C:\Windows\System32\wbem\WmiPrvSE.exe
+2026-10-13 22:50:09,244 [lib.cuckoo.core.resultserver] INFO: Task 133: Process 5448 (parent 4336): Notepad.exe, path C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2501.31.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe

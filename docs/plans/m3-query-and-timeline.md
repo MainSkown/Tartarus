@@ -67,6 +67,18 @@ search, saving queries, and the query language on the LIVE stream (see decision 
    from the capture sits seconds away from the call that made it. Before the timeline is built, the
    calibration anchors to something exact (the host's own record of when a process registered with
    CAPE, which `cuckoo.log` has) instead of only rounding to a quarter hour; see task T0.
+   **T0 result (measured on eight real analyses):** the skew is a constant per run (not a drift:
+   7.143 to 7.147 s over 140 s) that differs between runs (4.4 to 7.1 s), because CAPE sets the guest
+   clock to the task's creation time. The exact anchor is the ResultServer's millisecond host time
+   for a process registering in the task's `cuckoo.log`, matched with that process's guest
+   `first_seen`; the final ingest reads it (`IngestContext.host_registrations`, one helper in
+   `clock.py`) and capemon then sits 11 to 51 ms from the pcap's record of the same lookup instead
+   of 4.4 to 7.1 s. **Live cannot use it:** CAPE keeps the task `cuckoo.log` in a write buffer until
+   the task ends, so a live run stays on the rounded offset (capemon 5 to 7 s early, as in M2) and
+   the final index is the exact one; the live stream carries no host-side events to line up with, so
+   nothing is misaligned while it runs, and it would take a one-line CAPE patch (flush the task log
+   after each write) plus a re-reading collector to change that. Details: data-model, "Time in a
+   CAPE report".
 9. **The LIVE stream keeps its lane and process filters.** Supporting the query language there needs the
    same semantics evaluated in memory over dict events, which would be a second implementation of the
    grammar; if wanted it is done by evaluating the compiled AST, not by re-implementing, and not in M3.

@@ -1,0 +1,84 @@
+{
+ "info": {
+  "id": 2,
+  "started": "2026-10-13 02:28:53",
+  "ended": "2026-10-13 02:29:39",
+  "duration": 46
+ },
+ "behavior": {
+  "processes": [
+   {
+    "process_id": 7164,
+    "parent_id": 4336,
+    "process_name": "benign.exe",
+    "module_path": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+    "first_seen": "2026-10-13 00:29:04,426",
+    "calls": [
+     {
+      "timestamp": "2026-10-13 00:29:05,161",
+      "thread_id": "4924",
+      "caller": "0x7ff6312c15b2",
+      "parentcaller": "0x7ff6312c7de1",
+      "category": "network",
+      "api": "getaddrinfo",
+      "status": true,
+      "return": "0x00000000",
+      "arguments": [
+       {
+        "name": "NodeName",
+        "value": "tartarus-selftest.example"
+       },
+       {
+        "name": "ServiceName",
+        "value": "80"
+       }
+      ],
+      "repeated": 0,
+      "id": 70
+     }
+    ]
+   },
+   {
+    "process_id": 3188,
+    "parent_id": 7164,
+    "process_name": "cmd.exe",
+    "module_path": "C:\\Windows\\System32\\cmd.exe",
+    "first_seen": "2026-10-13 00:29:04,737",
+    "calls": []
+   }
+  ]
+ },
+ "network": {
+  "dns": [
+   {
+    "request": "outlook.office.com",
+    "type": "A",
+    "answers": [
+     {
+      "type": "A",
+      "data": "192.168.150.1"
+     }
+    ],
+    "first_seen": 1791858539.377328
+   },
+   {
+    "request": "staging.to-do.officeppe.com",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791858539.674218
+   },
+   {
+    "request": "tartarus-selftest.example",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791858550.131399
+   },
+   {
+    "request": "www.msftconnecttest.com",
+    "type": "A",
+    "answers": [],
+    "first_seen": 1791858563.263543
+   }
+  ]
+ }
+}
