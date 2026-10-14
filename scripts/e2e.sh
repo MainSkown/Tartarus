@@ -3,7 +3,7 @@
 # submits a harmless sample through the frontend's published port and follows it through the
 # queue, the guest and the report, then checks the event index and every analysis view of the
 # finished analysis. `E2E_DRILLS=1` adds the failure drills, which stop cape or opensearch and
-# restart the backend mid-run and put them back afterwards. `E2E_SKIP_UI=1` skips the browser test.
+# restart the backend mid-run and put them back afterwards. `E2E_SKIP_UI=1` skips the browser test. Step (j) always ends an interactive run early through POST /finish.
 # `E2E_DESKTOP=1` adds the interactive desktop (the tunnel's API half, then the browser test
 # frontend/tests/e2e/desktop-flow.spec.ts): it holds the guest for the whole timeout of two
 # interactive runs, about 10 minutes. The live feed is always checked, on the analysis of step (a).
@@ -28,6 +28,7 @@ source "$REPO/scripts/lib/benign-sample.sh"
 source "$REPO/scripts/lib/e2e-api.sh"
 source "$REPO/scripts/lib/e2e-views.sh"
 source "$REPO/scripts/lib/e2e-live.sh"
+source "$REPO/scripts/lib/e2e-finish.sh"
 
 WORK_DIR=$(mktemp -d)
 CREATED_IDS=()
@@ -431,6 +432,8 @@ main() {
         echo "== browser flow"
         step_browser_flow
     fi
+    echo "== (j) ending a run early"
+    finish_run_ends_the_run
     if [[ $DESKTOP == 1 ]]; then
         echo "== (i) the interactive desktop"
         step_i_interactive_desktop
