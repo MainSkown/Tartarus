@@ -159,6 +159,7 @@ def _unexpected(error: UnexpectedToken, text: str) -> QueryError:
         context.stray_closing_parenthesis,
         context.bad_alternative,
         context.keyword_without_left_term,
+        context.ends_too_early,
     )
     for rule in rules:
         if (found := rule()) is not None:
@@ -229,3 +230,8 @@ class _ErrorContext:
         if self.token.type not in _KEYWORDS:
             return None
         return QueryError(self.start, self.end, f"{self.token.type} needs a term before it")
+
+    def ends_too_early(self) -> QueryError | None:
+        if not self.at_end:
+            return None
+        return QueryError(self.start, self.end, "the query ends where a term is expected")

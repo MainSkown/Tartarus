@@ -338,6 +338,8 @@ def test_a_very_nested_query_parses_without_hitting_the_recursion_limit() -> Non
         ("api:(a OR b", 4, 5, "unbalanced parenthesis: '(' is never closed"),
         ("pid > 1 > 2", 8, 9, "'>' needs a field name before it"),
         ("<5", 0, 1, "'<' needs a field name before it"),
+        ("((", 1, 2, "the query ends where a term is expected"),
+        ("a AND (", 6, 7, "the query ends where a term is expected"),
     ],
 )
 def test_a_syntax_error_has_the_span_and_message_of_what_is_wrong(
