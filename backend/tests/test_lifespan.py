@@ -10,9 +10,10 @@ from app.analyses.runner import Runner
 from app.cape.client import CapeClient
 from app.cape.control import CapeControl
 from app.cape.health import CapeCheck, GuestCheck
+from app.db.models.job import JobType
 from app.db.session import get_session
 from app.health import ComponentHealth, HealthStatus, PostgresCheck, evaluate
-from app.jobs.runner import JobRunner
+from app.jobs.runner import JobHandler, JobRunner
 from app.rules.registry import RuleRegistry
 from app.samples.store import SampleStore
 from app.search.index import EventIndex
@@ -125,3 +126,21 @@ async def test_the_ingester_and_the_live_collection_run_the_registrys_active_rul
         active_rules = app.state.rule_registry.active_rules
         assert app.state.runner._ingester._rules == active_rules
         assert app.state.live_collection._rules == active_rules
+
+
+async def test_lifespan_registers_the_report_export_with_the_job_runner(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registered: list[JobType] = []
+    register = JobRunner.register
+
+    def record_register(self: JobRunner, job_type: JobType, handler: JobHandler) -> None:
+        registered.append(job_type)
+        register(self, job_type, handler)
+
+    monkeypatch.setattr(JobRunner, "register", record_register)
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    assert registered == [JobType.EXPORT_REPORT]

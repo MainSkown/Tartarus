@@ -15,8 +15,10 @@ from app.cape.client import CapeClient
 from app.cape.control import CapeControl
 from app.cape.health import CapeCheck, CapeProbe, GuestCheck
 from app.config import Settings, get_settings
+from app.db.models.job import JobType
 from app.db.session import create_engine, create_session_factory
 from app.errors import ErrorEnvelope, install_error_handlers
+from app.export.report.job import export_report_handler
 from app.health import HealthCheck, OpenSearchCheck, PostgresCheck
 from app.ingest.ingester import ReportIngester
 from app.jobs.runner import JobRunner
@@ -27,6 +29,7 @@ from app.rules.registry import RuleRegistry
 from app.samples.store import SampleStore
 from app.search.client import create_opensearch_client
 from app.search.index import EventIndex
+from app.views.attack_table import load_attack_table
 from app.ws.desktop import router as desktop_ws_router
 from app.ws.live import router as live_ws_router
 from app.ws.system import router as system_ws_router
@@ -94,6 +97,15 @@ def _build_lifespan(
         app.state.runner = runner
         runner.start()
         job_runner = JobRunner(app.state.session_factory, resolved.exports_path)
+        job_runner.register(
+            JobType.EXPORT_REPORT,
+            export_report_handler(
+                app.state.session_factory,
+                event_index,
+                resolved.cape_storage_path,
+                load_attack_table(),
+            ),
+        )
         app.state.job_runner = job_runner
         await job_runner.start()
         logger.info("Backend started (%s)", resolved.environment)

@@ -1,15 +1,20 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.annotations.read import load_annotations
+from app.api.dependencies import get_job_runner
 from app.api.views_findings import ExistingAnalysis, Files, Index
 from app.db.models import Sample
+from app.db.models.job import JobType
 from app.db.session import get_session
 from app.export.assembly import build_export_input, export_annotations
 from app.export.formats import ExportFormat, export_filename, render
 from app.export.inputs import ExportAnnotations, IocExportInput
+from app.export.report.request import ReportRequest, reason_not_reportable
+from app.jobs.runner import JobRunner
+from app.schemas.jobs import JobRead
 from app.schemas.views_findings import IocsView
 from app.views.attack_table import AttackTable, load_attack_table
 from app.views.iocs import collect_iocs
@@ -65,3 +70,22 @@ async def iocs(
         media_type=format_.media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/{analysis_id}/export/report", status_code=202)
+async def report(
+    analysis: ExistingAnalysis,
+    request: ReportRequest,
+    runner: Annotated[JobRunner, Depends(get_job_runner)],
+) -> JobRead:
+    """Starts building the report of a finished analysis as a self-contained HTML page or a PDF,
+    and answers `202` with the pending job. Follow the job on `/ws/system` or `GET /jobs/{id}`;
+    when it is `done`, `GET /jobs/{id}/download` returns the file. `include` leaves sections out
+    (the analyst's notes, the screenshots, the raw IOC lists); all three default to included.
+    `404` for an unknown analysis, `409` unless it is `done`, `422` for a format that is neither
+    `html` nor `pdf`.
+    """
+    if reason := reason_not_reportable(analysis):
+        raise HTTPException(409, reason)
+    job = await runner.submit(JobType.EXPORT_REPORT, analysis.id, request.model_dump(mode="json"))
+    return JobRead.model_validate(job)

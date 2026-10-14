@@ -10,6 +10,7 @@ from app.cape.control import CapeControl
 from app.config import Settings, get_settings
 from app.db.analysis_repository import get_analysis
 from app.db.models import Analysis
+from app.jobs.runner import JobRunner
 from app.rules.registry import RuleRegistry
 from app.samples.store import SampleStore
 from app.search.index import EventIndex
@@ -33,6 +34,10 @@ def get_runner(request: Request) -> RunnerControl:
 
 def get_event_index(request: Request) -> EventIndex:
     return cast(EventIndex, request.app.state.event_index)
+
+
+def get_job_runner(request: Request) -> JobRunner:
+    return cast(JobRunner, request.app.state.job_runner)
 
 
 def get_rule_registry(request: Request) -> RuleRegistry:
