@@ -37,6 +37,8 @@ const endRun = useEndRun({
   monitorUp: () => live.monitorStarted.value,
 })
 const finished = computed(() => live.finished.value || isTerminalStatus(props.analysis.status))
+// The guest stops when the run ends, a while before the analysis is done: its processes have ended.
+const guestStopped = computed(() => finished.value || status.value === 'processing' || status.value === 'ingesting')
 const selectedPid = computed(() => live.filter.value.pids[0])
 const filtered = computed(() => live.filter.value.lanes.length > 0 || live.filter.value.pids.length > 0)
 const queuePosition = computed(() => props.analysis.queue_position)
@@ -115,7 +117,7 @@ function selectProcess(pid: number | undefined): void {
         :roots="live.roots.value"
         :selected-pid="selectedPid"
         :empty-message="processesEmptyMessage({ status, queuePosition })"
-        :run-over="finished"
+        :run-over="guestStopped"
         @select="selectProcess"
       />
       <LiveFinishedPanel

@@ -153,6 +153,28 @@ describe('LiveTab END RUN', () => {
   })
 })
 
+describe('LiveTab once the guest has stopped', () => {
+  it.each(['processing', 'ingesting', 'done'])(
+    'shows the processes still without an end as ended while the analysis is %s',
+    async (status) => {
+      const wrapper = await mountTab()
+      await send('process', { op: 'add', node: liveProcess(10) })
+      expect(wrapper.find('.live-process__state').text()).toBe('running')
+
+      await send('status', { status, phase: 'live', elapsed_s: 100, remaining_s: 0 })
+
+      expect(wrapper.find('.live-process__state').text()).toBe('ended')
+    },
+  )
+
+  it('keeps showing a running guest as running', async () => {
+    const wrapper = await mountTab()
+    await send('process', { op: 'add', node: liveProcess(10) })
+    await send('status', RUNNING)
+    expect(wrapper.find('.live-process__state').text()).toBe('running')
+  })
+})
+
 describe('LiveTab content', () => {
   it('shows the status from the server', async () => {
     const wrapper = await mountTab()
