@@ -6,6 +6,7 @@ import NetworkTable, { type NetworkColumn, type NetworkTableRow } from '@/compon
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { filterOn, flowDestinationFilters, hostEntryFilters, type EventsFilter } from '@/services/events-filters'
 import { formatTimestamp } from '@/services/format-time'
 
 const props = defineProps<{ analysis: AnalysisRead }>()
@@ -16,6 +17,8 @@ type Cell = string | number | null
 
 interface ValueColumn<Row> extends NetworkColumn {
   value: (row: Row) => Cell
+  /** What the cell's "show events" button applies; no filters, no button. */
+  filters?: (row: Row) => EventsFilter[]
 }
 
 interface SubTab {
@@ -49,6 +52,7 @@ function subTab<List extends ListName>(key: List, spec: SubTabSpec<List>): SubTa
       (view[key].items as Item<List>[]).map((row) => ({
         key: rowKey(row),
         cells: columns.map((column) => column.value(row)),
+        cellFilters: columns.map((column) => column.filters?.(row) ?? []),
         process: 'process' in row ? row.process : null,
       })),
   }
@@ -70,7 +74,7 @@ const SUB_TABS: SubTab[] = [
     emptyMessage: 'no DNS queries recorded',
     columns: [
       timeColumn(),
-      { label: 'QUERY', value: (row) => row.query },
+      { label: 'QUERY', value: (row) => row.query, filters: (row) => filterOn('dns.question.name', row.query) },
       { label: 'TYPE', value: (row) => row.type },
       { label: 'ANSWERS', value: (row) => row.answers.join(', ') || null },
     ],
@@ -82,7 +86,7 @@ const SUB_TABS: SubTab[] = [
     columns: [
       timeColumn(),
       { label: 'METHOD', value: (row) => row.method },
-      { label: 'URL', value: (row) => row.url },
+      { label: 'URL', value: (row) => row.url, filters: (row) => filterOn('url.full', row.url) },
       { label: 'STATUS', value: (row) => row.status },
       { label: 'USER AGENT', value: (row) => row.user_agent },
       { label: 'HOST', value: (row) => row.host },
@@ -95,7 +99,7 @@ const SUB_TABS: SubTab[] = [
     emptyNote: NOT_YET_SOURCED,
     columns: [
       timeColumn(),
-      { label: 'SNI', value: (row) => row.server_name },
+      { label: 'SNI', value: (row) => row.server_name, filters: (row) => filterOn('tls.server.sni', row.server_name) },
       { label: 'JA3', value: (row) => row.ja3 },
       { label: 'JA3S', value: (row) => row.ja3s },
     ],
@@ -108,7 +112,11 @@ const SUB_TABS: SubTab[] = [
       timeColumn(),
       { label: 'TRANSPORT', value: (row) => row.transport },
       { label: 'SOURCE', value: (row) => endpoint(row.source_ip, row.source_port) },
-      { label: 'DESTINATION', value: (row) => endpoint(row.destination_ip, row.destination_port) },
+      {
+        label: 'DESTINATION',
+        value: (row) => endpoint(row.destination_ip, row.destination_port),
+        filters: (row) => flowDestinationFilters(row.destination_ip, row.destination_port),
+      },
     ],
     rowKey: eventId,
   }),
@@ -127,7 +135,7 @@ const SUB_TABS: SubTab[] = [
     label: 'HOSTS',
     emptyMessage: 'no hosts recorded',
     columns: [
-      { label: 'HOST', value: (row) => row.host },
+      { label: 'HOST', value: (row) => row.host, filters: (row) => hostEntryFilters(row.kind, row.host) },
       { label: 'KIND', value: (row) => row.kind },
       { label: 'COUNT', value: (row) => row.count, numeric: true },
       { label: 'RELATED', value: (row) => row.related.join(', ') || null },

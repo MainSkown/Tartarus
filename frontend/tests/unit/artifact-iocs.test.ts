@@ -1,16 +1,18 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ArtifactIocs from '@/components/ArtifactIocs.vue'
 import CopyButton from '@/components/CopyButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import { DROPPER_HASH, iocsViewFixture } from './artifacts-fixtures'
+import { filterEventsPlugins } from './filter-events-plugins'
+
+const { plugins, router, query } = await filterEventsPlugins()
 
 const viewsIocs = vi.hoisted(() => vi.fn())
 vi.mock('@/api', () => ({ viewsIocs }))
 
 async function mountIocs() {
-  const wrapper = mount(ArtifactIocs, { global: { plugins: [Quasar] }, props: { analysisId: 45 } })
+  const wrapper = mount(ArtifactIocs, { global: { plugins }, props: { analysisId: 45 } })
   await flushPromises()
   return wrapper
 }
@@ -109,7 +111,43 @@ describe('ArtifactIocs', () => {
 
   it('shows the loader until the answer arrives', () => {
     viewsIocs.mockReturnValue(new Promise(() => undefined))
-    const wrapper = mount(ArtifactIocs, { global: { plugins: [Quasar] }, props: { analysisId: 45 } })
+    const wrapper = mount(ArtifactIocs, { global: { plugins }, props: { analysisId: 45 } })
     expect(wrapper.find('.loader').exists()).toBe(true)
+  })
+})
+
+describe('ArtifactIocs show events actions', () => {
+  beforeEach(() => query.reset())
+
+  const FILTERABLE: [string, string, string][] = [
+    ['hash', 'file.hash.sha256', 'abc123'],
+    ['domain', 'domain', 'c2.example'],
+    ['ip', 'destination.ip', '203.0.113.9'],
+    ['url', 'url.full', 'http://c2.example/a'],
+    ['registry', 'registry.path', 'HKCU\\Software\\Run\\x'],
+    ['file', 'file.path', 'C:\\Temp\\a.exe'],
+  ]
+
+  async function mountWith(iocs: { type: string; value: string }[]) {
+    viewsIocs.mockResolvedValue({
+      data: iocsViewFixture({ iocs: iocs.map((ioc) => ({ ...ioc, count: 1, context: 'ctx', source_event_ids: [], process: null })) as never }),
+    })
+    return mountIocs()
+  }
+
+  it.each(FILTERABLE)('filters a %s indicator on %s', async (type, field, value) => {
+    const wrapper = await mountWith([{ type, value }])
+    const button = wrapper.get('tbody tr [aria-label^="Show events"]')
+    expect(button.attributes('aria-label')).toBe(`Show events with ${field}: ${value}`)
+    await button.trigger('click')
+    await flushPromises()
+    expect(query.chips).toEqual([{ field, value, negate: false }])
+    expect(router.currentRoute.value.params.tab).toBe('events')
+  })
+
+  it('has no button for a mutex', async () => {
+    const wrapper = await mountWith([{ type: 'mutex', value: 'Global\\x' }])
+    expect(wrapper.find('tbody tr [aria-label^="Show events"]').exists()).toBe(false)
+    expect(wrapper.find('tbody tr [aria-label="Copy indicator"]').exists()).toBe(true)
   })
 })

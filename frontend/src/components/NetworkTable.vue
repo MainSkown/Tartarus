@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { ProcessRef } from '@/api'
+import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
+import type { EventsFilter } from '@/services/events-filters'
 
 export interface NetworkColumn {
   label: string
@@ -10,6 +12,8 @@ export interface NetworkColumn {
 export interface NetworkTableRow {
   key: string
   cells: (string | number | null)[]
+  /** Per cell, what its "show events" button applies; an absent or empty entry means no button. */
+  cellFilters?: EventsFilter[][]
   process?: ProcessRef | null
 }
 
@@ -62,9 +66,19 @@ defineProps<{
                 class="cell-value"
                 :title="String(row.cells[index] ?? '–')"
               >{{ row.cells[index] ?? '–' }}</span>
+              <FilterEventsButton :target="{ chips: row.cellFilters?.[index] ?? [] }" />
             </td>
             <td v-if="withProcess">
-              <ProcessChip :process="row.process ?? null" />
+              <FilterEventsButton
+                v-if="row.process"
+                :target="{ pid: row.process.pid }"
+              >
+                <ProcessChip :process="row.process" />
+              </FilterEventsButton>
+              <ProcessChip
+                v-else
+                :process="null"
+              />
             </td>
           </tr>
         </tbody>

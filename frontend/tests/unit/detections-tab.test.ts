@@ -1,5 +1,4 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { analysisFixture } from './analysis-fixtures'
 import {
@@ -8,6 +7,9 @@ import {
   EMPTY_ATTACK_MATRIX,
   EMPTY_DETECTIONS_VIEW,
 } from './detections-fixtures'
+import { filterEventsPlugins } from './filter-events-plugins'
+
+const { plugins } = await filterEventsPlugins()
 
 vi.mock('@/api', () => ({ viewsDetections: vi.fn(), viewsAttack: vi.fn() }))
 
@@ -21,7 +23,7 @@ const succeeded = (data: unknown) => ({ data, error: undefined }) as never
 const failed = (message: string) => ({ data: undefined, error: { error: { code: 'internal_error', message } } }) as never
 
 async function mountTab() {
-  const wrapper = mount(DetectionsTab, { global: { plugins: [Quasar] }, props: { analysis: analysisFixture({ id: 45 }) } })
+  const wrapper = mount(DetectionsTab, { global: { plugins }, props: { analysis: analysisFixture({ id: 45 }) } })
   await flushPromises()
   return wrapper
 }
@@ -47,7 +49,7 @@ describe('DetectionsTab states', () => {
 
   it('shows the loader until the detections arrive', () => {
     detectionsMock.mockReturnValue(new Promise(() => undefined) as never)
-    const wrapper = mount(DetectionsTab, { global: { plugins: [Quasar] }, props: { analysis: analysisFixture() } })
+    const wrapper = mount(DetectionsTab, { global: { plugins }, props: { analysis: analysisFixture() } })
     expect(wrapper.find('.loader').exists()).toBe(true)
   })
 

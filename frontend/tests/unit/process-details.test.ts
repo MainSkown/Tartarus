@@ -1,8 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import { processDetail, processNode, sampleTree } from './process-fixtures'
+import { filterEventsPlugins } from './filter-events-plugins'
+
+const { plugins, router, query } = await filterEventsPlugins()
 import type { ProcessNode, ProcessRef } from '@/api'
 
 const viewsProcessMock = vi.fn()
@@ -20,7 +22,7 @@ interface Options {
 
 async function mountDetails({ node = benign, injectedInto = [], injectedFrom = [] }: Options = {}) {
   const wrapper = mount(ProcessDetails, {
-    global: { plugins: [Quasar] },
+    global: { plugins },
     props: { analysisId: 45, node, injectedInto, injectedFrom },
   })
   await flushPromises()
@@ -122,7 +124,7 @@ describe('ProcessDetails loaded detail', () => {
   it('shows the fields while the rest is loading', async () => {
     viewsProcessMock.mockReturnValue(new Promise(() => undefined))
     const wrapper = mount(ProcessDetails, {
-      global: { plugins: [Quasar] },
+      global: { plugins },
       props: { analysisId: 45, node: benign, injectedInto: [], injectedFrom: [] },
     })
     await flushPromises()
@@ -191,5 +193,24 @@ describe('ProcessDetails loaded detail', () => {
 
     expect(wrapper.text()).not.toContain('failed to load')
     expect(wrapper.find('.process-details__apis').exists()).toBe(true)
+  })
+})
+
+describe('ProcessDetails show events', () => {
+  beforeEach(() => query.reset())
+
+  it('has a button that names the process it shows events for', async () => {
+    const wrapper = await mountDetails()
+    const button = wrapper.get('.process-details__header button')
+    expect(button.attributes('aria-label')).toBe('Show events with pid: 9708')
+    expect(button.attributes('title')).toBe('Show events')
+  })
+
+  it('limits the events to this process and opens the Events tab', async () => {
+    const wrapper = await mountDetails()
+    await wrapper.get('.process-details__header button').trigger('click')
+    await flushPromises()
+    expect(query.pids).toEqual([9708])
+    expect(router.currentRoute.value.params.tab).toBe('events')
   })
 })

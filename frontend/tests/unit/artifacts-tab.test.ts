@@ -1,5 +1,4 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ArtifactTable from '@/components/ArtifactTable.vue'
 import ArtifactsTab from '@/components/tabs/ArtifactsTab.vue'
@@ -11,12 +10,15 @@ import {
   iocsViewFixture,
   registryViewFixture,
 } from './artifacts-fixtures'
+import { filterEventsPlugins } from './filter-events-plugins'
+
+const { plugins } = await filterEventsPlugins()
 
 const api = vi.hoisted(() => ({ viewsArtifacts: vi.fn(), viewsRegistry: vi.fn(), viewsIocs: vi.fn() }))
 vi.mock('@/api', () => api)
 
 async function mountTab() {
-  const wrapper = mount(ArtifactsTab, { global: { plugins: [Quasar] }, props: { analysis: ANALYSIS } })
+  const wrapper = mount(ArtifactsTab, { global: { plugins }, props: { analysis: ANALYSIS } })
   await flushPromises()
   return wrapper
 }
@@ -83,7 +85,7 @@ describe('ArtifactsTab', () => {
 
     it('have no counts while the artifacts load', () => {
       api.viewsArtifacts.mockReturnValue(new Promise(() => undefined))
-      const wrapper = mount(ArtifactsTab, { global: { plugins: [Quasar] }, props: { analysis: ANALYSIS } })
+      const wrapper = mount(ArtifactsTab, { global: { plugins }, props: { analysis: ANALYSIS } })
       expect(subTabLabels(wrapper as unknown as Tab)[0]).toBe('DROPPED FILES')
     })
   })
@@ -127,7 +129,7 @@ describe('ArtifactsTab', () => {
 
     it('shows the loader while loading', () => {
       api.viewsArtifacts.mockReturnValue(new Promise(() => undefined))
-      const wrapper = mount(ArtifactsTab, { global: { plugins: [Quasar] }, props: { analysis: ANALYSIS } })
+      const wrapper = mount(ArtifactsTab, { global: { plugins }, props: { analysis: ANALYSIS } })
       expect(wrapper.find('.loader').exists()).toBe(true)
     })
 

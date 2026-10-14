@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { viewsProcess, type ProcessNode, type ProcessRef } from '@/api'
+import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import ViewState from '@/components/ViewState.vue'
@@ -50,6 +51,10 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
       >
         {{ processTitle(node) }}
       </h2>
+      <FilterEventsButton
+        class="process-details__show-events"
+        :target="{ pid: node.pid }"
+      />
       <SeverityBadge
         v-if="node.max_severity && node.detection_count > 0"
         :severity="node.max_severity"
@@ -331,6 +336,11 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.process-details__show-events {
+  margin-left: auto;
+  color: var(--blue-primary);
 }
 
 .process-details__quiet {

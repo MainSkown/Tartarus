@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { watch } from 'vue'
 import { viewsRegistry } from '@/api'
+import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { registryChangeFilters } from '@/services/events-filters'
 import { formatTimestamp } from '@/services/format-time'
 
 const OPEN_ALL_UP_TO_KEYS = 10
@@ -62,7 +64,10 @@ function groupTitle(group: { hive: string | null; key: string }): string {
                 v-for="change in group.changes"
                 :key="change.event_id"
               >
-                <td>{{ change.action }}</td>
+                <td>
+                  {{ change.action }}
+                  <FilterEventsButton :target="{ chips: registryChangeFilters({ hive: group.hive, key: group.key, value_name: change.value_name }) }" />
+                </td>
                 <td>
                   <span
                     v-if="change.value_name"

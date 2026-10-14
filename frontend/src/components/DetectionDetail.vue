@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Detection } from '@/api'
+import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import { rulesetLabel } from '@/services/detection-groups'
+import { eventIdQuery } from '@/services/event-id-query'
+import { filterOn } from '@/services/events-filters'
 import { formatTimestamp } from '@/services/format-time'
 import { laneMeta } from '@/services/lanes'
 
@@ -18,15 +21,22 @@ const eventsCount = computed(() => {
     ? `${related_events.length} of ${related_event_total} shown`
     : String(related_event_total)
 })
+
+const triggeringEventsQuery = computed(() => eventIdQuery(props.detection.related_events.map((event) => event.id)))
 </script>
 
 <template>
   <article class="detection-detail">
     <PaneHeading label="DESCRIPTION" />
-    <SeverityBadge
-      class="detection-detail__severity"
-      :severity="detection.severity"
-    />
+    <div class="detection-detail__top">
+      <SeverityBadge :severity="detection.severity" />
+      <FilterEventsButton
+        class="detection-detail__action detection-detail__rule-filter text-mono"
+        :target="{ chips: filterOn('rule.name', detection.name) }"
+      >
+        [FILTER ON RULE]
+      </FilterEventsButton>
+    </div>
     <h2 class="detection-detail__name text-mono">
       {{ detection.name }}
     </h2>
@@ -96,6 +106,19 @@ const eventsCount = computed(() => {
         v-if="detection.related_event_total > 0"
         class="detection-detail__events-count text-gray"
       >{{ eventsCount }}</span>
+      <template v-if="triggeringEventsQuery">
+        <span
+          v-if="triggeringEventsQuery.used < detection.related_events.length"
+          class="detection-detail__events-cut text-gray"
+        >the query names {{ triggeringEventsQuery.used }} of {{ detection.related_events.length }}</span>
+        <FilterEventsButton
+          class="detection-detail__action detection-detail__show-events text-mono"
+          :target="{ text: triggeringEventsQuery.text }"
+          label="the triggering events"
+        >
+          [SHOW THESE EVENTS]
+        </FilterEventsButton>
+      </template>
     </h3>
     <ul
       v-if="detection.related_events.length > 0"
@@ -137,9 +160,34 @@ const eventsCount = computed(() => {
   min-width: 0;
 }
 
-.detection-detail__severity {
-  /* The list's entries have this much padding above their badge; matching it puts both badges on one line. */
-  margin: var(--spacing-sm) 0 0;
+.detection-detail__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  /* The list's entries have this much padding above their badge; matching it puts both badges on one line. Padding, not margin: a block's margin would collapse into the heading's. */
+  padding-top: var(--spacing-sm);
+}
+
+.detection-detail__action {
+  color: var(--blue-primary);
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.detection-detail__show-events {
+  margin-left: auto;
+}
+
+.detection-detail__events-cut {
+  margin-left: auto;
+  font-weight: normal;
+  letter-spacing: 0;
+}
+
+.detection-detail__events-cut + .detection-detail__show-events {
+  margin-left: 0;
 }
 
 .detection-detail__name {

@@ -2,7 +2,9 @@
 import { computed } from 'vue'
 import type { Artifact } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
+import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
+import { filterOn } from '@/services/events-filters'
 import { formatFileSize } from '@/services/file-size'
 
 const HASH_PREFIX_LENGTH = 12
@@ -63,11 +65,13 @@ function downloadUrl(artifact: Artifact): string {
               {{ artifact.cape_type ?? '–' }}
             </td>
             <td>
-              <span
-                v-if="artifact.guest_path"
-                class="cell-path"
-                :title="artifact.guest_path"
-              >{{ artifact.guest_path }}</span>
+              <template v-if="artifact.guest_path">
+                <span
+                  class="cell-path"
+                  :title="artifact.guest_path"
+                >{{ artifact.guest_path }}</span>
+                <FilterEventsButton :target="{ chips: filterOn('file.path', artifact.guest_path) }" />
+              </template>
               <span
                 v-else
                 class="cell-path cell-empty"
@@ -89,6 +93,7 @@ function downloadUrl(artifact: Artifact): string {
                   :text="artifact.sha256"
                   what="SHA-256"
                 />
+                <FilterEventsButton :target="{ chips: filterOn('file.hash.sha256', artifact.sha256) }" />
               </template>
               <span
                 v-else
@@ -144,6 +149,12 @@ function downloadUrl(artifact: Artifact): string {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Inline so the path's "show events" button sits beside it, not under it. */
+.cell-path {
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .cell-name {

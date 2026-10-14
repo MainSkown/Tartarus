@@ -701,9 +701,15 @@ function matchesChip(sources: Record<string, Source>, event: Event, chip: Filter
   return chip.negate ? !matches : matches
 }
 
-/** The query language reduced to what a sample needs: ANDed `field:value` terms and free words, with NOT. */
+/** The values a term's right side accepts: one, or the members of a `(a OR b)` group, unquoted. */
+function alternativesOf(value: string): string[] {
+  const members = value.startsWith('(') ? value.slice(1, -1).split(/\s+OR\s+/) : [value]
+  return members.map((member) => member.replace(/^"|"$/g, ''))
+}
+
+/** The query language reduced to what a sample needs: ANDed `field:value` and `field:(a OR b)` terms and free words, with NOT. */
 function matchesQuery(sources: Record<string, Source>, event: Event, query: string): boolean {
-  const terms = query.match(/NOT\s+|[^\s"]+:"[^"]*"|[^\s]+/g) ?? []
+  const terms = query.match(/NOT\s+|[^\s"]+:"[^"]*"|[^\s"]+:\([^)]*\)|[^\s]+/g) ?? []
   let negate = false
   for (const term of terms) {
     if (/^NOT\s*$/.test(term)) {
@@ -714,7 +720,7 @@ function matchesQuery(sources: Record<string, Source>, event: Event, query: stri
     const split = term.indexOf(':')
     const hit =
       split > 0
-        ? fieldValues(sources, event, term.slice(0, split)).some((value) => wildcard(term.slice(split + 1).replace(/^"|"$/g, '')).test(value))
+        ? fieldValues(sources, event, term.slice(0, split)).some((value) => alternativesOf(term.slice(split + 1)).some((pattern) => wildcard(pattern).test(value)))
         : (event.summary ?? '').toLowerCase().includes(term.replace(/"/g, '').toLowerCase())
     if (hit === negate) return false
     negate = false

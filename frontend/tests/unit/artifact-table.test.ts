@@ -1,14 +1,16 @@
-import { mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
-import { describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { Artifact } from '@/api'
 import ArtifactTable from '@/components/ArtifactTable.vue'
 import CopyButton from '@/components/CopyButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import { artifactFixture, DROPPER_HASH } from './artifacts-fixtures'
+import { filterEventsPlugins } from './filter-events-plugins'
+
+const { plugins, router, query } = await filterEventsPlugins()
 
 function mountTable(artifacts: Artifact[], props: { showFamily?: boolean } = {}) {
-  return mount(ArtifactTable, { global: { plugins: [Quasar] }, props: { analysisId: 45, artifacts, ...props } })
+  return mount(ArtifactTable, { global: { plugins }, props: { analysisId: 45, artifacts, ...props } })
 }
 
 function headers(wrapper: ReturnType<typeof mountTable>): string[] {
@@ -89,5 +91,37 @@ describe('ArtifactTable', () => {
     it('leaves out the caption when nothing can be downloaded', () => {
       expect(mountTable([artifactFixture({ downloadable: false })]).find('.download-note').exists()).toBe(false)
     })
+  })
+})
+
+describe('ArtifactTable show events actions', () => {
+  beforeEach(() => query.reset())
+
+  const labels = (cell: { findAll: (selector: string) => { attributes: (name: string) => string | undefined }[] }) =>
+    cell.findAll('button').map((button) => button.attributes('aria-label'))
+
+  it('filters on the guest path from the path cell', () => {
+    const row = mountTable([artifactFixture()]).find('tbody tr')
+    expect(labels(row.findAll('td')[1]! as never)).toEqual([
+      'Show events with file.path: C:\\Users\\Analyst\\AppData\\Local\\Temp\\tartarus-benign.txt',
+    ])
+  })
+
+  it('filters on the SHA-256 from the hash cell, next to the copy button', () => {
+    const cell = mountTable([artifactFixture()]).find('.cell-sha')
+    expect(labels(cell as never)).toEqual([`Copy SHA-256`, `Show events with file.hash.sha256: ${DROPPER_HASH}`])
+  })
+
+  it('offers nothing for a file without a path or a hash', () => {
+    const wrapper = mountTable([artifactFixture({ guest_path: null, sha256: null })])
+    expect(wrapper.findAll('tbody tr')[0]!.findAll('button')).toHaveLength(0)
+  })
+
+  it('applies the chip and opens Events from the path button', async () => {
+    const wrapper = mountTable([artifactFixture({ guest_path: 'C:\\a.exe' })])
+    await wrapper.find('tbody td [aria-label^="Show events with file.path"]').trigger('click')
+    await flushPromises()
+    expect(query.chips).toEqual([{ field: 'file.path', value: 'C:\\a.exe', negate: false }])
+    expect(router.currentRoute.value.params.tab).toBe('events')
   })
 })

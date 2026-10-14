@@ -1,9 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { instances } from './cytoscape-mock'
 import { analysisFixture } from './analysis-fixtures'
 import { processDetail, processNode, sampleTree } from './process-fixtures'
+import { filterEventsPlugins } from './filter-events-plugins'
+
+const { plugins } = await filterEventsPlugins()
 import type { ProcessNode } from '@/api'
 
 const viewsProcessesMock = vi.fn()
@@ -27,7 +29,7 @@ const CHILD = tree.roots[0]!.children[0]!.entity_id
 async function mountTab() {
   const wrapper = mount(ProcessesTab, {
     attachTo: document.body,
-    global: { plugins: [Quasar] },
+    global: { plugins },
     props: { analysis: analysisFixture({ id: 45 }) },
   })
   await flushPromises()
@@ -65,7 +67,7 @@ describe('ProcessesTab states', () => {
 
   it('shows the loader while the processes load, for the analysis shown', async () => {
     viewsProcessesMock.mockReturnValue(new Promise(() => undefined))
-    const wrapper = mount(ProcessesTab, { global: { plugins: [Quasar] }, props: { analysis: analysisFixture({ id: 45 }) } })
+    const wrapper = mount(ProcessesTab, { global: { plugins }, props: { analysis: analysisFixture({ id: 45 }) } })
 
     expect(wrapper.find('.loader').exists()).toBe(true)
     expect(viewsProcessesMock).toHaveBeenCalledWith({ path: { analysis_id: 45 } })

@@ -11,13 +11,14 @@ vi.mock('@/api', () => ({
 
 const { default: QueryHeader } = await import('@/components/QueryHeader.vue')
 const { useQueryStateStore } = await import('@/stores/query-state')
+const { useEventsStore } = await import('@/stores/events')
 
 function mountHeader() {
   const pinia = createPinia()
   setActivePinia(pinia)
   const store = useQueryStateStore()
   const wrapper = mount(QueryHeader, { props: { analysisId: 7 }, global: { plugins: [Quasar, pinia] } })
-  return { wrapper, store }
+  return { wrapper, store, events: useEventsStore() }
 }
 
 describe('QueryHeader', () => {
@@ -41,5 +42,13 @@ describe('QueryHeader', () => {
   it('binds the bar to the analysis', () => {
     const { wrapper } = mountHeader()
     expect(wrapper.findComponent({ name: 'QueryBar' }).props('analysisId')).toBe(7)
+  })
+
+  it('names a pid chip by the process the listed events carry', async () => {
+    const { wrapper, store, events } = mountHeader()
+    store.setPids([4120, 7])
+    events.events = [{ process: { pid: 4120, name: 'cmd.exe' } } as never]
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.filter-chip__label').map((label) => label.text())).toEqual(['pid: 4120 (cmd.exe)', 'pid: 7'])
   })
 })

@@ -1,7 +1,9 @@
-import { mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
-import { describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it } from 'vitest'
 import NetworkTable, { type NetworkColumn, type NetworkTableRow } from '@/components/NetworkTable.vue'
+import { filterEventsPlugins } from './filter-events-plugins'
+
+const { plugins, router, query } = await filterEventsPlugins()
 
 const ROWS: NetworkTableRow[] = [
   { key: 'a', cells: ['first', 10], process: { pid: 7, name: 'cmd.exe' } },
@@ -15,7 +17,7 @@ function mountTable(
 ) {
   return mount(NetworkTable, {
     props: { columns: COLUMNS, rows: ROWS, total: ROWS.length, ...props },
-    global: { plugins: [Quasar] },
+    global: { plugins },
   })
 }
 
@@ -65,5 +67,46 @@ describe('NetworkTable', () => {
 
   it('scrolls inside its own container', () => {
     expect(mountTable().find('.tt-table-scroll .tt-table').exists()).toBe(true)
+  })
+
+  describe('show events actions', () => {
+    beforeEach(() => query.reset())
+
+    const FILTERED: NetworkTableRow[] = [
+      { key: 'a', cells: ['evil.example', 10], cellFilters: [[{ field: 'dns.question.name', value: 'evil.example' }], []], process: { pid: 7, name: 'cmd.exe' } },
+      { key: 'b', cells: ['plain', 20], process: null },
+    ]
+
+    it('puts a button in the cell that has a filter, after its value, and in no other', () => {
+      const rows = mountTable({ rows: FILTERED }).findAll('tbody tr')
+      const first = rows[0]!.findAll('td')
+      expect(first[0]!.find('.cell-value + button').attributes('aria-label')).toBe('Show events with dns.question.name: evil.example')
+      expect(first[1]!.find('button').exists()).toBe(false)
+      expect(rows[1]!.find('button').exists()).toBe(false)
+    })
+
+    it('applies the chip and opens the Events tab from the cell button', async () => {
+      await mountTable({ rows: FILTERED }).find('tbody td button').trigger('click')
+      await flushPromises()
+      expect(query.chips).toEqual([{ field: 'dns.question.name', value: 'evil.example', negate: false }])
+      expect(router.currentRoute.value.params.tab).toBe('events')
+    })
+
+    it('makes the process of a row a button that shows the process events, the chip text unchanged', async () => {
+      const wrapper = mountTable({ rows: FILTERED, withProcess: true })
+      const button = wrapper.findAll('tbody tr')[0]!.findAll('td')[2]!.get('button')
+      expect(button.attributes('aria-label')).toBe('Show events with pid: 7')
+      expect(button.text()).toBe('cmd.exe (7)')
+      await button.trigger('click')
+      await flushPromises()
+      expect(query.pids).toEqual([7])
+    })
+
+    it('leaves a row without a process as the dash, with no button', () => {
+      const wrapper = mountTable({ rows: FILTERED, withProcess: true })
+      const cell = wrapper.findAll('tbody tr')[1]!.findAll('td')[2]!
+      expect(cell.text()).toBe('–')
+      expect(cell.find('button').exists()).toBe(false)
+    })
   })
 })

@@ -8,6 +8,7 @@ import AnalysisTabs from '@/components/AnalysisTabs.vue'
 import QueryHeader from '@/components/QueryHeader.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { TAB_VIEWS } from '@/components/tabs'
+import { useAnalysisTabNavigation } from '@/composables/use-analysis-tab-navigation'
 import { useQueryUrlSync } from '@/composables/use-query-url-sync'
 import { DEFAULT_TAB, LIVE_TAB, arrivalNote, isQueryableTab, nextLiveSession } from '@/services/analysis-tabs'
 import { confirmDestructive } from '@/services/confirm'
@@ -18,6 +19,7 @@ import { useAnalysesStore } from '@/stores/analyses'
 const route = useRoute()
 const router = useRouter()
 const store = useAnalysesStore()
+const { openTab } = useAnalysisTabNavigation()
 
 const acting = ref(false)
 
@@ -63,7 +65,7 @@ async function deleteAnalysis(): Promise<void> {
 }
 
 function selectTab(tab: string): void {
-  void router.push({ name: 'analysis-workspace', params: { id: String(analysisId.value), tab }, query: route.query })
+  void openTab(tab)
 }
 
 useQueryUrlSync(() => analysisId.value)

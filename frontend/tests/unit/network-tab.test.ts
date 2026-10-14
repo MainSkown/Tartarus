@@ -1,9 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NetworkView } from '@/api'
 import { analysisFixture } from './analysis-fixtures'
+import { filterEventsPlugins } from './filter-events-plugins'
 import { networkView } from './network-fixtures'
+
+const { plugins, router, query } = await filterEventsPlugins()
 
 const viewsNetworkMock = vi.fn()
 vi.mock('@/api', () => ({
@@ -16,7 +18,7 @@ async function mountTab(view: NetworkView = networkView()) {
   viewsNetworkMock.mockResolvedValue({ data: view })
   const wrapper = mount(NetworkTab, {
     props: { analysis: analysisFixture({ id: 45 }) },
-    global: { plugins: [Quasar] },
+    global: { plugins },
   })
   await flushPromises()
   return wrapper
@@ -31,8 +33,15 @@ function headers(wrapper: Awaited<ReturnType<typeof mountTab>>): string[] {
   return wrapper.findAll('th').map((th) => th.text())
 }
 
+// An icon is drawn from its ligature text, which is not what the cell shows.
+function cellText(cell: { element: Element }): string {
+  const copy = cell.element.cloneNode(true) as Element
+  copy.querySelectorAll('.q-icon').forEach((icon) => icon.remove())
+  return copy.textContent.trim()
+}
+
 function bodyRows(wrapper: Awaited<ReturnType<typeof mountTab>>): string[][] {
-  return wrapper.findAll('tbody tr').map((row) => row.findAll('td').map((cell) => cell.text()))
+  return wrapper.findAll('tbody tr').map((row) => row.findAll('td').map(cellText))
 }
 
 beforeEach(() => {
@@ -49,7 +58,7 @@ describe('NetworkTab loading', () => {
     viewsNetworkMock.mockReturnValue(new Promise(() => {}))
     const wrapper = mount(NetworkTab, {
       props: { analysis: analysisFixture({ id: 45 }) },
-      global: { plugins: [Quasar] },
+      global: { plugins },
     })
     expect(wrapper.attributes('data-tab')).toBe('network')
     expect(wrapper.find('.loader').exists()).toBe(true)
@@ -59,7 +68,7 @@ describe('NetworkTab loading', () => {
     viewsNetworkMock.mockResolvedValueOnce({ error: { error: { code: 'x', message: 'index is down' } } })
     const wrapper = mount(NetworkTab, {
       props: { analysis: analysisFixture({ id: 45 }) },
-      global: { plugins: [Quasar] },
+      global: { plugins },
     })
     await flushPromises()
     expect(wrapper.text()).toContain('failed to load: index is down')
@@ -227,5 +236,57 @@ describe('NetworkTab pcap', () => {
     const link = wrapper.find('a[download]')
     expect(link.attributes('href')).toBe('/api/analyses/45/pcap')
     expect(link.text()).toContain('PCAP')
+  })
+})
+
+describe('NetworkTab show events actions', () => {
+  beforeEach(() => query.reset())
+
+  function actions(wrapper: Awaited<ReturnType<typeof mountTab>>): string[][] {
+    return wrapper
+      .findAll('tbody tr')
+      .map((row) => row.findAll('button').map((button) => button.attributes('aria-label')!.replace('Show events with ', '')))
+  }
+
+  it('filters a DNS row on its query name and its process on the pid', async () => {
+    const wrapper = await mountTab()
+    expect(actions(wrapper)).toEqual([['dns.question.name: www.msftconnecttest.com'], ['dns.question.name: evil.example.org', 'pid: 2476']])
+  })
+
+  it('filters an HTTP row on its URL', async () => {
+    const wrapper = await mountTab()
+    await openSubTab(wrapper, 'HTTP')
+    expect(actions(wrapper)).toEqual([
+      ['url.full: http://ipv6.msftconnecttest.com/connecttest.txt', 'pid: 2476'],
+      ['url.full: http://192.168.150.1/'],
+    ])
+  })
+
+  it('filters a TLS row on its server name indication', async () => {
+    const tls = { event_id: 'tls-1', time: '2026-10-13T15:39:33.872000Z', server_name: 'secure.example', ja3: null, ja3s: null, process: null }
+    const wrapper = await mountTab(networkView({ tls: { items: [tls], total: 1 } }))
+    await openSubTab(wrapper, 'TLS')
+    expect(actions(wrapper)).toEqual([['tls.server.sni: secure.example']])
+  })
+
+  it('filters a flow on its destination address and port together, and offers nothing for a flow without a destination', async () => {
+    const wrapper = await mountTab()
+    await openSubTab(wrapper, 'FLOWS')
+    expect(actions(wrapper)).toEqual([['destination.ip: 192.168.150.1 and destination.port: 443'], ['pid: 2476']])
+  })
+
+  it('applies both flow chips and opens Events from one click', async () => {
+    const wrapper = await mountTab()
+    await openSubTab(wrapper, 'FLOWS')
+    await wrapper.find('tbody button').trigger('click')
+    await flushPromises()
+    expect(query.chips.map((chip) => `${chip.field}:${chip.value}`)).toEqual(['destination.ip:192.168.150.1', 'destination.port:443'])
+    expect(router.currentRoute.value.params.tab).toBe('events')
+  })
+
+  it('filters a host on the address for an address and on the domain alias for a name, with no process button', async () => {
+    const wrapper = await mountTab()
+    await openSubTab(wrapper, 'HOSTS')
+    expect(actions(wrapper)).toEqual([['destination.ip: 192.168.150.1'], ['domain: evil.example.org']])
   })
 })

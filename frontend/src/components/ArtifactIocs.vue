@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { viewsIocs, type IocType } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
+import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { iocFilters } from '@/services/events-filters'
 
 const IOC_TYPES: IocType[] = ['hash', 'domain', 'ip', 'url', 'mutex', 'registry', 'file']
 
@@ -103,6 +105,7 @@ watch(() => props.analysisId, () => {
                   :text="ioc.value"
                   what="indicator"
                 />
+                <FilterEventsButton :target="{ chips: iocFilters(ioc.type, ioc.value) }" />
               </td>
               <td class="num cell-count">
                 {{ ioc.count }}
