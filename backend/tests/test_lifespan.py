@@ -107,3 +107,12 @@ async def test_the_runner_is_running_while_the_app_is_up(app: FastAPI) -> None:
     async with app.router.lifespan_context(app):
         with pytest.raises(RuntimeError):
             app.state.runner.start()
+
+
+async def test_the_ingester_and_the_live_collection_run_the_registrys_active_rules(
+    app: FastAPI,
+) -> None:
+    async with app.router.lifespan_context(app):
+        active_rules = app.state.rule_registry.active_rules
+        assert app.state.runner._ingester._rules == active_rules
+        assert app.state.live_collection._rules == active_rules

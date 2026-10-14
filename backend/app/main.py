@@ -68,24 +68,25 @@ def _build_lifespan(
         app.state.health_checks = build_health_checks(
             engine, opensearch, cape, resolved.guest_label
         )
+        rule_registry = RuleRegistry(resolved.rules_path, app.state.session_factory)
+        app.state.rule_registry = rule_registry
         live_hub = LiveHub()
         live_collection = LiveCollectionManager(
             storage_path=resolved.cape_storage_path,
             poll_interval_s=resolved.live_poll_interval_seconds,
             store=event_index,
             hub=live_hub,
+            rules=rule_registry.active_rules,
         )
         app.state.live_hub = live_hub
         app.state.live_collection = live_collection
-        rule_registry = RuleRegistry(resolved.rules_path, app.state.session_factory)
-        app.state.rule_registry = rule_registry
         await rule_registry.start()
         runner = build_runner(
             app.state.session_factory,
             cape,
             sample_store,
             read_report,
-            ReportIngester(event_index),
+            ReportIngester(event_index, rules=rule_registry.active_rules),
             resolved,
             live_collection,
         )

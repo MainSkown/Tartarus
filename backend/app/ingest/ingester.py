@@ -14,6 +14,8 @@ from app.ingest.cape_signatures import CapeSignaturesNormalizer
 from app.ingest.capemon import CapemonNormalizer
 from app.ingest.clock import analysis_started, read_host_registrations, task_log_of
 from app.ingest.protocol import IngestContext, Normalizer
+from app.ingest.sigma import RulesProvider, can_match_a_rule, final_detections, no_rules
+from app.rules.rule import Rule
 from app.search.index import IndexingError
 
 logger = logging.getLogger(__name__)
@@ -45,11 +47,24 @@ class ReportIngester:
     """Indexes the events of a CAPE `report.json` into the analysis's own index.
 
     Satisfies `app.analyses.ports.EventIngester`.
+
+    `rules` is asked for the Sigma rules to run once per ingest, so a rule switched off since
+    the last ingest is not applied. The detections are matched over the complete, time-ordered
+    event set after the normalisers are done and indexed after the other events, numbered
+    with them. Only the events a rule could apply to are held back for that (a small part of
+    a report, which is mostly API calls); the rest is streamed into the index as before.
     """
 
-    def __init__(self, index: EventStore, normalizers: Sequence[Normalizer] | None = None) -> None:
+    def __init__(
+        self,
+        index: EventStore,
+        normalizers: Sequence[Normalizer] | None = None,
+        *,
+        rules: RulesProvider = no_rules,
+    ) -> None:
         self._index = index
         self._normalizers = normalizers if normalizers is not None else default_normalizers()
+        self._rules = rules
 
     async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
         try:
@@ -74,22 +89,33 @@ class ReportIngester:
         self, analysis_id: int, report: dict[str, Any], context: IngestContext
     ) -> IngestResult:
         lane_counts: Counter[str] = Counter()
-        events = self._numbered(report, context, lane_counts)
+        events = self._numbered(self._with_detections(report, context), lane_counts)
         event_count = await self._index.bulk_index(analysis_id, events)
         await self._index.set_refresh_interval(analysis_id, SETTLED_REFRESH_INTERVAL)
         await self._index.refresh(analysis_id)
         return IngestResult(event_count=event_count, lane_counts=dict(lane_counts))
 
-    def _numbered(
-        self, report: dict[str, Any], context: IngestContext, lane_counts: Counter[str]
+    def _with_detections(
+        self, report: dict[str, Any], context: IngestContext
     ) -> Iterator[dict[str, Any]]:
-        """Merges the sources, numbering events in stream order and counting them per lane.
+        """The sources' events as they come, then the Sigma alerts over all of them."""
+        merged = chain.from_iterable(n.normalise(report, context) for n in self._normalizers)
+        rules = list(self._rules())
+        if not rules:
+            return merged
+        matchable: list[dict[str, Any]] = []
+        return chain(_remembering(merged, matchable), _detections(rules, context, matchable))
+
+    @staticmethod
+    def _numbered(
+        events: Iterable[dict[str, Any]], lane_counts: Counter[str]
+    ) -> Iterator[dict[str, Any]]:
+        """Numbers events in stream order and counts them per lane.
 
         Each normaliser numbers its own events from zero, so the numbers only become unique
         across sources here.
         """
-        merged = chain.from_iterable(n.normalise(report, context) for n in self._normalizers)
-        for sequence, event in enumerate(merged):
+        for sequence, event in enumerate(events):
             event["event"]["sequence"] = sequence
             lane_counts[event["tartarus"]["lane"]] += 1
             yield event
@@ -97,6 +123,22 @@ class ReportIngester:
     async def _discard_partial_index(self, analysis_id: int) -> None:
         with contextlib.suppress(Exception):
             await self._index.drop(analysis_id)
+
+
+def _remembering(
+    events: Iterable[dict[str, Any]], matchable: list[dict[str, Any]]
+) -> Iterator[dict[str, Any]]:
+    for event in events:
+        if can_match_a_rule(event):
+            matchable.append(event)
+        yield event
+
+
+def _detections(
+    rules: Sequence[Rule], context: IngestContext, matchable: list[dict[str, Any]]
+) -> Iterator[dict[str, Any]]:
+    # A generator, so this runs only when the stream before it is spent and `matchable` is whole.
+    yield from final_detections(rules, context, matchable)
 
 
 def _read(analysis_id: int, report_path: Path) -> tuple[IngestContext, dict[str, Any]]:

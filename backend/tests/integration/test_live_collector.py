@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 from opensearchpy import AsyncOpenSearch
 
+from app.ingest.sigma import RulesProvider, no_rules
 from app.live.collector import LiveCollector
+from app.rules.loader import load_rules
 from app.search.client import create_opensearch_client
 from app.search.index import EventIndex, index_name
 from tests.live.collector_support import (
@@ -16,6 +18,7 @@ from tests.live.collector_support import (
     reference_events,
     write_in_slices,
 )
+from tests.live.sigma_support import write_rules
 
 pytestmark = pytest.mark.integration
 
@@ -37,7 +40,9 @@ async def event_index(client: AsyncOpenSearch) -> AsyncIterator[EventIndex]:
     await index.drop(ANALYSIS_ID)
 
 
-def collector_for(logs_dir: Path, event_index: EventIndex, sink: FakeSink) -> LiveCollector:
+def collector_for(
+    logs_dir: Path, event_index: EventIndex, sink: FakeSink, rules: RulesProvider = no_rules
+) -> LiveCollector:
     return LiveCollector(
         analysis_id=ANALYSIS_ID,
         logs_dir=logs_dir,
@@ -45,6 +50,7 @@ def collector_for(logs_dir: Path, event_index: EventIndex, sink: FakeSink) -> Li
         store=event_index,
         sink=sink,
         poll_interval_s=POLL_S,
+        rules=rules,
     )
 
 
@@ -93,3 +99,22 @@ async def test_a_collector_started_again_on_the_same_logs_adds_no_duplicates(
 
     assert after_first == len(reference_events())
     assert await indexed_count(client, event_index, {"match_all": {}}) == after_first
+
+
+async def test_the_live_alerts_are_searchable_by_ruleset_beside_the_events(
+    tmp_path: Path, client: AsyncOpenSearch, event_index: EventIndex
+) -> None:
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    rules = load_rules(write_rules(tmp_path / "rules"))
+    sink = FakeSink()
+    collector = collector_for(logs_dir, event_index, sink, lambda: rules)
+    collector.start()
+
+    await write_in_slices(logs_dir, fixture_logs(), seed=13, pause_s=0.005)
+    await collector.stop()
+
+    assert sink.errors == []
+    alerts = await indexed_count(client, event_index, {"term": {"rule.ruleset": "sigma"}})
+    assert alerts == len(rules)
+    assert await indexed_count(client, event_index, {"match_all": {}}) == len(sink.events)

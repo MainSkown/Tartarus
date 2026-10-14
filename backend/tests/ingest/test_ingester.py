@@ -1,8 +1,9 @@
+import copy
 import json
 import shutil
 import threading
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterator, Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -12,50 +13,16 @@ import pytest
 from app.analyses.ports import IngestFailedError
 from app.ingest import ingester as ingester_module
 from app.ingest.ingester import ReportIngester
+from app.ingest.protocol import IngestContext
+from app.rules.loader import load_rule_file
+from app.rules.rule import Rule
 from app.search.index import IndexingError
 from tests.ingest.conftest import ANALYSIS_ID, FULL_REPORT
+from tests.ingest.fake_index import FakeIndex
+from tests.rules.support import process_event, rule_yaml, simple_detection
 
 Event = dict[str, Any]
 TASK_6_LOG = Path(__file__).parent.parent / "fixtures" / "cape" / "clock" / "task_6.cuckoo.log"
-
-
-class FakeIndex:
-    """Records every call in order; `failures` maps a method name to the error it raises."""
-
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-        self.events: list[Event] = []
-        self.failures: dict[str, Exception] = {}
-        self.bulk_thread_ids: list[int] = []
-
-    def _record(self, call: str) -> None:
-        self.calls.append(call)
-        method = call.split(":", maxsplit=1)[0]
-        before_index_exists = method == "drop" and "create" not in self.calls
-        if method in self.failures and not before_index_exists:
-            raise self.failures[method]
-
-    async def ensure_template(self) -> None:
-        self._record("ensure_template")
-
-    async def drop(self, analysis_id: int) -> None:
-        self._record("drop")
-
-    async def create(self, analysis_id: int) -> None:
-        self._record("create")
-
-    async def bulk_index(
-        self, analysis_id: int, events: Iterable[Event], chunk_size: int = 1000
-    ) -> int:
-        self._record("bulk_index")
-        self.events = list(events)
-        return len(self.events)
-
-    async def set_refresh_interval(self, analysis_id: int, interval: str) -> None:
-        self._record(f"set_refresh_interval:{interval}")
-
-    async def refresh(self, analysis_id: int) -> None:
-        self._record("refresh")
 
 
 @pytest.fixture
@@ -248,3 +215,121 @@ async def test_without_a_task_log_the_ingest_still_works_on_the_rounded_offset(
 
     moments = selftest_moments(index.events)
     assert timedelta(seconds=4) < abs(moments["capemon"] - moments["cape"]) < timedelta(seconds=8)
+
+
+CMD_VER = "cmd.exe /c ver"
+
+
+def rule_matching(tmp_path: Path, needle: str = "/c ver") -> Rule:
+    path = tmp_path / "rule.yml"
+    path.write_text(
+        rule_yaml(simple_detection(f"CommandLine|contains: {needle}"), title="Ver"),
+        encoding="utf-8",
+    )
+    return load_rule_file(path)
+
+
+def sigma_alerts(events: list[Event]) -> list[Event]:
+    return [e for e in events if e.get("rule", {}).get("ruleset") == "sigma"]
+
+
+class ScriptedNormalizer:
+    """Yields the given events as they are, in the given order."""
+
+    source = "scripted"
+
+    def __init__(self, *events: Event) -> None:
+        self._events = events
+
+    def normalise(self, report: Mapping[str, Any], context: IngestContext) -> Iterator[Event]:
+        return iter(copy.deepcopy(list(self._events)))
+
+
+async def test_without_rules_there_are_no_sigma_alerts(
+    ingester: ReportIngester, index: FakeIndex
+) -> None:
+    await ingester.ingest(ANALYSIS_ID, FULL_REPORT)
+
+    assert sigma_alerts(index.events) == []
+
+
+async def test_a_rule_matching_an_event_of_the_report_is_indexed_as_an_alert(
+    index: FakeIndex, tmp_path: Path
+) -> None:
+    ingester = ReportIngester(index, rules=lambda: [rule_matching(tmp_path)])
+
+    await ingester.ingest(ANALYSIS_ID, FULL_REPORT)
+
+    [alert] = sigma_alerts(index.events)
+    [trigger] = [e for e in index.events if e["event"]["action"] == "process-created"]
+    assert trigger["process"]["command_line"] == CMD_VER
+    assert alert["event"]["kind"] == "alert"
+    assert alert["related"]["events"] == [trigger["event"]["id"]]
+    assert alert["tartarus"]["analysis_id"] == ANALYSIS_ID
+    assert alert["tartarus"]["phase"] == "final"
+
+
+async def test_the_alerts_are_numbered_and_counted_with_the_other_events(
+    index: FakeIndex, tmp_path: Path
+) -> None:
+    plain = ReportIngester(index)
+    plain_result = await plain.ingest(ANALYSIS_ID, FULL_REPORT)
+    plain_count = len(index.events)
+
+    ingester = ReportIngester(index, rules=lambda: [rule_matching(tmp_path)])
+    result = await ingester.ingest(ANALYSIS_ID, FULL_REPORT)
+
+    assert len(index.events) == plain_count + 1
+    assert result.event_count == plain_result.event_count + 1
+    sequences = [event["event"]["sequence"] for event in index.events]
+    assert sequences == list(range(len(index.events)))
+    expected = Counter(event["tartarus"]["lane"] for event in index.events)
+    assert result.lane_counts == dict(expected)
+
+
+async def test_events_not_in_time_order_are_matched_in_time_order(
+    index: FakeIndex, tmp_path: Path
+) -> None:
+    later = process_event("later", "2026-10-13T10:00:30.000Z", command_line=CMD_VER)
+    earlier = process_event("earlier", "2026-10-13T10:00:05.000Z", command_line=CMD_VER)
+    ingester = ReportIngester(
+        index, [ScriptedNormalizer(later, earlier)], rules=lambda: [rule_matching(tmp_path)]
+    )
+
+    await ingester.ingest(ANALYSIS_ID, FULL_REPORT)
+
+    [alert] = sigma_alerts(index.events)
+    assert alert["related"]["events"] == ["earlier"]
+    assert alert["tartarus"]["detection"]["repeated"] == 1
+    assert [e["event"]["id"] for e in index.events if e["event"]["kind"] == "event"] == [
+        "later",
+        "earlier",
+    ]
+
+
+async def test_a_match_far_from_the_last_one_is_its_own_alert(
+    index: FakeIndex, tmp_path: Path
+) -> None:
+    first = process_event("first", "2026-10-13T10:00:00.000Z", command_line=CMD_VER)
+    second = process_event("second", "2026-10-13T10:02:00.000Z", command_line=CMD_VER)
+    ingester = ReportIngester(
+        index, [ScriptedNormalizer(second, first)], rules=lambda: [rule_matching(tmp_path)]
+    )
+
+    await ingester.ingest(ANALYSIS_ID, FULL_REPORT)
+
+    alerts = sigma_alerts(index.events)
+    assert sorted(a["related"]["events"][0] for a in alerts) == ["first", "second"]
+    assert all("repeated" not in a["tartarus"].get("detection", {}) for a in alerts)
+
+
+async def test_the_rules_are_asked_for_on_every_ingest(index: FakeIndex, tmp_path: Path) -> None:
+    active: list[Rule] = []
+    ingester = ReportIngester(index, rules=lambda: active)
+
+    await ingester.ingest(ANALYSIS_ID, FULL_REPORT)
+    assert sigma_alerts(index.events) == []
+
+    active.append(rule_matching(tmp_path))
+    await ingester.ingest(ANALYSIS_ID, FULL_REPORT)
+    assert len(sigma_alerts(index.events)) == 1

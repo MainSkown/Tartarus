@@ -25,7 +25,7 @@ Planned 2026-10-14, after M3 was approved. S0 done (findings below); S1 and S2 n
   status (valid, invalid, unsupported), path and hits across all analyses; filter by level, status and
   text; the YAML read-only with the error for an invalid rule; a reload button.
 - **Shipped ruleset:** a curated SigmaHQ subset at a pinned commit, with its licence and attribution,
-  plus a small Tartarus-authored rule the e2e uses. The analyst's rules go in `rules/sigma/custom/`.
+  plus a small Tartarus-authored rule the e2e uses (`rules/sigma/tartarus/`). The analyst's rules go in `rules/sigma/custom/`.
 
 Out of scope: Sigma correlation and aggregation rules (listed as unsupported, as the spec says),
 `image_load` and `process_access` rules unless the spike shows our events can serve them (decision 6),

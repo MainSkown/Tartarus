@@ -1,0 +1,19 @@
+title: Tartarus Self-Test Registry Marker Written
+id: 6c17e2ec-0203-4f72-8760-b1b2a72336db
+status: stable
+description: >-
+    The sample the Tartarus end-to-end run detonates writes the value SelfTest under
+    HKCU\Software\Tartarus on every run. This rule fires on that write, so a run shows a Sigma
+    detection live and in the final index. It says nothing about real malware.
+author: Tartarus
+date: 2026-10-14
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|endswith: '\Software\Tartarus\SelfTest'
+    condition: selection
+falsepositives:
+    - Only the Tartarus self-test sample writes this value.
+level: informational

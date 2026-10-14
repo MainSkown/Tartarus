@@ -22,11 +22,13 @@ from app.db.models.analysis import AnalysisStatus
 from app.errors import install_error_handlers
 from app.ingest.ingester import ReportIngester
 from app.ingest.protocol import IngestContext
+from app.rules.loader import load_rules
 from app.samples.store import SampleStore
 from app.search.client import create_opensearch_client
 from app.search.index import EventIndex, index_name
 from tests.analyses.fakes import FakeCape, FakeSamples
 from tests.ingest.conftest import FULL_REPORT
+from tests.rules.support import TARTARUS_RULESET
 from tests.test_analysis_repository import OPTIONS, SHA_A, make_sample
 
 pytestmark = pytest.mark.integration
@@ -234,3 +236,23 @@ async def test_a_failed_reingest_replaces_the_old_index_with_nothing(stack: Stac
         await ReportIngester(stack.index, normalizers=[bad]).ingest(stack.analysis_id, FULL_REPORT)
 
     assert not await stack.opensearch.indices.exists(index=index_name(stack.analysis_id))
+
+
+async def test_the_final_ingest_indexes_the_sigma_alerts_with_the_other_events(
+    stack: Stack,
+) -> None:
+    rules = load_rules(TARTARUS_RULESET)
+
+    result = await ReportIngester(stack.index, rules=lambda: rules).ingest(
+        stack.analysis_id, FULL_REPORT
+    )
+
+    assert await stack.document_count() == result.event_count
+    found = await stack.opensearch.search(
+        index=index_name(stack.analysis_id),
+        body={"query": {"bool": {"filter": [{"term": {"rule.ruleset": "sigma"}}]}}},
+    )
+    [alert] = [hit["_source"] for hit in found["hits"]["hits"]]
+    assert alert["event"]["kind"] == "alert"
+    assert alert["rule"]["id"] == "6c17e2ec-0203-4f72-8760-b1b2a72336db"
+    assert alert["tartarus"]["phase"] == "final"

@@ -1,0 +1,56 @@
+{
+  "@timestamp": "2026-10-14T16:43:32.015Z",
+  "event": {
+    "id": "e2c3b0d3ef384f6866282549be657f8b4a8369cf",
+    "sequence": 6781,
+    "kind": "event",
+    "category": [
+      "registry"
+    ],
+    "type": [
+      "change"
+    ],
+    "action": "reg-value-set",
+    "module": "capemon",
+    "dataset": "capemon.derived",
+    "severity": 0
+  },
+  "tartarus": {
+    "analysis_id": 193,
+    "lane": "registry",
+    "phase": "final",
+    "summary": "benign.exe set HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest"
+  },
+  "process": {
+    "pid": 9612,
+    "entity_id": "193:9612@2026-10-14T16:43:31.000Z",
+    "name": "benign.exe",
+    "executable": "C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe",
+    "command_line": "\"C:\\Users\\Analyst\\AppData\\Local\\Temp\\benign.exe\"",
+    "start": "2026-10-14T16:43:31.000Z",
+    "parent": {
+      "pid": 4336,
+      "name": "explorer.exe"
+    },
+    "thread": {
+      "id": 10024
+    }
+  },
+  "registry": {
+    "path": "HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest",
+    "hive": "HKCU",
+    "value": "SelfTest",
+    "key": "Software\\Tartarus",
+    "data": {
+      "type": "REG_SZ",
+      "strings": [
+        "benign"
+      ]
+    }
+  },
+  "related": {
+    "events": [
+      "809afbdbaf4811c9ecf32fc2a1db5da8f64eb702"
+    ]
+  }
+}

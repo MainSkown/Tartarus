@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
@@ -7,7 +8,7 @@ from typing import Any
 
 from app.ingest.live_capemon import LiveCapemon
 from app.ingest.protocol import IngestContext
-from app.live.bson_log import BsonLogParser
+from app.live.bson_log import BsonLogParser, EnvironRecord
 from app.search.index import IndexingError
 from tests.live.conftest import FIXTURES, PIDS
 
@@ -145,3 +146,19 @@ async def wait_for_quiet(sink: FakeSink, quiet_s: float = 0.05) -> None:
 
 
 type Awaiting = Callable[[], Awaitable[None]]
+
+
+def write_final_report(directory: Path) -> Path:
+    """A CAPE report built from the fixture logs, starting when the live tests say they did.
+
+    The trimmed fixture lacks the `environ` records, where the command line comes from.
+    """
+    report = json.loads((FIXTURES / "report_calls.json").read_text())
+    report["info"]["started"] = STARTED_AT.strftime("%Y-%m-%d %H:%M:%S")
+    for entry in report["behavior"]["processes"]:
+        records = BsonLogParser().feed((FIXTURES / f"{entry['process_id']}.bson").read_bytes())
+        [environ] = [r for r in records if isinstance(r, EnvironRecord)]
+        entry["environ"] = {"CommandLine": environ.values["CommandLine"]}
+    path = directory / "report.json"
+    path.write_text(json.dumps(report))
+    return path

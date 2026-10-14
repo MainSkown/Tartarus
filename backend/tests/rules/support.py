@@ -1,7 +1,9 @@
 import textwrap
 from pathlib import Path
 
-DEFAULT_RULESET = Path(__file__).resolve().parents[3] / "rules" / "sigma" / "default"
+SIGMA_ROOT = Path(__file__).resolve().parents[3] / "rules" / "sigma"
+DEFAULT_RULESET = SIGMA_ROOT / "default"
+TARTARUS_RULESET = SIGMA_ROOT / "tartarus"
 
 DEFAULT_ID = "5a9a1d6e-0b6b-4a3c-8d3e-1c2f3a4b5c6d"
 

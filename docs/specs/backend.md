@@ -73,6 +73,12 @@ into `tartarus-events-<analysis id>`:
   index.
 - `event.sequence` is renumbered while the three sources are streamed into one ordinal, unique
   across sources; events are counted per `tartarus.lane`.
+- With Sigma rules active, the ingester then runs the engine over the complete event set in
+  `@timestamp` order (ties in stream order, since the sources are not merged in time order) and
+  indexes the alerts after the other events, numbered in the same sequence and counted in the
+  same lane totals (`event_count` includes them). The rules are those active when the ingest
+  starts. Only the events some rule category covers are held in memory for this; the rest is
+  streamed. This result is authoritative: a re-ingest gives an old analysis its Sigma alerts.
 - Events are bulk-indexed in chunks, then `refresh_interval` is set to `30s` and the index is
   refreshed.
 - On success the analysis is `done` with `event_count` and `summary.lane_counts`. On any indexing
@@ -203,8 +209,16 @@ Pushes `health`, `queue`, `disk` and `job` (progress and step for guest builds a
 - Reads only complete BSON records. A partial trailing record waits for more bytes.
 - capemon logs start with process and API-description messages. The parser keeps that state
   per file so it can map call indices to API names and argument names.
-- The pipeline per record is: normalise → derive semantic events → Sigma match → enqueue to the
-  bulk indexer and pub/sub.
+- The pipeline per batch (one poll, every log read) is: normalise → derive semantic events →
+  Sigma match → enqueue to the bulk indexer and pub/sub. The batch is matched in event-time
+  order and its alerts are appended to it, so an alert reaches the LIVE panel in the batch of the
+  event that triggered it. The engine is built when the collector starts, with the rules active at
+  that moment: a rule switched on or off mid-run applies from the next run.
+- Live alerts are provisional. A repeat inside the suppression window raises
+  `tartarus.detection.repeated` on the alert; when the alert is in an earlier batch the index
+  document is rewritten by id and the hub is not sent the alert again. Logs can be read late, so
+  an event may arrive older than ones already matched; the engine takes it as it comes (inside an
+  open window it counts as a repeat), and the final ingest, which sorts, replaces the result.
 - When the task leaves `running`, the collector does a final drain and stops.
 
 ## Sigma engine
@@ -224,10 +238,12 @@ Pushes `health`, `queue`, `disk` and `job` (progress and step for guest builds a
   supported in v1**. They are listed as unsupported.
 - **Default ruleset (decided: a curated subset, see [M4](../plans/m4-sigma.md)):** ship a curated subset of SigmaHQ `rules/windows/` (process_creation,
   file_event, registry_*, network_connection, dns_query, image_load, create_remote_thread,
-  process_access) with status `stable` or `test`. The user can add their own rules to
-  `rules/sigma/custom/`.
-- A detection is emitted once per (rule, process) per 60 s window, to suppress floods. The
-  suppressed count goes into `api.repeated`-style metadata.
+  process_access) with status `stable` or `test`, in `rules/sigma/default/`. Tartarus's own
+  rules (the one the e2e's benign sample triggers) are in `rules/sigma/tartarus/`. The user can
+  add their own rules to `rules/sigma/custom/`.
+- A detection is emitted once per (rule, process) per 60 s window of event time, to suppress
+  floods. The suppressed count goes into `tartarus.detection.repeated`. A detection's `event.id`
+  depends only on the analysis, the rule and the triggering event, so live and final agree.
 
 ## Query language (KQL-like)
 

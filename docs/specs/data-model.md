@@ -367,6 +367,10 @@ Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` â†
 | `create-remote-thread` / `inject-thread` | `create_remote_thread` |
 | `process-access` | `process_access` |
 
+A Sigma alert's `event.id` is derived from the analysis, the rule and the triggering event
+(`related.events[0]`), so the live collector and the final ingest give the same alert the same
+id; the final one replaces the live one in the index. `tartarus.phase` says which wrote it.
+
 ## Filesystem artefacts
 
 | Artefact | Location | Exposed as |

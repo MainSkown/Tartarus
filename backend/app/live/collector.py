@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import itertools
 import logging
 import os
 from collections import Counter
@@ -11,7 +12,9 @@ from typing import Any, Protocol
 
 from app.ingest.live_capemon import LiveCapemon
 from app.ingest.protocol import IngestContext
+from app.ingest.sigma import RulesProvider, no_rules
 from app.live.bson_log import BsonLogParser, LogFormatError, LogRecord, UnknownRecord
+from app.live.detections import LiveDetections
 from app.live.messages import LIVE_INDEX_FAILED, LOG_FORMAT
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,7 @@ class _LogFile:
 @dataclass
 class _Scan:
     events: list[Event] = field(default_factory=list)
+    updated: list[Event] = field(default_factory=list)
     broken: list[tuple[str, LogFormatError]] = field(default_factory=list)
     unknown: list[tuple[str, UnknownRecord]] = field(default_factory=list)
 
@@ -61,6 +65,12 @@ class LiveCollector:
     byte 0, and the index upserts by event id, so a restart repeats work and loses nothing.
     Events go to the sink first, so the stream is not held up by the index, which is best effort
     (its failure is reported once and never stops the collector).
+
+    Each batch is normalised, derived, matched against the Sigma rules and then enqueued, so an
+    alert reaches the sink and the index in the batch of the event that triggered it. The rules
+    are those active when the collector is built, i.e. when the run starts; a rule switched on
+    or off during the run applies from the next one. A repeat of an alert from an earlier batch
+    only updates the index (see `LiveDetections`); the hub is not sent the alert twice.
 
     `stop()` reads whatever is still unread, releases the events the live front-end held back,
     and ends; call it once the guest has stopped writing.
@@ -75,6 +85,7 @@ class LiveCollector:
         store: LiveEventStore,
         sink: LiveSink,
         poll_interval_s: float,
+        rules: RulesProvider = no_rules,
     ) -> None:
         self._analysis_id = analysis_id
         self._logs_dir = logs_dir
@@ -83,7 +94,10 @@ class LiveCollector:
         self._poll_interval_s = poll_interval_s
         # No host registrations: CAPE keeps the task's cuckoo.log in a write buffer until the task
         # ends, so the clock stays on the rounded offset live and the final ingest anchors it.
-        self._live = LiveCapemon(IngestContext(analysis_id, started_at))
+        context = IngestContext(analysis_id, started_at)
+        self._live = LiveCapemon(context)
+        self._detections = LiveDetections(rules(), context)
+        self._sequence = itertools.count()
         self._files: dict[str, _LogFile] = {}
         self._unknown_seen: Counter[str] = Counter()
         self._index_ready = False
@@ -115,7 +129,7 @@ class LiveCollector:
         if self._task is not None:
             await self._task
         await self._poll()
-        await self._deliver_guarded(self._live.flush())
+        await self._deliver_guarded(await asyncio.to_thread(self._release_held))
 
     async def _poll(self) -> None:
         try:
@@ -124,16 +138,16 @@ class LiveCollector:
             logger.exception("Reading the logs of analysis %s failed", self._analysis_id)
             return
         self._report_problems(scan)
-        await self._deliver_guarded(scan.events)
+        await self._deliver_guarded(scan)
 
-    async def _deliver_guarded(self, events: list[Event]) -> None:
-        if not events:
+    async def _deliver_guarded(self, scan: _Scan) -> None:
+        if not scan.events:  # an update always comes with the event that repeated the alert
             return
         try:
-            self._sink.publish(self._analysis_id, events)
+            self._sink.publish(self._analysis_id, scan.events)
         except Exception:
             logger.exception("Publishing live events of analysis %s failed", self._analysis_id)
-        await self._index(events)
+        await self._index(scan.events + scan.updated)
 
     async def _index(self, events: list[Event]) -> None:
         try:
@@ -198,7 +212,24 @@ class LiveCollector:
             scan.unknown += [(name, r) for r in records if isinstance(r, UnknownRecord)]
             known = [r for r in records if not isinstance(r, UnknownRecord)]
             scan.events += self._live.update(name, known)
+        self._detect(scan)
         return scan
+
+    def _release_held(self) -> _Scan:
+        scan = _Scan(events=self._live.flush())
+        self._detect(scan)
+        return scan
+
+    def _detect(self, scan: _Scan) -> None:
+        """Appends the batch's alerts after its events and numbers them all in one sequence.
+
+        Each source numbers its own events, so the numbers only become unique across sources here.
+        """
+        detected = self._detections.process(scan.events)
+        scan.events += detected.alerts
+        scan.updated = detected.updates
+        for event in scan.events:
+            event["event"]["sequence"] = next(self._sequence)
 
     @staticmethod
     def _parse(name: str, log: _LogFile, chunk: bytes, scan: _Scan) -> list[LogRecord]:

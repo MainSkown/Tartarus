@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from app.ingest.sigma import RulesProvider, no_rules
 from app.live.collector import LiveCollector, LiveEventStore
 from app.live.hub import LiveHub
 from app.live.utc import as_utc
@@ -14,8 +15,15 @@ class LiveCollectionManager:
     """Owns the live collector of each running analysis; the runner's `LiveCollection`."""
 
     def __init__(
-        self, *, storage_path: Path, poll_interval_s: float, store: LiveEventStore, hub: LiveHub
+        self,
+        *,
+        storage_path: Path,
+        poll_interval_s: float,
+        store: LiveEventStore,
+        hub: LiveHub,
+        rules: RulesProvider = no_rules,
     ) -> None:
+        self._rules = rules
         self._storage_path = storage_path
         self._poll_interval_s = poll_interval_s
         self._store = store
@@ -32,6 +40,7 @@ class LiveCollectionManager:
             store=self._store,
             sink=self._hub,
             poll_interval_s=self._poll_interval_s,
+            rules=self._rules,
         )
         self._collectors[analysis_id] = collector
         self._hub.open(analysis_id)

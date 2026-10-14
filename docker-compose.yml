@@ -76,7 +76,7 @@ services:
       # Read-only: the backend reads reports and CAPE alone writes (and deletes) its analyses.
       - cape-storage:/cape-storage:ro
       - sample-store:/data/samples
-      # Read-only: the shipped rules in default/ and the analyst's own in custom/ are edited on the host.
+      # Read-only: the shipped rules (default/, tartarus/) and the analyst's own in custom/ are edited on the host.
       - ./rules/sigma:/rules/sigma:ro
     depends_on:
       postgres:
