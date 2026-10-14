@@ -14,7 +14,7 @@ describe('AnalysisTabs', () => {
   })
 
   it('keeps SUMMARY marked, and marks no disabled tab, when the active tab is not built yet', () => {
-    const selected = mountTabs('timeline').findAll('[aria-selected="true"]')
+    const selected = mountTabs('notes').findAll('[aria-selected="true"]')
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
   })
 
@@ -26,11 +26,10 @@ describe('AnalysisTabs', () => {
   it('enables the exploring tabs and disables the ones that arrive later, saying when', () => {
     const wrapper = mountTabs()
     const enabled = wrapper.findAll('button:not([disabled])').map((tab) => tab.text())
-    expect(enabled).toEqual(['SUMMARY', 'PROCESSES', 'EVENTS', 'NETWORK', 'ARTIFACTS', 'DETECTIONS'])
+    expect(enabled).toEqual(['SUMMARY', 'PROCESSES', 'TIMELINE', 'EVENTS', 'NETWORK', 'ARTIFACTS', 'DETECTIONS'])
 
     const disabled = wrapper.findAll('button[disabled]')
     expect(disabled.map((tab) => [tab.text(), tab.attributes('title')])).toEqual([
-      ['TIMELINE', 'Arrives with M3'],
       ['NOTES', 'Arrives with M4'],
     ])
   })

@@ -10,6 +10,7 @@ vi.mock('@/api', () => ({
   queryFields: (...args: unknown[]) => queryFieldsMock(...args),
 }))
 
+const { NO_EVENTS } = await import('@/services/range-override')
 const { useEventsStore, EVENTS_PAGE_SIZE, EVENTS_DEBOUNCE_MS } = await import('@/stores/events')
 const { useQueryStateStore } = await import('@/stores/query-state')
 const { useEventColumnsStore, COLUMNS_STORAGE_KEY } = await import('@/stores/event-columns')
@@ -451,5 +452,98 @@ describe('moving through the list', () => {
   it('has no neighbours for an event that is not in the list', async () => {
     expect(events.hasNeighbour('elsewhere', 1)).toBe(false)
     expect(events.hasNeighbour('elsewhere', -1)).toBe(false)
+  })
+})
+
+describe('a range override', () => {
+  const OVERRIDE = { from: '2026-10-13T15:39:40.000Z', to: '2026-10-13T15:39:50.000Z' }
+
+  it('replaces the time range of the shared query state in the request', async () => {
+    query.bindTo(7)
+    query.setTimeRange({ from: '2026-10-13T15:00:00Z', to: '2026-10-13T16:00:00Z' })
+    events.activate()
+    await settle()
+    events.setRangeOverride(OVERRIDE)
+    await afterDebounce()
+    expect(lastRequest().body).toMatchObject({ time_range: { from: OVERRIDE.from, to: OVERRIDE.to } })
+  })
+
+  it('keeps the rest of the shared filter', async () => {
+    query.bindTo(7)
+    query.setText('lane:file')
+    query.setPids([2476])
+    events.setRangeOverride(OVERRIDE)
+    events.activate()
+    await settle()
+    expect(lastRequest().body).toEqual({
+      sort: '@timestamp',
+      size: EVENTS_PAGE_SIZE,
+      query: 'lane:file',
+      pids: [2476],
+      time_range: { from: OVERRIDE.from, to: OVERRIDE.to },
+    })
+  })
+
+  it('sends only the ends it has', async () => {
+    query.bindTo(7)
+    events.setRangeOverride({ from: OVERRIDE.from, to: null })
+    events.activate()
+    await settle()
+    expect(lastRequest().body.time_range).toEqual({ from: OVERRIDE.from })
+  })
+
+  it('asks again when it is set or changed while the tab is shown, once for a burst', async () => {
+    await startOn(7)
+    eventsSearchMock.mockClear()
+    events.setRangeOverride(OVERRIDE)
+    events.setRangeOverride({ from: OVERRIDE.from, to: '2026-10-13T15:39:55.000Z' })
+    await afterDebounce()
+    expect(eventsSearchMock).toHaveBeenCalledTimes(1)
+    expect(lastRequest().body.time_range).toEqual({ from: OVERRIDE.from, to: '2026-10-13T15:39:55.000Z' })
+  })
+
+  it('does not ask again for the same range set twice', async () => {
+    await startOn(7)
+    events.setRangeOverride(OVERRIDE)
+    await afterDebounce()
+    eventsSearchMock.mockClear()
+    events.setRangeOverride({ ...OVERRIDE })
+    await afterDebounce()
+    expect(eventsSearchMock).not.toHaveBeenCalled()
+  })
+
+  it('goes back to the shared time range when cleared', async () => {
+    query.bindTo(7)
+    query.setTimeRange({ from: '2026-10-13T15:00:00Z', to: null })
+    events.setRangeOverride(OVERRIDE)
+    events.activate()
+    await settle()
+    events.clearRangeOverride()
+    await afterDebounce()
+    expect(lastRequest().body.time_range).toEqual({ from: '2026-10-13T15:00:00Z' })
+  })
+
+  it('matches nothing when told there is no range at all, as the API reads an empty lane list', async () => {
+    query.bindTo(7)
+    events.setRangeOverride(NO_EVENTS)
+    events.activate()
+    await settle()
+    expect(lastRequest().body.lanes).toEqual([])
+  })
+
+  it('is forgotten when the analysis changes', async () => {
+    await startOn(7)
+    events.setRangeOverride(OVERRIDE)
+    await afterDebounce()
+    query.bindTo(8)
+    await settle()
+    events.activate()
+    await afterDebounce()
+    expect(lastRequest().body.time_range).toBeUndefined()
+  })
+
+  it('is not there by default, so the Events tab sends what it always sent', async () => {
+    await startOn(7)
+    expect(lastRequest().body).toEqual({ sort: '@timestamp', size: EVENTS_PAGE_SIZE })
   })
 })

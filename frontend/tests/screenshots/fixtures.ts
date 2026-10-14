@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { test as base, expect } from '@playwright/test'
+import { histogramOf, syntheticSource } from './timeline-data'
 import type { Page, Route } from '@playwright/test'
 import type {
   AnalysisRead,
@@ -14,6 +15,7 @@ import type {
   FieldRead,
   FieldValues,
   FilterChip,
+  HistogramRequest,
   QueryErrorRead,
   SearchRequest,
   SettingsBody,
@@ -625,6 +627,7 @@ export async function mockQuery(page: Page, options: QueryMockOptions = {}): Pro
 
 const EVENTS_SEARCH_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/search$/.test(url.pathname)
 const EVENTS_FACETS_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/facets$/.test(url.pathname)
+const EVENTS_HISTOGRAM_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/histogram$/.test(url.pathname)
 const EVENT_DETAIL_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/events\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith('/search')
 const FACET_TOP = 10
 
@@ -791,10 +794,16 @@ export interface EventsMockOptions {
   /** Makes search answer slowly, to catch the table in its loading state. */
   searchDelayMs?: number
   facetsDelayMs?: number
+  /** Makes the histogram (the Timeline's overview and its range data) answer slowly, to catch the canvas loading. */
+  histogramDelayMs?: number
   detailDelayMs?: number
   /** Answers every search with this error instead of a page. */
   searchFailure?: { status: number; code: string; message: string }
+  /** Narrows `searchFailure` to the searches this accepts (the events table's pages, not the timeline's own). */
+  searchFailureWhen?: (body: SearchRequest) => boolean
   facetsFailure?: { status: number; code: string; message: string }
+  /** Answers every histogram with this error, while search still works. */
+  histogramFailure?: { status: number; code: string; message: string }
   /** Answers the detail of these event ids with an error; every other id is served from the sample. */
   detailFailures?: Record<string, { status: number; code: string; message: string }>
   /** Answers the second and later pages of a search slowly, to catch the loading-more footer. */
@@ -804,21 +813,25 @@ export interface EventsMockOptions {
 export interface EventsMock {
   searches: SearchRequest[]
   facetRequests: FacetsRequest[]
+  histogramRequests: HistogramRequest[]
   detailRequests: string[]
 }
 
 /**
- * Serves the Events tab's three endpoints from the sample events: `events/search` (the chips, the
+ * Serves the Events and Timeline tabs' endpoints from the sample events (or `options.events`, an event
+ * without a stored document getting a small generated one so chips and queries still match it): `events/search` (the chips, the
  * simple query terms, pids, a time range and both sorts, paged by an opaque cursor), `events/facets`
  * (the top ten of each field over the filtered events, ignoring the chips on the field itself) and `events/{id}` (a hand-written document for
- * a few events, the stored sample document for the rest, and the related events resolved from the sample).
+ * a few events, the stored sample document for the rest, and the related events resolved from the sample)
+ * and `events/histogram` (the span, epoch-aligned buckets by lane and the alerts of the same filtered events, as the backend counts them).
  * Register it after `mockAnalyses` and `mockQuery`.
  */
 export async function mockEvents(page: Page, options: EventsMockOptions = {}): Promise<EventsMock> {
   const all = options.events ?? sampleEvents()
   const { details } = sampleEventDetails()
-  const sources = sampleSources()
-  const mock: EventsMock = { searches: [], facetRequests: [], detailRequests: [] }
+  const sampled = sampleSources()
+  const sources = { ...Object.fromEntries(all.filter((event) => !(event.id in sampled)).map((event) => [event.id, syntheticSource(event)])), ...sampled }
+  const mock: EventsMock = { searches: [], facetRequests: [], histogramRequests: [], detailRequests: [] }
   const failure = (route: Route, error: { status: number; code: string; message: string }) =>
     route.fulfill({ status: error.status, json: errorEnvelope(error.code, error.message) })
 
@@ -826,7 +839,7 @@ export async function mockEvents(page: Page, options: EventsMockOptions = {}): P
     const body = route.request().postDataJSON() as SearchRequest
     mock.searches.push(body)
     await pause(body.search_after ? options.nextPageDelayMs ?? options.searchDelayMs : options.searchDelayMs)
-    if (options.searchFailure) return failure(route, options.searchFailure)
+    if (options.searchFailure && (options.searchFailureWhen?.(body) ?? true)) return failure(route, options.searchFailure)
     const columns = resolveColumns(body.columns ?? [])
     if ('invalid' in columns) return failure(route, { status: 422, code: 'invalid_column', message: `${columns.invalid} cannot be shown as a column` })
     const matched = filterEvents(sources, all, body)
@@ -848,6 +861,14 @@ export async function mockEvents(page: Page, options: EventsMockOptions = {}): P
     await pause(options.facetsDelayMs)
     if (options.facetsFailure) return failure(route, options.facetsFailure)
     await route.fulfill({ json: facetsOf(sources, all, body) })
+  })
+
+  await page.route(EVENTS_HISTOGRAM_URL, async (route) => {
+    const body = route.request().postDataJSON() as HistogramRequest
+    mock.histogramRequests.push(body)
+    await pause(options.histogramDelayMs)
+    if (options.histogramFailure) return failure(route, options.histogramFailure)
+    await route.fulfill({ json: histogramOf(filterEvents(sources, all, body), body.time_range, body.interval) })
   })
 
   await page.route(EVENT_DETAIL_URL, async (route) => {

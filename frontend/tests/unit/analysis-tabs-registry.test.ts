@@ -66,7 +66,7 @@ describe('selectableTab', () => {
   })
 
   it('still falls back for a tab that is not built, whatever the session', () => {
-    expect(selectableTab('timeline', true)).toBe(DEFAULT_TAB)
+    expect(selectableTab('notes', true)).toBe(DEFAULT_TAB)
   })
 })
 

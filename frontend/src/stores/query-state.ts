@@ -10,7 +10,7 @@ function hasEnd(range: QueryTimeRange | null): range is QueryTimeRange {
   return range !== null && (range.from !== null || range.to !== null)
 }
 
-function apiTimeRange({ from, to }: QueryTimeRange): TimeRange {
+export function apiTimeRange({ from, to }: QueryTimeRange): TimeRange {
   return { ...(from !== null && { from }), ...(to !== null && { to }) }
 }
 

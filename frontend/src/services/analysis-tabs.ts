@@ -20,7 +20,7 @@ export const ANALYSIS_TABS: AnalysisTab[] = [
   { key: LIVE_TAB, label: 'LIVE', available: true, liveOnly: true },
   { key: DEFAULT_TAB, label: 'SUMMARY', available: true },
   { key: 'processes', label: 'PROCESSES', available: true },
-  { key: 'timeline', label: 'TIMELINE', available: false, arrivesWith: 'M3', queryable: true },
+  { key: 'timeline', label: 'TIMELINE', available: true, queryable: true },
   { key: 'events', label: 'EVENTS', available: true, queryable: true },
   { key: 'network', label: 'NETWORK', available: true },
   { key: 'artifacts', label: 'ARTIFACTS', available: true },

@@ -37,7 +37,7 @@ vi.mock('@/components/tabs', async () => {
   return {
     TAB_VIEWS: {
       live,
-      ...Object.fromEntries(['processes', 'events', 'network', 'artifacts', 'detections'].map((tab) => [tab, stub(tab)])),
+      ...Object.fromEntries(['processes', 'timeline', 'events', 'network', 'artifacts', 'detections'].map((tab) => [tab, stub(tab)])),
     },
   }
 })
@@ -205,13 +205,13 @@ describe('AnalysisPage tabs', () => {
   })
 
   it('shows a placeholder, saying when, for a tab that is not built yet', async () => {
-    route.params = { id: '42', tab: 'timeline' }
+    route.params = { id: '42', tab: 'notes' }
     const wrapper = await mountPage()
     expect(wrapper.find('.analysis-summary').exists()).toBe(false)
-    expect(wrapper.text()).toContain('timeline arrives with M3')
+    expect(wrapper.text()).toContain('notes arrives with M4')
   })
 
-  it.each(['processes', 'events', 'network', 'artifacts', 'detections'])('shows the %s view of a finished analysis', async (tab) => {
+  it.each(['processes', 'timeline', 'events', 'network', 'artifacts', 'detections'])('shows the %s view of a finished analysis', async (tab) => {
     route.params = { id: '42', tab }
     const wrapper = await mountPage()
     await vi.waitFor(() => expect(wrapper.find(`[data-tab="${tab}"]`).exists()).toBe(true))
@@ -227,7 +227,7 @@ describe('AnalysisPage tabs', () => {
   })
 
   it('leaves SUMMARY marked, and marks nothing else, for a tab that is not built yet', async () => {
-    route.params = { id: '42', tab: 'timeline' }
+    route.params = { id: '42', tab: 'notes' }
     const wrapper = await mountPage()
     const selected = wrapper.findAll('.analysis-tabs [aria-selected="true"]')
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
@@ -254,8 +254,8 @@ describe('AnalysisPage tabs', () => {
 })
 
 describe('AnalysisPage query bar', () => {
-  it('shows the query bar under the tabs of the events tab, for this analysis', async () => {
-    route.params = { id: '42', tab: 'events' }
+  it.each(['events', 'timeline'])('shows the query bar under the tabs of the %s tab, for this analysis', async (tab) => {
+    route.params = { id: '42', tab }
     const wrapper = await mountPage()
     const header = wrapper.find('.query-header-stub')
     expect(header.attributes('data-analysis')).toBe('42')
@@ -268,8 +268,8 @@ describe('AnalysisPage query bar', () => {
     expect(wrapper.find('.query-header-stub').exists()).toBe(false)
   })
 
-  it('has no query bar on the timeline while that tab is not built', async () => {
-    route.params = { id: '42', tab: 'timeline' }
+  it('has no query bar on a tab that is not built, even if it is queryable by design', async () => {
+    route.params = { id: '42', tab: 'notes' }
     const wrapper = await mountPage()
     expect(wrapper.find('.query-header-stub').exists()).toBe(false)
   })

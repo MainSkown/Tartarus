@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { eventsSearch } from '@/api'
-import type { Event, EventPage, SortOrder } from '@/api'
+import type { Event, EventPage, SearchRequest, SortOrder } from '@/api'
 import { debounced } from '@/services/debounced'
 import { createRequestSequence } from '@/services/request-sequence'
 import { quietOn } from '@/services/quiet-statuses'
 import { searchFailure, type SearchFailure } from '@/services/search-failure'
 import { useEventColumnsStore } from '@/stores/event-columns'
-import { useQueryStateStore } from '@/stores/query-state'
+import { NO_EVENTS, type RangeOverride } from '@/services/range-override'
+import { apiTimeRange, useQueryStateStore, type SearchFilter } from '@/stores/query-state'
 
 export const EVENTS_PAGE_SIZE = 100
 export const EVENTS_DEBOUNCE_MS = 50
@@ -15,6 +16,8 @@ export const EVENTS_DEBOUNCE_MS = 50
 export const QUIET_ON_EVENT_FAILURES = quietOn(422, 502, 504)
 
 type Step = 1 | -1
+
+type RequestFilter = SearchFilter & Pick<SearchRequest, 'lanes'>
 
 /**
  * The events the Events tab lists: the current analysis filtered by the shared query state, in
@@ -35,6 +38,7 @@ export const useEventsStore = defineStore('events', () => {
   const error = ref<SearchFailure>()
   const loadMoreError = ref<string>()
   const active = ref(false)
+  const rangeOverride = ref<RangeOverride | null>(null)
 
   const requests = createRequestSequence()
   let loadedKey: string | undefined
@@ -42,15 +46,21 @@ export const useEventsStore = defineStore('events', () => {
   let requestedAnalysisId: number | undefined
 
   const hasMore = computed(() => nextCursor.value !== null)
+  const filter = computed<RequestFilter>(() => {
+    const override = rangeOverride.value
+    if (override === null) return query.searchFilter
+    if (override === NO_EVENTS) return { ...query.searchFilter, lanes: [] }
+    return { ...query.searchFilter, time_range: apiTimeRange(override) }
+  })
   const requestKey = computed(() =>
-    query.analysisId === undefined ? undefined : JSON.stringify([query.analysisId, query.searchFilter, sort.value, columns.chosen]),
+    query.analysisId === undefined ? undefined : JSON.stringify([query.analysisId, filter.value, sort.value, columns.chosen]),
   )
 
   function search(analysisId: number, searchAfter?: string) {
     return eventsSearch({
       path: { analysis_id: analysisId },
       body: {
-        ...query.searchFilter,
+        ...filter.value,
         sort: sort.value,
         size: EVENTS_PAGE_SIZE,
         ...(columns.chosen.length > 0 && { columns: [...columns.chosen] }),
@@ -128,6 +138,7 @@ export const useEventsStore = defineStore('events', () => {
     loadedKey = undefined
     requestedKey = undefined
     requestedAnalysisId = undefined
+    rangeOverride.value = null
   }
 
   watch(
@@ -154,6 +165,10 @@ export const useEventsStore = defineStore('events', () => {
   function deactivate(): void {
     active.value = false
     reloadSoon.cancel()
+  }
+
+  function setRangeOverride(range: RangeOverride | null): void {
+    rangeOverride.value = range
   }
 
   function toggleSort(): void {
@@ -195,6 +210,8 @@ export const useEventsStore = defineStore('events', () => {
     load,
     retry: load,
     loadMore,
+    setRangeOverride,
+    clearRangeOverride: () => setRangeOverride(null),
     toggleSort,
     hasNeighbour,
     neighbour,

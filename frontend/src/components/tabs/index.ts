@@ -4,6 +4,7 @@ import { defineAsyncComponent, type Component } from 'vue'
 export const TAB_VIEWS: Record<string, Component> = {
   live: defineAsyncComponent(() => import('./LiveTab.vue')),
   processes: defineAsyncComponent(() => import('./ProcessesTab.vue')),
+  timeline: defineAsyncComponent(() => import('./TimelineTab.vue')),
   events: defineAsyncComponent(() => import('./EventsTab.vue')),
   network: defineAsyncComponent(() => import('./NetworkTab.vue')),
   artifacts: defineAsyncComponent(() => import('./ArtifactsTab.vue')),
