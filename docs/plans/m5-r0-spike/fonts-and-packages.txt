@@ -1,0 +1,25 @@
+# R0 (2026-10-14): what the backend image needs for WeasyPrint PDF, measured in a throwaway build.
+# Debian 13 (trixie) base of python:3.12-slim. Run as root, before the uv sync layer.
+#
+#   apt-get install -y --no-install-recommends \
+#       libpango-1.0-0 libpangoft2-1.0-0 fonts-liberation fonts-dejavu-core
+#
+# libpango-1.0-0 + libpangoft2-1.0-0 pull 15 more packages; apt reported +16.9 MB unpacked for the set with
+#   fonts-liberation alone and +16.1 MB with fonts-dejavu-core alone (the combined set was built, not apt-measured).
+# fonts-liberation (SIL OFL 1.1, 4.3 MB): Liberation Mono is metric-compatible with "Courier New", the design
+#   system's --font-mono; Liberation Sans stands in for the sans stack.
+# fonts-dejavu-core (Bitstream Vera licence, 2.3 MB): glyph fallback only. Without it the check, warning,
+#   play and cross symbols render as empty boxes (tofu); with it Pango falls back per glyph.
+#
+# Python (added to backend/pyproject.toml dependencies; uv resolves the rest):
+#   weasyprint==70.0  (pydyf 0.13.0, tinycss2 1.5.1, cssselect2 0.10.1, pyphen 0.18.1, tinyhtml5 2.1.0,
+#                      fonttools 4.67.0, brotli 1.2.0, zopfli 0.4.3, pillow 12.3.0, cffi 2.1.1, webencodings 0.6.1,
+#                      pycparser, brotlicffi)
+#   jinja2>=3.1.6     (already in uv.lock as a pysigma dependency; declare it directly once the report imports it)
+#
+# Dockerfile: add --no-cache to `uv sync --frozen --no-dev`; the uv cache left in the image is 122 MB today.
+#
+# Print stylesheet font stacks (fontconfig maps sans-serif and system-ui to Liberation Mono when only
+# fonts-liberation is installed, so name the fonts):
+#   --sans: 'Liberation Sans', Arial, Helvetica, sans-serif;
+#   --mono: 'Liberation Mono', 'Courier New', Courier, monospace;

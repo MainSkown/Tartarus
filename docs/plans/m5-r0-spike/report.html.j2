@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tartarus report: analysis #{{ a.id }} {{ a.filename }}</title>
+<style>
+:root {
+  --blue-primary: #38bdf8; --blue-dark: #0369a1; --blue-darker: #0c4a6e; --ink: #111827; --muted: #6b7280;
+  --critical: #ef4444; --high: #f97316; --medium: #eab308; --low: #94a3b8; --info: #a3a3a3;
+  --sans: 'Liberation Sans', Arial, Helvetica, sans-serif;
+  --mono: 'Liberation Mono', 'Courier New', Courier, monospace;
+}
+@page { size: A4; margin: 16mm 14mm 18mm 14mm;
+  @bottom-left { content: "Tartarus analysis #{{ a.id }}"; font: 8pt var(--mono); color: var(--muted); }
+  @bottom-right { content: "page " counter(page) " / " counter(pages); font: 8pt var(--mono); color: var(--muted); } }
+html { background: #fff; color: var(--ink); font: 9.5pt/1.4 var(--sans); }
+h1 { font-size: 20pt; margin: 0 0 4pt; color: var(--blue-darker); }
+h2 { font-size: 13pt; margin: 18pt 0 6pt; padding-left: 8pt; border-left: 4pt solid var(--blue-primary); color: var(--blue-dark); break-after: avoid; }
+.mono, td.mono, th { font-family: var(--mono); }
+.meta { font: 8.5pt var(--mono); color: var(--muted); word-break: break-all; }
+.tiles { display: flex; gap: 8pt; margin: 8pt 0; }
+.tile { border: 1.5pt solid var(--blue-primary); padding: 5pt 9pt; min-width: 70pt; }
+.tile b { display: block; font-size: 15pt; } .tile span { font: 7.5pt var(--mono); text-transform: uppercase; letter-spacing: .5pt; color: var(--blue-dark); }
+table { width: 100%; border-collapse: collapse; font-size: 8pt; margin: 4pt 0; }
+th { text-align: left; font-size: 7pt; text-transform: uppercase; letter-spacing: .8pt; color: var(--blue-dark); border-bottom: 1.5pt solid var(--blue-primary); padding: 3pt 4pt; }
+td { padding: 2.5pt 4pt; border-bottom: .5pt solid #dbeafe; vertical-align: top; overflow-wrap: anywhere; }
+thead { display: table-header-group; } tr { break-inside: avoid; }
+.sev { font: bold 7pt var(--mono); text-transform: uppercase; border: 1.2pt solid; padding: 0 3pt; white-space: nowrap; }
+.sev-critical { border-color: var(--critical); } .sev-high { border-color: var(--high); } .sev-medium { border-color: var(--medium); }
+.sev-low { border-color: var(--low); } .sev-info, .sev-informational { border-color: var(--info); }
+.det { border: .8pt solid #bae6fd; padding: 4pt 6pt; margin: 4pt 0; break-inside: avoid; }
+.det h3 { margin: 0 0 2pt; font-size: 9.5pt; } .det p { margin: 2pt 0; }
+.tree svg { max-width: 100%; max-height: 225mm; height: auto; }
+.shots { display: flex; flex-wrap: wrap; gap: 6pt; }
+.shots figure { margin: 0; width: 48%; break-inside: avoid; border: .8pt solid #bae6fd; }
+.shots img { width: 100%; display: block; } .shots figcaption { font: 7pt var(--mono); color: var(--muted); padding: 2pt 4pt; }
+.note { white-space: pre-wrap; border-left: 3pt solid var(--blue-primary); padding: 2pt 8pt; background: #f0f9ff; font-size: 9pt; }
+.tag { font: 7.5pt var(--mono); border: .8pt solid var(--blue-primary); color: var(--blue-dark); padding: 0 4pt; margin-right: 3pt; }
+</style>
+</head>
+<body>
+<h1>{{ a.filename }}</h1>
+<div class="meta">analysis #{{ a.id }} &middot; sha256 {{ a.sample_sha256 }} &middot; {{ a.summary.sample.type }}<br>
+submitted {{ a.submitted_at }} &middot; duration {{ a.summary.duration_s }} s &middot; route {{ a.options.route }}</div>
+<p>{% for t in tags %}<span class="tag">{{ t }}</span>{% endfor %}</p>
+
+<h2>Summary</h2>
+<div class="tiles">
+  <div class="tile"><b>{{ a.score }}</b><span>score</span></div>
+  <div class="tile"><b>{{ a.max_severity|upper }}</b><span>max severity</span></div>
+  <div class="tile"><b>{{ a.event_count }}</b><span>events</span></div>
+  <div class="tile"><b>{{ a.summary.process_count }}</b><span>processes</span></div>
+  <div class="tile"><b>{{ a.detections_total }}</b><span>detections</span></div>
+</div>
+<p><b>Families:</b> {{ a.detected_families|join(', ') or 'none detected' }}.
+Wrote {{ a.summary.files_written }} files and {{ a.summary.registry_keys_written }} registry keys;
+{{ a.summary.network.dns }} DNS queries, {{ a.summary.network.tcp }} TCP flows.</p>
+{% if notes %}<h2>Analyst notes</h2>{% for n in notes %}<div class="note">{{ n }}</div>{% endfor %}{% endif %}
+
+<h2>ATT&amp;CK techniques</h2>
+<table><thead><tr><th>Tactic</th><th>Technique</th><th>Severity</th><th>Hits</th></tr></thead><tbody>
+{% for tac in attack.tactics %}{% for t in tac.techniques %}
+<tr><td>{{ tac.name }}</td><td class="mono">{{ t.id }} {{ t.name }}</td><td><span class="sev sev-{{ t.severity }}">{{ t.severity }}</span></td><td>{{ t.hit_count }}</td></tr>
+{% endfor %}{% endfor %}</tbody></table>
+
+<h2>Process tree</h2>
+<div class="tree">{{ tree_svg|safe }}</div>
+
+<h2>Detections</h2>
+{% for g in detections.groups %}{% for d in g.detections %}
+<div class="det"><h3><span class="sev sev-{{ d.severity }}">{{ d.severity }}</span> {{ d.name }} <span class="meta">[{{ d.ruleset }}] {{ d.process.name if d.process else '' }} {{ d.process.pid if d.process else '' }}</span></h3>
+<p>{{ d.description }}</p>{% if d.techniques %}<p class="meta">techniques: {{ d.techniques|join(', ') }}</p>{% endif %}</div>
+{% endfor %}{% endfor %}
+
+<h2>Key events ({{ key_events|length }} of {{ a.event_count }})</h2>
+<table><thead><tr><th>Time</th><th>Lane</th><th>Sev</th><th>Process</th><th>Summary</th></tr></thead><tbody>
+{% for e in key_events %}<tr><td class="mono">{{ e.time[11:23] }}</td><td class="mono">{{ e.lane }}</td>
+<td>{% if e.severity %}<span class="sev sev-{{ e.severity }}">{{ e.severity }}</span>{% endif %}</td>
+<td class="mono">{{ e.process.name if e.process else '' }} {{ e.process.pid if e.process else '' }}</td><td>{{ e.summary }}</td></tr>{% endfor %}
+</tbody></table>
+
+<h2>Network</h2>
+<h3>DNS ({{ network.dns.total }})</h3>
+<table><thead><tr><th>Time</th><th>Query</th><th>Type</th><th>Answers</th></tr></thead><tbody>
+{% for r in network.dns['items'] %}<tr><td class="mono">{{ r.time[11:23] }}</td><td class="mono">{{ r.query }}</td><td>{{ r.type }}</td><td class="mono">{{ r.answers|join(', ') }}</td></tr>{% endfor %}</tbody></table>
+<h3>HTTP ({{ network.http.total }})</h3>
+<table><thead><tr><th>Time</th><th>Method</th><th>URL</th><th>User agent</th></tr></thead><tbody>
+{% for r in network.http['items'] %}<tr><td class="mono">{{ r.time[11:23] }}</td><td>{{ r.method }}</td><td class="mono">{{ r.url }}</td><td>{{ r.user_agent }}</td></tr>{% endfor %}</tbody></table>
+<h3>Hosts ({{ network.hosts.total }}) and flows (first {{ flows|length }} of {{ network.flows.total }})</h3>
+<table><thead><tr><th>Host</th><th>Count</th><th>Related</th></tr></thead><tbody>
+{% for r in network.hosts['items'] %}<tr><td class="mono">{{ r.host }}</td><td>{{ r.count }}</td><td class="mono">{{ r.related|join(', ') }}</td></tr>{% endfor %}</tbody></table>
+<table><thead><tr><th>Time</th><th>Proto</th><th>Source</th><th>Destination</th></tr></thead><tbody>
+{% for r in flows %}<tr><td class="mono">{{ r.time[11:23] }}</td><td>{{ r.transport }}</td><td class="mono">{{ r.source_ip }}:{{ r.source_port }}</td><td class="mono">{{ r.destination_ip }}:{{ r.destination_port }}</td></tr>{% endfor %}</tbody></table>
+
+<h2>Indicators of compromise ({{ iocs.iocs|length }})</h2>
+<table><thead><tr><th>Type</th><th>Value</th><th>Context</th></tr></thead><tbody>
+{% for i in iocs.iocs %}<tr><td class="mono">{{ i.type }}</td><td class="mono">{{ i.value }}</td><td>{{ i.context }}</td></tr>{% endfor %}</tbody></table>
+
+{% if screenshots %}<h2>Screenshots ({{ screenshots|length }})</h2>
+<div class="shots">{% for s in screenshots %}<figure><img src="data:image/jpeg;base64,{{ s }}" alt="screenshot {{ loop.index }}"><figcaption>{{ "%04d"|format(loop.index) }}</figcaption></figure>{% endfor %}</div>{% endif %}
+</body>
+</html>

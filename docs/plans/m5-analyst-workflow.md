@@ -8,8 +8,9 @@ spec](../specs/gui.md) (Notes tab, Export menu, tags on the Dashboard) describe.
 
 ## Status
 
-Draft, 2026-10-14, after M4 was approved. Nothing built yet. Decisions marked **confirm** need the user's
-answer before the wave that depends on them.
+In progress, 2026-10-14. R0, N1 and X1 are built and committed; F13 is in progress. Decisions 2, 3 and 6
+were taken as accepted on the user's go-ahead (not separately confirmed); 6's key-events definition is
+replaced by R0's (see decision 6).
 
 ## Outcome
 
@@ -34,7 +35,7 @@ automatic exports, YARA and Suricata rule management, the guest wizard (M6).
 ## Decisions
 
 1. **Annotations are PostgreSQL rows** exactly as the data model has them: `tag`, `tag_link` (analysis,
-   process or event target with a `target_ref`) and `note`. Tag names are lowercase `[a-z0-9._-]{1,40}`;
+   process or event target with a `target_ref`) and `note`. Tag names are lowercase `[a-z0-9._-]{1,40}` with at most one `:` between two parts, so `tlp:amber` is a tag (decision 8 reads it);
    a note is plain text up to 20 000 characters. One tag name, many links; one link per (tag, analysis,
    target).
 2. **A process target is its pid** (the spec's choice), not `process.entity_id`. The entity id embeds the
@@ -52,9 +53,14 @@ automatic exports, YARA and Suricata rule management, the guest wizard (M6).
    plus the analysis record and the annotations, so each is a unit test with no containers.
 6. **Reports are rendered from one Jinja2 template**, HTML straight, PDF through WeasyPrint with a print
    stylesheet (white background, ice-blue accents, the same severity colours). The process tree is a
-   static SVG built on the server; screenshots are embedded as data URIs so the HTML is a single file.
-   "Key events" means: every alert, then the process, file, registry and network events that detections
-   cite, at most 200, in time order. **Confirm the definition and the cap.**
+   static SVG built on the server (at most 120 rows including its `+N more` rows, depth 12, cut into
+   30-row windows for the PDF so the text stays readable); screenshots are embedded as data URIs at their
+   original bytes so the HTML is a single file; fonts are named explicitly (Liberation Sans and Mono, DejaVu
+   as the glyph fallback). **Decided by R0:** "key events" means, in time order and at most 200: every
+   alert, then process-lane events, then file and registry events, then the events a detection cites (any
+   lane, at most 5 per detection with an "N more" note), then the first network event per destination.
+   The definition first written (the events detections cite) gave 20 events on both real analyses, because
+   detections cite almost only API-lane events; this one gives 146 and 149.
 7. **Exports run on the existing job mechanism** (`job` table, `export_report` type, progress over the
    system WebSocket's `job` messages). The finished file is written to a new `exports` volume and
    removed with its analysis. IOC exports are small and are built in the request.
@@ -64,10 +70,10 @@ automatic exports, YARA and Suricata rule management, the guest wizard (M6).
 9. **Validation.** STIX bundles are validated in tests with the `stix2` library; MISP events against a
    JSON schema kept in the test fixtures; the PDF test checks it opens and has the expected page count
    and text, not its pixels.
-10. **No new heavy dependency without the spike's numbers.** WeasyPrint needs Pango and fonts in the
-    backend image. S0 measures the image growth and the render time of a realistic report before
-    anything is built on it; if it is too large the PDF moves to the browser (print stylesheet) and the
-    plan changes before Wave 3.
+10. **WeasyPrint stays in the backend image. Decided by R0** ([findings](#r0-findings-2026-10-14)): +47 MB
+    content, and the image ends smaller than today's once the existing `uv sync` gets `--no-cache`; a report
+    renders in 2.7 to 3.6 s at 120 to 160 MB peak. The job runner renders in a thread, never inline in the
+    event loop. Packages: `libpango-1.0-0`, `libpangoft2-1.0-0`, `fonts-liberation`, `fonts-dejavu-core`.
 
 ## Waves
 
@@ -121,3 +127,258 @@ its annotations and its report file.
 | Report with thousands of events is slow or huge | The key-events cap of decision 6, screenshots optional, the job reports progress |
 | STIX or MISP output rejected by a real consumer | Validation in tests against the library and the schema; the spec's mapping is followed as written |
 | Agents report results optimistically | The planner re-runs every gate and `make e2e` before committing |
+
+## R0 findings (2026-10-14)
+
+Spike run on the real stack, in throwaway images and scripts outside the repo. The repo gained only this
+section and [m5-r0-spike/](m5-r0-spike/): the package and font list, the spike's SVG builder
+(`proctree_svg.py`), its Jinja2 print template (`report.html.j2`) and the two real tree SVGs. Nothing
+under `backend/app`, `backend/tests`, `frontend/`, `pyproject.toml` or `uv.lock` was written by R0. Real
+data: analyses 193 (13 178 events, 15 processes) and 144 (19 273 events, 16 processes), both `done`, read
+through the API. All numbers are from one machine (Arch host, Docker, no other load beyond the running
+stack), single runs of the builds, the median of 5 for renders.
+
+### Recommendation
+
+- **Decision 10: keep WeasyPrint in the backend image.** The image grows by 16.9 MB of apt packages and
+  about 69 MB of Python packages, and a typical report renders in 2.7 to 3.6 s with 120 to 160 MB peak
+  RSS. The same image is **smaller** than today's if the existing `uv sync` also gets `--no-cache`
+  (140.6 MB content against 146.3 MB now, see below). Nothing here justifies moving PDF to the browser,
+  and the browser route cannot be a job with progress and a download (decision 7), so it is also the
+  worse fit. Not measured: a browser-printed PDF (no browser was driven), so that alternative has no
+  numbers of its own.
+- **Decision 6: three changes** (the key-events definition is wrong as written, the tree needs a row
+  cap and pagination, fonts must be named). Details in the last sub-section. Screenshots as data URIs
+  and the 200 cap are fine.
+- **Decision 9: keep it, with one correction.** The MISP schema file requires nothing, so "missing
+  `info` fails" is not a schema check (see step 5).
+
+### 1. WeasyPrint footprint
+
+Base: the repo's `prod` stage built as is (`r0-backend-prod:base`). "Weasy" images add the apt line
+and `weasyprint` through `uv` in a copy of `pyproject.toml` and `uv.lock` in the scratchpad, same
+Dockerfile otherwise (apt step run as root before `uv sync`, then back to `tartarus`).
+
+| Image | apt packages (`--no-install-recommends`) | Content size | `docker images` disk usage | `du -sx /` |
+|---|---|---|---|---|
+| base (today's prod stage) | none | 146.27 MB | 621 MB | 449 MB |
+| weasy-min | libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core | 191.21 MB | 816 MB | 590 MB |
+| weasy-lib | libpango-1.0-0 libpangoft2-1.0-0 fonts-liberation | 191.73 MB | 817 MB | not measured |
+| **weasy-libdejavu** (recommended) | libpango-1.0-0 libpangoft2-1.0-0 fonts-liberation fonts-dejavu-core | 193.62 MB | 823 MB | 594 MB |
+| weasy-libdejavu, `uv sync --frozen --no-dev --no-cache` | same | **140.56 MB** | 580 MB | 413 MB |
+
+- Delta of the recommended image over base: +47.4 MB content (+32 %), +202 MB `docker images` disk usage.
+  Where it goes (`du`): `/opt/venv` 158 to 227 MB (+69 MB: fontTools 29 MB, pillow libs 14 MB, rest),
+  apt +16 MB, and the uv cache left in the image grows 122 to 182 MB.
+- **The uv cache is already in today's image (122 MB under `/home/tartarus/.cache/uv`)** because
+  `UV_LINK_MODE=copy` keeps it. `--no-cache` on the `uv sync` line removes it; the last row is that build,
+  and `weasyprint.HTML(string='<p>hi</p>').write_pdf()` still ran in it. That fixes the growth and then
+  some. It is a one-flag change to the existing Dockerfile line, to be made when the dependency is added.
+- Build time (`--no-cache`, base images already pulled, apt and PyPI over the network): base 33.4 s,
+  weasy-min 47.3 s. Cached rebuilds of the apt layer: about 21 s.
+- apt: 19 new packages for weasy-min (6.3 MB download, +16.1 MB unpacked), 18 for weasy-lib (6.5 MB,
+  +16.9 MB): `fontconfig`, `libfontconfig1`, `libpango-1.0-0`, `libpangoft2-1.0-0`, `libharfbuzz0b`,
+  `libfreetype6`, `libglib2.0-0t64`, `libfribidi0`, `libthai0`, `libdatrie1`, `libgraphite2-3`,
+  `libpng16-16t64`, `libbrotli1`, `libexpat1`, `libatomic1` and the font packages. Debian 13 (trixie), pango
+  1.56.3, harfbuzz 10.2.0.
+- Python (resolved by uv against the repo's lockfile, 14 new packages, `jinja2` 3.1.6 is already locked as
+  a `pysigma` dependency): `weasyprint==70.0`, `pydyf 0.13.0`, `tinycss2 1.5.1`, `cssselect2 0.10.1`,
+  `pyphen 0.18.1`, `tinyhtml5 2.1.0`, `fonttools 4.67.0`, `brotli 1.2.0`, `zopfli 0.4.3`, `pillow 12.3.0`,
+  `cffi 2.1.1`, `webencodings 0.6.1`, `pycparser`, `brotlicffi`.
+- Runs as the non-root `tartarus` user (uid 1000): the check `python -c "import weasyprint;
+  weasyprint.HTML(string='<p>hi</p>').write_pdf('/tmp/x.pdf')"` wrote a valid PDF as `tartarus`
+  (`id -un` printed `tartarus`), and every benchmark below ran in the same way, writing to a bind mount.
+- Event loop: rendering inline in a coroutine blocked the loop for the whole render (max lag 2 900 ms on a
+  2.9 s render). `asyncio.to_thread` kept the max lag at 23 ms (p99 6 ms). The job runner must run the
+  render in a thread (or process), never inline. Not tested: two renders at once.
+
+### 2. Fonts
+
+- The design system loads **no web font**: `--font-mono: "Courier New", Courier, monospace` and
+  `--font-sans: system-ui, -apple-system, sans-serif` (`frontend/src/css/app.css` lines 67 and 68); icons are
+  the Material Icons font, which the PDF must not depend on (severity is a text label plus a coloured
+  border in the template instead, which is the design system's "colour is never the only signal").
+- Closest Debian packages: **`fonts-liberation`** (SIL OFL 1.1, 4.3 MB installed): Liberation Mono is
+  metric-compatible with Courier New, Liberation Sans with Arial. **`fonts-dejavu-core`** (Bitstream Vera
+  licence, 2.3 MB) as the per-glyph fallback. Alternatives not chosen: `fonts-noto-core` 42.6 MB,
+  `fonts-inter` 21.3 MB, `fonts-jetbrains-mono` 7.5 MB. Bundling a webfont is not needed.
+- Check, `pdffonts` on a test page:
+  - weasy-min (DejaVu only): DejaVu Sans, Sans Bold, Sans Mono, Sans Mono Bold, Oblique embedded; Courier New falls to
+    DejaVu Sans Mono, a different face from the app's.
+  - weasy-lib (Liberation only): Liberation Sans and Mono embedded, **but the symbols check, warning, play and cross
+    render as empty boxes** (seen in the page image).
+  - weasy-libdejavu: Liberation Sans, Liberation Mono and DejaVu Sans (fallback for those glyphs) embedded as
+    subsets; the symbols render. The real reports use no symbol glyphs, and `pdffonts` on them lists only
+    Liberation Sans, Sans Bold, Mono and Mono Bold.
+- **Name the fonts in the print stylesheet.** With only `fonts-liberation` installed, `fc-match
+  sans-serif` and `fc-match system-ui` answer *Liberation Mono*, so the design system's sans stack printed
+  in monospace. The spike's stacks, which worked: `'Liberation Sans', Arial, Helvetica, sans-serif` and
+  `'Liberation Mono', 'Courier New', Courier, monospace`. Both are in
+  [m5-r0-spike/fonts-and-packages.txt](m5-r0-spike/fonts-and-packages.txt).
+
+### 3. Render time
+
+Fixture: the real summary, process tree, signatures, ATT&CK, network, IOCs, detections, artifacts and
+**all** events of analysis 193 (13 178) and 144 (19 273) read from the API (500 per page, 13 178 events in
+1.2 s over localhost), so no replication was needed for the 5 000-event target. Template
+([m5-r0-spike/report.html.j2](m5-r0-spike/report.html.j2)): summary tiles, notes, ATT&CK, process tree SVG,
+detections, key events table (cap 200), network (DNS, HTTP, hosts, first 50 flows), IOCs, screenshots as
+data URIs, tags; A4, white page, ice-blue accents, severity colours, page numbers. The analyst notes and
+tags are synthetic text (the annotation feature does not exist yet). "20 screenshots" are the analysis'
+own 1280x800 JPEGs, about 85 KB each, embedded byte for byte.
+
+Time is the median of 5 renders after the first in the same process; HTML is Jinja2 only, PDF is WeasyPrint
+from the HTML string. Peak RSS is `ru_maxrss` of the process, which read 89 to 104 MB after the imports
+and loading the events JSON, so it includes that baseline.
+
+| Case (image weasy-libdejavu) | Key events | Pages | HTML | PDF | HTML render | PDF render (median; first) | Peak RSS |
+|---|---|---|---|---|---|---|---|
+| 193, no screenshots | 146 | 13 | 65 KB | 69 KB | 2.1 ms | 2.75 s; 2.69 s | 121 MB |
+| 193, 20 screenshots | 146 | 17 | 2 228 KB | 1 697 KB | 5.6 ms | 2.92 s; 2.91 s | 149 MB |
+| 193, key events padded to the 200 cap | 200 | 15 | 76 KB | 76 KB | 2.3 ms | 3.15 s; 3.18 s | 127 MB |
+| 193, 200 key events + 20 screenshots | 200 | 19 | 2 239 KB | 1 704 KB | 6.1 ms | 3.55 s; 3.44 s | 160 MB |
+| 144, no screenshots | 149 | 14 | 67 KB | 70 KB | 2.0 ms | 2.95 s; 2.95 s | 134 MB |
+| 144, 20 screenshots | 149 | 18 | 2 068 KB | 1 576 KB | 5.1 ms | 3.03 s; 3.07 s | 166 MB |
+| Stress: 193 x5 (730 key rows, 95 detections, 185 IOCs) + 20 screenshots | 730 | 49 | 2 389 KB | 1 812 KB | 11.2 ms | 13.3 s; 12.5 s | 237 MB |
+
+- The padded and stress rows repeat the real events (their text gets a suffix), so they measure the
+  template's cost, not different data. The real analyses give 146 and 149 key events, under the cap.
+- The first render in a fresh container is not slower than the later ones (no visible font-cache cost).
+- PDF cost grows faster than the page count (the stress row against the 193 row with screenshots: 4.6x the
+  time for 2.9x the pages), so the cap in decision 6 matters; at the 200 cap it is 3.2 to 3.6 s.
+- The cost is in the template and layout, not in the event count: building the model from 13 178 events
+  took 0.04 s here (JSON already on disk), reading them from OpenSearch is the 1.2 s above.
+- Screenshots are not recompressed: 20 of them add about 1.6 MB to the PDF and 2.1 MB to the HTML (base64).
+  Cost beyond 23 screenshots was not measured.
+- Check: `pdfinfo` opens every PDF (Producer WeasyPrint 70.0, A4); `pdftotext` finds `benign.exe`, the
+  sample name, 28 times in the 193 report; page images viewed.
+
+### 4. Static process tree SVG
+
+Built in pure Python with `xml.etree.ElementTree` (no new dependency),
+[m5-r0-spike/proctree_svg.py](m5-r0-spike/proctree_svg.py): one row per process, indent per level,
+elbow connectors, `name (pid)` in mono with the name cut at 34 characters plus an ellipsis, a `SAMPLE`
+tag, a severity tag (`HIGH 5`, text plus border colour), `INJECTS <pids>` and a dashed `INJECTION TARGET`
+box, a `+N more` row for what a cap hides, and the `viewBox` sized to the content. Text is escaped by
+`ElementTree` (a process name `<script>...</text><circle/>` stayed inert text and the SVG stayed
+well-formed). Mono advance is 0.6 em in both Courier New and Liberation Mono, so the boxes fit the text.
+
+| Tree | Processes | Roots, depth | SVG | Build time | Notes |
+|---|---|---|---|---|---|
+| Analysis 193 | 15 | 8, 3 | 296 x 438 px, 5.7 KB | not timed (ms) | explorer, benign.exe (SAMPLE, HIGH 5), cmd, svchost children all labelled |
+| Analysis 144 | 16 | 7, 3 | 303 x 466 px, 6.3 KB | not timed (ms) | same shape, two Notepad children |
+| Synthetic: 30-deep chain, 270-char path, injector and target | 36 | 2, 31 | 640 x 550 px after the depth cap | n/a | before the cap 1082 x 1026 px |
+| Synthetic random, 100 / 400 / 2 000 nodes | 100 / 400 / 2 000 | 1 | 2 818 / 4 722 / 5 058 px tall | 2.0 / 4.2 / 8.3 ms | capped at 120 nodes |
+
+Both real SVGs were converted with `rsvg-convert` and viewed (also at 2.5x): no clipped text, no overlap,
+every label inside its box, tags clear of the next row. **Neither real tree has an injection target**
+(`injected_into` is empty in both), so the injection markers were only checked on the synthetic tree,
+where they rendered correctly (dashed orange box, `INJECTS 3,99999` for a pid not in the tree, nothing
+drawn for the missing pid).
+
+Defects found and fixed in the spike:
+
+1. A 30-deep chain made the SVG 1 082 px wide: fixed by a depth cap of 12, the rest folded into `+N more`.
+2. **A capped big tree is unreadable in the PDF.** 400 processes capped at 120 nodes is still 168 rows
+   (the `+N more` rows are extra, 48 to 60 of them) and 4 722 px tall; one `<svg>` cannot break across
+   pages, so `max-height` shrank it to about a fifth of its size (text about 2 px, seen in the page image).
+   Fixed by cutting the tree into 30-row windows (the same SVG with a different `viewBox` per window, one
+   window per `div`, `break-inside: avoid`): readable across 4 pages (18 in total), PDF 2.9 to 4.3 s, HTML
+   113 to 383 KB, because the spike repeats the whole SVG in each window. The real implementation should
+   emit only the rows of each window.
+3. The first window cut a node box in half at the page boundary: fixed by cutting in the gap between rows
+   (offset of 9 px); the page image shows no cut box.
+
+Not fixed: the `+N more` rows are not counted in the cap, so a 120-node cap gave 168 rows. Count rows, not
+nodes. Layout is a plain indented tree, not the spec's dagre graph with injection and network edges; the
+spike drew none of those edges.
+
+### 5. Test tooling
+
+Checked in a fresh uv venv in the scratchpad (not the repo's), then the repo's own
+`backend/tests/export/validation.py` was imported read-only (X1 added `stix2 3.0.2`, `jsonschema 4.26.0`
+and `tests/fixtures/misp/event-2.5.schema.json` while R0 ran; the repo's test suite was not run by R0).
+
+| Check | Result |
+|---|---|
+| `stix2.parse(bundle, allow_custom=False)` on a bundle with identity, malware, indicator, file / domain-name / ipv4-addr / url SCOs, attack-pattern, two relationships and a note | parsed, 11 objects |
+| identity with `id: identity--not-a-uuid` | rejected, `InvalidValueError: ... must match <object-type>--<UUID>` |
+| indicator with an unparseable pattern (`[domain-name:value = ]`) | rejected (stix2-patterns parses it) |
+| a custom property `x_custom` on the malware | rejected with `allow_custom=False` |
+| relationship with `source_ref: indicator--zzz` | rejected |
+| Valid minimal MISP event against `event-2.5.schema.json` (jsonschema Draft4Validator) | 0 errors |
+| The same event **without `info`** against the schema alone | **0 errors**: the schema requires nothing |
+| Wrong type (`to_ids: "yes-please"`) and an unknown key | 2 errors from the schema |
+| Same two events through the repo's `misp_problems` | valid: `[]`; without `info`: `['event lacks info']` |
+| `pymisp` 2.5.34.4: `MISPEvent().from_dict(...)` | valid loads; without `info` raises `NewEventError`; unknown attribute type raises `NewAttributeError`; a sha256 attribute holding `xyz` loads without complaint |
+
+- Verdict: **`stix2` for STIX (BSD), and for MISP the MISP project's `format/2.5/schema.json` with the
+  required keys and the (type, category) pairs checked in the test helper, as X1 did.** `pymisp` (BSD-2-Clause)
+  also works as a second opinion and rejects more (missing `info`, unknown type) but checks no values and
+  brings `requests` and `deprecated`; not needed.
+- Packages: `stix2` and `jsonschema` are test-only dev dependencies (already added by X1 in the working
+  tree); neither goes in the image.
+- Licence of the schema file: the file is the MISP project's; the repository is AGPL-3.0 as far as known,
+  but the file's own licence was **not verified** by R0. It is a test fixture and is not shipped in the
+  image.
+
+### 6. What to change in decision 6
+
+**Key events.** Detections cite events almost only in the API lane, so the definition as written ("every
+alert, then the process, file, registry and network events that detections cite") yields almost nothing
+beyond the alerts:
+
+| | Analysis 193 | Analysis 144 |
+|---|---|---|
+| Alert events | 19 | 20 |
+| Events cited by detections, as listed | 83 | 83 |
+| of which in the API lane | 82 | 83 |
+| of which process, file, registry or network | 1 | 0 |
+| **Decision 6 as written** | **20 events** (19 alerts + 1) | **20 events** (20 alerts + 0) |
+| Events cited, total (`related_event_total`) | 136 | 163 |
+
+`related_events` in the detections view is capped at 50 per detection (one detection in each analysis is
+over it), so the report builder cannot rebuild the full citation list from that view alone. Of 13 178 and
+19 273 events, 450 and 413 are outside the API lane.
+
+Proposal, in priority order, de-duplicated, at most 200, shown in time order, the lowest priority dropped
+first when over the cap:
+
+1. every alert event;
+2. every process-lane event (starts, exits, injections);
+3. file and registry events (writes, creates, deletes);
+4. events cited by a detection, any lane, API included (what a reader needs to see why it fired);
+5. the first network event per destination.
+
+Measured on the two analyses: 146 events for 193 (19 alerts, 14 other process events, 8 file, 20 registry, 82 cited
+API, 3 network) and 149 for 144, both under the cap. Keep the cap at 200: the report renders in 3.2 s (3.6 s with 20
+screenshots). Cited API events count in tier 4, so a detection with 50 or more cited events can fill the cap;
+cap the cited events per detection (suggested 5) and say "N more" in the detection block. Open for the
+builder: fetch the cited events by id, because the view stops at 50 per detection.
+
+**Process tree.** Cap at 120 nodes counting the `+N more` rows, depth 12, and split into 30-row windows
+emitted separately; real trees of 15 and 16 processes fit on one page without any of that. Reuse the
+design-system severity tokens; the spike's colours matched them. Draw the tree in a plain indented layout
+(not dagre) for the report.
+
+**Screenshots.** Embed as data URIs, original bytes, as decision 6 says; 20 cost about 1.6 MB of PDF and
+2.1 MB of HTML. The include option stays. No resize needed at the 22 to 23 screenshots seen; larger counts
+were not measured.
+
+**Fonts and stylesheet.** `fonts-liberation` + `fonts-dejavu-core` in the image, named font stacks in the
+print stylesheet, no icon font in the report.
+
+**Dockerfile.** Add `--no-cache` to `uv sync`, add the apt line as root before it, add `weasyprint==70.0`
+and a direct `jinja2` dependency; the exact list is in
+[m5-r0-spike/fonts-and-packages.txt](m5-r0-spike/fonts-and-packages.txt).
+
+### Could not verify
+
+- A browser-printed PDF (the decision-10 fallback) was not built or measured.
+- Two simultaneous renders, memory beyond the 237 MB stress case, and screenshot counts above 23.
+- The notes and tags in the fixture are synthetic; the injection markers were never exercised by a real
+  analysis (neither has an injection target).
+- Build time of the weasy image is one run each (47.3 s against 33.4 s); the machine was not otherwise idle.
+- The licence of the individual MISP schema file.
+- R0 did not run the repo's backend test suite or lint; X1's files appeared in the working tree during the
+  spike and were only read.
