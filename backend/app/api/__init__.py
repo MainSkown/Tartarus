@@ -5,6 +5,7 @@ from app.api import (
     annotations,
     events,
     export,
+    jobs,
     query,
     rules,
     settings,
@@ -25,3 +26,4 @@ api_router.include_router(rules.router)
 api_router.include_router(rules.analysis_router)
 api_router.include_router(export.router)
 api_router.include_router(annotations.router)
+api_router.include_router(jobs.router)

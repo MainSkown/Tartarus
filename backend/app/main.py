@@ -19,6 +19,7 @@ from app.db.session import create_engine, create_session_factory
 from app.errors import ErrorEnvelope, install_error_handlers
 from app.health import HealthCheck, OpenSearchCheck, PostgresCheck
 from app.ingest.ingester import ReportIngester
+from app.jobs.runner import JobRunner
 from app.live.hub import LiveHub
 from app.live.manager import LiveCollectionManager
 from app.logging_config import configure_logging
@@ -92,10 +93,14 @@ def _build_lifespan(
         )
         app.state.runner = runner
         runner.start()
+        job_runner = JobRunner(app.state.session_factory, resolved.exports_path)
+        app.state.job_runner = job_runner
+        await job_runner.start()
         logger.info("Backend started (%s)", resolved.environment)
         try:
             yield
         finally:
+            await job_runner.stop()
             await runner.stop()
             await rule_registry.stop()
             await live_collection.aclose()

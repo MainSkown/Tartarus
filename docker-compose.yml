@@ -70,12 +70,14 @@ services:
       CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
       CAPE_STORAGE_PATH: /cape-storage
       SAMPLE_STORE_PATH: /data/samples
+      EXPORTS_PATH: /data/exports
       RULES_PATH: /rules/sigma
       GUEST_LABEL: ${GUEST_LABEL:-win}
     volumes:
       # Read-only: the backend reads reports and CAPE alone writes (and deletes) its analyses.
       - cape-storage:/cape-storage:ro
       - sample-store:/data/samples
+      - exports:/data/exports
       # Read-only: the shipped rules (default/, tartarus/) and the analyst's own in custom/ are edited on the host.
       - ./rules/sigma:/rules/sigma:ro
     depends_on:
@@ -165,3 +167,4 @@ volumes:
   cape-storage:
   guest-images:
   sample-store:
+  exports:

@@ -48,3 +48,7 @@ async def require_analysis(session: AsyncSession, analysis_id: int) -> Analysis:
 
 def get_cape_storage_path(settings: Annotated[Settings, Depends(get_settings)]) -> Path:
     return settings.cape_storage_path
+
+
+def get_exports_path(settings: Annotated[Settings, Depends(get_settings)]) -> Path:
+    return settings.exports_path

@@ -12,6 +12,7 @@ from app.cape.control import CapeControl
 from app.cape.health import CapeCheck, GuestCheck
 from app.db.session import get_session
 from app.health import ComponentHealth, HealthStatus, PostgresCheck, evaluate
+from app.jobs.runner import JobRunner
 from app.rules.registry import RuleRegistry
 from app.samples.store import SampleStore
 from app.search.index import EventIndex
@@ -27,6 +28,7 @@ async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAP
         assert isinstance(app.state.sample_store, SampleStore)
         assert isinstance(app.state.event_index, EventIndex)
         assert isinstance(app.state.runner, Runner)
+        assert isinstance(app.state.job_runner, JobRunner)
         assert isinstance(app.state.rule_registry, RuleRegistry)
         assert set(app.state.health_checks) == {"postgres", "opensearch", "cape", "guest"}
         assert isinstance(app.state.health_checks["postgres"], PostgresCheck)
@@ -61,6 +63,9 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
     async def record_runner_stop(self: Runner) -> None:
         released.append("runner")
 
+    async def record_job_runner_stop(self: JobRunner) -> None:
+        released.append("job_runner")
+
     async def record_control_close(self: CapeControl) -> None:
         released.append("cape_control")
 
@@ -74,6 +79,7 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
         await stop_registry(self)
 
     monkeypatch.setattr(Runner, "stop", record_runner_stop)
+    monkeypatch.setattr(JobRunner, "stop", record_job_runner_stop)
     monkeypatch.setattr(RuleRegistry, "stop", record_registry_stop)
 
     async with app.router.lifespan_context(app):
@@ -83,6 +89,7 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
         "cape",
         "cape_control",
         "engine",
+        "job_runner",
         "opensearch",
         "rule_registry",
         "runner",
@@ -90,6 +97,8 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
     # A tick in progress still uses the CAPE client and the database, so it must end first.
     assert released.index("runner") < released.index("cape")
     assert released.index("runner") < released.index("engine")
+    # A running job writes its progress to the database.
+    assert released.index("job_runner") < released.index("engine")
     # A reload in progress writes to the database.
     assert released.index("rule_registry") < released.index("engine")
 

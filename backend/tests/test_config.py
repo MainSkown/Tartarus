@@ -17,6 +17,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CAPE_API_TOKEN",
         "CAPE_STORAGE_PATH",
         "SAMPLE_STORE_PATH",
+        "EXPORTS_PATH",
         "RULES_PATH",
         "GUEST_LABEL",
         "GUACD_HOST",
@@ -113,6 +114,15 @@ def test_cape_settings_are_read_from_the_environment(monkeypatch: pytest.MonkeyP
     assert settings.sample_store_path == Path("/mnt/samples")
     assert settings.rules_path == Path("/mnt/rules")
     assert settings.guest_label == "win11"
+
+
+@pytest.mark.usefixtures("required_urls")
+def test_exports_live_under_data_unless_told_otherwise(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings().exports_path == Path("/data/exports")
+
+    monkeypatch.setenv("EXPORTS_PATH", "/mnt/exports")
+
+    assert Settings().exports_path == Path("/mnt/exports")
 
 
 @pytest.mark.usefixtures("required_urls")

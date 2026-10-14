@@ -21,6 +21,7 @@ from app.api.dependencies import (
     get_cape_control,
     get_cape_storage_path,
     get_event_index,
+    get_exports_path,
     get_runner,
     get_sample_store,
 )
@@ -28,11 +29,12 @@ from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
 from app.cape.errors import CapeBadResponse, CapeRejected, CapeTaskNotFound, CapeUnreachable
 from app.db import analysis_repository as repository
-from app.db import annotation_repository
+from app.db import annotation_repository, job_repository
 from app.db.base import Base
 from app.db.models import Analysis, Sample
 from app.db.models.analysis import AnalysisStatus
 from app.db.models.annotation import TargetType
+from app.db.models.job import JobStatus, JobType
 from app.errors import install_error_handlers
 from app.health import ComponentHealth, HealthStatus
 from app.samples.store import SampleStore
@@ -117,6 +119,7 @@ class Harness:
     index: FakeEventIndex
     control: FakeControl
     storage: Path
+    exports: Path
 
     def start_monitor(self, cape_task_id: int = 7) -> None:
         """Writes the first log the analyzer's monitor makes in the guest."""
@@ -187,6 +190,7 @@ async def harness(
     app.dependency_overrides[get_event_index] = lambda: index
     app.dependency_overrides[get_cape_control] = lambda: control
     app.dependency_overrides[get_cape_storage_path] = lambda: tmp_path / "cape-storage"
+    app.dependency_overrides[get_exports_path] = lambda: tmp_path / "exports"
     app.dependency_overrides[analyses_api.get_guest_check] = lambda: guest
 
     async with make_client(app) as client:
@@ -201,6 +205,7 @@ async def harness(
             index,
             control,
             tmp_path / "cape-storage",
+            tmp_path / "exports",
         )
     await engine.dispose()
 
@@ -925,6 +930,74 @@ async def test_an_event_index_that_cannot_be_dropped_never_blocks_deleting_the_a
     assert await harness.rows(Analysis) == []
     assert harness.stored_files() == []
     assert any("index" in record.getMessage() for record in caplog.records)
+
+
+async def test_deleting_an_analysis_removes_its_exported_files(harness: Harness) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=AnalysisStatus.DONE)
+    mine, theirs = harness.exports / str(created["id"]), harness.exports / "9999"
+    for directory in (mine, theirs):
+        directory.mkdir(parents=True)
+        (directory / "report.pdf").write_bytes(b"%PDF")
+
+    response = await harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert response.status_code == 204
+    assert not mine.exists()
+    assert (theirs / "report.pdf").exists()
+
+
+async def test_exported_files_that_cannot_be_removed_never_block_deleting_the_analysis(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=AnalysisStatus.DONE)
+
+    def refuse(_root: Path, _analysis_id: int) -> None:
+        raise PermissionError("read-only volume")
+
+    monkeypatch.setattr(analyses_api, "remove_analysis_exports", refuse)
+
+    with caplog.at_level(logging.WARNING):
+        response = await harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert response.status_code == 204
+    assert await harness.rows(Analysis) == []
+    assert any("exports" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.parametrize("status", [JobStatus.PENDING, JobStatus.RUNNING])
+async def test_an_analysis_with_an_export_in_progress_cannot_be_deleted(
+    harness: Harness, status: JobStatus
+) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=AnalysisStatus.DONE)
+    async with harness.factory() as session:
+        job = await job_repository.create_job(session, JobType.EXPORT_REPORT, created["id"])
+        if status is JobStatus.RUNNING:
+            await job_repository.mark_running(session, job.id)
+
+    response = await harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert response.status_code == 409
+    assert "export" in response.json()["error"]["message"]
+    assert len(await harness.rows(Analysis)) == 1
+    assert harness.index.dropped == []
+
+
+async def test_an_analysis_whose_export_has_finished_can_be_deleted_with_its_job(
+    harness: Harness,
+) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], status=AnalysisStatus.DONE)
+    async with harness.factory() as session:
+        job = await job_repository.create_job(session, JobType.EXPORT_REPORT, created["id"])
+        await job_repository.finish_job(session, job.id, JobStatus.DONE, {})
+
+    response = await harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert response.status_code == 204
+    assert await harness.rows(Analysis) == []
 
 
 @pytest.mark.parametrize("earlier", [AnalysisStatus.DONE, AnalysisStatus.REPORT_FAILED])

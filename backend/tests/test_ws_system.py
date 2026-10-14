@@ -1,15 +1,24 @@
 import logging
 from collections.abc import Iterator
 from datetime import datetime
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
 from fastapi.websockets import WebSocketDisconnect
 from starlette.testclient import TestClient
 
+from app.db.models.job import JobStatus, JobType
 from app.health import ComponentHealth, HealthCheck, HealthStatus
-from app.ws.messages import HealthMessage
-from app.ws.system import get_health_checks, get_health_push_interval_s, router, system_health_feed
+from app.jobs.feed import JobFeed
+from app.ws.messages import HealthMessage, JobMessage, JobProgress
+from app.ws.system import (
+    get_health_checks,
+    get_health_push_interval_s,
+    get_job_feed,
+    router,
+    system_feed,
+)
 
 FAST_INTERVAL_S = 0.01
 
@@ -126,10 +135,11 @@ async def test_disconnect_mid_stream_logs_no_unhandled_exception(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.DEBUG):
-        await system_health_feed(
+        await system_feed(
             DisconnectingWebSocket(),  # type: ignore[arg-type]
             checks=healthy_checks(),
             interval_s=0.0,
+            jobs=JobFeed(),
         )
 
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
@@ -147,3 +157,108 @@ def test_health_message_appears_in_the_openapi_schema() -> None:
         name for name in schema["components"]["schemas"] if "ComponentHealth" in name
     ]
     assert component_health_refs, "nested ComponentHealth model should also be hoisted"
+
+
+def job_message(
+    job_id: int = 1, status: JobStatus = JobStatus.RUNNING, progress: int = 0, step: str = ""
+) -> JobMessage:
+    return JobMessage(
+        job=JobProgress(
+            id=job_id,
+            type=JobType.EXPORT_REPORT,
+            analysis_id=None,
+            status=status,
+            step=step,
+            progress=progress,
+            result=None,
+        )
+    )
+
+
+def publish(client: TestClient, feed: JobFeed, message: JobMessage) -> None:
+    # The feed's queues belong to the app's event loop, which the test client runs in a thread.
+    assert client.portal is not None
+    client.portal.call(feed.publish, message)
+
+
+def receive_job(websocket: Any) -> JobMessage:
+    while True:
+        payload = websocket.receive_json()
+        if payload["type"] == "job":
+            return JobMessage.model_validate(payload)
+
+
+def test_a_connected_client_receives_a_jobs_changes_in_order(
+    ws_app: FastAPI, client: TestClient
+) -> None:
+    feed = JobFeed()
+    use_checks(ws_app, healthy_checks())
+    ws_app.dependency_overrides[get_job_feed] = lambda: feed
+
+    with client.websocket_connect("/ws/system") as websocket:
+        websocket.receive_json()
+        for message in (
+            job_message(status=JobStatus.PENDING),
+            job_message(status=JobStatus.RUNNING),
+            job_message(status=JobStatus.RUNNING, progress=50, step="Rendering"),
+            job_message(status=JobStatus.DONE, progress=100, step="Rendering"),
+        ):
+            publish(client, feed, message)
+        received = [receive_job(websocket) for _ in range(4)]
+
+    assert [(m.job.status, m.job.progress) for m in received] == [
+        (JobStatus.PENDING, 0),
+        (JobStatus.RUNNING, 0),
+        (JobStatus.RUNNING, 50),
+        (JobStatus.DONE, 100),
+    ]
+
+
+def test_a_job_message_carries_the_job_under_a_job_key(ws_app: FastAPI, client: TestClient) -> None:
+    feed = JobFeed()
+    ws_app.dependency_overrides[get_job_feed] = lambda: feed
+    use_checks(ws_app, healthy_checks())
+
+    with client.websocket_connect("/ws/system") as websocket:
+        websocket.receive_json()
+        publish(client, feed, job_message(job_id=9, step="Rendering", progress=30))
+        while (payload := websocket.receive_json())["type"] != "job":
+            pass
+
+    assert payload == {
+        "type": "job",
+        "job": {
+            "id": 9,
+            "type": "export_report",
+            "analysis_id": None,
+            "status": "running",
+            "step": "Rendering",
+            "progress": 30,
+            "result": None,
+        },
+    }
+
+
+def test_a_client_connecting_mid_job_is_told_about_the_active_jobs(
+    ws_app: FastAPI, client: TestClient
+) -> None:
+    feed = JobFeed()
+    feed.publish(job_message(job_id=4, progress=60))
+    feed.publish(job_message(job_id=5, status=JobStatus.DONE, progress=100))
+    use_checks(ws_app, healthy_checks())
+    ws_app.dependency_overrides[get_job_feed] = lambda: feed
+
+    with client.websocket_connect("/ws/system") as websocket:
+        assert websocket.receive_json()["type"] == "health"
+        initial = receive_job(websocket)
+
+    assert (initial.job.id, initial.job.progress) == (4, 60)
+
+
+def test_job_messages_appear_in_the_openapi_schema() -> None:
+    schema_app = FastAPI()
+    schema_app.include_router(router)
+
+    schemas = schema_app.openapi()["components"]["schemas"]
+
+    assert {"JobMessage", "JobProgress"} <= schemas.keys()

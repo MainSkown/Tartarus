@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Sequence
 from pathlib import Path
@@ -26,6 +27,7 @@ from app.api.dependencies import (
     get_cape_control,
     get_cape_storage_path,
     get_event_index,
+    get_exports_path,
     get_runner,
     get_sample_store,
     require_analysis,
@@ -48,10 +50,12 @@ from app.db.analysis_repository import (
     queue_positions,
 )
 from app.db.annotation_repository import analysis_level_tags
+from app.db.job_repository import has_active_job
 from app.db.models import Analysis, Sample
 from app.db.models.analysis import ACTIVE_STATUSES, AnalysisStatus
 from app.db.session import get_session
 from app.health import HealthCheck, HealthStatus, evaluate
+from app.jobs.exports import remove_analysis_exports
 from app.samples.store import (
     EmptySampleError,
     SampleStore,
@@ -212,20 +216,27 @@ async def finish(
 
 
 @router.delete("/{analysis_id}", status_code=204)
-async def delete(
+async def delete(  # noqa: PLR0913 - one argument per resource the analysis owns
     analysis_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    *,
     cape: Annotated[CapeClient, Depends(get_cape)],
     index: Annotated[EventIndex, Depends(get_event_index)],
     store: Annotated[SampleStore, Depends(get_sample_store)],
+    exports: Annotated[Path, Depends(get_exports_path)],
 ) -> Response:
-    """Removes the analysis, its CAPE task, its event index, and its sample once unused."""
+    """Removes the analysis, its CAPE task, its event index, its exported files, and its sample
+    once unused. `409` while the analysis is active or has a job (an export) in progress.
+    """
     analysis = await require_analysis(session, analysis_id)
     if analysis.status in ACTIVE_STATUSES:
         raise HTTPException(409, f"Analysis {analysis_id} is still {analysis.status.value}")
+    if await has_active_job(session, analysis_id):
+        raise HTTPException(409, f"Analysis {analysis_id} has an export in progress")
     if analysis.cape_task_id is not None:
         await _delete_cape_task(cape, analysis.cape_task_id)
     await _drop_event_index(index, analysis_id)
+    await _remove_exports(exports, analysis_id)
     await delete_analysis(session, analysis_id)
     await _discard_unreferenced_sample(session, store, analysis.sample_sha256)
     return Response(status_code=204)
@@ -340,3 +351,11 @@ async def _drop_event_index(index: EventIndex, analysis_id: int) -> None:
         await index.drop(analysis_id)
     except OpenSearchException as error:
         logger.warning("The event index of analysis %s was left behind: %s", analysis_id, error)
+
+
+async def _remove_exports(exports: Path, analysis_id: int) -> None:
+    # Exported files that cannot be removed must not make the analysis undeletable.
+    try:
+        await asyncio.to_thread(remove_analysis_exports, exports, analysis_id)
+    except OSError as error:
+        logger.warning("The exports of analysis %s were left behind: %s", analysis_id, error)
