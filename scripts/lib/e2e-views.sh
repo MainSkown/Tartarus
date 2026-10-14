@@ -21,7 +21,7 @@ def api(method, path, body=None):
     request = urllib.request.Request(sys.argv[2] + path, data=data, headers=headers, method=method)
     try:
         with opener.open(request, timeout=60) as response:
-            return response.status, json.load(response)
+            return response.status, json.loads(response.read() or "null")
     except urllib.error.HTTPError as error:
         return error.code, json.loads(error.read() or "null")
 

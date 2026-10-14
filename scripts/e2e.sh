@@ -9,10 +9,18 @@
 # error answers, facets, the histogram, one event with its related events, value autocomplete and
 # extra columns, each compared with the analysis record's own counts (scripts/lib/e2e-query.sh).
 # The live feed is always checked on the same analysis, Sigma alert included: it must arrive in the
-# batch of the event that caused it and equal the final one by rule and triggering call. Then it
-# checks the queue order and cancelling, deleting a finished analysis, and a browser run of the submit flow
-# (frontend/tests/e2e/submit-flow.spec.ts: the tabs, and the Events and Timeline tabs filtering the
-# real index) on a second analysis. Step (j) always ends an interactive run early through POST /finish.
+# batch of the event that caused it and equal the final one by rule and triggering call. The analyst's
+# workflow is checked on that analysis too (scripts/lib/e2e-annotations.sh, e2e-exports.sh): tags and
+# notes on the analysis, a process and an event, read back, filtered, counted and removed, and kept
+# by the Sigma step's re-ingest; the STIX, MISP and CSV IOC downloads; the HTML and PDF reports as
+# jobs, downloaded and read; and after the delete the annotation rows, the report files and the
+# exports directory are gone. Then it checks the queue order and cancelling (an event of a cancelled
+# analysis cannot be annotated, nor a report built), deleting a finished analysis, and a browser run
+# of the submit flow (frontend/tests/e2e/submit-flow.spec.ts: the tabs, and the Events and Timeline
+# tabs filtering the real index) on a second analysis. The browser also runs the analyst's flow on
+# the first analysis (frontend/tests/e2e/annotations-flow.spec.ts: a tag from the autocomplete, the
+# note, the IOC download, the report dialog and the Dashboard's tag filter) just before it is
+# deleted. Step (j) always ends an interactive run early through POST /finish.
 # `E2E_DRILLS=1` adds the failure drills, which stop cape or opensearch and restart the backend
 # mid-run and put them back afterwards. `E2E_SKIP_UI=1` skips the browser test.
 # `E2E_DESKTOP=1` adds the interactive desktop (the tunnel's API half, then the browser test
@@ -27,6 +35,7 @@ SAMPLE_SRC=$REPO/guest/testsample/benign.c
 SAMPLE_DIR=${TMPDIR:-/tmp}/tt-guest-verify
 SAMPLES_IN_BACKEND=/data/samples
 BROWSER_SECONDS=${E2E_BROWSER_SECONDS:-480}
+ANNOTATIONS_BROWSER_SECONDS=${E2E_ANNOTATIONS_BROWSER_SECONDS:-120}
 ANALYSIS_TIMEOUT=${E2E_ANALYSIS_TIMEOUT:-420}
 RESTORE_TIMEOUT=${E2E_RESTORE_TIMEOUT:-240}
 DRILLS=${E2E_DRILLS:-0}
@@ -40,6 +49,8 @@ source "$REPO/scripts/lib/e2e-api.sh"
 source "$REPO/scripts/lib/e2e-views.sh"
 source "$REPO/scripts/lib/e2e-query.sh"
 source "$REPO/scripts/lib/e2e-rules.sh"
+source "$REPO/scripts/lib/e2e-annotations.sh"
+source "$REPO/scripts/lib/e2e-exports.sh"
 source "$REPO/scripts/lib/e2e-live.sh"
 source "$REPO/scripts/lib/e2e-finish.sh"
 
@@ -161,6 +172,47 @@ step_k_sigma_rules() {
     check_sigma_rules "$A_ID"
 }
 
+# --- (n) tags and notes, (x) exports, (r) reports ---------------------------------------------------------
+
+# Before step (k): its re-ingests are the ones the annotations must survive.
+step_n_annotations() {
+    [[ -n ${A_ID:-} ]] || { fail "(n) skipped: step (a) produced no analysis"; return 1; }
+    choose_annotations "$A_ID" "$(basename "$A_FILE")" || { fail "(n) no process or event of analysis $A_ID to annotate"; return 1; }
+    info "(n) annotating analysis $A_ID, pid $ANN_PID and event $ANN_EVENT_ID"
+    check "(n) a tag and a note are added on the analysis, on a process and on an event" \
+        annotations_are_added_on_the_analysis_a_process_and_an_event || return 1
+    check "(n) GET annotations returns exactly those, none orphaned, and narrows by target" annotations_read_back_exactly_and_narrow_by_target
+    check "(n) GET /api/tags counts each tag once and ?tag= finds the analysis by its own tag only" tag_counts_and_the_tag_filter_follow_the_links
+    check "(n) a duplicate tag answers 409, a bad name or an empty note 422, an unknown analysis 404" duplicate_tag_is_409_and_bad_names_are_422
+    check "(n) PATCH replaces a note's text" patching_a_note_replaces_its_text
+    check "(n) removing a tag takes it off the analysis and out of /api/tags" removing_a_tag_removes_the_link_and_a_tag_no_link_uses
+    check "(n) removing a note removes it" removing_a_note_removes_it
+    snapshot_annotations "$A_ID" || fail "(n) could not record the annotations before the re-ingest"
+}
+
+# After step (k) re-ingested the analysis twice.
+step_n_annotations_survive_reingest() {
+    [[ -n ${ANN_ID:-} && -s $(annotation_snapshot_file "$ANN_ID") ]] || { fail "(n) skipped: no annotations were recorded before the re-ingest"; return 1; }
+    check "(n) after the re-ingests the tags and notes are identical and none is orphaned" annotations_survive_the_reingest
+    check "(n) the event detail and the process view still show their annotations" event_and_process_views_still_show_their_annotations
+}
+
+step_x_exports() {
+    [[ -n ${ANN_ID:-} ]] || { fail "(x) skipped: no analysis was annotated"; return 1; }
+    local started=$SECONDS
+    check_ioc_exports "$A_ID" "$A_SHA"
+    check_reports "$A_ID" "$(basename "$A_FILE")" "$A_SHA"
+    info "(x, r) took $((SECONDS - started)) s"
+}
+
+step_n_browser_annotations() {
+    [[ -n ${ANN_ID:-} ]] || { fail "(n) browser skipped: no analysis was annotated"; return 1; }
+    local started=$SECONDS
+    check "browser: a tag from the autocomplete, the analysis note, the STIX download, the HTML report and the Dashboard's tag filter work on analysis $A_ID" \
+        browser_test_passes "$A_FILE" annotations-flow 0 "$ANNOTATIONS_BROWSER_SECONDS" "$A_ID"
+    info "annotations browser flow took $((SECONDS - started)) s"
+}
+
 # --- (b) and (c) strict order, and cancelling a queued analysis ---------------
 
 cancel_answers_cancelled() { # id
@@ -207,6 +259,10 @@ step_bc_order_and_cancel() {
     check "(c) cancelling queued analysis $B3_ID answers cancelled" cancel_answers_cancelled "$B3_ID"
     check "(b) analysis $B2_ID stays queued until $B1_ID is finished, then both are done" second_waits_for_first "$B1_ID" "$B2_ID"
     check "(c) the cancelled analysis never ran" cancelled_never_ran "$B3_ID"
+    if [[ -n ${ANN_ID:-} ]]; then
+        check "(n) an event of the cancelled analysis $B3_ID cannot be tagged or noted: 409" event_annotations_are_refused_on_an_unfinished_analysis "$B3_ID"
+        check "(r) a report of the cancelled analysis $B3_ID answers 409" report_is_refused "$B3_ID" 409
+    fi
     info "(b,c) took $((SECONDS - started)) s"
 }
 
@@ -239,9 +295,25 @@ delete_removes_analysis_and_index() { # id
 sample_file_is_present() { stored_sample_exists "$1" || { echo "no $SAMPLES_IN_BACKEND/$1.zip in the backend"; return 1; }; }
 sample_file_is_gone() { ! stored_sample_exists "$1" || { echo "$SAMPLES_IN_BACKEND/$1.zip is still in the backend"; return 1; }; }
 
+step_d_before_delete() {
+    [[ -n ${ANN_ID:-} ]] || return 0
+    check "(d) before the delete the database holds analysis $A_ID's tag links, notes and tags" annotation_rows_exist_in_the_database "$A_ID"
+    check "(d) before the delete the exports directory holds both reports of analysis $A_ID" exports_directory_holds_both_reports "$A_ID"
+}
+
+step_d_annotations_and_reports_gone() {
+    [[ -n ${ANN_ID:-} ]] || return 0
+    check "(d) the annotations of the deleted analysis $A_ID answer 404 and its tags are not in /api/tags" annotations_of_a_deleted_analysis_are_gone "$A_ID"
+    check "(d) no tag link, note or tag of the deleted analysis $A_ID is left in the database" annotation_rows_are_gone_from_the_database "$A_ID"
+    check "(d) the report downloads of the deleted analysis answer 404" report_downloads_are_gone "${REPORT_JOBS[@]}"
+    check "(d) the exports directory of the deleted analysis is gone from the backend" exports_directory_is_gone "$A_ID"
+}
+
 step_d_delete() {
     check "(d) the sample file exists while analysis $A_ID refers to it" sample_file_is_present "$A_SHA"
+    step_d_before_delete
     check "(d) deleting finished analysis $A_ID answers 204 and it and its event index are gone" delete_removes_analysis_and_index "$A_ID"
+    step_d_annotations_and_reports_gone
     check "(d) its sample file is removed because nothing refers to it" sample_file_is_gone "$A_SHA"
     check "(d) deleting $B1_ID (done) answers 204 and it and its event index are gone" delete_removes_analysis_and_index "$B1_ID"
     check "(d) the sample stays while $B2_ID and the cancelled $B3_ID still refer to it" sample_file_is_present "$B_SHA"
@@ -254,9 +326,9 @@ step_d_delete() {
 
 # The desktop spec is opt in through E2E_DESKTOP, so each run pins it: a `make e2e DESKTOP=1` must not
 # also run it inside the submit flow's call.
-browser_test_passes() { # file spec desktop(0|1) bound-seconds
+browser_test_passes() { # file spec desktop(0|1) bound-seconds [analysis-id]
     local output
-    output=$(cd frontend && E2E_BASE_URL=$BASE E2E_SAMPLE=$1 E2E_DESKTOP=$3 timeout "$4" npm run --silent e2e -- "$2" 2>&1)
+    output=$(cd frontend && E2E_BASE_URL=$BASE E2E_SAMPLE=$1 E2E_DESKTOP=$3 E2E_ANALYSIS_ID=${5:-} timeout "$4" npm run --silent e2e -- "$2" 2>&1)
     local status=$?
     # A skipped test exits 0 too, so the count is what proves it ran.
     if ((status == 0)) && grep -q '1 passed' <<<"$output"; then return 0; fi
@@ -451,8 +523,18 @@ main() {
     step_a_sample_runs_to_done
     echo "== (h) the live feed of step (a)"
     step_h_live_feed
+    echo "== (n) tags and notes"
+    step_n_annotations
     echo "== (k) the Sigma rules"
     step_k_sigma_rules
+    echo "== (n) tags and notes after the re-ingests"
+    step_n_annotations_survive_reingest
+    echo "== (x, r) IOC exports and reports"
+    step_x_exports
+    if [[ $SKIP_UI != 1 ]]; then
+        echo "== (n) browser: tags, notes, exports"
+        step_n_browser_annotations
+    fi
     echo "== (b, c) order and cancel"
     step_bc_order_and_cancel
     echo "== (d) delete"
