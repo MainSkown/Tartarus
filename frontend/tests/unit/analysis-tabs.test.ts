@@ -1,6 +1,9 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import AnalysisTabs from '@/components/AnalysisTabs.vue'
+import { listUnbuiltTab, UNBUILT_TAB } from './unbuilt-tab'
+
+listUnbuiltTab()
 
 function mountTabs(active = 'summary', live = false) {
   return mount(AnalysisTabs, { props: { active, live } })
@@ -14,7 +17,7 @@ describe('AnalysisTabs', () => {
   })
 
   it('keeps SUMMARY marked, and marks no disabled tab, when the active tab is not built yet', () => {
-    const selected = mountTabs('notes').findAll('[aria-selected="true"]')
+    const selected = mountTabs(UNBUILT_TAB).findAll('[aria-selected="true"]')
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
   })
 
@@ -23,14 +26,14 @@ describe('AnalysisTabs', () => {
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
   })
 
-  it('enables the exploring tabs and disables the ones that arrive later, saying when', () => {
+  it('enables the built tabs and disables the ones that arrive later, saying when', () => {
     const wrapper = mountTabs()
     const enabled = wrapper.findAll('button:not([disabled])').map((tab) => tab.text())
-    expect(enabled).toEqual(['SUMMARY', 'PROCESSES', 'TIMELINE', 'EVENTS', 'NETWORK', 'ARTIFACTS', 'DETECTIONS'])
+    expect(enabled).toEqual(['SUMMARY', 'PROCESSES', 'TIMELINE', 'EVENTS', 'NETWORK', 'ARTIFACTS', 'DETECTIONS', 'NOTES'])
 
     const disabled = wrapper.findAll('button[disabled]')
     expect(disabled.map((tab) => [tab.text(), tab.attributes('title')])).toEqual([
-      ['NOTES', 'Arrives with M4'],
+      ['LATER', 'Arrives with M9'],
     ])
   })
 

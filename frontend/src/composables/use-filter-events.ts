@@ -9,7 +9,8 @@ const EVENTS_TAB = 'events'
 
 /**
  * The actions that take an analyst from any tab to the Events tab with the shared query changed:
- * a chip per field value, one process, or a whole query text. Each changes only what it names.
+ * a chip per field value, one process, a whole query text, or one event open in the drawer. Each
+ * changes only what it names.
  */
 export function useFilterEvents() {
   const route = useRoute()
@@ -38,5 +39,10 @@ export function useFilterEvents() {
     await goToEvents()
   }
 
-  return { filterOnEvents, showProcessEvents, showEventsMatching }
+  async function showEvent(eventId: string): Promise<void> {
+    query.openEvent(eventId)
+    await goToEvents()
+  }
+
+  return { filterOnEvents, showProcessEvents, showEventsMatching, showEvent }
 }

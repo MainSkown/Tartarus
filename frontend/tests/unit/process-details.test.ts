@@ -11,6 +11,8 @@ const viewsProcessMock = vi.fn()
 vi.mock('@/api', () => ({ viewsProcess: (...args: unknown[]) => viewsProcessMock(...args) }))
 
 const { default: ProcessDetails } = await import('@/components/ProcessDetails.vue')
+const { default: TargetAnnotations } = await import('@/components/TargetAnnotations.vue')
+const { processTarget } = await import('@/stores/annotations')
 
 const benign = sampleTree().roots[0]!
 
@@ -43,6 +45,18 @@ function field(wrapper: Awaited<ReturnType<typeof mountDetails>>, label: string)
 beforeEach(() => {
   viewsProcessMock.mockReset()
   viewsProcessMock.mockResolvedValue({ data: processDetail(benign) })
+})
+
+describe('ProcessDetails tags and note', () => {
+  it('are the process by its pid, editable at any time', async () => {
+    const section = (await mountDetails()).findComponent(TargetAnnotations)
+    expect(section.props()).toMatchObject({ target: processTarget(9708), editable: true })
+  })
+
+  it('stay on show while the activity of the process loads or fails', async () => {
+    viewsProcessMock.mockResolvedValue({ error: { error: { message: 'index is down' } } })
+    expect((await mountDetails()).findComponent(TargetAnnotations).exists()).toBe(true)
+  })
 })
 
 describe('ProcessDetails fields', () => {

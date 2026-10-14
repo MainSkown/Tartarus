@@ -16,6 +16,9 @@ vi.mock('@/api', () => ({
 const { default: EventDetailDrawer } = await import('@/components/EventDetailDrawer.vue')
 const { useQueryStateStore } = await import('@/stores/query-state')
 const { useEventsStore } = await import('@/stores/events')
+const { useAnalysesStore } = await import('@/stores/analyses')
+const { default: TargetAnnotations } = await import('@/components/TargetAnnotations.vue')
+const { analysisWithStatus } = await import('./analysis-fixtures')
 
 // QDialog teleports its content out of the wrapper; a pass-through keeps it queryable and lets the test see what it was bound to.
 const QDialogStub = defineComponent({
@@ -65,6 +68,20 @@ describe('EventDetailDrawer', () => {
     expect(wrapper.find('.dialog-stub').attributes('data-open')).toBe('true')
     expect(eventsDetailMock.mock.calls[0]![0].path).toEqual({ analysis_id: 7, event_id: 'e2' })
     expect(wrapper.find('.event-detail__title').text()).toContain('detail of e2')
+  })
+
+  it('lets the analyst annotate the event of a finished analysis', async () => {
+    const wrapper = await mountDrawer('e2')
+    useAnalysesStore().current = analysisWithStatus('done', { id: 7 })
+    await flushPromises()
+    expect(wrapper.findComponent(TargetAnnotations).props('editable')).toBe(true)
+  })
+
+  it.each(['running', 'ingesting'] as const)('does not while the analysis is %s', async (status) => {
+    const wrapper = await mountDrawer('e2')
+    useAnalysesStore().current = analysisWithStatus(status, { id: 7 })
+    await flushPromises()
+    expect(wrapper.findComponent(TargetAnnotations).props('editable')).toBe(false)
   })
 
   it('closes by closing the event in the shared state', async () => {

@@ -13,7 +13,9 @@ import {
 const analysesReadMock = vi.fn()
 const analysesCancelMock = vi.fn()
 const analysesDeleteMock = vi.fn()
+const annotationsReadMock = vi.fn()
 vi.mock('@/api', () => ({
+  annotationsRead: (...args: unknown[]) => annotationsReadMock(...args),
   analysesRead: (...args: unknown[]) => analysesReadMock(...args),
   analysesCancel: (...args: unknown[]) => analysesCancelMock(...args),
   analysesDelete: (...args: unknown[]) => analysesDeleteMock(...args),
@@ -37,7 +39,7 @@ vi.mock('@/components/tabs', async () => {
   return {
     TAB_VIEWS: {
       live,
-      ...Object.fromEntries(['processes', 'timeline', 'events', 'network', 'artifacts', 'detections'].map((tab) => [tab, stub(tab)])),
+      ...Object.fromEntries(['processes', 'timeline', 'events', 'network', 'artifacts', 'detections', 'notes'].map((tab) => [tab, stub(tab)])),
     },
   }
 })
@@ -73,6 +75,9 @@ vi.mock('vue-router', () => ({
 const { deleteConfirmation } = await import('@/services/delete-confirmation')
 const { default: AnalysisPage } = await import('@/pages/AnalysisPage.vue')
 const { useQueryStateStore } = await import('@/stores/query-state')
+const { listUnbuiltTab, UNBUILT_TAB } = await import('./unbuilt-tab')
+
+listUnbuiltTab({ queryable: true })
 
 const POLL_MS = 2_000
 
@@ -94,6 +99,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
   setActivePinia(createPinia())
+  annotationsReadMock.mockResolvedValue(succeeded({ tags: [], notes: [] }))
   route.params = { id: '42' }
   route.query = {}
   Notify.create = vi.fn()
@@ -120,6 +126,16 @@ describe('AnalysisPage loading', () => {
   it('reads the analysis named by the route', async () => {
     await mountPage()
     expect(analysesReadMock).toHaveBeenCalledWith(expect.objectContaining({ path: { analysis_id: 42 } }))
+  })
+
+  it('reads the tags and notes of the analysis for the editors under it', async () => {
+    await mountPage()
+    expect(annotationsReadMock).toHaveBeenCalledWith({ path: { analysis_id: 42 } })
+
+    analysesReadMock.mockResolvedValue(succeeded(analysisWithStatus('done', { id: 43, summary: NO_DETECTIONS_SUMMARY })))
+    route.params = { id: '43' }
+    await flushPromises()
+    expect(annotationsReadMock).toHaveBeenLastCalledWith({ path: { analysis_id: 43 } })
   })
 
   it('shows the failure message with a retry that loads again', async () => {
@@ -205,13 +221,13 @@ describe('AnalysisPage tabs', () => {
   })
 
   it('shows a placeholder, saying when, for a tab that is not built yet', async () => {
-    route.params = { id: '42', tab: 'notes' }
+    route.params = { id: '42', tab: UNBUILT_TAB }
     const wrapper = await mountPage()
     expect(wrapper.find('.analysis-summary').exists()).toBe(false)
-    expect(wrapper.text()).toContain('notes arrives with M4')
+    expect(wrapper.text()).toContain('later arrives with M9')
   })
 
-  it.each(['processes', 'timeline', 'events', 'network', 'artifacts', 'detections'])('shows the %s view of a finished analysis', async (tab) => {
+  it.each(['processes', 'timeline', 'events', 'network', 'artifacts', 'detections', 'notes'])('shows the %s view of a finished analysis', async (tab) => {
     route.params = { id: '42', tab }
     const wrapper = await mountPage()
     await vi.waitFor(() => expect(wrapper.find(`[data-tab="${tab}"]`).exists()).toBe(true))
@@ -226,8 +242,15 @@ describe('AnalysisPage tabs', () => {
     expect(wrapper.text()).toContain('available once the analysis is done')
   })
 
-  it('leaves SUMMARY marked, and marks nothing else, for a tab that is not built yet', async () => {
+  it('shows the notes view while the analysis is still running, since notes on the analysis and its processes work then', async () => {
     route.params = { id: '42', tab: 'notes' }
+    const wrapper = await mountPage(analysisWithStatus('running', { finished_at: null }))
+    await vi.waitFor(() => expect(wrapper.find('[data-tab="notes"]').exists()).toBe(true))
+    expect(wrapper.text()).not.toContain('available once the analysis is done')
+  })
+
+  it('leaves SUMMARY marked, and marks nothing else, for a tab that is not built yet', async () => {
+    route.params = { id: '42', tab: UNBUILT_TAB }
     const wrapper = await mountPage()
     const selected = wrapper.findAll('.analysis-tabs [aria-selected="true"]')
     expect(selected.map((tab) => tab.text())).toEqual(['SUMMARY'])
@@ -269,7 +292,7 @@ describe('AnalysisPage query bar', () => {
   })
 
   it('has no query bar on a tab that is not built, even if it is queryable by design', async () => {
-    route.params = { id: '42', tab: 'notes' }
+    route.params = { id: '42', tab: UNBUILT_TAB }
     const wrapper = await mountPage()
     expect(wrapper.find('.query-header-stub').exists()).toBe(false)
   })

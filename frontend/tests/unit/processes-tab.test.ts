@@ -5,7 +5,7 @@ import { analysisFixture } from './analysis-fixtures'
 import { processDetail, processNode, sampleTree } from './process-fixtures'
 import { filterEventsPlugins } from './filter-events-plugins'
 
-const { plugins } = await filterEventsPlugins()
+const { plugins, router } = await filterEventsPlugins()
 import type { ProcessNode } from '@/api'
 
 const viewsProcessesMock = vi.fn()
@@ -49,7 +49,8 @@ function titleOfDetails(wrapper: Awaited<ReturnType<typeof mountTab>>): string {
   return wrapper.get('.process-details__title').text()
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await router.replace({ query: {} })
   instances.length = 0
   document.body.innerHTML = ''
   viewsProcessesMock.mockReset()
@@ -148,6 +149,39 @@ describe('ProcessesTab loaded', () => {
     const wrapper = await mountTab()
 
     expect(wrapper.text()).toContain('explorer.exe (2)')
+  })
+})
+
+describe('ProcessesTab selection in the URL', () => {
+  it('opens with the process the sel param names, as a link from the Notes tab does', async () => {
+    await router.replace({ query: { sel: '2476' } })
+    const wrapper = await mountTab()
+
+    expect(titleOfDetails(wrapper)).toBe('cmd.exe (2476)')
+    expect(instances[0]!.hasClass(CHILD, 'selected')).toBe(true)
+  })
+
+  it('falls back to the first root for a pid the analysis never saw', async () => {
+    await router.replace({ query: { sel: '999' } })
+    expect(titleOfDetails(await mountTab())).toBe('benign.exe (9708)')
+  })
+
+  it('moves to another process when the param changes under the open tab', async () => {
+    const wrapper = await mountTab()
+    await router.replace({ query: { sel: '2476' } })
+    await flushPromises()
+    expect(titleOfDetails(wrapper)).toBe('cmd.exe (2476)')
+  })
+
+  it('writes the selected pid to the URL, keeping the rest of the query', async () => {
+    await router.replace({ query: { q: 'x' } })
+    const wrapper = await mountTab()
+
+    instances[0]!.tap(CHILD)
+    await flushPromises()
+
+    expect(router.currentRoute.value.query).toEqual({ q: 'x', sel: '2476' })
+    expect(titleOfDetails(wrapper)).toBe('cmd.exe (2476)')
   })
 })
 

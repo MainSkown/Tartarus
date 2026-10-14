@@ -7,23 +7,31 @@ import LaneIcon from '@/components/LaneIcon.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import RelatedEventList from '@/components/RelatedEventList.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
+import TargetAnnotations from '@/components/TargetAnnotations.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import ViewState from '@/components/ViewState.vue'
 import { eventProcess, eventTitle } from '@/services/event-display'
 import { flattenSource } from '@/services/event-source'
 import { formatPreciseTimestamp } from '@/services/format-time'
+import { eventTarget } from '@/stores/annotations'
 
 const SKELETON_LINES = 10
 
-const props = defineProps<{
-  eventId: string
-  detail?: EventDetail
-  loading: boolean
-  error?: string
-  notFound: boolean
-  hasPrevious: boolean
-  hasNext: boolean
-}>()
+const ANNOTATE_HINT = 'events can be tagged and noted once the analysis is finished'
+
+const props = withDefaults(
+  defineProps<{
+    eventId: string
+    detail?: EventDetail
+    loading: boolean
+    error?: string
+    notFound: boolean
+    hasPrevious: boolean
+    hasNext: boolean
+    annotatable?: boolean
+  }>(),
+  { detail: undefined, error: undefined, annotatable: true },
+)
 const emit = defineEmits<{
   close: []
   previous: []
@@ -157,6 +165,13 @@ function onKeydown(key: KeyboardEvent): void {
       </div>
 
       <template v-else>
+        <TargetAnnotations
+          class="event-detail__section"
+          :target="eventTarget(eventId)"
+          :editable="annotatable"
+          :hint="ANNOTATE_HINT"
+        />
+
         <section class="event-detail__section">
           <h4 class="event-detail__heading text-mono">
             FIELDS

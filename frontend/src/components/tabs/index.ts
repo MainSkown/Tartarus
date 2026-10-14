@@ -9,4 +9,5 @@ export const TAB_VIEWS: Record<string, Component> = {
   network: defineAsyncComponent(() => import('./NetworkTab.vue')),
   artifacts: defineAsyncComponent(() => import('./ArtifactsTab.vue')),
   detections: defineAsyncComponent(() => import('./DetectionsTab.vue')),
+  notes: defineAsyncComponent(() => import('./NotesTab.vue')),
 }

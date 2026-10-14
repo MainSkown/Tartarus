@@ -26,6 +26,7 @@ function analysis(overrides: Partial<AnalysisRead> = {}): AnalysisRead {
     started_at: null,
     finished_at: null,
     summary: null,
+    tags: [],
     ...overrides,
   } as AnalysisRead
 }
@@ -53,6 +54,27 @@ describe('AnalysesTable', () => {
     const row = wrapper.find('tbody tr')
     expect(row.find('.severity-badge').exists()).toBe(false)
     expect(row.findAll('.cell-empty')).toHaveLength(2)
+  })
+
+  it('lists the first tag of each analysis in the TAGS column, with the others folded into +N', () => {
+    const wrapper = mountTable([analysis({ tags: ['emotet', 'phishing'] }), analysis({ id: 43, tags: [] })])
+    expect(wrapper.findAll('th').map((header) => header.text())).toContain('TAGS')
+    const [tagged, untagged] = wrapper.findAll('tbody tr')
+    expect(tagged!.findAll('.tag-chip').map((chip) => chip.text())).toEqual(['emotet'])
+    expect(tagged!.get('.tag-list__more').attributes('title')).toBe('phishing')
+    expect(untagged!.find('.tag-chip').exists()).toBe(false)
+  })
+
+  it('drops the TAGS column on a narrow screen, with the other optional columns', () => {
+    const wrapper = mountTable([analysis({ tags: ['emotet'] })])
+    expect(wrapper.findAll('th').find((header) => header.text() === 'TAGS')!.classes()).toContain('col-optional')
+    expect(wrapper.get('.col-tags').classes()).toContain('col-optional')
+  })
+
+  it('counts every tag after the first in the +N', () => {
+    const wrapper = mountTable([analysis({ tags: ['a', 'b', 'c', 'd'] })])
+    expect(wrapper.findAll('tbody .tag-chip')).toHaveLength(1)
+    expect(wrapper.get('.tag-list__more').text()).toBe('+3')
   })
 
   it('keeps the full file name and hash reachable on hover when they are truncated', () => {

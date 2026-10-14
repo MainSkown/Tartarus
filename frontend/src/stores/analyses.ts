@@ -129,6 +129,12 @@ export const useAnalysesStore = defineStore('analyses', () => {
     if (current.value?.id === updated.id) current.value = updated
   }
 
+  function setTags(id: number, tags: string[]): void {
+    for (const held of [...items.value, current.value]) {
+      if (held?.id === id) held.tags = tags
+    }
+  }
+
   async function cancel(id: number): Promise<boolean> {
     const { data, error } = await analysesCancel({ path: { analysis_id: id } })
     if (error || !data) return false
@@ -206,6 +212,7 @@ export const useAnalysesStore = defineStore('analyses', () => {
     fetchList,
     fetchOne,
     submit,
+    setTags,
     cancel,
     remove,
     startPolling,

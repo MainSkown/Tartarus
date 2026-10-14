@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { viewsProcesses, type AnalysisRead } from '@/api'
 import ProcessDetails from '@/components/ProcessDetails.vue'
 import ProcessGraph from '@/components/ProcessGraph.vue'
@@ -14,6 +15,7 @@ type Mode = 'graph' | 'tree'
 
 // The tab's own top and bottom padding (2 x spacing-sm), measured from the section top, so the page itself never scrolls.
 const BOTTOM_GAP = 16
+const SELECTED_PID_PARAM = 'sel'
 
 const props = defineProps<{ analysis: AnalysisRead }>()
 
@@ -21,6 +23,9 @@ const view = useAnalysisView(
   () => props.analysis.id,
   (id) => viewsProcesses({ path: { analysis_id: id } }),
 )
+
+const route = useRoute()
+const router = useRouter()
 
 const root = ref<HTMLElement>()
 const { height: fillHeight } = useViewportFill(root, BOTTOM_GAP)
@@ -30,6 +35,27 @@ const chosenId = ref<string>()
 const roots = computed(() => view.data.value?.roots ?? [])
 const selectedId = computed(() => resolveSelection(roots.value, chosenId.value))
 const selected = computed(() => flattenProcesses(roots.value).find((process) => process.entity_id === selectedId.value))
+const requestedPid = computed(() => {
+  const raw = route.query[SELECTED_PID_PARAM]
+  return typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : undefined
+})
+
+// The param names the pid (what the Notes tab links by), not the entity id the graph keys on.
+watch(
+  [requestedPid, roots],
+  () => {
+    const requested = flattenProcesses(roots.value).find((process) => process.pid === requestedPid.value)
+    if (requested) chosenId.value = requested.entity_id
+  },
+  { immediate: true },
+)
+
+function select(entityId: string): void {
+  chosenId.value = entityId
+  const pid = flattenProcesses(roots.value).find((process) => process.entity_id === entityId)?.pid
+  if (pid !== undefined) void router.replace({ query: { ...route.query, [SELECTED_PID_PARAM]: String(pid) } })
+}
+
 const peers = computed(() => (selected.value ? injectionPeers(roots.value, selected.value) : { into: [], from: [] }))
 </script>
 
@@ -53,7 +79,7 @@ const peers = computed(() => (selected.value ? injectionPeers(roots.value, selec
             v-if="mode === 'graph'"
             :roots="roots"
             :selected-id="selectedId"
-            @select="chosenId = $event"
+            @select="select"
           >
             <template #toolbar-end>
               <ProcessViewSwitch
@@ -72,7 +98,7 @@ const peers = computed(() => (selected.value ? injectionPeers(roots.value, selec
             <ProcessTreeList
               :roots="roots"
               :selected-id="selectedId"
-              @select="chosenId = $event"
+              @select="select"
             />
           </template>
         </div>

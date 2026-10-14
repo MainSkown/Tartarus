@@ -56,6 +56,7 @@ export function eventDetail(event: Event, overrides: Partial<EventDetail> = {}):
     event,
     source: { '@timestamp': event.time, event: { id: event.id, action: event.action }, tartarus: { summary: event.summary, raw: { x: 1 } } },
     related: { references: { items: [], total: 0 }, referenced_by: { items: [], total: 0 } },
+    annotations: { tags: [], notes: [] },
     ...overrides,
   }
 }

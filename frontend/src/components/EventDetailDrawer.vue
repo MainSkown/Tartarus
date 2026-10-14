@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import EventDetailPanel from '@/components/EventDetailPanel.vue'
 import { useEventDetail } from '@/composables/use-event-detail'
+import { useAnalysesStore } from '@/stores/analyses'
 import { useEventsStore } from '@/stores/events'
 import { useQueryStateStore } from '@/stores/query-state'
 
@@ -13,8 +14,11 @@ type Step = 1 | -1
  */
 const query = useQueryStateStore()
 const events = useEventsStore()
+const analyses = useAnalysesStore()
 
 const eventId = computed(() => query.eventId)
+// The backend refuses event annotations until the run is done: a live event's id can change when the final ingest merges calls.
+const annotatable = computed(() => (analyses.current?.status ?? 'done') === 'done')
 const detail = useEventDetail(
   () => query.analysisId,
   () => eventId.value,
@@ -60,6 +64,7 @@ function onDialogUpdate(open: boolean): void {
         :not-found="detail.notFound.value"
         :has-previous="hasNeighbour(-1)"
         :has-next="hasNeighbour(1)"
+        :annotatable="annotatable"
         @close="query.closeEvent()"
         @previous="step(-1)"
         @next="step(1)"

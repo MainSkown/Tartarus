@@ -11,6 +11,8 @@ export interface AnalysisTab {
   liveOnly?: boolean
   /** Filtered by the shared query bar and chips, which the page shows under the tab strip. */
   queryable?: boolean
+  /** Works on an analysis that is not done yet; every other view needs the ingested run. */
+  usableBeforeDone?: boolean
 }
 
 export const DEFAULT_TAB = 'summary'
@@ -25,11 +27,15 @@ export const ANALYSIS_TABS: AnalysisTab[] = [
   { key: 'network', label: 'NETWORK', available: true },
   { key: 'artifacts', label: 'ARTIFACTS', available: true },
   { key: 'detections', label: 'DETECTIONS', available: true },
-  { key: 'notes', label: 'NOTES', available: false, arrivesWith: 'M4' },
+  { key: 'notes', label: 'NOTES', available: true, usableBeforeDone: true },
 ]
 
 export function isQueryableTab(key: string): boolean {
   return ANALYSIS_TABS.some((tab) => tab.key === key && tab.queryable === true)
+}
+
+export function isUsableBeforeDone(key: string): boolean {
+  return ANALYSIS_TABS.some((tab) => tab.key === key && tab.usableBeforeDone === true)
 }
 
 /** Whether a run is still going on, from queued to ingesting: the states the LIVE tab exists for. */

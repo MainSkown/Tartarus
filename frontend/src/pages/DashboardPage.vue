@@ -10,6 +10,7 @@ import { confirmDestructive } from '@/services/confirm'
 import { deleteConfirmation } from '@/services/delete-confirmation'
 import { openSubmitDialog } from '@/services/submit-dialog'
 import { useAnalysesStore, type AnalysisListQuery } from '@/stores/analyses'
+import { useTagsStore } from '@/stores/tags'
 import { useSystemStore } from '@/stores/system'
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -20,16 +21,20 @@ const STATUS_OPTIONS = ANALYSIS_STATUSES.map((status) => ({
 }))
 
 const analyses = useAnalysesStore()
+const tags = useTagsStore()
 const system = useSystemStore()
 const router = useRouter()
 
 const search = ref('')
 const status = ref<AnalysisStatus | null>(null)
+const tag = ref<string | null>(null)
 
-const filtered = computed(() => search.value.trim() !== '' || status.value !== null)
+const tagOptions = computed(() => tags.items.map(({ name, count }) => ({ value: name, label: `${name} (${count})` })))
+const filtered = computed(() => search.value.trim() !== '' || status.value !== null || tag.value !== null)
 const listQuery = computed<AnalysisListQuery>(() => ({
   ...(search.value.trim() && { q: search.value.trim() }),
   ...(status.value && { status: status.value }),
+  ...(tag.value && { tag: tag.value }),
 }))
 
 const guestKnownNotReady = computed(() => system.health !== undefined && !system.guestReady)
@@ -48,6 +53,7 @@ function reload(): void {
 function clearFilters(): void {
   search.value = ''
   status.value = null
+  tag.value = null
 }
 
 watch(listQuery, () => {
@@ -82,6 +88,7 @@ async function cancelAnalysis(id: number): Promise<void> {
 }
 
 reload()
+void tags.load()
 onMounted(analyses.startPolling)
 onUnmounted(() => {
   clearTimeout(filterTimer)
@@ -121,6 +128,22 @@ onUnmounted(() => {
           map-options
           label="STATUS"
           class="status-select text-mono"
+        />
+        <q-select
+          v-model="tag"
+          :options="tagOptions"
+          outlined
+          dense
+          hide-bottom-space
+          clearable
+          emit-value
+          map-options
+          label="TAG"
+          :display-value="tag ?? undefined"
+          menu-anchor="bottom right"
+          menu-self="top right"
+          popup-content-class="tag-select-menu"
+          class="tag-select text-mono"
         />
       </div>
     </div>
@@ -208,6 +231,20 @@ onUnmounted(() => {
   </div>
 </template>
 
+<!-- Not scoped: the options menu is teleported out of the page. -->
+<style>
+/* The filter sits at the right edge: the menu opens leftwards from it, and a 40-character tag may not widen it past the window. */
+.tag-select-menu {
+  max-width: min(22rem, 90vw);
+}
+
+.tag-select-menu .q-item__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>
+
 <style scoped>
 .dashboard-page {
   padding: var(--spacing-lg);
@@ -242,7 +279,8 @@ onUnmounted(() => {
   max-width: 100%;
 }
 
-.status-select {
+.status-select,
+.tag-select {
   width: 180px;
   max-width: 100%;
 }

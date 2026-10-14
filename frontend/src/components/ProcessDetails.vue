@@ -4,11 +4,13 @@ import { viewsProcess, type ProcessNode, type ProcessRef } from '@/api'
 import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
+import TargetAnnotations from '@/components/TargetAnnotations.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
 import { formatTimestamp } from '@/services/format-time'
 import { laneBars, laneMeta } from '@/services/lanes'
 import { processClock, processLifetime, processTitle } from '@/services/process-graph'
+import { processTarget } from '@/stores/annotations'
 
 type SubTab = 'apis' | 'modules' | 'events'
 
@@ -185,6 +187,11 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
         {{ bar.label }} <strong>{{ bar.count }}</strong>
       </li>
     </ul>
+
+    <TargetAnnotations
+      class="process-details__annotations"
+      :target="processTarget(node.pid)"
+    />
 
     <ViewState
       :loading="extras.loading.value"
@@ -420,6 +427,13 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
   width: 8px;
   height: 8px;
   flex: none;
+}
+
+.process-details__annotations {
+  flex: none;
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .process-details__tabs {

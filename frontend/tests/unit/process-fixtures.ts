@@ -16,6 +16,8 @@ export function processNode(pid: number, overrides: Partial<ProcessNode> = {}): 
     injected_into: [],
     network_hosts: [],
     event_counts_by_lane: {},
+    tags: [],
+    note_count: 0,
     children: [],
     ...overrides,
   }

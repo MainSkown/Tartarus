@@ -8,6 +8,8 @@ import { eventDetail, eventFixture } from './events-fixtures'
 vi.mock('@/api', () => ({ queryFields: vi.fn().mockResolvedValue({ data: [] }) }))
 
 const { default: EventDetailPanel } = await import('@/components/EventDetailPanel.vue')
+const { default: TargetAnnotations } = await import('@/components/TargetAnnotations.vue')
+const { eventTarget } = await import('@/stores/annotations')
 
 type Props = InstanceType<typeof EventDetailPanel>['$props']
 
@@ -124,6 +126,23 @@ describe('the raw JSON', () => {
     const wrapper = mountPanel()
     await wrapper.find('.event-detail__raw-toggle').trigger('click')
     expect(wrapper.find('[aria-label="Copy raw JSON"]').exists()).toBe(true)
+  })
+})
+
+describe('the tags and note', () => {
+  it('belong to the open event, which can be annotated by default', () => {
+    const section = mountPanel().findComponent(TargetAnnotations)
+    expect(section.props()).toMatchObject({ target: eventTarget('ev1'), editable: true })
+  })
+
+  it('are read-only, with the reason, while the analysis is not finished', () => {
+    const section = mountPanel({ annotatable: false }).findComponent(TargetAnnotations)
+    expect(section.props('editable')).toBe(false)
+    expect(section.props('hint')).toBe('events can be tagged and noted once the analysis is finished')
+  })
+
+  it('are not shown until the event has loaded', () => {
+    expect(mountPanel({ detail: undefined }).findComponent(TargetAnnotations).exists()).toBe(false)
   })
 })
 

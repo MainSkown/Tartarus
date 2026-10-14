@@ -86,6 +86,12 @@ export type AnalysisRead = {
     finished_at: string | null;
     summary: ReportSummary | null;
     /**
+     * Tags
+     *
+     * The analyst's tags on the analysis itself, by name.
+     */
+    tags: Array<string>;
+    /**
      * Queue Position
      *
      * 1 for the analysis served next; null unless `queued`.
@@ -97,6 +103,20 @@ export type AnalysisRead = {
  * AnalysisStatus
  */
 export type AnalysisStatus = 'queued' | 'starting' | 'running' | 'processing' | 'ingesting' | 'done' | 'failed' | 'report_failed' | 'cancelled';
+
+/**
+ * Annotations
+ */
+export type Annotations = {
+    /**
+     * Tags
+     */
+    tags: Array<TagAnnotation>;
+    /**
+     * Notes
+     */
+    notes: Array<NoteAnnotation>;
+};
 
 /**
  * ApiCount
@@ -534,6 +554,10 @@ export type EventDetail = {
         [key: string]: unknown;
     };
     related: RelatedEvents;
+    /**
+     * The analyst's tags and notes on this event.
+     */
+    annotations: Annotations;
 };
 
 /**
@@ -571,6 +595,11 @@ export type EventProcess = {
      */
     entity_id: string | null;
 };
+
+/**
+ * ExportFormat
+ */
+export type ExportFormat = 'stix' | 'misp' | 'csv';
 
 /**
  * ExtractedConfig
@@ -1163,6 +1192,65 @@ export type NetworkView = {
 };
 
 /**
+ * NoteAnnotation
+ */
+export type NoteAnnotation = {
+    /**
+     * Id
+     */
+    id: number;
+    target_type: TargetType;
+    /**
+     * Target Ref
+     */
+    target_ref: string;
+    /**
+     * Body
+     */
+    body: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Orphaned
+     *
+     * True when the event or process the note is on is no longer in the analysis. Only the annotations listing checks; the answers to a write say false.
+     */
+    orphaned: boolean;
+};
+
+/**
+ * Plain text, 1 to 20 000 characters.
+ */
+export type NoteBody = string;
+
+/**
+ * NoteCreate
+ */
+export type NoteCreate = {
+    target_type: TargetType;
+    /**
+     * Target Ref
+     *
+     * What the target is: empty for the analysis, the pid for a process, the `event.id` for an event.
+     */
+    target_ref?: string;
+    body: NoteBody;
+};
+
+/**
+ * NoteUpdate
+ */
+export type NoteUpdate = {
+    body: NoteBody;
+};
+
+/**
  * ProcessDetail
  */
 export type ProcessDetail = {
@@ -1221,6 +1309,18 @@ export type ProcessDetail = {
     event_counts_by_lane: {
         [key: string]: number;
     };
+    /**
+     * Tags
+     *
+     * The analyst's tags on this pid, sorted by name.
+     */
+    tags: Array<string>;
+    /**
+     * Note Count
+     *
+     * The analyst's notes on this pid.
+     */
+    note_count: number;
     /**
      * Modules
      */
@@ -1324,6 +1424,18 @@ export type ProcessNode = {
     event_counts_by_lane: {
         [key: string]: number;
     };
+    /**
+     * Tags
+     *
+     * The analyst's tags on this pid, sorted by name.
+     */
+    tags: Array<string>;
+    /**
+     * Note Count
+     *
+     * The analyst's notes on this pid.
+     */
+    note_count: number;
     /**
      * Children
      */
@@ -1802,6 +1914,71 @@ export type SystemHealth = {
 };
 
 /**
+ * TagAnnotation
+ */
+export type TagAnnotation = {
+    /**
+     * Link Id
+     */
+    link_id: number;
+    /**
+     * Tag
+     */
+    tag: string;
+    target_type: TargetType;
+    /**
+     * Target Ref
+     */
+    target_ref: string;
+    /**
+     * Orphaned
+     *
+     * True when the event or process the tag is on is no longer in the analysis. Only the annotations listing checks; the answers to a write say false.
+     */
+    orphaned: boolean;
+};
+
+/**
+ * TagCreate
+ */
+export type TagCreate = {
+    target_type: TargetType;
+    /**
+     * Target Ref
+     *
+     * What the target is: empty for the analysis, the pid for a process, the `event.id` for an event.
+     */
+    target_ref?: string;
+    tag: TagName;
+};
+
+/**
+ * Lower-cased; 1 to 40 characters of a-z, 0-9, '.', '_' and '-'.
+ */
+export type TagName = string;
+
+/**
+ * TagUsageRead
+ */
+export type TagUsageRead = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Count
+     *
+     * Links using the tag across all analyses.
+     */
+    count: number;
+};
+
+/**
+ * TargetType
+ */
+export type TargetType = 'analysis' | 'process' | 'event';
+
+/**
  * TimeRange
  *
  * Both ends are inclusive; a missing end leaves that side open.
@@ -1962,6 +2139,12 @@ export type AnalysesListData = {
          * Status
          */
         status?: AnalysisStatus | null;
+        /**
+         * Tag
+         *
+         * Only analyses carrying this tag on the analysis itself.
+         */
+        tag?: string | null;
     };
     url: '/api/analyses';
 };
@@ -2879,6 +3062,258 @@ export type RulesHitsResponses = {
 };
 
 export type RulesHitsResponse = RulesHitsResponses[keyof RulesHitsResponses];
+
+export type ExportIocsData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query: {
+        format: ExportFormat;
+    };
+    url: '/api/analyses/{analysis_id}/export/iocs';
+};
+
+export type ExportIocsErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type ExportIocsError = ExportIocsErrors[keyof ExportIocsErrors];
+
+export type ExportIocsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type AnnotationsListTagsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/tags';
+};
+
+export type AnnotationsListTagsErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnnotationsListTagsError = AnnotationsListTagsErrors[keyof AnnotationsListTagsErrors];
+
+export type AnnotationsListTagsResponses = {
+    /**
+     * Response Annotations List Tags
+     *
+     * Successful Response
+     */
+    200: Array<TagUsageRead>;
+};
+
+export type AnnotationsListTagsResponse = AnnotationsListTagsResponses[keyof AnnotationsListTagsResponses];
+
+export type AnnotationsReadData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: {
+        /**
+         * Target Type
+         */
+        target_type?: TargetType | null;
+        /**
+         * Target Ref
+         *
+         * What the target is: empty for the analysis, the pid for a process, the `event.id` for an event.
+         */
+        target_ref?: string | null;
+    };
+    url: '/api/analyses/{analysis_id}/annotations';
+};
+
+export type AnnotationsReadErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnnotationsReadError = AnnotationsReadErrors[keyof AnnotationsReadErrors];
+
+export type AnnotationsReadResponses = {
+    /**
+     * Successful Response
+     */
+    200: Annotations;
+};
+
+export type AnnotationsReadResponse = AnnotationsReadResponses[keyof AnnotationsReadResponses];
+
+export type AnnotationsAddTagData = {
+    body: TagCreate;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/tags';
+};
+
+export type AnnotationsAddTagErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnnotationsAddTagError = AnnotationsAddTagErrors[keyof AnnotationsAddTagErrors];
+
+export type AnnotationsAddTagResponses = {
+    /**
+     * Successful Response
+     */
+    201: TagAnnotation;
+};
+
+export type AnnotationsAddTagResponse = AnnotationsAddTagResponses[keyof AnnotationsAddTagResponses];
+
+export type AnnotationsRemoveTagData = {
+    body?: never;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+        /**
+         * Link Id
+         */
+        link_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/tags/{link_id}';
+};
+
+export type AnnotationsRemoveTagErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnnotationsRemoveTagError = AnnotationsRemoveTagErrors[keyof AnnotationsRemoveTagErrors];
+
+export type AnnotationsRemoveTagResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AnnotationsRemoveTagResponse = AnnotationsRemoveTagResponses[keyof AnnotationsRemoveTagResponses];
+
+export type AnnotationsAddNoteData = {
+    body: NoteCreate;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/notes';
+};
+
+export type AnnotationsAddNoteErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnnotationsAddNoteError = AnnotationsAddNoteErrors[keyof AnnotationsAddNoteErrors];
+
+export type AnnotationsAddNoteResponses = {
+    /**
+     * Successful Response
+     */
+    201: NoteAnnotation;
+};
+
+export type AnnotationsAddNoteResponse = AnnotationsAddNoteResponses[keyof AnnotationsAddNoteResponses];
+
+export type AnnotationsDeleteNoteData = {
+    body?: never;
+    path: {
+        /**
+         * Note Id
+         */
+        note_id: number;
+    };
+    query?: never;
+    url: '/api/notes/{note_id}';
+};
+
+export type AnnotationsDeleteNoteErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnnotationsDeleteNoteError = AnnotationsDeleteNoteErrors[keyof AnnotationsDeleteNoteErrors];
+
+export type AnnotationsDeleteNoteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AnnotationsDeleteNoteResponse = AnnotationsDeleteNoteResponses[keyof AnnotationsDeleteNoteResponses];
+
+export type AnnotationsUpdateNoteData = {
+    body: NoteUpdate;
+    path: {
+        /**
+         * Note Id
+         */
+        note_id: number;
+    };
+    query?: never;
+    url: '/api/notes/{note_id}';
+};
+
+export type AnnotationsUpdateNoteErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnnotationsUpdateNoteError = AnnotationsUpdateNoteErrors[keyof AnnotationsUpdateNoteErrors];
+
+export type AnnotationsUpdateNoteResponses = {
+    /**
+     * Successful Response
+     */
+    200: NoteAnnotation;
+};
+
+export type AnnotationsUpdateNoteResponse = AnnotationsUpdateNoteResponses[keyof AnnotationsUpdateNoteResponses];
 
 export type SystemWsMessageSchemasData = {
     body?: never;

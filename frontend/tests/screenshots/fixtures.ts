@@ -6,6 +6,7 @@ import { histogramOf, syntheticSource } from './timeline-data'
 import type { Page, Route } from '@playwright/test'
 import type {
   AnalysisRead,
+  Annotations,
   ErrorEnvelope,
   Event,
   EventDetail,
@@ -22,6 +23,7 @@ import type {
   SearchRequest,
   SettingsBody,
   SystemHealth,
+  TagUsageRead,
 } from '../../src/api/types.gen'
 
 // An /api request no scenario mocked would fall through to the dev server's proxy (no backend
@@ -221,6 +223,7 @@ export function makeAnalysis(overrides: Partial<AnalysisRead> & Pick<AnalysisRea
     started_at: null,
     finished_at: null,
     summary: null,
+    tags: [],
     ...overrides,
   }
 }
@@ -248,8 +251,9 @@ function idOf(url: string): number {
 function matchesFilters(analysis: AnalysisRead, params: URLSearchParams): boolean {
   const q = params.get('q')?.toLowerCase()
   const status = params.get('status')
+  const tag = params.get('tag')
   const matchesQuery = !q || analysis.filename.toLowerCase().includes(q) || analysis.sample_sha256.includes(q)
-  return matchesQuery && (!status || analysis.status === status)
+  return matchesQuery && (!status || analysis.status === status) && (!tag || analysis.tags.includes(tag))
 }
 
 async function pause(ms: number | undefined): Promise<void> {
@@ -259,6 +263,8 @@ async function pause(ms: number | undefined): Promise<void> {
 /** Serves list, create, read, cancel and delete for `/api/analyses`, filtering the list like the backend. */
 export async function mockAnalyses(page: Page, options: AnalysesMockOptions): Promise<void> {
   let items = [...options.items]
+  // Every page that lists or opens an analysis reads its tags and notes; a spec that is about them registers its own mock later.
+  await mockAnnotations(page)
 
   await page.route(ANALYSES_URL, async (route) => {
     const request = route.request()
@@ -300,6 +306,91 @@ export async function mockAnalyses(page: Page, options: AnalysesMockOptions): Pr
     const id = idOf(route.request().url())
     items = items.map((item) => (item.id === id ? { ...item, status: 'cancelled' } : item))
     await route.fulfill({ json: items.find((item) => item.id === id) })
+  })
+}
+
+// ---------- Tags and notes: a stateful stand-in for /tags, /annotations, /tags/{id} and /notes/{id} ----------
+
+type ErrorReply = { status: number; body: ErrorEnvelope; delayMs?: number }
+
+export interface AnnotationsMockOptions {
+  /** The annotations of the analysis as it opens; writes change this copy. */
+  annotations?: Annotations
+  /** What `GET /tags` answers: every tag in use with its count. */
+  usage?: TagUsageRead[]
+  readDelayMs?: number
+  readError?: ErrorReply
+  /** Answers every tag write with this instead of storing it (a 409 for a duplicate, a 422 for a bad name). */
+  addTagError?: ErrorReply
+  /** Answers every note write with this instead of storing it. */
+  noteWriteError?: ErrorReply
+  /** Makes note writes slow, to catch the editor saving. */
+  noteWriteDelayMs?: number
+}
+
+const ANNOTATIONS_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/annotations$/.test(url.pathname)
+const ADD_TAG_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/tags$/.test(url.pathname)
+const TAG_LINK_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/tags\/\d+$/.test(url.pathname)
+const ADD_NOTE_URL = (url: URL): boolean => /^\/api\/analyses\/\d+\/notes$/.test(url.pathname)
+const NOTE_URL = (url: URL): boolean => /^\/api\/notes\/\d+$/.test(url.pathname)
+const TAGS_URL = atPath('/api/tags')
+const NOTE_TIMESTAMP = '2026-10-14T10:00:00Z'
+
+/** Serves the annotation endpoints from one in-memory copy, so a tag added in a test shows on the next read. */
+export async function mockAnnotations(page: Page, options: AnnotationsMockOptions = {}): Promise<void> {
+  const stored: Annotations = {
+    tags: [...(options.annotations?.tags ?? [])],
+    notes: [...(options.annotations?.notes ?? [])],
+  }
+  let nextId = 1000
+  const lastSegment = (route: Route): number => Number(new URL(route.request().url()).pathname.split('/').pop())
+  const refuse = async (route: Route, error: ErrorReply): Promise<void> => {
+    await pause(error.delayMs)
+    await route.fulfill({ status: error.status, json: error.body })
+  }
+
+  await page.route(TAGS_URL, (route) => route.fulfill({ json: options.usage ?? [] }))
+
+  await page.route(ANNOTATIONS_URL, async (route) => {
+    await pause(options.readDelayMs)
+    if (options.readError) return refuse(route, options.readError)
+    await route.fulfill({ json: stored })
+  })
+
+  await page.route(ADD_TAG_URL, async (route) => {
+    if (options.addTagError) return refuse(route, options.addTagError)
+    const body = route.request().postDataJSON() as { target_type: 'analysis' | 'process' | 'event'; target_ref?: string; tag: string }
+    const link = { link_id: nextId++, tag: body.tag.toLowerCase(), target_type: body.target_type, target_ref: body.target_ref ?? '', orphaned: false }
+    stored.tags.push(link)
+    await route.fulfill({ status: 201, json: link })
+  })
+
+  await page.route(TAG_LINK_URL, async (route) => {
+    const id = lastSegment(route)
+    stored.tags = stored.tags.filter((link) => link.link_id !== id)
+    await route.fulfill({ status: 204 })
+  })
+
+  await page.route(ADD_NOTE_URL, async (route) => {
+    await pause(options.noteWriteDelayMs)
+    if (options.noteWriteError) return refuse(route, options.noteWriteError)
+    const body = route.request().postDataJSON() as { target_type: 'analysis' | 'process' | 'event'; target_ref?: string; body: string }
+    const note = { id: nextId++, target_type: body.target_type, target_ref: body.target_ref ?? '', body: body.body, created_at: NOTE_TIMESTAMP, updated_at: NOTE_TIMESTAMP, orphaned: false }
+    stored.notes.push(note)
+    await route.fulfill({ status: 201, json: note })
+  })
+
+  await page.route(NOTE_URL, async (route) => {
+    await pause(options.noteWriteDelayMs)
+    const id = lastSegment(route)
+    if (route.request().method() === 'DELETE') {
+      stored.notes = stored.notes.filter((note) => note.id !== id)
+      return route.fulfill({ status: 204 })
+    }
+    if (options.noteWriteError) return refuse(route, options.noteWriteError)
+    const { body } = route.request().postDataJSON() as { body: string }
+    stored.notes = stored.notes.map((note) => (note.id === id ? { ...note, body } : note))
+    await route.fulfill({ json: stored.notes.find((note) => note.id === id) })
   })
 }
 
@@ -793,7 +884,12 @@ function detailOf(sources: Record<string, Source>, event: Event, all: Event[], s
     items: (related?.ids ?? []).map((id) => all.find((known) => known.id === id)).filter((known): known is Event => known !== undefined),
     total: related?.total ?? 0,
   })
-  return { event, source: spec?.source ?? sources[event.id] ?? {}, related: { references: listing(spec?.references), referenced_by: listing(spec?.referenced_by) } }
+  return {
+    event,
+    source: spec?.source ?? sources[event.id] ?? {},
+    related: { references: listing(spec?.references), referenced_by: listing(spec?.referenced_by) },
+    annotations: { tags: [], notes: [] },
+  }
 }
 
 export interface EventsMockOptions {

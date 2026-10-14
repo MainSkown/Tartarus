@@ -109,3 +109,14 @@ describe('showEventsMatching', () => {
     expect(store.text).toBe('event.id:(a OR b)')
   })
 })
+
+describe('showEvent', () => {
+  it('lands on the Events tab with the event open in the drawer, keeping the rest of the query', async () => {
+    await openAt('/analyses/7/notes?q=process.name:cmd.exe')
+    await filterEvents.showEvent('abc123')
+    await flushPromises()
+    expect(shown().params).toEqual({ id: '7', tab: 'events' })
+    expect(shown().query).toEqual({ q: 'process.name:cmd.exe', e: 'abc123' })
+    expect(store.eventId).toBe('abc123')
+  })
+})

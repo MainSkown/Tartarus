@@ -88,6 +88,8 @@ function syntheticNode(pid: number, overrides: Partial<ProcessNode> = {}): Proce
     injected_into: [],
     network_hosts: [],
     event_counts_by_lane: { api: 12, process: 1 },
+    tags: [],
+    note_count: 0,
     children: [],
     ...overrides,
   }

@@ -2,6 +2,7 @@
 import type { AnalysisRead } from '@/api'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
+import TagList from '@/components/TagList.vue'
 import { isTerminalStatus } from '@/services/analysis-status'
 import { formatTimestamp } from '@/services/format-time'
 
@@ -40,6 +41,9 @@ function shaPrefix(sha256: string): string {
             SCORE
           </th>
           <th>SEVERITY</th>
+          <th class="col-optional">
+            TAGS
+          </th>
           <th class="col-actions">
             <span class="sr-only">ACTIONS</span>
           </th>
@@ -93,6 +97,12 @@ function shaPrefix(sha256: string): string {
               v-else
               class="cell-empty"
             >–</span>
+          </td>
+          <td class="col-optional col-tags">
+            <TagList
+              :tags="analysis.tags"
+              :max="1"
+            />
           </td>
           <td class="col-actions">
             <q-btn
@@ -155,6 +165,11 @@ function shaPrefix(sha256: string): string {
 
 .col-actions :deep(.q-btn:hover) {
   color: var(--blue-hover);
+}
+
+.col-tags {
+  max-width: 24ch;
+  overflow: hidden;
 }
 
 .cell-filename {

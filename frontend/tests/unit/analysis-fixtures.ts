@@ -22,6 +22,7 @@ export function analysisFixture(overrides: Partial<AnalysisRead> = {}): Analysis
     started_at: '2026-10-13T10:00:05Z',
     finished_at: '2026-10-13T10:01:17Z',
     summary: null,
+    tags: [],
     ...overrides,
   }
 }

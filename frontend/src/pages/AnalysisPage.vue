@@ -10,15 +10,24 @@ import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { TAB_VIEWS } from '@/components/tabs'
 import { useAnalysisTabNavigation } from '@/composables/use-analysis-tab-navigation'
 import { useQueryUrlSync } from '@/composables/use-query-url-sync'
-import { DEFAULT_TAB, LIVE_TAB, arrivalNote, isQueryableTab, nextLiveSession } from '@/services/analysis-tabs'
+import {
+  DEFAULT_TAB,
+  LIVE_TAB,
+  arrivalNote,
+  isQueryableTab,
+  isUsableBeforeDone,
+  nextLiveSession,
+} from '@/services/analysis-tabs'
 import { confirmDestructive } from '@/services/confirm'
 import { deleteConfirmation } from '@/services/delete-confirmation'
 import { NOT_FOUND_STATUS } from '@/services/quiet-statuses'
 import { useAnalysesStore } from '@/stores/analyses'
+import { useAnnotationsStore } from '@/stores/annotations'
 
 const route = useRoute()
 const router = useRouter()
 const store = useAnalysesStore()
+const annotations = useAnnotationsStore()
 const { openTab } = useAnalysisTabNavigation()
 
 const acting = ref(false)
@@ -41,6 +50,7 @@ const notFound = computed(
 async function load(): Promise<void> {
   if (analysisId.value === undefined) return
   store.startPolling()
+  void annotations.ensureLoaded(analysisId.value)
   await store.fetchOne(analysisId.value)
 }
 
@@ -117,7 +127,7 @@ onBeforeUnmount(store.stopPolling)
       <template v-else-if="TAB_VIEWS[viewTab]">
         <component
           :is="TAB_VIEWS[viewTab]"
-          v-if="analysis.status === 'done'"
+          v-if="analysis.status === 'done' || isUsableBeforeDone(viewTab)"
           :analysis="analysis"
         />
         <TerminalEmpty

@@ -1,14 +1,17 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { Notify, Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisStatus } from '@/api'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
+import TagInput from '@/components/TagInput.vue'
+import { ANALYSIS_TARGET } from '@/stores/annotations'
 import { ANALYSIS_STATUSES, isActiveStatus } from '@/services/analysis-status'
 import { analysisFixture, analysisWithStatus, SHA256 } from './analysis-fixtures'
 
 function mountHeader(analysis = analysisFixture(), busy = false) {
-  return mount(AnalysisHeader, { global: { plugins: [Quasar] }, props: { analysis, busy } })
+  return mount(AnalysisHeader, { global: { plugins: [Quasar, createPinia()] }, props: { analysis, busy } })
 }
 
 const writeText = vi.fn().mockResolvedValue(undefined)
@@ -41,6 +44,15 @@ describe('AnalysisHeader identity', () => {
     await flushPromises()
     expect(writeText).toHaveBeenCalledWith(SHA256)
     expect(Notify.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'tt-success' }))
+  })
+})
+
+describe('AnalysisHeader tags', () => {
+  it('edits the tags of the analysis, whatever its status', () => {
+    for (const status of ['running', 'done', 'failed'] as const) {
+      const input = mountHeader(analysisWithStatus(status)).findComponent(TagInput)
+      expect(input.props()).toMatchObject({ target: ANALYSIS_TARGET, editable: true })
+    }
   })
 })
 

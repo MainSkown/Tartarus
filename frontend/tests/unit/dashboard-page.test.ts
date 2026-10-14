@@ -12,6 +12,7 @@ vi.mock('@/api', () => ({
   analysesCancel: vi.fn(),
   analysesDelete: vi.fn(),
   systemHealth: vi.fn().mockResolvedValue({ data: undefined }),
+  annotationsListTags: vi.fn(),
 }))
 
 vi.mock('@/services/ws', () => ({
@@ -27,7 +28,7 @@ vi.mock('@/services/ws', () => ({
 vi.mock('@/services/confirm', () => ({ confirmDestructive: vi.fn() }))
 vi.mock('@/services/submit-dialog', () => ({ openSubmitDialog: vi.fn() }))
 
-const { analysesList, analysesCancel, analysesDelete } = await import('@/api')
+const { analysesList, analysesCancel, analysesDelete, annotationsListTags } = await import('@/api')
 const { confirmDestructive } = await import('@/services/confirm')
 const { openSubmitDialog } = await import('@/services/submit-dialog')
 const { useSystemStore } = await import('@/stores/system')
@@ -64,6 +65,7 @@ function analysis(overrides: Partial<AnalysisRead> = {}): AnalysisRead {
     started_at: null,
     finished_at: null,
     summary: null,
+    tags: [],
     ...overrides,
   } as AnalysisRead
 }
@@ -102,6 +104,13 @@ beforeEach(() => {
   vi.clearAllMocks()
   Notify.create = vi.fn()
   vi.mocked(analysesList).mockResolvedValue(listed([]))
+  vi.mocked(annotationsListTags).mockResolvedValue({
+    data: [
+      { name: 'phishing', count: 7 },
+      { name: 'emotet', count: 2 },
+    ],
+    error: undefined,
+  } as Awaited<ReturnType<typeof annotationsListTags>>)
 })
 
 afterEach(() => {
@@ -248,6 +257,67 @@ describe('DashboardPage filters', () => {
     wrapper.findComponent(QSelect).vm.$emit('update:modelValue', 'done')
     await vi.advanceTimersByTimeAsync(400)
     expect(lastListQuery()).toEqual({ q: 'evil', status: 'done' })
+  })
+})
+
+describe('DashboardPage tag filter', () => {
+  function tagSelect(wrapper: Awaited<ReturnType<typeof mountDashboard>>['wrapper']) {
+    return wrapper.findAllComponents(QSelect).find((select) => select.classes().includes('tag-select'))!
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('offers the tags in use, with how many links use each', async () => {
+    const { wrapper } = await mountDashboard()
+    expect(tagSelect(wrapper).props('options')).toEqual([
+      { value: 'phishing', label: 'phishing (7)' },
+      { value: 'emotet', label: 'emotet (2)' },
+    ])
+  })
+
+  it('sends the chosen tag, and drops it when cleared', async () => {
+    const { wrapper } = await mountDashboard()
+    tagSelect(wrapper).vm.$emit('update:modelValue', 'emotet')
+    await vi.advanceTimersByTimeAsync(400)
+    expect(lastListQuery()).toEqual({ tag: 'emotet' })
+
+    tagSelect(wrapper).vm.$emit('update:modelValue', null)
+    await vi.advanceTimersByTimeAsync(400)
+    expect(lastListQuery()).toEqual({})
+  })
+
+  it('combines with the search and the status', async () => {
+    const { wrapper } = await mountDashboard()
+    await wrapper.find('.search-input input').setValue('evil')
+    wrapper.findComponent(QSelect).vm.$emit('update:modelValue', 'done')
+    tagSelect(wrapper).vm.$emit('update:modelValue', 'phishing')
+    await vi.advanceTimersByTimeAsync(400)
+    expect(lastListQuery()).toEqual({ q: 'evil', status: 'done', tag: 'phishing' })
+  })
+
+  it('clears with the other filters when nothing matches', async () => {
+    const { wrapper } = await mountDashboard()
+    tagSelect(wrapper).vm.$emit('update:modelValue', 'emotet')
+    await vi.advanceTimersByTimeAsync(400)
+    await flushPromises()
+    expect(wrapper.text()).toContain('no analyses match')
+
+    await wrapper.find('.clear-filters-btn').trigger('click')
+    await vi.advanceTimersByTimeAsync(400)
+    expect(lastListQuery()).toEqual({})
+  })
+
+  it('still lists the analyses when the tags cannot be read', async () => {
+    vi.mocked(annotationsListTags).mockResolvedValue({
+      data: undefined,
+      error: { error: { message: 'down' } },
+    } as unknown as Awaited<ReturnType<typeof annotationsListTags>>)
+    vi.mocked(analysesList).mockResolvedValue(listed([analysis({ filename: 'loader.dll' })]))
+    const { wrapper } = await mountDashboard()
+    expect(wrapper.text()).toContain('loader.dll')
+    expect(tagSelect(wrapper).props('options')).toEqual([])
   })
 })
 

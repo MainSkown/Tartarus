@@ -4,6 +4,7 @@ import {
   DEFAULT_TAB,
   LIVE_TAB,
   isLiveStatus,
+  isUsableBeforeDone,
   isQueryableTab,
   listedTabs,
   nextLiveSession,
@@ -11,6 +12,9 @@ import {
 } from '@/services/analysis-tabs'
 import { ANALYSIS_STATUSES } from '@/services/analysis-status'
 import { analysisWithStatus } from './analysis-fixtures'
+import { listUnbuiltTab, UNBUILT_TAB } from './unbuilt-tab'
+
+listUnbuiltTab()
 
 describe('listedTabs', () => {
   it('leaves LIVE out unless a live session is on', () => {
@@ -41,6 +45,16 @@ describe('queryable tabs', () => {
   })
 })
 
+describe('tabs usable before the analysis is done', () => {
+  it('are only the Notes tab: the other views read data that exists once the run is ingested', () => {
+    expect(ANALYSIS_TABS.filter((tab) => isUsableBeforeDone(tab.key)).map((tab) => tab.key)).toEqual(['notes'])
+  })
+
+  it('is false for a tab that does not exist', () => {
+    expect(isUsableBeforeDone('nope')).toBe(false)
+  })
+})
+
 describe('isLiveStatus', () => {
   it.each(['queued', 'starting', 'running', 'processing', 'ingesting'] as const)('is true while %s', (status) => {
     expect(isLiveStatus(status)).toBe(true)
@@ -66,7 +80,7 @@ describe('selectableTab', () => {
   })
 
   it('still falls back for a tab that is not built, whatever the session', () => {
-    expect(selectableTab('notes', true)).toBe(DEFAULT_TAB)
+    expect(selectableTab(UNBUILT_TAB, true)).toBe(DEFAULT_TAB)
   })
 })
 

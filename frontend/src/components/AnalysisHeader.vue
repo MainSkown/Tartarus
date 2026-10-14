@@ -3,9 +3,11 @@ import { computed } from 'vue'
 import type { AnalysisRead } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
+import TagInput from '@/components/TagInput.vue'
 import { isActiveStatus } from '@/services/analysis-status'
 import { formatDuration, secondsBetween } from '@/services/format-duration'
 import { formatTimestamp } from '@/services/format-time'
+import { ANALYSIS_TARGET } from '@/stores/annotations'
 
 const props = defineProps<{ analysis: AnalysisRead; busy: boolean }>()
 const emit = defineEmits<{ cancel: []; delete: [] }>()
@@ -36,6 +38,10 @@ const duration = computed(() => {
         {{ analysis.filename }}
       </h1>
       <StatusBadge :status="analysis.status" />
+      <TagInput
+        class="analysis-header__tags"
+        :target="ANALYSIS_TARGET"
+      />
       <span class="analysis-header__spacer" />
       <q-btn
         v-if="canCancel"
@@ -158,6 +164,10 @@ const duration = computed(() => {
   font-size: 0.65rem;
   font-weight: bold;
   letter-spacing: 1px;
+}
+
+.analysis-header__tags {
+  flex: 0 1 auto;
 }
 
 .analysis-header__hash {

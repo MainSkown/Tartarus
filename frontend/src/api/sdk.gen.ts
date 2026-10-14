@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, RulesHitsData, RulesHitsErrors, RulesHitsResponses, RulesListData, RulesListErrors, RulesListResponses, RulesReadData, RulesReadErrors, RulesReadResponses, RulesReloadData, RulesReloadErrors, RulesReloadResponses, RulesUpdateData, RulesUpdateErrors, RulesUpdateResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
+import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, AnnotationsAddNoteData, AnnotationsAddNoteErrors, AnnotationsAddNoteResponses, AnnotationsAddTagData, AnnotationsAddTagErrors, AnnotationsAddTagResponses, AnnotationsDeleteNoteData, AnnotationsDeleteNoteErrors, AnnotationsDeleteNoteResponses, AnnotationsListTagsData, AnnotationsListTagsErrors, AnnotationsListTagsResponses, AnnotationsReadData, AnnotationsReadErrors, AnnotationsReadResponses, AnnotationsRemoveTagData, AnnotationsRemoveTagErrors, AnnotationsRemoveTagResponses, AnnotationsUpdateNoteData, AnnotationsUpdateNoteErrors, AnnotationsUpdateNoteResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, ExportIocsData, ExportIocsErrors, ExportIocsResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, RulesHitsData, RulesHitsErrors, RulesHitsResponses, RulesListData, RulesListErrors, RulesListResponses, RulesReadData, RulesReadErrors, RulesReadResponses, RulesReloadData, RulesReloadErrors, RulesReloadResponses, RulesUpdateData, RulesUpdateErrors, RulesUpdateResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -114,7 +114,8 @@ export const analysesFinish = <ThrowOnError extends boolean = false>(options: Op
  * The process tree as nested roots. A process whose parent is not in the analysis is a root.
  *
  * Each node carries its lifetime, detections, injection targets, network hosts and event counts
- * per lane. `integrity` is null: no source reports it yet.
+ * per lane, and the analyst's `tags` and `note_count`. `integrity` is null: no source reports
+ * it yet.
  */
 export const viewsProcesses = <ThrowOnError extends boolean = false>(options: Options<ViewsProcessesData, ThrowOnError>): RequestResult<ViewsProcessesResponses, ViewsProcessesErrors, ThrowOnError> => (options.client ?? client).get<ViewsProcessesResponses, ViewsProcessesErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/processes', ...options });
 
@@ -123,7 +124,7 @@ export const viewsProcesses = <ThrowOnError extends boolean = false>(options: Op
  *
  * One process (the first, if the pid was reused) with its loaded modules, its 15 most called
  * APIs, and its 200 most recent file, registry, network and process events (newest first) with
- * the total. `404` for a pid the analysis never saw.
+ * the total, and the analyst's `tags` and `note_count`. `404` for a pid the analysis never saw.
  */
 export const viewsProcess = <ThrowOnError extends boolean = false>(options: Options<ViewsProcessData, ThrowOnError>): RequestResult<ViewsProcessResponses, ViewsProcessErrors, ThrowOnError> => (options.client ?? client).get<ViewsProcessResponses, ViewsProcessErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/processes/{pid}', ...options });
 
@@ -271,7 +272,8 @@ export const eventsHistogram = <ThrowOnError extends boolean = false>(options: O
  * `related.references` are the events this one names as its triggers (a detection's
  * `related.events`); `related.referenced_by` are the detections that name this one. Each
  * lists at most 50 and counts them all. The id may contain slashes and colons, encoded or not.
- * `404` for an unknown analysis or event.
+ * `annotations` are the analyst's tags and notes on this event. `404` for an unknown analysis
+ * or event.
  */
 export const eventsDetail = <ThrowOnError extends boolean = false>(options: Options<EventsDetailData, ThrowOnError>): RequestResult<EventsDetailResponses, EventsDetailErrors, ThrowOnError> => (options.client ?? client).get<EventsDetailResponses, EventsDetailErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/events/{event_id}', ...options });
 
@@ -350,6 +352,94 @@ export const rulesUpdate = <ThrowOnError extends boolean = false>(options: Optio
  * Sigma detections per rule in one analysis, most hit first. A rule with no hit is left out.
  */
 export const rulesHits = <ThrowOnError extends boolean = false>(options: Options<RulesHitsData, ThrowOnError>): RequestResult<RulesHitsResponses, RulesHitsErrors, ThrowOnError> => (options.client ?? client).get<RulesHitsResponses, RulesHitsErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/rules/hits', ...options });
+
+/**
+ * Iocs
+ *
+ * The IOCs of the analysis, the same list the IOCs view shows, as a download: a STIX 2.1
+ * bundle, a MISP event or a CSV. The analyst's tags and notes and the ATT&CK techniques the
+ * run raised go in where the format has a place for them. Ids and times derive from the
+ * analysis, so exporting twice gives the same file.
+ */
+export const exportIocs = <ThrowOnError extends boolean = false>(options: Options<ExportIocsData, ThrowOnError>): RequestResult<ExportIocsResponses, ExportIocsErrors, ThrowOnError> => (options.client ?? client).get<ExportIocsResponses, ExportIocsErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/export/iocs', ...options });
+
+/**
+ * List Tags
+ *
+ * Every tag in use with the number of links using it across all analyses, most used first,
+ * then by name. Feeds tag autocomplete.
+ */
+export const annotationsListTags = <ThrowOnError extends boolean = false>(options?: Options<AnnotationsListTagsData, ThrowOnError>): RequestResult<AnnotationsListTagsResponses, AnnotationsListTagsErrors, ThrowOnError> => (options?.client ?? client).get<AnnotationsListTagsResponses, AnnotationsListTagsErrors, ThrowOnError>({ url: '/api/tags', ...options });
+
+/**
+ * Read
+ *
+ * The analysis's tags and notes, oldest first. `target_type` narrows them to the analysis,
+ * its processes or its events, and `target_ref` (the pid or the event id; needs `target_type`)
+ * to one target. An event or process annotation whose target is gone from the analysis comes
+ * with `orphaned: true`; it is kept, never deleted.
+ */
+export const annotationsRead = <ThrowOnError extends boolean = false>(options: Options<AnnotationsReadData, ThrowOnError>): RequestResult<AnnotationsReadResponses, AnnotationsReadErrors, ThrowOnError> => (options.client ?? client).get<AnnotationsReadResponses, AnnotationsReadErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/annotations', ...options });
+
+/**
+ * Add Tag
+ *
+ * Puts a tag on the analysis, a process (`target_ref` is the pid) or an event (`target_ref`
+ * is the event id), creating the tag if it is new. Names are lower-cased. `409` when the tag
+ * is already on that target, and for an event unless the analysis is `done`.
+ */
+export const annotationsAddTag = <ThrowOnError extends boolean = false>(options: Options<AnnotationsAddTagData, ThrowOnError>): RequestResult<AnnotationsAddTagResponses, AnnotationsAddTagErrors, ThrowOnError> => (options.client ?? client).post<AnnotationsAddTagResponses, AnnotationsAddTagErrors, ThrowOnError>({
+    url: '/api/analyses/{analysis_id}/tags',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Remove Tag
+ *
+ * Takes a tag off its target. `404` for a link that is not this analysis's. A tag no link
+ * uses any more is deleted.
+ */
+export const annotationsRemoveTag = <ThrowOnError extends boolean = false>(options: Options<AnnotationsRemoveTagData, ThrowOnError>): RequestResult<AnnotationsRemoveTagResponses, AnnotationsRemoveTagErrors, ThrowOnError> => (options.client ?? client).delete<AnnotationsRemoveTagResponses, AnnotationsRemoveTagErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/tags/{link_id}', ...options });
+
+/**
+ * Add Note
+ *
+ * Adds a plain-text note (1 to 20 000 characters) to the analysis, a process or an event.
+ * `409` for an event unless the analysis is `done`.
+ */
+export const annotationsAddNote = <ThrowOnError extends boolean = false>(options: Options<AnnotationsAddNoteData, ThrowOnError>): RequestResult<AnnotationsAddNoteResponses, AnnotationsAddNoteErrors, ThrowOnError> => (options.client ?? client).post<AnnotationsAddNoteResponses, AnnotationsAddNoteErrors, ThrowOnError>({
+    url: '/api/analyses/{analysis_id}/notes',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Note
+ *
+ * Deletes a note.
+ */
+export const annotationsDeleteNote = <ThrowOnError extends boolean = false>(options: Options<AnnotationsDeleteNoteData, ThrowOnError>): RequestResult<AnnotationsDeleteNoteResponses, AnnotationsDeleteNoteErrors, ThrowOnError> => (options.client ?? client).delete<AnnotationsDeleteNoteResponses, AnnotationsDeleteNoteErrors, ThrowOnError>({ url: '/api/notes/{note_id}', ...options });
+
+/**
+ * Update Note
+ *
+ * Replaces a note's text.
+ */
+export const annotationsUpdateNote = <ThrowOnError extends boolean = false>(options: Options<AnnotationsUpdateNoteData, ThrowOnError>): RequestResult<AnnotationsUpdateNoteResponses, AnnotationsUpdateNoteErrors, ThrowOnError> => (options.client ?? client).patch<AnnotationsUpdateNoteResponses, AnnotationsUpdateNoteErrors, ThrowOnError>({
+    url: '/api/notes/{note_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Ws Message Schemas

@@ -41,6 +41,7 @@ function analysis(id: number, status: AnalysisStatus = 'done'): AnalysisRead {
     started_at: null,
     finished_at: null,
     summary: null,
+    tags: [],
   }
 }
 
@@ -261,6 +262,24 @@ describe('cancel', () => {
     analysesCancelMock.mockResolvedValue(failed('conflict', 'Only a queued analysis can be cancelled'))
     expect(await store.cancel(1)).toBe(false)
     expect(store.items[0]?.status).toBe('running')
+  })
+})
+
+describe('setTags', () => {
+  it('puts the analysis tags on the row and the open analysis', async () => {
+    analysesListMock.mockResolvedValue(succeeded(page(analysis(2), analysis(1))))
+    analysesReadMock.mockResolvedValue(succeeded(analysis(2)))
+    await store.fetchList()
+    await store.fetchOne(2)
+
+    store.setTags(2, ['emotet', 'phishing'])
+
+    expect(store.items.map((item) => item.tags)).toEqual([['emotet', 'phishing'], []])
+    expect(store.current?.tags).toEqual(['emotet', 'phishing'])
+  })
+
+  it('ignores an analysis it does not hold', () => {
+    expect(() => store.setTags(99, ['x'])).not.toThrow()
   })
 })
 

@@ -145,8 +145,8 @@ test('analysis-narrow-600', async ({ page }) => {
 
 test('analysis-unbuilt-tab', async ({ page }) => {
   const analysis = makeDetectedAnalysis({ id: ID })
-  await openAnalysis(page, analysis, {}, `/analyses/${ID}/notes`)
-  await expect(page.getByText('notes arrives with M4')).toBeVisible()
+  await openAnalysis(page, analysis, {}, `/analyses/${ID}/reports`)
+  await expect(page.getByText('reports arrives later')).toBeVisible()
   await expect(page.getByRole('tab', { name: 'SUMMARY' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('tab', { name: 'NOTES' })).toHaveAttribute('aria-selected', 'false')
   await page.screenshot({ path: screenshotPath('analysis-unbuilt-tab') })
@@ -162,12 +162,10 @@ test('analysis-delete-confirmation', async ({ page }) => {
   await page.screenshot({ path: screenshotPath('analysis-delete-confirmation') })
 })
 
-test('analysis tabs not built yet are disabled and say when they arrive', async ({ page }) => {
+test('every analysis tab is built and enabled', async ({ page }) => {
   await openAnalysis(page, makeDetectedAnalysis({ id: ID }))
-  const notes = page.getByRole('tab', { name: 'NOTES' })
-  await expect(notes).toBeDisabled()
-  await expect(notes).toHaveAttribute('title', 'Arrives with M4')
-  await expect(page.getByRole('tab', { name: 'SUMMARY' })).toBeEnabled()
+  for (const tab of await page.getByRole('tab').all()) await expect(tab).toBeEnabled()
+  await expect(page.getByRole('tab', { name: 'NOTES' })).toBeEnabled()
 })
 
 const LONG_CONTENT_ANALYSES = [
