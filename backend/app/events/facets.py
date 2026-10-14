@@ -3,52 +3,72 @@
 from collections.abc import Mapping
 from typing import Any
 
-from app.errors import ApiError
-from app.events.aggregatable import resolve_for_aggregation
+from app.events.aggregatable import resolve_single_field
 from app.events.execution import SEARCH_TIMEOUT
-from app.events.filters import filter_query
+from app.events.filters import CompiledChip, chips_query, compile_filter
 from app.schemas.events_api import Facet, FacetsRequest, FacetsResponse, ValueCount
 from app.search.fields import FieldType
 
 FACET_VALUES = 10
 INVALID_FIELD = "invalid_facet_field"
+FACET = "facet_"
+VALUES = "values"
+PRESENT = "present"
 NOT_AGGREGATABLE = frozenset({FieldType.TEXT, FieldType.OBJECT_DISABLED, FieldType.FLAT_OBJECT})
 AGGREGATABLE = frozenset(FieldType) - NOT_AGGREGATABLE
 
 
 def build_facets_body(request: FacetsRequest) -> dict[str, Any]:
-    aggregations: dict[str, Any] = {}
-    for position, name in enumerate(request.fields):
-        path = _facet_path(name)
-        aggregations[f"values_{position}"] = {"terms": {"field": path, "size": FACET_VALUES}}
-        aggregations[f"present_{position}"] = {"filter": {"exists": {"field": path}}}
+    """Each facet counts under the filter without the chips on its own field, so the analyst
+    can still see and pick the other values of a field they have already narrowed.
+
+    The request's query keeps what every facet shares, which includes chips on fields that are
+    not facets; each facet is a `filter` aggregation holding only the chips on the other facets.
+    """
+    paths = [_facet_path(name) for name in request.fields]
+    compiled = compile_filter(request)
+    facet_paths = set(paths)
+    on_facets = [chip for chip in compiled.chips if chip.paths & facet_paths]
+    elsewhere = [chip for chip in compiled.chips if not chip.paths & facet_paths]
     return {
-        "query": filter_query(request),
+        "query": compiled.query_with(elsewhere),
         "size": 0,
         "track_total_hits": False,
         "timeout": SEARCH_TIMEOUT,
-        "aggs": aggregations,
+        "aggs": {
+            f"{FACET}{position}": _facet_aggregation(
+                path, [chip for chip in on_facets if path not in chip.paths]
+            )
+            for position, path in enumerate(paths)
+        },
+    }
+
+
+def _facet_aggregation(path: str, chips: list[CompiledChip]) -> dict[str, Any]:
+    return {
+        "filter": chips_query(chips),
+        "aggs": {
+            VALUES: {"terms": {"field": path, "size": FACET_VALUES}},
+            PRESENT: {"filter": {"exists": {"field": path}}},
+        },
     }
 
 
 def _facet_path(name: str) -> str:
-    resolved = resolve_for_aggregation(name, AGGREGATABLE, INVALID_FIELD)
-    if len(resolved.targets) > 1:
-        members = " or ".join(target.path for target in resolved.targets)
-        raise ApiError(422, INVALID_FIELD, f"{name} stands for several fields; use {members}")
-    return resolved.targets[0].path
+    return resolve_single_field(name, AGGREGATABLE, INVALID_FIELD).path
 
 
 def read_facets_response(fields: list[str], response: Mapping[str, Any]) -> FacetsResponse:
     aggregations: Mapping[str, Any] = response.get("aggregations", {})
+    facets = [aggregations.get(f"{FACET}{position}", {}) for position in range(len(fields))]
     return FacetsResponse(
         facets=[
             Facet(
                 field=name,
-                values=bucket_counts(aggregations.get(f"values_{position}", {})),
-                total=aggregations.get(f"present_{position}", {}).get("doc_count", 0),
+                values=bucket_counts(facet.get(VALUES, {})),
+                total=facet.get(PRESENT, {}).get("doc_count", 0),
             )
-            for position, name in enumerate(fields)
+            for name, facet in zip(fields, facets, strict=True)
         ]
     )
 

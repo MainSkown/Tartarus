@@ -83,8 +83,8 @@ into `tartarus-events-<analysis id>`:
 ### Events and query
 | Method & path | Purpose |
 |---|---|
-| `POST /analyses/{id}/events/search` | **Built.** Body: `{query, filters[], time_range?, lanes?, pids?, sort: "@timestamp"\|"-@timestamp", size ≤ 500, search_after?}`. Returns `{events[], total, next_cursor}`. Uses `search_after` paging so it works with millions of events. |
-| `POST /analyses/{id}/events/facets` | **Built.** Same filter body plus `fields[]` (default: `process.name`, `tartarus.lane`, `event.action`, `api.name`, `destination.domain`, `rule.name`). Returns the top 10 values per field with counts. |
+| `POST /analyses/{id}/events/search` | **Built.** Body: `{query, filters[], time_range?, lanes?, pids?, sort: "@timestamp"\|"-@timestamp", size ≤ 500, search_after?, columns[]?}`. Returns `{events[], total, next_cursor}`; `columns` (at most 12 catalog fields or aliases) adds each event's `fields`. Uses `search_after` paging so it works with millions of events. |
+| `POST /analyses/{id}/events/facets` | **Built.** Same filter body plus `fields[]` (default: `process.name`, `tartarus.lane`, `event.action`, `api.name`, `destination.domain`, `rule.name`). Returns the top 10 values per field with counts; a facet ignores the chips on its own field (see Events API). |
 | `POST /analyses/{id}/events/histogram` | **Built.** Same filter body plus `{interval: auto\|ms}`. Returns buckets per lane (`date_histogram` × `terms(tartarus.lane)`) and detection markers, for the timeline. |
 | `GET /analyses/{id}/events/{event_id}` | **Built.** Full event including `tartarus.raw`, annotations and related events (annotations wait for M5). |
 | `POST /query/validate` | **Built.** `{query}` → `{ok, errors: [{start, end, message, suggestion}]}` (no `ast`). |
@@ -349,7 +349,7 @@ search by name, then by alias, then inside a name.
 
 Code: `app/api/events.py` and `app/api/query.py` (routers), `app/events/` (pure body builders and
 response readers: `filters.py`, `search.py`, `cursor.py`, `facets.py`, `histogram.py`, `detail.py`,
-`values.py`; `execution.py` runs a search; `service.py` chains several), `app/schemas/events_api.py`
+`values.py`, `columns.py`; `execution.py` runs a search; `service.py` chains several), `app/schemas/events_api.py`
 (request and response models). Operation ids are `events_search`, `events_facets`,
 `events_histogram`, `events_detail`, `query_validate`, `query_fields`, `query_values`.
 
@@ -367,7 +367,9 @@ suggestion, filter_index}`; `filter_index` is null for an error in the query tex
 position in `filters[]` for a chip, whose spans count characters of the text `field:value`. A
 malformed or foreign cursor is `422 invalid_cursor`; a facet field that cannot be aggregated (text,
 flat object, unsearchable, a composite alias, unknown) is `422 invalid_facet_field`; a values field
-that is not a keyword is `422 invalid_value_field`. An unknown analysis (or event) is `404 not_found`.
+that is not a keyword is `422 invalid_value_field`; a search column that cannot be shown (unknown,
+a composite alias, `tartarus.raw`, or one argument such as `api.arguments.FileName`) is `422
+invalid_column` naming it. More than 12 columns is the framework's validation `422`. An unknown analysis (or event) is `404 not_found`.
 An analysis whose index does not exist answers search, facets, histogram and values with empty
 results, not an error. Every search carries `timeout: 10s` and the client a 15 s request timeout;
 either, or a partial result, is `504 search_timeout`, and any other OpenSearch failure is `502
@@ -382,6 +384,19 @@ one, has `next_cursor: null`. The cursor is `base64url(JSON {sort, after: [ms, s
 without padding, sent back as `search_after`. A cursor issued for the other sort is refused.
 `total` is exact (`track_total_hits`). The page's events leave out `tartarus.raw`.
 
+**Search columns.** `columns` lists catalog fields or aliases (any searchable field except the
+disabled `tartarus.raw`, and no composite alias such as `domain`) that the table shows beyond the
+typed `Event`. Each is resolved by the query's own field resolution (`app/events/columns.py`,
+sharing `aggregatable.py` with facets and values); an alias is keyed by its canonical name and a
+repeat is collapsed. Each returned event has `fields`, `{canonical name: value}`, read from the
+document by its nested path, so a value is a string, number, boolean, list, or for the flat object
+`api.arguments` a dictionary; a column the event has no value for is left out, and without `columns`
+`fields` is `{}`. With columns the body asks OpenSearch for `_source` `includes`: the fields of
+`EVENT_SOURCE_FIELDS` (what the typed `Event` reads) plus the columns, so `tartarus.raw` and
+everything else stays behind; without them it is the old `excludes: [tartarus.raw]`. In the OpenAPI
+schema the value is the recursive `JsonValue` (`string | number | boolean | JsonValue[] |
+{[key]: JsonValue} | null`), and `Event.fields` is required.
+
 **Event** (`Event`) is the typed subset the table needs: id, time, sequence, lane, kind, category,
 action, module, dataset, summary, severity (name), process `{pid, name, entity_id}`, api name, rule
 name and ruleset, destination `{ip, port, domain}`, DNS query, URL, file path and registry path.
@@ -392,8 +407,22 @@ whose `related.events` names this one's id (at most 50, `total` all of them). Th
 remainder (`{event_id:path}`), so slashes and colons work encoded or not.
 
 **Facets** return `{facets: [{field, values: [{value, count}], total}]}` in the order requested, `field`
-as requested, `total` the number of filtered events with any value. Booleans and dates come back as
+as requested, `total` the number of events with any value. Booleans and dates come back as
 text. Fields default to the six of the table above; at most 20.
+
+A facet ignores the chips on its own field (multi-select faceting), so after `process.name: cmd.exe`
+the process facet still lists the other processes and a negated value still shows with its count.
+A chip counts as being on a field when the query compiler's own resolution (`resolve_query_field`)
+of its name or alias has that field among its targets, so `proc` is `process.name` and the composite
+`domain` is on both `dns.question.name` and `destination.domain`. For each facet the counts, and its
+`total`, are under the filter without those chips; the query text, the chips on other fields, the
+lanes, pids and time range apply to every facet. The body is built so: the request's `query` is the
+filter without any chip on a requested facet field (the part every facet shares, so a chip on a field
+that is not a facet stays in it), and each facet is a `filter` aggregation `facet_<n>` holding only the
+chips on the other facets, with its `terms` (`values`) and `exists` (`present`) aggregations inside.
+The filter is compiled once (`compile_filter` in `filters.py`), so a bad chip is the one `422
+invalid_query` with its `filter_index`. A facet's values can still sum to less than its `total` (only
+the top ten are listed), and to more for a field that holds several values per event.
 
 **Histogram** returns `{interval_ms, from, to, total, buckets: [{time, total, by_lane}], detections}`.
 The span is the time range where it names an end, else the first and last matching event (`from` and

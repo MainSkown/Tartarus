@@ -87,3 +87,47 @@ def test_file_and_registry_paths_are_carried() -> None:
     event = event_from_source(source)
 
     assert (event.file_path, event.registry_path) == ("C:\\a.txt", "HKLM\\x")
+
+
+def rich_source() -> dict[str, Any]:
+    return {
+        **api_call(),
+        "process": {
+            "pid": 1,
+            "name": "a.exe",
+            "entity_id": "6:1@x",
+            "command_line": "a.exe /c whoami",
+            "parent": {"pid": 0, "name": "explorer.exe"},
+        },
+        "event": {"id": "abc", "action": "api-call", "type": ["start", "info"]},
+    }
+
+
+def test_a_requested_column_is_read_by_its_nested_path_under_its_canonical_name() -> None:
+    event = event_from_source(
+        rich_source(), ["process.command_line", "process.parent.name", "event.type"]
+    )
+
+    assert event.fields == {
+        "process.command_line": "a.exe /c whoami",
+        "process.parent.name": "explorer.exe",
+        "event.type": ["start", "info"],
+    }
+
+
+def test_a_flat_object_column_comes_back_as_its_dictionary() -> None:
+    event = event_from_source(rich_source(), ["api.arguments"])
+
+    assert event.fields == {"api.arguments": {"KeyHandle": "0x1"}}
+
+
+def test_a_column_the_event_has_no_value_for_is_left_out() -> None:
+    source = {**rich_source(), "file": {"name": None}}
+
+    event = event_from_source(source, ["file.name", "registry.key", "process.pid"])
+
+    assert event.fields == {"process.pid": 1}
+
+
+def test_without_columns_there_are_no_fields() -> None:
+    assert event_from_source(rich_source()).fields == {}

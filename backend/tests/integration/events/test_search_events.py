@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from app.views.event_fields import dig
 from tests.integration.events.conftest import (
     all_events,
     events_url,
@@ -246,3 +247,95 @@ async def test_an_analysis_with_no_index_has_no_events(view_stack: ViewStack) ->
 
     assert response.status_code == 200
     assert response.json() == {"events": [], "total": 0, "next_cursor": None}
+
+
+COLUMNS = ["process.command_line", "cmdline", "process.parent.name", "api.arguments", "file.name"]
+
+
+def expected_fields(source: dict[str, Any]) -> dict[str, Any]:
+    paths = ["process.command_line", "process.parent.name", "api.arguments", "file.name"]
+    values = {path: dig(source, *path.split(".")) for path in paths}
+    return {path: value for path, value in values.items() if value is not None}
+
+
+async def test_a_column_returns_the_indexed_value_next_to_the_typed_fields(
+    view_stack: ViewStack,
+) -> None:
+    event = synthetic_event(
+        "col-1",
+        "2026-10-13T13:00:00.000Z",
+        "process-created",
+        "process",
+        process={
+            "pid": 77,
+            "name": "cmd.exe",
+            "command_line": "cmd.exe /c whoami",
+            "parent": {"pid": 4, "name": "explorer.exe"},
+        },
+    )
+    await index_extra_events(view_stack, [event])
+
+    page = await post_ok(
+        view_stack,
+        "search",
+        {"query": "event.id:col-1", "columns": ["cmdline", "process.parent.name", "file.name"]},
+    )
+
+    [found] = page["events"]
+    assert found["fields"] == {
+        "process.command_line": "cmd.exe /c whoami",
+        "process.parent.name": "explorer.exe",
+    }
+    assert (found["process"]["pid"], found["process"]["name"]) == (77, "cmd.exe")
+    assert found["lane"] == "process"
+
+
+async def test_a_flat_object_column_comes_back_as_a_dictionary(view_stack: ViewStack) -> None:
+    source = next(event for event in await all_events(view_stack) if "arguments" in event["api"])
+
+    page = await post_ok(
+        view_stack,
+        "search",
+        {"query": f'event.id:"{source["event"]["id"]}"', "columns": ["api.arguments"]},
+    )
+
+    [found] = page["events"]
+    assert isinstance(source["api"]["arguments"], dict)
+    assert found["fields"] == {"api.arguments": source["api"]["arguments"]}
+
+
+async def test_paging_with_columns_reaches_every_event_once_with_its_own_values(
+    view_stack: ViewStack,
+) -> None:
+    events, _ = await every_page(view_stack, 37, "@timestamp", columns=COLUMNS)
+
+    sources = {event["event"]["id"]: event for event in await all_events(view_stack)}
+    assert sorted(event["id"] for event in events) == sorted(sources)
+    assert any(event["fields"] for event in events)
+    for event in events:
+        assert event["fields"] == expected_fields(sources[event["id"]])
+
+
+async def test_the_typed_fields_are_the_same_with_and_without_columns(
+    view_stack: ViewStack,
+) -> None:
+    plain = await post_ok(view_stack, "search", {"size": 500})
+    with_columns = await post_ok(view_stack, "search", {"size": 500, "columns": COLUMNS})
+
+    typed = [{**event, "fields": {}} for event in with_columns["events"]]
+    assert typed == plain["events"]
+    assert all(event["fields"] == {} for event in plain["events"])
+
+
+@pytest.mark.parametrize("column", ["tartarus.raw", "domain", "nope", "api.arguments.FileName"])
+async def test_a_column_that_cannot_be_shown_is_a_422_naming_it(
+    view_stack: ViewStack, column: str
+) -> None:
+    response = await view_stack.client.post(
+        events_url(view_stack, "search"), json={"columns": [column]}
+    )
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "invalid_column"
+    assert column in error["message"]

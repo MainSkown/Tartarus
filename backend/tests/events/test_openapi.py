@@ -87,3 +87,14 @@ def test_the_values_parameters_are_query_parameters(schema: dict[str, Any]) -> N
         ("prefix", "query"),
         ("limit", "query"),
     }
+
+
+def test_the_columns_of_an_event_are_a_map_of_a_recursive_json_value(
+    schema: dict[str, Any],
+) -> None:
+    schemas = schema["components"]["schemas"]
+
+    assert schemas["Event"]["properties"]["fields"]["additionalProperties"] == {
+        "$ref": "#/components/schemas/JsonValue"
+    }
+    assert "JsonValue" in schemas

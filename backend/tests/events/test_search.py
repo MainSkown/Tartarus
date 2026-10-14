@@ -4,8 +4,10 @@ import pytest
 
 from app.errors import ApiError
 from app.events.cursor import encode_cursor
+from app.events.event_model import EVENT_SOURCE_FIELDS, event_from_source
 from app.events.search import build_search_body, read_search_response
 from app.schemas.events_api import EventFilter, SearchRequest
+from app.views.event_fields import WITHOUT_RAW, dig
 
 
 def hit(number: int) -> dict[str, Any]:
@@ -16,6 +18,47 @@ def hit(number: int) -> dict[str, Any]:
         },
         "sort": [1791892361383, number, f"id-{number}"],
     }
+
+
+def full_source() -> dict[str, Any]:
+    return {
+        "@timestamp": "2026-10-13T12:12:41.383Z",
+        "event": {
+            "id": "x",
+            "sequence": 1,
+            "kind": "event",
+            "category": ["file"],
+            "action": "a",
+            "module": "m",
+            "dataset": "d",
+            "severity": 2,
+            "type": ["creation"],
+        },
+        "tartarus": {"lane": "file", "summary": "s", "phase": "final"},
+        "process": {"pid": 1, "name": "n", "entity_id": "e", "command_line": "c"},
+        "api": {"name": "NtX", "status": True},
+        "rule": {"name": "r", "ruleset": "cape", "id": "7"},
+        "destination": {"ip": "1.2.3.4", "port": 80, "domain": "a.example", "bytes": 5},
+        "dns": {"question": {"name": "a.example", "type": "A"}},
+        "url": {"full": "http://a.example", "path": "/"},
+        "file": {"path": "C:\\a", "name": "a"},
+        "registry": {"path": "HKLM\\k", "key": "k"},
+    }
+
+
+def filtered(source: dict[str, Any], paths: list[str]) -> dict[str, Any]:
+    """The document as `_source` includes would return it."""
+    kept: dict[str, Any] = {}
+    for path in paths:
+        value = dig(source, *path.split("."))
+        if value is None:
+            continue
+        *parents, leaf = path.split(".")
+        target = kept
+        for parent in parents:
+            target = target.setdefault(parent, {})
+        target[leaf] = value
+    return kept
 
 
 def response(hits: list[dict[str, Any]], total: int) -> dict[str, Any]:
@@ -54,6 +97,44 @@ def test_the_body_counts_exactly_has_a_timeout_and_leaves_the_raw_record_out() -
     assert body["track_total_hits"] is True
     assert body["timeout"] == "10s"
     assert body["_source"] == {"excludes": ["tartarus.raw"]}
+
+
+def test_the_body_without_columns_leaves_only_the_raw_record_out() -> None:
+    assert build_search_body(SearchRequest(columns=[]))["_source"] == WITHOUT_RAW
+
+
+def test_the_body_with_columns_fetches_the_typed_fields_and_the_columns_without_the_raw() -> None:
+    source = build_search_body(SearchRequest(columns=["cmdline", "file.hash.sha256"]))["_source"]
+
+    assert source == {
+        "includes": [*EVENT_SOURCE_FIELDS, "process.command_line", "file.hash.sha256"]
+    }
+    assert "tartarus.raw" not in source["includes"]
+
+
+def test_a_column_that_cannot_be_shown_is_refused_before_any_search() -> None:
+    with pytest.raises(ApiError) as caught:
+        build_search_body(SearchRequest(columns=["tartarus.raw"]))
+
+    assert caught.value.code == "invalid_column"
+
+
+def test_the_page_carries_the_requested_columns_of_each_event() -> None:
+    request = SearchRequest(columns=["cmdline"])
+    first = hit(1)
+    first["_source"]["process"] = {"command_line": "a.exe"}
+
+    page = read_search_response(request, response([first, hit(2)], total=2))
+
+    assert [event.fields for event in page.events] == [{"process.command_line": "a.exe"}, {}]
+
+
+def test_the_typed_fields_survive_the_source_filter_the_body_asks_for() -> None:
+    full = full_source()
+    kept = filtered(full, EVENT_SOURCE_FIELDS)
+
+    assert event_from_source(kept) == event_from_source(full)
+    assert event_from_source(full).process is not None
 
 
 def test_the_body_carries_the_filter_query() -> None:

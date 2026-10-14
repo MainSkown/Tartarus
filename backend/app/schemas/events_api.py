@@ -15,6 +15,7 @@ MAX_PIDS = 1000
 MAX_PAGE_SIZE = 500
 DEFAULT_PAGE_SIZE = 100
 MAX_FACET_FIELDS = 20
+MAX_COLUMNS = 12
 DEFAULT_VALUES = 10
 MAX_VALUES = 50
 DEFAULT_FACET_FIELDS = [
@@ -26,6 +27,7 @@ DEFAULT_FACET_FIELDS = [
     "rule.name",
 ]
 
+type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 type SortOrder = Literal["@timestamp", "-@timestamp"]
 
 
@@ -62,6 +64,12 @@ class SearchRequest(EventFilter):
     size: int = Field(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE)
     search_after: str | None = Field(
         default=None, description="The `next_cursor` of the previous page."
+    )
+    columns: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_COLUMNS,
+        description="Catalog fields or aliases to return under `fields` of each event, on top of "
+        "the typed ones.",
     )
 
 
@@ -112,6 +120,10 @@ class Event(ApiModel):
     url: str | None
     file_path: str | None
     registry_path: str | None
+    fields: dict[str, JsonValue] = Field(
+        description="The requested `columns` by canonical field name; a column the event has no "
+        "value for is absent."
+    )
 
 
 class EventPage(ApiModel):

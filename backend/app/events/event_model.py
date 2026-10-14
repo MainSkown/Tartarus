@@ -1,6 +1,9 @@
-from app.schemas.events_api import Event, EventDestination, EventProcess
+from collections.abc import Sequence
+
+from app.schemas.events_api import Event, EventDestination, EventProcess, JsonValue
 from app.views.event_fields import (
     Source,
+    dig,
     event_id,
     event_time,
     int_at,
@@ -9,8 +12,36 @@ from app.views.event_fields import (
     texts_at,
 )
 
+EVENT_SOURCE_FIELDS = [
+    "@timestamp",
+    "event.id",
+    "event.sequence",
+    "event.kind",
+    "event.category",
+    "event.action",
+    "event.module",
+    "event.dataset",
+    "event.severity",
+    "tartarus.lane",
+    "tartarus.summary",
+    "process.pid",
+    "process.name",
+    "process.entity_id",
+    "api.name",
+    "rule.name",
+    "rule.ruleset",
+    "destination.ip",
+    "destination.port",
+    "destination.domain",
+    "dns.question.name",
+    "url.full",
+    "file.path",
+    "registry.path",
+]
 
-def event_from_source(source: Source) -> Event:
+
+def event_from_source(source: Source, columns: Sequence[str] = ()) -> Event:
+    """`columns` are canonical field names; those the document has a value for fill `fields`."""
     severity = int_at(source, "event", "severity")
     return Event(
         id=event_id(source),
@@ -33,7 +64,13 @@ def event_from_source(source: Source) -> Event:
         url=text_at(source, "url", "full"),
         file_path=text_at(source, "file", "path"),
         registry_path=text_at(source, "registry", "path"),
+        fields=_columns(source, columns),
     )
+
+
+def _columns(source: Source, columns: Sequence[str]) -> dict[str, JsonValue]:
+    values = {column: dig(source, *column.split(".")) for column in columns}
+    return {column: value for column, value in values.items() if value is not None}
 
 
 def _process(source: Source) -> EventProcess | None:

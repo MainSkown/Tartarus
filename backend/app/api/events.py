@@ -34,9 +34,10 @@ async def search(
 
     Sorted by time, then by the event's own order, then by id, so the order is total. `total`
     is exact; `next_cursor` is opaque, null on the last page, and goes back as `search_after`
-    for the next one. `422` for a query or chip that does not compile (its `error.details.errors`
-    lists each problem with its span) or for a malformed cursor. An analysis with no events yet
-    answers with an empty page.
+    for the next one. `columns` adds those catalog fields to each event's `fields`. `422` for a
+    query or chip that does not compile (its `error.details.errors` lists each problem with its
+    span), a malformed cursor or a column that cannot be shown (`invalid_column`). An analysis
+    with no events yet answers with an empty page.
     """
     await require_analysis(session, analysis_id)
     body = build_search_body(request)
@@ -48,7 +49,8 @@ async def facets(
     analysis_id: int, request: FacetsRequest, session: Session, events: Events
 ) -> FacetsResponse:
     """The ten most common values of each requested field, and how many events have a value
-    for it, over the events the filter keeps.
+    for it, over the events the filter keeps, except that a facet ignores the chips on its own
+    field so the other values of a field already narrowed stay visible.
 
     Fields are catalog names or aliases; a text, flat-object or unsearchable field, a composite
     alias such as `domain` and an unknown field are refused with `422`.

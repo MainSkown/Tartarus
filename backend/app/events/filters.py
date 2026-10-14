@@ -1,5 +1,7 @@
 """The filter body of every events endpoint as one OpenSearch query."""
 
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -7,6 +9,7 @@ from app.errors import ApiError
 from app.query.clauses import lowercase_like_index
 from app.query.compiler import compile_filter_chip, compile_query
 from app.query.errors import QueryError
+from app.query.field_resolution import resolve_query_field
 from app.schemas.events_api import EventFilter, TimeRange
 
 Query = dict[str, Any]
@@ -16,31 +19,76 @@ ONE_MILLISECOND = timedelta(milliseconds=1)
 MATCH_ALL: Query = {"match_all": {}}
 
 
-def filter_query(event_filter: EventFilter) -> Query:
-    """The query ANDed with every chip, time range, lane list and pid list.
+@dataclass(frozen=True, slots=True)
+class CompiledChip:
+    query: Query
+    negate: bool
+    paths: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledFilter:
+    """The filter compiled once, with its chips kept apart so a facet can leave some out.
+
+    `common` is what always applies: the query text, the time range, the lanes and the pids.
+    """
+
+    common: list[Query]
+    chips: tuple[CompiledChip, ...]
+
+    def query_with(self, chips: Iterable[CompiledChip]) -> Query:
+        return _anded(self.common, chips)
+
+
+def compile_filter(event_filter: EventFilter) -> CompiledFilter:
+    """Compiles the query and every chip.
 
     A query or chip that does not compile raises a 422 carrying every error with its span.
     """
     errors: list[dict[str, Any]] = []
-    required: list[Query] = []
-    excluded: list[Query] = []
+    common: list[Query] = []
+    chips: list[CompiledChip] = []
 
     query = compile_query(event_filter.query)
     errors.extend(_described(error, None) for error in query.errors)
     if query.query is not None:
-        required.append(query.query)
+        common.append(query.query)
 
     for index, chip in enumerate(event_filter.filters):
         compiled = compile_filter_chip(chip.field, chip.value)
         errors.extend(_described(error, index) for error in compiled.errors)
         if compiled.query is not None:
-            (excluded if chip.negate else required).append(compiled.query)
+            chips.append(CompiledChip(compiled.query, chip.negate, _paths_of(chip.field)))
 
     if errors:
         raise ApiError(422, "invalid_query", "The query does not compile", {"errors": errors})
 
-    required.extend(_restrictions(event_filter))
+    common.extend(_restrictions(event_filter))
+    return CompiledFilter(common, tuple(chips))
+
+
+def filter_query(event_filter: EventFilter) -> Query:
+    """The query ANDed with every chip, time range, lane list and pid list."""
+    compiled = compile_filter(event_filter)
+    return compiled.query_with(compiled.chips)
+
+
+def chips_query(chips: Iterable[CompiledChip]) -> Query:
+    """Only the chips ANDed, negated ones excluded; match-all for none."""
+    return _anded([], chips)
+
+
+def _anded(required: list[Query], chips: Iterable[CompiledChip]) -> Query:
+    required = list(required)
+    excluded: list[Query] = []
+    for chip in chips:
+        (excluded if chip.negate else required).append(chip.query)
     return _bool_of(required, excluded)
+
+
+def _paths_of(field: str) -> frozenset[str]:
+    resolved = resolve_query_field(field)
+    return frozenset() if resolved is None else frozenset(t.path for t in resolved.targets)
 
 
 def _described(error: QueryError, filter_index: int | None) -> dict[str, Any]:
