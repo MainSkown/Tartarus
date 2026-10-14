@@ -187,10 +187,6 @@ function downloadUrl(artifact: Artifact): string {
   border-left: 1px solid var(--border-subtle);
 }
 
-.cell-empty {
-  color: var(--text-gray-dark);
-}
-
 .yara-hit {
   display: inline-block;
   max-width: 100%;

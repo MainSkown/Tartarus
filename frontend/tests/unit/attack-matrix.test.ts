@@ -13,7 +13,7 @@ describe('AttackMatrix', () => {
     const names = mountMatrix()
       .findAll('.attack-tactic__name')
       .map((name) => name.text())
-    expect(names).toEqual(['Execution', 'Privilege Escalation', 'Command and Control', 'Unknown'])
+    expect(names).toEqual(['Execution', 'Privilege Escalation', 'Stealth', 'Command and Control', 'Unknown'])
   })
 
   it('shows the name, the id and the hit count of a technique', () => {

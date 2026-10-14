@@ -29,3 +29,18 @@ export function liveProcess(pid: number, overrides: Partial<LiveProcessNode> = {
 export function message(type: string, data: unknown, ts = TS): { type: string; ts: string; data: unknown } {
   return { type, ts, data }
 }
+
+/** An alert as the backend's Sigma detection builder writes it (`rule.ruleset: sigma`, ATT&CK ids, the matched condition). */
+export function sigmaAlert(overrides: Partial<LiveEvent> & { id?: string; severity?: number } = {}): LiveEvent {
+  const { id = 'alert-1', severity = 0, ...rest } = overrides
+  return {
+    '@timestamp': '2026-10-13T15:39:51.100Z',
+    event: { id, action: 'rule-matched', sequence: 7, severity, kind: 'alert' },
+    tartarus: { lane: 'registry', summary: 'Tartarus Self-Test Registry Marker Written', detection: { match: 'selection', repeated: 3 } },
+    process: { pid: 9708, name: 'benign.exe' },
+    rule: { id: '6c17e2ec-0203-4f72-8760-b1b2a72336db', name: 'Tartarus Self-Test Registry Marker Written', ruleset: 'sigma' },
+    threat: { technique: { id: ['T1112'] }, tactic: { name: ['Stealth'] } },
+    related: { events: ['e1'] },
+    ...rest,
+  } as LiveEvent
+}

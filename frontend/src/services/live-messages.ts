@@ -28,9 +28,12 @@ export interface ProcessDelta {
 /** The fields of an ECS event document the LIVE tab reads; the server sends more. */
 export interface LiveEvent {
   '@timestamp': string
-  event: { id: string; action?: string; sequence?: number; severity?: number }
-  tartarus: { lane: string; summary: string }
+  event: { id: string; action?: string; sequence?: number; severity?: number; kind?: string }
+  tartarus: { lane: string; summary: string; detection?: { match?: string; repeated?: number } }
   process?: { pid?: number; name?: string | null }
+  /** Present on an `event.kind: alert` document, which a Sigma match is. */
+  rule?: { id?: string; name?: string; ruleset?: string }
+  threat?: { technique?: { id?: string[] }; tactic?: { name?: string[] } }
 }
 
 export interface LiveCounts {

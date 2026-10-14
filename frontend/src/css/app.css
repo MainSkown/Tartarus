@@ -119,6 +119,16 @@ a:hover {
 .text-white { color: var(--text-white); }
 .text-gray { color: var(--text-gray); }
 .text-mono { font-family: var(--font-mono); }
+
+/* A table cell with no value, and text for assistive tech only. */
+.cell-empty { color: var(--text-gray-dark); }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
 .text-bold { font-weight: bold; }
 .text-center { text-align: center; }
 
@@ -332,6 +342,16 @@ a:hover {
   border-left: 2px solid var(--text-on-primary);
   border-bottom: 2px solid var(--text-on-primary);
   transform: rotate(-45deg);
+}
+
+.checkbox-input:disabled {
+  border-color: var(--text-gray-darker);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.checkbox-input:checked:disabled {
+  background-color: var(--text-gray-darker);
 }
 
 .checkbox-input:focus-visible {

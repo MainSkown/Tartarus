@@ -15,7 +15,7 @@ export const routes: RouteRecordRaw[] = [
         name: 'analysis-workspace',
         component: () => import('@/pages/AnalysisPage.vue'),
       },
-      { path: 'rules', name: 'rules', component: () => import('@/pages/PlaceholderPage.vue') },
+      { path: 'rules', name: 'rules', component: () => import('@/pages/RulesPage.vue') },
       { path: 'guest', name: 'guest', component: () => import('@/pages/PlaceholderPage.vue') },
       { path: 'settings', name: 'settings', component: () => import('@/pages/SettingsPage.vue') },
       {

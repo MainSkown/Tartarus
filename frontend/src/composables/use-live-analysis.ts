@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vue'
 import type { AnalysisPhase } from '@/api'
 import { isTerminalStatus } from '@/services/analysis-status'
+import { collectDetections, type LiveDetection } from '@/services/live-detections'
 import {
   parseLiveMessage,
   type LiveClientMessage,
@@ -58,6 +59,8 @@ export interface LiveAnalysis {
   counts: Ref<LiveCounts | undefined>
   eventsPerMinute: Ref<number>
   errors: Ref<LiveError[]>
+  /** The alerts of the run so far, oldest first; the event filter and `clear` do not touch them. */
+  detections: Ref<readonly LiveDetection[]>
   filter: Ref<LiveFilter>
   paused: Ref<boolean>
   backlog: Ref<number>
@@ -91,6 +94,7 @@ export function useLiveAnalysis(analysisId: number, options: LiveAnalysisOptions
   const counts = ref<LiveCounts>()
   const eventsPerMinute = ref(0)
   const errors = ref<LiveError[]>([])
+  const detections = shallowRef<readonly LiveDetection[]>([])
   const filter = ref<LiveFilter>(NO_FILTER)
   const paused = ref(false)
   const backlog = ref(0)
@@ -118,6 +122,7 @@ export function useLiveAnalysis(analysisId: number, options: LiveAnalysisOptions
     buffer.value = result.events
     trimmed.value += result.trimmed
     received.value += incoming.length
+    detections.value = collectDetections(detections.value, incoming)
     if (paused.value) backlog.value += incoming.length
     rateSamples.push({ at: Date.now(), count: incoming.length })
     refreshRate()
@@ -214,6 +219,7 @@ export function useLiveAnalysis(analysisId: number, options: LiveAnalysisOptions
     counts,
     eventsPerMinute,
     errors,
+    detections,
     filter,
     paused,
     backlog,

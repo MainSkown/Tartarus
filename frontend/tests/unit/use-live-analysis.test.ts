@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, type EffectScope } from 'vue'
 import { MAX_BUFFERED_EVENTS, useLiveAnalysis } from '@/composables/use-live-analysis'
 import { FakeWebSocket, fakeSocketFactory } from './fake-websocket'
-import { liveEvent, liveProcess } from './live-fixtures'
+import { liveEvent, liveProcess, sigmaAlert } from './live-fixtures'
 
 const STATUS = { status: 'running', phase: 'live', elapsed_s: 10, remaining_s: 170 }
 const FINISHED = { status: 'done', phase: 'live', elapsed_s: 180, remaining_s: 0 }
@@ -306,5 +306,35 @@ describe('useLiveAnalysis errors', () => {
       { code: 'log_format', message: 'unknown record' },
       { code: 'live_index_failed', message: 'second' },
     ])
+  })
+})
+
+describe('useLiveAnalysis detections', () => {
+  it('collects the alerts of the stream, not its other events', () => {
+    const live = connect()
+    sendEvents([liveEvent({ id: 'e1' }), sigmaAlert({ id: 'a1' })])
+    expect(live.detections.value.map((detection) => detection.id)).toEqual(['a1'])
+    expect(live.detections.value[0]).toMatchObject({ ruleset: 'sigma', techniques: ['T1112'] })
+  })
+
+  it('has none before an alert arrives', () => {
+    expect(connect().detections.value).toEqual([])
+  })
+
+  it('keeps an alert that the lane filter hides from the list, and across clear and pause', () => {
+    const live = connect()
+    live.setFilter({ lanes: ['file'] })
+    sendEvents([sigmaAlert({ id: 'a1' })])
+    live.pause()
+    live.clear()
+    expect(ids(live)).toEqual([])
+    expect(live.detections.value).toHaveLength(1)
+  })
+
+  it('shows an alert once when the server sends it twice', () => {
+    const live = connect()
+    sendEvents([sigmaAlert({ id: 'a1' })])
+    sendEvents([sigmaAlert({ id: 'a1' })])
+    expect(live.detections.value).toHaveLength(1)
   })
 })

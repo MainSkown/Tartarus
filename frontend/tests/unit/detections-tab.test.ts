@@ -89,7 +89,15 @@ describe('DetectionsTab list', () => {
   it('shows how many events triggered the detection when there are any', async () => {
     const entries = (await mountTab()).findAll('.detection-entry')
     const counts = entries.map((entry) => entry.find('.detection-entry__count').exists() && entry.find('.detection-entry__count').text())
-    expect(counts).toEqual([false, '2 events', '52 events', false])
+    expect(counts).toEqual([false, '1 event', '2 events', '52 events', false])
+  })
+
+  it('lists a real Sigma alert after the critical one in its group: info severity, one event, its technique', async () => {
+    const entry = (await mountTab()).findAll('.detection-entry')[1]!
+    expect(entry.find('.severity-badge').text()).toContain('INFO')
+    expect(entry.find('.detection-entry__name').text()).toBe('Tartarus Self-Test Registry Marker Written')
+    expect(entry.find('.detection-entry__count').text()).toBe('1 event')
+    expect(entry.find('.detection-entry__techniques').text()).toBe('T1112')
   })
 
   it('selects the first detection by default', async () => {
@@ -100,7 +108,7 @@ describe('DetectionsTab list', () => {
 
   it('shows another detection when its entry is clicked', async () => {
     const wrapper = await mountTab()
-    await wrapper.findAll('.detection-entry')[2]!.trigger('click')
+    await wrapper.findAll('.detection-entry')[3]!.trigger('click')
 
     expect(wrapper.find('.detection-detail__name').text()).toBe('dllload_suspicious_directory')
     expect(wrapper.find('.detection-detail__description').text()).toBe('A DLL was loaded from a suspicious directory')
@@ -144,6 +152,17 @@ describe('DetectionsTab detail', () => {
     expect(row.text()).toContain('benign.exe (9708)')
   })
 
+  it('shows a real Sigma alert whole: ruleset, technique, the matched condition and its registry event', async () => {
+    const wrapper = await openDetection('Tartarus Self-Test Registry Marker Written')
+    expect(wrapper.find('.detection-detail__ruleset').text()).toBe('SIGMA')
+    expect(wrapper.find('.detection-detail__facts').text()).toContain('T1112')
+    expect(wrapper.find('pre.code-block').text()).toBe('selection')
+    const row = wrapper.find('.related-event')
+    expect(row.text()).toContain('REGISTRY')
+    expect(row.text()).toContain('benign.exe set HKCU\\Software\\Tartarus\\SelfTest')
+    expect(wrapper.find('.detection-detail__events-count').text()).toBe('1')
+  })
+
   it('has no events section for a detection with none', async () => {
     const wrapper = await openDetection('ET MALWARE Possible beacon')
     expect(wrapper.find('.related-event').exists()).toBe(false)
@@ -166,7 +185,7 @@ describe('DetectionsTab detail', () => {
 
   it('shows the matched condition in a code block', async () => {
     const block = (await mountTab()).find('pre.code-block')
-    expect(block.text()).toBe('selection:\n  EventID: 8\ncondition: selection')
+    expect(block.text()).toBe('selection and not filter_main_csrss')
   })
 
   it('leaves out the code block and the references when the detection has none', async () => {
@@ -226,7 +245,7 @@ describe('DetectionsTab ATT&CK matrix', () => {
     await wrapper.findAll('.attack-cell')[1]!.trigger('click')
     await wrapper.find('.technique-filter__clear').trigger('click')
 
-    expect(entryNames(wrapper)).toHaveLength(4)
+    expect(entryNames(wrapper)).toHaveLength(5)
     expect(wrapper.find('.technique-filter').exists()).toBe(false)
   })
 
@@ -269,7 +288,7 @@ describe('DetectionsTab ATT&CK matrix', () => {
   it('keeps the list usable when only the matrix failed', async () => {
     attackMock.mockResolvedValue(failed('matrix unavailable'))
     const wrapper = await mountTab()
-    expect(entryNames(wrapper)).toHaveLength(4)
+    expect(entryNames(wrapper)).toHaveLength(5)
   })
 
   it('ignores a technique whose detections are not in the list', async () => {
@@ -284,7 +303,7 @@ describe('DetectionsTab ATT&CK matrix', () => {
     await wrapper.find('.attack-cell').trigger('click')
 
     expect(wrapper.find('.technique-filter').exists()).toBe(false)
-    expect(entryNames(wrapper)).toHaveLength(4)
+    expect(entryNames(wrapper)).toHaveLength(5)
   })
 })
 
@@ -292,7 +311,7 @@ describe('DetectionsTab matrix selection across rulesets', () => {
   it('shows the detection of another ruleset when its technique is clicked', async () => {
     const wrapper = await mountTab()
     await wrapper.findAll('.radio-input')[1]!.setValue(true)
-    await wrapper.findAll('.attack-cell')[2]!.trigger('click')
+    await wrapper.findAll('.attack-cell')[3]!.trigger('click')
 
     expect(entryNames(wrapper)).toEqual(['ET MALWARE Possible beacon'])
   })

@@ -70,3 +70,8 @@ export function severityMeta(severity: Severity): SeverityMeta {
 export function compareSeverity(a: Severity, b: Severity): number {
   return SEVERITY_META[a].rank - SEVERITY_META[b].rank
 }
+
+/** The severity at a position of the scale (the number `event.severity` carries); a number off the scale is info. */
+export function severityOfRank(rank: number): Severity {
+  return SEVERITIES[rank] ?? 'info'
+}

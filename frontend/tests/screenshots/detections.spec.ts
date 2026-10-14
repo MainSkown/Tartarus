@@ -117,6 +117,68 @@ const MIXED_RULESETS: DetectionsView = {
   ],
 }
 
+// Sigma alerts as the backend writes them: the rule title as name, the condition (not the selection) as the match,
+// ATT&CK ids from the tags, informational rules as INFO, and the triggering events of their own lane.
+const SIGMA_REAL_SHAPE: DetectionsView = {
+  total: 5,
+  groups: [
+    {
+      ruleset: 'sigma',
+      detections: [
+        synthetic({
+          id: 'sg1',
+          name: 'Potential Process Injection Via Remote Thread In Uncommon Target Process',
+          ruleset: 'sigma',
+          severity: 'critical',
+          description: 'Detects a remote thread created in a process that rarely receives one, such as winlogon or lsass',
+          techniques: ['T1055', 'T1055.003'],
+          match: 'selection_target and not 1 of filter_main_*',
+          references: ['https://attack.mitre.org/techniques/T1055/'],
+          related_events: [
+            { id: 're1', time: '2026-10-13T15:39:55.210000Z', lane: 'process', action: 'inject-thread', summary: 'powershell.exe created a remote thread in pid 4410', process: { pid: 5012, name: 'powershell.exe' } },
+          ],
+          related_event_total: 1,
+          process: { pid: 5012, name: 'powershell.exe' },
+        }),
+        synthetic({
+          id: 'sg2',
+          name: 'Registry Persistence Via Run Key Written By PowerShell',
+          ruleset: 'sigma',
+          severity: 'high',
+          techniques: ['T1547.001'],
+          match: 'selection',
+          related_events: [
+            { id: 're2', time: '2026-10-13T15:39:53.931000Z', lane: 'registry', action: 'reg-value-set', summary: 'powershell.exe set HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater', process: { pid: 5012, name: 'powershell.exe' } },
+          ],
+          related_event_total: 1,
+          process: { pid: 5012, name: 'powershell.exe' },
+        }),
+        synthetic({
+          id: 'sg3',
+          name: 'Tartarus Self-Test Registry Marker Written',
+          ruleset: 'sigma',
+          severity: 'info',
+          description: 'The sample the Tartarus end-to-end run detonates writes the value SelfTest under HKCU\\Software\\Tartarus on every run.',
+          techniques: ['T1112'],
+          match: 'selection',
+          time: '2026-10-13T15:39:51.503000Z',
+          related_events: [
+            { id: 're3', time: '2026-10-13T15:39:51.503000Z', lane: 'registry', action: 'reg-value-set', summary: 'benign.exe set HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest', process: BENIGN },
+          ],
+          related_event_total: 1,
+        }),
+      ],
+    },
+    {
+      ruleset: 'cape',
+      detections: [
+        synthetic({ id: 'c1', name: 'injection_createremotethread', ruleset: 'cape', severity: 'high', techniques: ['T1055'], process: null }),
+        synthetic({ id: 'c2', name: 'persistence_autorun', ruleset: 'cape', severity: 'medium', techniques: ['T1547.001'], process: null }),
+      ],
+    },
+  ],
+}
+
 const LONG_TEXT: DetectionsView = {
   total: 2,
   groups: [
@@ -199,6 +261,28 @@ test('the detail starts on the same line as the list: both lead with a heading, 
   })
   expect(tops.heading[1], 'heading of the detail vs the list').toBeCloseTo(tops.heading[0]!, 0)
   expect(tops.badge[1], 'severity badge of the detail vs the first list entry').toBeCloseTo(tops.badge[0]!, 0)
+})
+
+test('detections-sigma-group-real-alert-shape', async ({ page }) => {
+  await openDetections(page, { detections: { body: SIGMA_REAL_SHAPE } })
+  await expect(page.locator('.detection-group .pane-heading').first()).toHaveText('SIGMA')
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: screenshotPath('detections-sigma-group-real-alert-shape'), fullPage: true })
+})
+
+test('detections-sigma-info-alert-selected', async ({ page }) => {
+  await openDetections(page, { detections: { body: SIGMA_REAL_SHAPE } })
+  await page.locator('.detection-entry', { hasText: 'Tartarus Self-Test' }).click()
+  await expect(page.locator('.detection-detail__name')).toHaveText('Tartarus Self-Test Registry Marker Written')
+  await page.screenshot({ path: screenshotPath('detections-sigma-info-alert-selected'), fullPage: true })
+})
+
+test('detections-sigma-narrow-600', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 900 })
+  await openDetections(page, { detections: { body: SIGMA_REAL_SHAPE } })
+  await expect(page.locator('.detection-detail__name')).toBeVisible()
+  await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: screenshotPath('detections-sigma-narrow-600'), fullPage: true })
 })
 
 test('detections-matrix', async ({ page }) => {

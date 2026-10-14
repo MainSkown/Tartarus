@@ -164,18 +164,6 @@ function shaPrefix(sha256: string): string {
   text-overflow: ellipsis;
 }
 
-.cell-empty {
-  color: var(--text-gray-dark);
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-}
-
 @media (max-width: 700px) {
   .col-optional,
   .col-id {

@@ -126,7 +126,10 @@ function selectProcess(pid: number | undefined): void {
         :status="status"
         @open-summary="emit('open-tab', 'summary')"
       />
-      <LiveDetectionsPanel v-else />
+      <LiveDetectionsPanel
+        v-else
+        :detections="live.detections.value"
+      />
     </div>
 
     <LiveEventStream

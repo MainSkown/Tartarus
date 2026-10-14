@@ -2,6 +2,15 @@ import type { ArtifactsView, AttackMatrix, Detection, DetectionsView, RelatedEve
 
 const BENIGN = { pid: 9708, name: 'benign.exe' }
 
+const SELFTEST_EVENT: RelatedEvent = {
+  id: 'event-selftest',
+  time: '2026-10-13T15:39:51.100000Z',
+  lane: 'registry',
+  action: 'registry-value-set',
+  summary: 'benign.exe set HKCU\\Software\\Tartarus\\SelfTest',
+  process: BENIGN,
+}
+
 export function relatedEvent(index: number): RelatedEvent {
   return {
     id: `event-${index}`,
@@ -32,12 +41,13 @@ export function detectionFixture(overrides: Partial<Detection> = {}): Detection 
 }
 
 export const SIGMA_ID = 'det-sigma'
+export const SIGMA_SELFTEST_ID = 'det-sigma-selftest'
 export const CAPE_DLL_ID = 'det-dll'
 export const CAPE_RECON_ID = 'det-recon'
 export const SURICATA_ID = 'det-suricata'
 
 export const DETECTIONS_VIEW: DetectionsView = {
-  total: 4,
+  total: 5,
   groups: [
     {
       ruleset: 'cape',
@@ -83,8 +93,23 @@ export const DETECTIONS_VIEW: DetectionsView = {
           severity: 'critical',
           ruleset: 'sigma',
           techniques: ['T1055', 'T1055.003'],
-          match: 'selection:\n  EventID: 8\ncondition: selection',
+          match: 'selection and not filter_main_csrss',
           references: ['https://attack.mitre.org/techniques/T1055/'],
+        }),
+        // The shape the backend's Sigma detection builder writes for the shipped self-test rule:
+        // level informational, the matched condition (not the selection), one triggering event.
+        detectionFixture({
+          id: SIGMA_SELFTEST_ID,
+          name: 'Tartarus Self-Test Registry Marker Written',
+          description:
+            'The sample the Tartarus end-to-end run detonates writes the value SelfTest under HKCU\\Software\\Tartarus on every run.',
+          severity: 'info',
+          ruleset: 'sigma',
+          techniques: ['T1112'],
+          match: 'selection',
+          time: '2026-10-13T15:39:51.100000Z',
+          related_events: [SELFTEST_EVENT],
+          related_event_total: 1,
         }),
       ],
     },
@@ -114,6 +139,13 @@ export const ATTACK_MATRIX: AttackMatrix = {
           severity: 'critical',
           detection_ids: [CAPE_DLL_ID, SIGMA_ID],
         },
+      ],
+    },
+    {
+      id: 'stealth',
+      name: 'Stealth',
+      techniques: [
+        { id: 'T1112', name: 'Modify Registry', hit_count: 1, severity: 'info', detection_ids: [SIGMA_SELFTEST_ID] },
       ],
     },
     {

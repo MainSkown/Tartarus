@@ -17,6 +17,8 @@ import type {
   FilterChip,
   HistogramRequest,
   QueryErrorRead,
+  RuleDetail,
+  RuleRead,
   SearchRequest,
   SettingsBody,
   SystemHealth,
@@ -890,4 +892,61 @@ export async function mockEvents(page: Page, options: EventsMockOptions = {}): P
   })
 
   return mock
+}
+
+// ---------- The Rules page: the list, one rule's file, the enabled switch and the reload ----------
+
+type RuleFailure = { status: number; body: ErrorEnvelope }
+
+export interface RulesMockOptions {
+  rules: RuleRead[]
+  yaml?: (rule: RuleRead) => string
+  listDelayMs?: number
+  listError?: RuleFailure
+  /** What a reload answers; the list as served when absent. */
+  reloaded?: RuleRead[]
+  reloadDelayMs?: number
+  reloadError?: RuleFailure
+  readDelayMs?: number
+  readError?: RuleFailure
+  updateError?: RuleFailure
+}
+
+const RULES_URL = atPath('/api/rules')
+const RULES_RELOAD_URL = atPath('/api/rules/reload')
+const RULE_URL = (url: URL): boolean => /^\/api\/rules\/[^/]+$/.test(url.pathname) && url.pathname !== '/api/rules/reload'
+
+/** Serves `GET /api/rules`, `POST /api/rules/reload`, and `GET`/`PATCH /api/rules/{id}` over one list that the switch changes. */
+export async function mockRules(page: Page, options: RulesMockOptions): Promise<void> {
+  let rules = [...options.rules]
+  const fail = async (route: Route, failure: RuleFailure) => route.fulfill({ status: failure.status, json: failure.body })
+
+  await page.route(RULES_URL, async (route) => {
+    await pause(options.listDelayMs)
+    if (options.listError) return fail(route, options.listError)
+    await route.fulfill({ json: rules })
+  })
+
+  await page.route(RULES_RELOAD_URL, async (route) => {
+    await pause(options.reloadDelayMs)
+    if (options.reloadError) return fail(route, options.reloadError)
+    rules = [...(options.reloaded ?? rules)]
+    await route.fulfill({ json: rules })
+  })
+
+  await page.route(RULE_URL, async (route) => {
+    const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop()!)
+    const rule = rules.find((known) => known.id === id)
+    if (route.request().method() === 'PATCH') {
+      if (options.updateError || !rule) return fail(route, options.updateError ?? { status: 404, body: errorEnvelope('not_found', `Rule ${id} not found`) })
+      const { enabled } = route.request().postDataJSON() as { enabled: boolean }
+      rules = rules.map((known) => (known.id === id ? { ...known, enabled } : known))
+      return route.fulfill({ json: rules.find((known) => known.id === id) })
+    }
+    await pause(options.readDelayMs)
+    if (options.readError) return fail(route, options.readError)
+    if (!rule) return fail(route, { status: 404, body: errorEnvelope('not_found', `Rule ${id} not found`) })
+    const detail: RuleDetail = { ...rule, yaml: options.yaml?.(rule) ?? `title: ${rule.title}\nid: ${rule.id}\n` }
+    await route.fulfill({ json: detail })
+  })
 }

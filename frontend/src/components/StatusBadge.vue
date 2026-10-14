@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AnalysisStatus } from '@/api'
+import type { AnalysisStatus, Validity } from '@/api'
 import { analysisStatusMeta } from '@/services/analysis-status'
+import { validityMeta } from '@/services/rule-view'
 
-const props = defineProps<{ status: AnalysisStatus }>()
+// One badge look for both: an analysis `status`, or a rule's `validity`.
+const props = defineProps<{ status?: AnalysisStatus; validity?: Validity }>()
 
-const meta = computed(() => analysisStatusMeta(props.status))
+const kind = computed(() => props.validity ?? props.status!)
+const meta = computed(() => (props.validity ? validityMeta(props.validity) : analysisStatusMeta(props.status!)))
 </script>
 
 <template>
   <span
     class="status-badge text-mono"
-    :class="`status-badge--${status}`"
+    :class="`status-badge--${kind}`"
     :style="{ color: `var(${meta.color})` }"
   >
     <span

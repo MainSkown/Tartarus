@@ -3,6 +3,7 @@ import { Quasar } from 'quasar'
 import { describe, expect, it } from 'vitest'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { ANALYSIS_STATUSES, analysisStatusMeta } from '@/services/analysis-status'
+import { VALIDITIES, validityMeta } from '@/services/rule-view'
 
 function mountBadge(status: (typeof ANALYSIS_STATUSES)[number]) {
   return mount(StatusBadge, { global: { plugins: [Quasar] }, props: { status } })
@@ -44,6 +45,18 @@ describe('StatusBadge', () => {
     const wrapper = mountBadge('running')
     await wrapper.setProps({ status: 'done' })
     expect(wrapper.text()).toContain('DONE')
+    expect(wrapper.find('.live-dot').exists()).toBe(false)
+  })
+})
+
+describe('StatusBadge for a rule validity', () => {
+  it.each(VALIDITIES)('shows the label, icon and colour of %s', (validity) => {
+    const wrapper = mount(StatusBadge, { global: { plugins: [Quasar] }, props: { validity } })
+    const meta = validityMeta(validity)
+    expect(wrapper.text()).toContain(meta.label)
+    expect(wrapper.find('.q-icon').text()).toBe(meta.icon)
+    expect(wrapper.attributes('style')).toContain(`var(${meta.color})`)
+    expect(wrapper.classes()).toContain(`status-badge--${validity}`)
     expect(wrapper.find('.live-dot').exists()).toBe(false)
   })
 })

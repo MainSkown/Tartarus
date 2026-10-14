@@ -157,6 +157,62 @@ for (const width of NARROW_AND_WIDE_WIDTHS) {
   })
 }
 
+const SIGMA_RULE = (name: string, severity: number, techniques: string[], lane: string, pid: number, processName: string, id: string) => ({
+  '@timestamp': '2026-10-13T15:39:5' + (id.length % 6) + '.210Z',
+  event: { id, kind: 'alert', action: 'rule-matched', sequence: 9000 + id.length, severity },
+  tartarus: { lane, summary: name, detection: { match: 'selection' } },
+  rule: { id: `rule-${id}`, name, ruleset: 'sigma' },
+  threat: { technique: { id: techniques }, tactic: { name: ['Stealth'] } },
+  process: { pid, name: processName },
+})
+
+const SIGMA_ALERTS = [
+  SIGMA_RULE('Tartarus Self-Test Registry Marker Written', 0, ['T1112'], 'registry', 9708, 'benign.exe', 'alert-a'),
+  SIGMA_RULE('Registry Persistence Via Run Key Written By PowerShell', 3, ['T1547.001'], 'registry', 5012, 'powershell.exe', 'alert-bb'),
+  SIGMA_RULE('Potential Process Injection Via Remote Thread In Uncommon Target Process', 4, ['T1055', 'T1055.003'], 'process', 5012, 'powershell.exe', 'alert-ccc'),
+]
+
+test('live-sigma-alert-reaches-the-detections-panel', async ({ page }) => {
+  const live = await openLive(page)
+  stream(live)
+  live.sendEvents(SIGMA_ALERTS)
+  await expect(page.locator('.live-detections__item')).toHaveCount(3)
+  await expectNoVerticalScroll(page)
+  await expectPanelsInsideViewport(page)
+  await snapshot(page, 'live-sigma-alert-reaches-the-detections-panel')
+})
+
+test('live-sigma-many-alerts-scroll-inside-the-panel', async ({ page }) => {
+  const live = await openLive(page)
+  stream(live)
+  live.sendEvents(
+    Array.from({ length: 30 }, (_, index) =>
+      SIGMA_RULE(`Suspicious Behaviour Number ${index} ${'with a long rule name '.repeat(index % 3)}`, index % 5, [`T1${100 + index}`], 'process', 5012, 'powershell.exe', `alert-${'x'.repeat(index + 1)}`),
+    ),
+  )
+  await expect(page.locator('.live-detections__item')).toHaveCount(30)
+  await expectNoVerticalScroll(page)
+  await expectPanelsInsideViewport(page)
+  await snapshot(page, 'live-sigma-many-alerts-scroll-inside-the-panel')
+})
+
+test('live-sigma-alerts-narrow-600', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 900 })
+  const live = await openLive(page)
+  stream(live)
+  live.sendEvents(SIGMA_ALERTS)
+  await expect(page.locator('.live-detections__item')).toHaveCount(3)
+  await expectNoHorizontalOverflow(page)
+  await snapshot(page, 'live-sigma-alerts-narrow-600')
+})
+
+test('live-detections-panel-empty', async ({ page }) => {
+  const live = await openLive(page)
+  stream(live)
+  await expect(page.locator('.live-detections__empty')).toBeVisible()
+  await snapshot(page, 'live-detections-panel-empty')
+})
+
 test('live-waiting-for-the-guest', async ({ page }) => {
   const live = await openLive(page, { analysis: runningAnalysis({ status: 'starting' }) })
   live.send('status', { status: 'starting', phase: 'live', elapsed_s: 3, remaining_s: 177 })

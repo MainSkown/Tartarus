@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisRead } from '@/api'
 import { analysisWithStatus } from './analysis-fixtures'
 import { FakeWebSocket } from './fake-websocket'
-import { liveEvent, liveProcess } from './live-fixtures'
+import { liveEvent, liveProcess, sigmaAlert } from './live-fixtures'
 
 const analysesFinish = vi.hoisted(() => vi.fn())
 const confirmDestructive = vi.hoisted(() => vi.fn())
@@ -79,6 +79,22 @@ describe('LiveTab', () => {
     for (const part of ['status', 'processes', 'detections', 'stream']) {
       expect(wrapper.find(`[data-live="${part}"]`).exists(), part).toBe(true)
     }
+  })
+})
+
+describe('LiveTab detections', () => {
+  it('lists a Sigma alert of the stream in the detections panel', async () => {
+    const wrapper = await mountTab()
+    await send('events', { events: [liveEvent({ id: 'e1' }), sigmaAlert({ id: 'a1', severity: 3 })], dropped: 0 })
+    const item = wrapper.find('[data-live="detections"] .live-detections__item')
+    expect(item.attributes('data-detection-id')).toBe('a1')
+    expect(item.find('.severity-badge').text()).toContain('HIGH')
+  })
+
+  it('has no detection to list before an alert arrives', async () => {
+    const wrapper = await mountTab()
+    await send('events', { events: [liveEvent({ id: 'e1' })], dropped: 0 })
+    expect(wrapper.find('[data-live="detections"]').text()).toContain('none yet')
   })
 })
 

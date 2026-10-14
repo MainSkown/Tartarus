@@ -170,8 +170,4 @@ function groupTitle(group: { hive: string | null; key: string }): string {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.cell-empty {
-  color: var(--text-gray-dark);
-}
 </style>

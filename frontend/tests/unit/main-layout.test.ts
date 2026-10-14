@@ -17,6 +17,7 @@ vi.mock('@/api', () => ({
   settingsRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
   analysesList: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
   analysesRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
+  rulesList: vi.fn().mockResolvedValue({ data: [] }),
 }))
 
 vi.mock('@/services/submit-dialog', () => ({ openSubmitDialog: vi.fn() }))
