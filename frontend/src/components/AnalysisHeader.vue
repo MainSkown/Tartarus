@@ -42,25 +42,26 @@ const duration = computed(() => {
         class="analysis-header__tags"
         :target="ANALYSIS_TARGET"
       />
-      <span class="analysis-header__spacer" />
-      <q-btn
-        v-if="canCancel"
-        outline
-        square
-        label="[CANCEL]"
-        class="analysis-header__cancel text-mono"
-        :disable="busy"
-        @click="emit('cancel')"
-      />
-      <q-btn
-        v-if="canDelete"
-        outline
-        square
-        label="[DELETE]"
-        class="analysis-header__delete text-mono"
-        :disable="busy"
-        @click="emit('delete')"
-      />
+      <div class="analysis-header__actions">
+        <q-btn
+          v-if="canCancel"
+          outline
+          square
+          label="[CANCEL]"
+          class="analysis-header__cancel text-mono"
+          :disable="busy"
+          @click="emit('cancel')"
+        />
+        <q-btn
+          v-if="canDelete"
+          outline
+          square
+          label="[DELETE]"
+          class="analysis-header__delete text-mono"
+          :disable="busy"
+          @click="emit('delete')"
+        />
+      </div>
     </div>
 
     <div class="analysis-header__hash-row">
@@ -140,8 +141,12 @@ const duration = computed(() => {
   white-space: nowrap;
 }
 
-.analysis-header__spacer {
-  flex: 1;
+.analysis-header__actions {
+  display: flex;
+  flex: none;
+  gap: var(--spacing-sm);
+  margin-left: auto;
+  align-self: flex-start;
 }
 
 .analysis-header__cancel {
@@ -167,7 +172,8 @@ const duration = computed(() => {
 }
 
 .analysis-header__tags {
-  flex: 0 1 auto;
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .analysis-header__hash {
