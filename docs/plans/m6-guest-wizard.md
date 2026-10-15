@@ -47,8 +47,9 @@ else is built.
   registration, health checks, job, desktop and the whole GUI are shared and driven by it. M6 ships one
   profile, Windows, and proves the seam with a second, fake profile in tests and a written Linux design
   check (S0e). A short guide, "adding an OS", is part of the deliverable.
-- **Defender choice per guest:** on by default and needing no manual step; "off" makes that build pause
-  once for the Tamper Protection step, with instructions and the desktop.
+- **Defender choice per guest:** on by default; "off" is built by a scripted Tamper Protection step (S0c) with no
+  manual action, and only if that step cannot find the toggle does the build pause with instructions and the
+  desktop.
 - **Builds never disturb the other guests:** a new guest is added beside the existing ones and joins CAPE only
   once its self-test has passed; a failed build leaves every other guest registered and ready.
 - **Self-test through Tartarus itself,** run on the guest being built: the bundled benign sample as an
@@ -202,12 +203,20 @@ else is built.
     file is removed or a detection is logged within 30 s; **off**, it stays. A mismatch fails that guest's
     build. "Report what Defender did" in an analysis touches the ingest and the normalisers, not the
     wizard, so it **moves out of M6** to its own item. **Confirm.**
-11. **The Tamper Protection pause is a state of the build, not a special case.** After provision, with Defender
-    "off", the build enters `waiting_for_user` (job status `paused`, step `provision`), the guest stays
-    running, the page shows the instructions and the build domain's desktop, and `[CONTINUE]` makes the
-    control service re-run the Defender settings through the guest agent (`/execute`, `C:/` paths) and check
-    `Get-MpComputerStatus`. If they still read "on", the pause comes back with the reason. Whether the
-    settings take once Tamper Protection is off has never been observed; S0c settles it with the user.
+11. **Defender off is scripted; the pause is only the fallback.** S0c ([findings](m6-spikes/S0c-findings.md))
+    showed that one scripted click on Windows Security's Tamper Protection toggle (UI Automation through the
+    guest agent, in the logged-in user's session) turns Tamper Protection off, that the Defender policy keys
+    `provision.ps1` already writes then take effect (real-time protection and behaviour monitoring off, EICAR
+    not removed), and that the state survives a memory save and restore and a reboot. So the Windows profile
+    has a `tamper-off` step after provisioning: open `windowsdefender://threatsettings` through the agent
+    (`Start-Process`; it opens only outside a monitored analysis, which a build is), toggle the Tamper
+    Protection switch (found by its known localized names, else as the fifth toggle on the page; all five share
+    `AutomationId=settingToggle`), and **verify by `IsTamperProtected = False`**, which is language-independent.
+    The snapshot is taken after it, so the state is in the snapshot. **If the toggle cannot be found or the
+    verification fails,** the step pauses (job status `paused`, the generic pause of decision 17), the page
+    shows short instructions and the build domain's desktop, and `[CONTINUE]` re-runs the step. `Set-MpPreference`
+    stays useless (policy wins, in both directions). The user's PowerShell chain (execution policy plus
+    `Set-MpPreference`) was tested and does not change Tamper Protection.
 12. **Sysmon and decoys are in, pafish is a stretch.** Sysmon (skipped in M0b) is installed from a pinned
     binary in `manifest.sha256` with `guest/sysmon-config.xml`; the check here is only that the service runs
     and its log has entries. Decoys are one provisioning script (documents, browser history, recent files)
@@ -252,9 +261,12 @@ else is built.
       keyboard, username and password, disk size. The username is inherited because renaming an account
       leaves its profile folder (`C:\Users\<old name>`) behind, which is a worse giveaway than the name; a
       different username needs a build.
-    - **Defender off** needs the Tamper Protection pause of decision 11 when the source had it on, exactly as in
-      a fresh build (the desktop shows the copy at its temporary address). **Defender on** from a source that has
-      it off is scripted; whether it takes is still unverified (it needs the Tamper Protection state of S0c).
+    - **Defender off** on a clone of a Defender-on guest is the `tamper-off` step of decision 11, as in a fresh
+      build (it needs the policy keys, which every guest built from M0b's provisioning has). **Defender on**
+      from a source that has it off cannot use `Set-MpPreference` (policy wins); the route to test in C4 is to
+      delete the two policy keys while Tamper Protection is off, toggle it back on, and verify real-time
+      protection and the EICAR check. Not yet tested; if it fails, a clone may keep or turn Defender off but
+      not turn it on, and that direction needs a build.
     - The snapshot, registration and self-test then run as for a build, on the copy, with its Defender
       verdict (decision 10). A clone that fails ends `failed`, unregistered, with the source untouched.
     - **S0d settled the details** ([findings](m6-spikes/S0d-findings.md)): the crash-consistent copy cold-boots
@@ -399,7 +411,7 @@ needing libvirt or a guest is a named `verify-*` script check.
 |---|---|---|---|
 | **S0a** | ISO metadata | Sonnet, **care** | Does a loop mount plus `wiminfo` work in `cape` on the UDF ISO, and how long does it take? Editions, build, languages and architecture parsed from the real ISO; behaviour on an `install.esd`, an ISO9660 image and a non-Windows ISO (small fixtures); the 7-Zip fallback's time and scratch use |
 | **S0b** | Two machines in CAPE | Sonnet, **care** | With the existing guest, define a clone domain at another IP and register both in one `guests.conf`: does CAPE list both; does `machine=<label>` run the task on the right one, with the right revert, ResultServer connection, rooter rule and callback; what restarting `cape` does to a running machine; can two machines share an IP (expected: avoid it); does anything in `cape/` hard-code `.10` (`finish-run`, `start-guest-network`'s DHCP range); which of `verify-cape`/`verify-guest` assume one machine. Nothing is committed |
-| **S0c** | Tamper Protection | Planner with the user | The user turns Tamper Protection off on the live desktop of an interactive analysis; then `Set-MpPreference` through the agent: do the settings take? What the pause screen has to tell the user, step by step. **Needs the user (about 10 minutes).** Nothing is committed |
+| **S0c** (done) | Tamper Protection | Planner with the user | The user turns Tamper Protection off on the live desktop of an interactive analysis; then `Set-MpPreference` through the agent: do the settings take? What the pause screen has to tell the user, step by step. **Needs the user (about 10 minutes).** Nothing is committed |
 | **S0d** | Clone by hand | Sonnet, **care** | Without the product code: `qemu-img convert` the existing guest's base disk, copy its nvram, define a domain with a new UUID, MAC, serials and a fresh swtpm; does Windows cold-boot cleanly (no recovery or repair screen, no activation or Secure Boot complaint), does the agent answer, can the IP and computer name be changed through the agent and survive a reboot (and does the computer name the analyst chose, not the generated one, end up in `hostname`, the registry and the DHCP/NetBIOS view), is `provision.ps1`'s adapter lookup enough for a new MAC; time and disk of the copy; after a snapshot and registration, does an analysis on the clone behave like the source's. Also: does enabling Defender through the agent take on a guest whose Tamper Protection is off (needs S0c's state, so it runs after it). Nothing is committed |
 | **S0e** | Linux profile on paper | Sonnet, **care** | Read CAPE's Linux support at the pinned `CAPE_REF` (guest requirements, agent, `platform = linux` registration, packages, the strace-based monitor and its output) and write the Linux profile as a filled-in `profile.json` plus a list of its step files, in this plan; for every field and step say whether the schema and step contract of decision 17 express it. Anything they do not is a change to decision 17 now, before C2. Also: how a Linux guest would be installed unattended (Ubuntu autoinstall or Debian preseed through a second ISO or cloud-init) and whether the same external-snapshot, static-IP and clone approach holds. Nothing is built, nothing is run in a guest |
 
@@ -422,7 +434,12 @@ needing libvirt or a guest is a named `verify-*` script check.
   listener file or stray `tcpdump` is left; the agent reports `make verify-guest` 12 OK, 0 failed (twice), not
   re-run by the planner. Not verified: two tasks at once, a real cold boot of `win`, two machines on one IP in an
   analysis, `route=internet`.
-- **S0c** (Tamper Protection, with the user) is pending.
+- **S0c done (2026-10-15)**, [findings](m6-spikes/S0c-findings.md). Tamper Protection can be switched off by a
+  scripted click on its toggle; the existing policy keys then keep Defender off, through a snapshot and a
+  reboot; `Set-MpPreference` still does nothing. This removes the manual step from the Defender-off build
+  (decision 11). Also found: Windows Security cannot be opened from the desktop of a monitored interactive
+  analysis (it never draws a window, the shell freezes, ending the run hangs for minutes), though it opens
+  fine without the monitor. Not tested: other UI languages, Defender back on, a freshly built guest.
 
 ### Wave 2 (parallel, disjoint files)
 
@@ -432,7 +449,7 @@ needing libvirt or a guest is a named `verify-*` script check.
 | **C2** | Build engine, registry and profiles | Sonnet, **care** | The profile schema and loader (decision 17 with the S0e amendments: `hardware` block, typed media, `agent` block, `identity`, signal catalog, pause from any step, `schema_version`), validation of every profile in the repo, the step contract and the generic pause; the fake profile for tests; `build-guest.sh` split into generic steps under `guest/steps/` and the Windows ones under `guest/profiles/windows/steps/`, installed in the image; the sequencer and per-guest `state.json` (resume from the last completed step, restart from scratch, a failed step keeps its log); the registry (`guest.json`), address allocation, the single-registration renderer and the adoption of the M0b `win` guest (decisions 2 and 5); delete guest; `make build-guest` as a wrapper | Bash tests (`scripts/tests/`) for every pure helper as today; registry tests: allocation skips taken addresses and deleted ones, the registration lists exactly the `testing` and `ready` guests, adoption writes the right `guest.json` from fixture XML; sequencer tests with fake steps: order, failure, resume, restart, interruption mid-step, pause and continue; the fake profile end to end (build and clone, no Windows file touched); a profile with a missing step file or a bad schema is rejected at load; the full real build is Wave 5 |
 | **C3** | Media scan | Sonnet | `GET /media` in the control service: the inspector interface (media file in, `[{profile, variant, version, language, arch}]` out) and the Windows inspector per S0a: metadata parser (pure), loop-device handling and cleanup (create the node, detach in a `finally`, clean stale mounts at start), the error table of S0a (unreadable, not an ISO, truncated, not Windows, no `install.wim` or `.esd`); no cache | Parser tests on `wiminfo` output fixtures including a multi-language and an ESD sample; mount cleanup after a failed `wiminfo` and at start-up |
 | **C4** | Clone pipeline | Sonnet, **care** | The copy and reconfigure steps of decision 15 as step files in the same engine as C2 (so C4 follows C2's step interface, and runs in parallel with it against an agreed one): disk and nvram copy, new identity, fresh TPM, the agent-driven reconfigure (`guest/clone/reconfigure.ps1`, safe to run twice), clone parameters and their validation (decision 3: source must be `ready`, name unique, Defender and decoys flags, resources) | The pure parts: parameter validation, the identity differs from the source's in every field, the reconfigure script renders with hostile names escaped, a computer name equal to the source's or on the giveaway list is refused, the step list for a clone is exactly the one in decision 15; sequencer tests with fake steps for a clone failing at each step and leaving the source untouched. The real copy and boot are Wave 5 |
-| **G1** | Windows profile | Sonnet | `autounattend.xml.tpl` with optional product key, keyboard layout, the edition index and the computer name; `profile.json` for Windows with its options, name rules, pipeline and self-test signals; the neutral names of decision 16 in every script, template and step (working folder, firewall rule, scheduled task, CD label and marker) from one table; the name generators and the giveaway list (one module, used by the build, the clone and the form's hint); extended `guest-facts.ps1`; `provision.ps1` parameters for IP, Defender, decoys and Sysmon; `decoys.ps1`; `defender-settings.ps1` (safe to run twice); the Sysmon pin in the manifest; the keyboard-layout table (one table: layout name to `InputLocale`) | Render tests (well-formed XML, escaping, optional elements absent when unset: the silent-failure case of M0b); PowerShell parsed with `pwsh` syntax check where available; the scan of decision 16 (no `tartarus`, `cape` or `sandbox` in anything rendered, outside the allow-list), which fails on today's `provision.ps1`; the giveaway list refuses each listed word as a whole name and as a part, and accepts ordinary names; name generators always produce valid Windows names |
+| **G1** | Windows profile | Sonnet | `autounattend.xml.tpl` with optional product key, keyboard layout, the edition index and the computer name; the `tamper-off` step (decision 11: `guest/profiles/windows/steps/tamper-off.ps1`, UI Automation through the agent, 64-bit PowerShell, verified by `IsTamperProtected`) and its Defender-on counterpart (decision 15); `profile.json` for Windows with its options, name rules, pipeline and self-test signals; the neutral names of decision 16 in every script, template and step (working folder, firewall rule, scheduled task, CD label and marker) from one table; the name generators and the giveaway list (one module, used by the build, the clone and the form's hint); extended `guest-facts.ps1`; `provision.ps1` parameters for IP, Defender, decoys and Sysmon; `decoys.ps1`; `defender-settings.ps1` (safe to run twice); the Sysmon pin in the manifest; the keyboard-layout table (one table: layout name to `InputLocale`) | Render tests (well-formed XML, escaping, optional elements absent when unset: the silent-failure case of M0b); PowerShell parsed with `pwsh` syntax check where available; the scan of decision 16 (no `tartarus`, `cape` or `sandbox` in anything rendered, outside the allow-list), which fails on today's `provision.ps1`; the giveaway list refuses each listed word as a whole name and as a part, and accepts ordinary names; name generators always produce valid Windows names |
 
 C1 first in time within the wave (C2 and C3 plug into it); they run in parallel against its handler interface, agreed up front.
 
@@ -454,7 +471,7 @@ B1 first; B2 to B5 are disjoint files and run in parallel after it. The planner 
 |---|---|---|---|
 | **F15** | Guests page | Sonnet | The page and routing (`/guest`, `/guest/new`): one card per guest with health checks, `[RUN CHECKS]`, last self-test and pafish summary, disk, `[CLONE]`, `[REBUILD]`, `[DELETE]` (confirm dialog showing the size freed), the default marker; the header guest popover listing every guest's state (one shared health component); empty "guest VM not built" state with `[BUILD GUEST]`; states: loading, control down, busy, a guest failed, error. Screenshots, one Artifact |
 | **F16** | Wizard steps 1 to 3 | Sonnet | A profile picker when more than one profile can read the media (one entry today, so it is hidden), the settings step **rendered from the profile's option schema** (one generic option control per type; no Windows-specific markup), media list with detected metadata and the "put the ISO in `data/iso`" empty state, settings with the name field (explained as "only Tartarus sees this name"), the username and computer name fields each with `[RANDOM]` and the giveaway message from the API, and the Defender explanation, review; validation messages from the API. Also the clone form (`/guest/clone/:name`, one page: the new name, the computer name (`[RANDOM]`), Defender, decoys and resources, the inherited settings greyed (username with the reason), the time and disk it will take, the review warning). Screenshots, one Artifact for the wizard and one for the clone form |
-| **F17** | Build progress | Sonnet | Per-step progress, log tail, Retry, Resume, Restart, the Tamper Protection pause with the desktop, the failed and success states, the building state on the guest's card. Reuses the desktop component of the analysis page. Screenshots of every state, one Artifact |
+| **F17** | Build progress | Sonnet | Per-step progress, log tail, Retry, Resume, Restart, the Tamper Protection fallback pause with the desktop (shown only when the scripted step could not find the toggle), the failed and success states, the building state on the guest's card. Reuses the desktop component of the analysis page. Screenshots of every state, one Artifact |
 | **F18** | Choosing a guest | Sonnet | The GUEST select in the Submit dialog (OS and the profile's badges, disabled with the reason for a guest that is not ready; none ready shows the reason and links to `/guest`), the default-guest field in Settings, the guest chip in the analysis header and the Dashboard row. Screenshots, one Artifact |
 
 F15 first (it holds the page and the routing); F16, F17 and F18 are disjoint components and run in parallel.
@@ -476,9 +493,10 @@ F15 first (it holds the page and the routing); F16, F17 and F18 are disjoint com
      computer name, passes the self-test, and an analysis on C runs on C. Making a clone fail at its
      reconfigure step on purpose leaves A `ready` and C `failed`, unregistered.
   7. Delete C, then A: `win` still runs an analysis, their files are gone.
-- **The Defender-off clone** (guest B, cloned from A) with the user at the keyboard for the Tamper Protection
-  step, once, followed by a detonation on B with EICAR showing the opposite of A's. This is the "no 14-minute
-  wait" case from the requirement; its time from `[CLONE]` to `ready` (minus the human step) is recorded
+- **The Defender-off clone** (guest B, cloned from A), fully automatic through the `tamper-off` step (the user
+  is only needed if it falls back to the pause), followed by a detonation on B with EICAR showing the opposite
+  of A's, and a check that B's state is the same after a cold boot of its snapshot's base. This is the "no 14-minute
+  wait" case from the requirement; its time from `[CLONE]` to `ready` is recorded
   against the target of under 8 minutes.
 - **The seam:** the CI test that validates every profile against the schema and checks its step files; the fake-profile run through the sequencer, the job endpoints, `GET /guests/profiles` and the clone; `grep` of the generic code (`app/guest`, the control service's engine, `guest/steps`, the guest components of the frontend) finding no `windows`, `defender` or `powershell`.
 - **`make e2e`** gains the browser flow: the Guest page lists the guests, the wizard lists the ISO and
@@ -496,14 +514,14 @@ F15 first (it holds the page and the routing); F16, F17 and F18 are disjoint com
 | Registering or deleting a guest (restarting `cape`) kills a running analysis | Decision 7: the `409` rules both ways, tested |
 | Moving the bash into the image breaks the proven build | The steps are moved, not rewritten; `make build-guest` runs the same code and is re-run before anything else is built on it |
 | The control service becomes a root-equivalent API (the container is privileged) | Narrow operations only, validation in decision 3, a token, a network shared with one container; `verify-cape` enforces all four. It still turns a backend compromise into "can build and delete guests", not "can run anything" |
-| Tamper Protection off does not make `Set-MpPreference` work | S0c first; if so, the "off" option is withdrawn or reduced to documented guidance, and decision 10 changes before F16 |
+| The scripted Tamper Protection toggle breaks (another UI language, a Windows or Defender update moves the toggle) | The step verifies by `IsTamperProtected` and falls back to the pause with instructions (decision 11); only Polish was tested, so the proof wave names the languages it ran with |
+| Defender back on in a clone does not take by script | Decision 15's route is tested in C4; if it fails, that direction needs a build |
 | The profile seam is drawn wrong because only Windows exists to test it against | S0e writes the Linux profile on paper first; the fake profile exercises everything generic; the `grep` gate keeps Windows out of the generic code; the schema is versioned so a second real profile can extend it |
 | An unusual ISO (ESD, Windows 10, another language) breaks the answer file silently | The well-formedness and escaping tests; only the verified combination is claimed (decision 13) |
 | The build outlives the backend | Control service owns state; reattach in B2 (decision 14) |
 | Disk: every guest is about 22 GB, and a build needs scratch for the ISO scan | Preflight computes it from the actual files and refuses with the number; the cap of 5 guests; per-guest size on the card |
 | 14-minute builds make the loop slow | Everything except `verify-wizard` runs without a guest; one full build in the proof wave, the rest by cloning |
 | A clone that boots wrongly (power-cut recovery screen, new MAC seen as a new adapter, fresh TPM refused) | S0d before C4; the reconfigure step finds the adapter by hardware; if a crash-consistent copy cannot be made reliable, the fallback is cloning from a source that has just been shut down cleanly by the control service (the source then needs a fresh snapshot afterwards, so it is the last resort) |
-| Defender back **on** in a clone does not take by script | S0d checks it; if not, a clone may only turn Defender off (or keep it) and turning it on needs a build |
 | A clone inherits something that identifies the source (a leftover profile name, recent-file entries, the Windows install date) | Accepted for the same-user, same-image guest; the card says the guest is a clone of A. The hardware identity, which is what sandbox checks read, is new |
 | A giveaway list is never complete; a determined sample finds other tells (CAPE's own agent, the display adapter, timing) | Said plainly on the card and in the docs: this removes the cheap checks (names, folders, rules, the password), not all of them; the list is one file so it grows as tells are found |
 | Agents report results optimistically | The planner re-runs every gate and reads each diff before committing; no task is accepted on its own report (rule 5) |
