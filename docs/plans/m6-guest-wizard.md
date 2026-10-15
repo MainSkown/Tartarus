@@ -16,8 +16,42 @@ profile, not a rewrite (decision 17).
 Planned 2026-10-15 and accepted by the user the same day, after three revisions for their requirements:
 several guests (decisions 5 to 7), cloning a guest (15), analyst-chosen names and no giveaways in the guest
 (3, 16), and guest creation independent of the OS (17). Decisions 1, 2, 5, 6, 7, 10, 15, 16 and 17 change
-what the specs say; the specs are updated as the tasks land, not before. Wave 1 (spikes) is next; nothing
-else is built.
+what the specs say; the specs are updated as the tasks land, not before.
+
+**Wave 1 (spikes) done 2026-10-15. Wave 2 done 2026-10-15** (C1, C2a, C2b-1, C2b-2a, C2b-2b, C3, C4, G1;
+commits 54353d8 to 6785331). Waves 3 to 5 (backend API, frontend, proof) are not started.
+
+What wave 2 proved on the real stack (not only in unit tests):
+
+- `win` (the M0b guest) is adopted on engine start and `make verify-guest` passes 12 of 12 with the new registration.
+- **A real build through the engine** (`lab1`: random account and computer name, random password, Sysmon on,
+  Defender on) took about 16 minutes, registered with CAPE next to `win`, ran an analysis routed by
+  label (packet capture from `.11`) and reports zero giveaways from inside the guest.
+- **A real clone** (`lab2` from `lab1`, Defender off) took 5 min 20 s: copy 15 s, own identity (MAC, serials,
+  name, MachineGuid, event logs cleared), scripted Tamper Protection off with the EICAR proofs, snapshot,
+  registration. An analysis routed to it ran (`.12`) and Defender stayed off after CAPE's snapshot revert.
+- Bugs only the real runs found, each fixed test-first: Setup stopped at its key page without a `ProductKey`
+  element (the M0b form, an empty `<Key />` with `OnError`, is required); the firmware's boot prompt is missed
+  on a fresh guest's first boot (the install step now resets and retries up to three times while the disk stays
+  empty); `powershell.exe -File` cannot bind a `[bool]` (the provisioning switches are integers); the giveaway
+  scan cut a Polish word into `test` + `w` and flagged Windows' own firewall rules; a clone of a guest with a
+  static address boots on that address, not DHCP (the step now also tries its source's address); and in
+  review, the Defender reporting policy keys were set to the opposite values and `tamper-off.ps1` looked
+  for the Security window by the wrong class.
+
+Open after wave 2:
+
+- **Orphaned step processes.** A step runs in its own session, so when the control service dies mid-step the
+  step keeps running while the build is marked failed; a resume would start a second copy. The sequencer's
+  tests leaked two such stubs for hours. Fix: record each step's process group in `build.json`, reap it at
+  engine start and on shutdown, and make the tests stop their builds.
+- **The self-test is not through Tartarus yet.** `guest-build --accept-without-selftest` marks a guest ready
+  with no analysis; B3 replaces it. `defender-on.ps1` (Defender back on in a clone) is still untested on a real
+  guest, as is Sysmon's log content and a clone with decoys.
+- **Small debts:** the registry has no `nvram_path`/`display`/`tpm_dir` fields (steps use fixed paths); the
+  media kind is inferred from the file extension; the specs and the README are not updated; `preflight.sh` does
+  not check `GUEST_CONTROL_TOKEN`; `win` keeps its `Analyst` account and `C:\tartarus` (decision 16).
+- **Disk:** `lab1` and `lab2` (about 22 GB each) and S0d's `win2` are on the host for the proof wave.
 
 ## Outcome
 
