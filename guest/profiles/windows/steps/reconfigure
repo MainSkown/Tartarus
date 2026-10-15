@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Gives the cloned guest its own identity. The copy is booted cold; DHCP gives it an address that is
+# neither the source's nor the one it will keep, so it is found by its new MAC in libvirt's lease
+# table. Through the agent it then gets its static address, its computer name, a fresh MachineGuid
+# and empty event logs (and decoys when asked for), is rebooted, and is checked at its final
+# address. The guest is left running for the steps that follow. Idempotent: every change is
+# skipped or redone harmlessly, and a copy that already has its final address is found there.
+set -uo pipefail
+# shellcheck source=lib/windows.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
+
+context_var MACHINE_NAME guest.identity.machine
+context_var GUEST_MAC guest.machine.mac
+context_var GATEWAY host.gateway
+context_var SUBNET host.subnet
+context_var DECOYS guest.options.decoys false
+PREFIX=${SUBNET#*/}
+LOG_NAME=$(profile_name log_file)
+SCRIPT=reconfigure.ps1
+GUEST_LOG=$TT_BUILD_DIR/reconfigure-guest.log
+# Unique per run, so the log an earlier attempt left behind is never mistaken for this one's.
+TOKEN=${RECONFIGURE_TOKEN:-$(cat /proc/sys/kernel/random/uuid)}
+PROBE_S=${RECONFIGURE_PROBE_SECONDS:-5}
+LEASE_WAIT_S=${RECONFIGURE_LEASE_WAIT_SECONDS:-90}
+AGENT_WAIT_S=${RECONFIGURE_AGENT_WAIT_SECONDS:-120}
+APPLY_WAIT_S=${RECONFIGURE_APPLY_WAIT_SECONDS:-90}
+REBOOT_WAIT_S=${RECONFIGURE_REBOOT_WAIT_SECONDS:-180}
+SETTLE_S=${RECONFIGURE_SETTLE_SECONDS:-5}
+
+agent_answers_at() { TT_AGENT_HOST=$1 agent_answers; }
+
+start_guest() {
+    domain_exists || fail "the domain of $GUEST_NAME is not defined: the define step has to run before reconfigure"
+    domain_running && return
+    vsh start "$GUEST_NAME" >/dev/null || fail "the copy of $GUEST_NAME did not start"
+}
+
+# The address the copy leased to its MAC, newest lease first; the lease table lists other machines too.
+leased_address() {
+    vsh net-dhcp-leases "$GUEST_NETWORK" --mac "$GUEST_MAC" 2>/dev/null |
+        awk -v mac="${GUEST_MAC,,}" 'tolower($3) == mac && $4 == "ipv4" { sub("/.*", "", $5); print $1, $2, $5 }' |
+        sort -r | awk 'NR == 1 { print $3 }'
+}
+
+# Sets AGENT_IP: the address the copy answers on now.
+find_agent_address() {
+    local leased
+    if agent_answers_at "$GUEST_IP"; then
+        AGENT_IP=$GUEST_IP
+        return
+    fi
+    leased=$(leased_address)
+    [[ -n $leased ]] || return 1
+    AGENT_IP=$leased
+}
+
+# report_from <address>: sets REPORT to the script's output; fails when the script did not run or failed.
+report_from() { REPORT=$(TT_AGENT_HOST=$1 guest_agent run "$SCRIPT" --arg Phase=Report --timeout 60); }
+
+apply_in_guest() {
+    local helper_files=()
+    [[ $DECOYS != true ]] || helper_files=(--with decoys.ps1)
+    TT_AGENT_HOST=$AGENT_IP guest_agent run "$SCRIPT" --async "${helper_files[@]}" \
+        --arg Phase=Apply --arg "LogName=$LOG_NAME" --arg "MachineName=$MACHINE_NAME" \
+        --arg "GuestIp=$GUEST_IP" --arg "Gateway=$GATEWAY" --arg "Prefix=$PREFIX" \
+        --arg "Decoys=$DECOYS" --arg "Token=$TOKEN"
+}
+
+guest_announced_the_reboot() {
+    guest_agent retrieve "$LOG_NAME" "$GUEST_LOG" 2>/dev/null && grep -qF "rebooting $TOKEN" "$GUEST_LOG"
+}
+
+# The restart must have happened, not only the address changed: the boot time is what tells.
+guest_is_back_from_the_reboot() {
+    report_from "$GUEST_IP" 2>/dev/null && [[ -n $(result_field "$REPORT" boot_time) && $(result_field "$REPORT" boot_time) != "$BOOT_BEFORE" ]]
+}
+
+discard_guest_log() { guest_agent run "$SCRIPT" --arg Phase=Discard --arg "LogName=$LOG_NAME" >/dev/null; }
+
+verify_identity() {
+    local hostname address guid problems=()
+    hostname=$(result_field "$REPORT" hostname)
+    address=$(result_field "$REPORT" ip)
+    guid=$(result_field "$REPORT" machine_guid)
+    [[ ${hostname,,} == "${MACHINE_NAME,,}" ]] || problems+=("the computer name is '$hostname', not '$MACHINE_NAME'")
+    [[ $address == "$GUEST_IP" ]] || problems+=("the address is '$address', not '$GUEST_IP'")
+    [[ -n $guid && ${guid,,} != "${GUID_BEFORE,,}" ]] || problems+=("the MachineGuid is '$guid' and was '$GUID_BEFORE' before: it has to change")
+    ((${#problems[@]} == 0)) || fail "the clone's identity is not what was asked for: $(printf '%s; ' "${problems[@]}")"
+    log "verified: hostname=$hostname ip=$address machine_guid=$guid"
+}
+
+step "Starting the copy"
+progress 5
+start_guest
+step "Finding the copy on the network"
+progress 15
+wait_for "$LEASE_WAIT_S" "$PROBE_S" find_agent_address ||
+    fail "no DHCP lease for the MAC $GUEST_MAC and nothing answers at $GUEST_IP within ${LEASE_WAIT_S}s"
+log "the copy is at $AGENT_IP"
+progress 25
+wait_for "$AGENT_WAIT_S" "$PROBE_S" agent_answers_at "$AGENT_IP" || fail "the guest agent at $AGENT_IP did not answer within ${AGENT_WAIT_S}s"
+progress 35
+
+step "Reading the identity the copy came with"
+report_from "$AGENT_IP" || fail "the copy could not report its identity (exit code $?)"
+GUID_BEFORE=$(result_field "$REPORT" machine_guid)
+BOOT_BEFORE=$(result_field "$REPORT" boot_time)
+log "before: hostname=$(result_field "$REPORT" hostname) ip=$(result_field "$REPORT" ip) machine_guid=$GUID_BEFORE"
+progress 45
+
+step "Giving the copy its own identity"
+apply_in_guest || fail "the identity script could not be started in the guest"
+progress 55
+wait_for "$APPLY_WAIT_S" "$PROBE_S" guest_announced_the_reboot ||
+    fail "the guest did not start its reboot within ${APPLY_WAIT_S}s; its log, if it wrote one, is in the build directory"
+log_guest_file "$GUEST_LOG"
+progress 70
+
+step "Waiting for the reboot"
+sleep "$SETTLE_S"
+wait_for "$REBOOT_WAIT_S" "$PROBE_S" guest_is_back_from_the_reboot || fail "the guest did not come back at $GUEST_IP within ${REBOOT_WAIT_S}s"
+progress 90
+verify_identity
+discard_guest_log
+progress 100

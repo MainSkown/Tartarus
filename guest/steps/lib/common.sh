@@ -6,6 +6,7 @@
 
 STEPS_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SNAPSHOT_NAME=tartarus-clean
+GUEST_NETWORK=tt-guest
 
 step() { printf 'STEP %s\n' "${*//$'\n'/ }"; }
 progress() { printf 'PROGRESS %s\n' "$1"; }

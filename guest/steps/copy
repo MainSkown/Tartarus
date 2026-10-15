@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# Copies the source guest's disk and firmware for a clone. The source's base disk is found through
+# the backing chain of its current disk (a revert leaves a new overlay on top of the base, and the
+# snapshot's memory image can only be restored on the hardware it was taken on), converted into the
+# clone's own sparse qcow2, and the nvram is copied beside it. Nothing of the source is written.
+# Idempotent: an earlier copy is replaced, and an interrupted one is never left looking complete.
+set -uo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+context_var SOURCE_NAME source.name
+context_var DISK_GB guest.resources.disk_gb
+
+GIB=$((1024 * 1024 * 1024))
+disk_made=no
+finished=no
+
+remove_what_this_run_made() {
+    [[ $finished == yes ]] && return
+    rm -f "$DISK_PATH.part" "$NVRAM_PATH.part"
+    [[ $disk_made == no ]] || rm -f "$DISK_PATH"
+}
+trap remove_what_this_run_made EXIT
+
+require_powered_off_source() {
+    local state
+    state=$(vsh domstate "$SOURCE_NAME" 2>/dev/null) || fail "the source guest $SOURCE_NAME has no libvirt domain to copy from"
+    [[ $state == "shut off"* ]] || fail "the source guest $SOURCE_NAME is $state; it has to be powered off before it is cloned"
+}
+
+# Sets SOURCE_DISK (its current disk, an overlay after any snapshot revert) and SOURCE_NVRAM.
+read_source_domain() {
+    local xml files
+    xml=$(vsh dumpxml "$SOURCE_NAME") || fail "could not read the domain of $SOURCE_NAME"
+    files=$(python3 -I -c '
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.stdin).getroot()
+disk = root.find("devices/disk[@device=\"disk\"]/source")
+nvram = root.find("os/nvram")
+if disk is None or not disk.get("file"):
+    sys.exit("the source domain has no system disk file")
+if nvram is None or not (nvram.text or "").strip():
+    sys.exit("the source domain has no nvram file")
+print(disk.get("file"))
+print(nvram.text.strip())
+' <<<"$xml") || fail "could not find the disk and firmware of $SOURCE_NAME"
+    SOURCE_DISK=${files%%$'\n'*}
+    SOURCE_NVRAM=${files#*$'\n'}
+}
+
+# Sets BASE_DISK (the last file of the chain) and BASE_BYTES (its virtual size).
+resolve_base_disk() {
+    local chain facts
+    chain=$(qemu-img info --backing-chain --output=json "$SOURCE_DISK") || fail "qemu-img could not read $SOURCE_DISK"
+    facts=$(python3 -I -c '
+import json
+import sys
+
+chain = json.load(sys.stdin)
+deepest = chain[-1]
+resolved = chain[-2].get("full-backing-filename") if len(chain) > 1 else None
+print(resolved or deepest["filename"])
+print(deepest["virtual-size"])
+' <<<"$chain") || fail "could not read the backing chain of $SOURCE_DISK"
+    BASE_DISK=${facts%%$'\n'*}
+    BASE_BYTES=${facts#*$'\n'}
+}
+
+require_the_recorded_size() {
+    ((BASE_BYTES == DISK_GB * GIB)) ||
+        fail "the base disk of $SOURCE_NAME is $((BASE_BYTES / GIB)) GiB ($BASE_BYTES bytes) but the clone is recorded with ${DISK_GB} GiB"
+}
+
+copy_disk() {
+    qemu-img convert -O qcow2 "$BASE_DISK" "$DISK_PATH.part" || fail "qemu-img convert of $BASE_DISK failed"
+    mv -f "$DISK_PATH.part" "$DISK_PATH" || fail "could not move the finished copy to $DISK_PATH"
+    disk_made=yes
+}
+
+# cp keeps the source file's mode, which is the one libvirt expects of the firmware file.
+copy_nvram() {
+    cp "$SOURCE_NVRAM" "$NVRAM_PATH.part" || fail "could not copy $SOURCE_NVRAM"
+    mv -f "$NVRAM_PATH.part" "$NVRAM_PATH" || fail "could not move the finished copy to $NVRAM_PATH"
+}
+
+step "Copying the disk and firmware of $SOURCE_NAME"
+progress 0
+require_powered_off_source
+read_source_domain
+[[ -r $SOURCE_NVRAM ]] || fail "the firmware file $SOURCE_NVRAM of $SOURCE_NAME is not readable"
+resolve_base_disk
+require_the_recorded_size
+log "copying $BASE_DISK, the base of $SOURCE_DISK; the snapshot memory file is not copied"
+mkdir -p "$IMAGES_DIR" "$NVRAM_DIR"
+progress 10
+copy_disk
+progress 90
+copy_nvram
+log "no TPM state is copied: libvirt creates a fresh TPM for the new domain's UUID"
+finished=yes
+progress 100

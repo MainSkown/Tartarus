@@ -21,6 +21,18 @@ profile_name() {
         "$TT_PROFILE_DIR" "$1"
 }
 
+# result_field <step output> <key>: the value of the script's "RESULT key=value" line.
+result_field() { sed -n "s/^LOG RESULT $2=//p" <<<"$1" | head -n1 | tr -d '\r'; }
+
+# log_guest_file <file>: every line of a file fetched from the guest, as a LOG line, so that a line
+# of it can never be taken for a protocol line.
+log_guest_file() {
+    local line
+    while IFS= read -r line || [[ -n $line ]]; do
+        [[ -z $line ]] || log "guest: $line"
+    done < <(tr -d '\r\0' <"$1")
+}
+
 pause_for_analyst() {
     printf 'PAUSE %s\n' "${*//$'\n'/ }"
     exit "$PAUSED_EXIT_CODE"
