@@ -110,7 +110,7 @@ describe('parseJobMessage', () => {
     ['a missing job', { type: 'job' }],
     ['another type', { type: 'health', job: JOB_MESSAGE.job }],
     ['a non-numeric id', { type: 'job', job: { ...JOB_MESSAGE.job, id: '9' } }],
-    ['an unknown status', { type: 'job', job: { ...JOB_MESSAGE.job, status: 'paused' } }],
+    ['an unknown status', { type: 'job', job: { ...JOB_MESSAGE.job, status: 'vanished' } }],
     ['a missing progress', { type: 'job', job: { ...JOB_MESSAGE.job, progress: undefined } }],
     ['a non-object payload', 'job'],
   ])('rejects %s', (_label, raw) => {

@@ -224,6 +224,8 @@ export function makeAnalysis(overrides: Partial<AnalysisRead> & Pick<AnalysisRea
     finished_at: null,
     summary: null,
     tags: [],
+    guest: null,
+    guest_badges: [],
     ...overrides,
   }
 }

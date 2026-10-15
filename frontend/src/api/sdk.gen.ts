@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, AnnotationsAddNoteData, AnnotationsAddNoteErrors, AnnotationsAddNoteResponses, AnnotationsAddTagData, AnnotationsAddTagErrors, AnnotationsAddTagResponses, AnnotationsDeleteNoteData, AnnotationsDeleteNoteErrors, AnnotationsDeleteNoteResponses, AnnotationsListTagsData, AnnotationsListTagsErrors, AnnotationsListTagsResponses, AnnotationsReadData, AnnotationsReadErrors, AnnotationsReadResponses, AnnotationsRemoveTagData, AnnotationsRemoveTagErrors, AnnotationsRemoveTagResponses, AnnotationsUpdateNoteData, AnnotationsUpdateNoteErrors, AnnotationsUpdateNoteResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, ExportIocsData, ExportIocsErrors, ExportIocsResponses, ExportReportData, ExportReportErrors, ExportReportResponses, JobsDownloadData, JobsDownloadErrors, JobsDownloadResponses, JobsReadData, JobsReadErrors, JobsReadResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, RulesHitsData, RulesHitsErrors, RulesHitsResponses, RulesListData, RulesListErrors, RulesListResponses, RulesReadData, RulesReadErrors, RulesReadResponses, RulesReloadData, RulesReloadErrors, RulesReloadResponses, RulesUpdateData, RulesUpdateErrors, RulesUpdateResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
+import type { AnalysesCancelData, AnalysesCancelErrors, AnalysesCancelResponses, AnalysesCreateData, AnalysesCreateErrors, AnalysesCreateResponses, AnalysesDeleteData, AnalysesDeleteErrors, AnalysesDeleteResponses, AnalysesFinishData, AnalysesFinishErrors, AnalysesFinishResponses, AnalysesListData, AnalysesListErrors, AnalysesListResponses, AnalysesReadData, AnalysesReadErrors, AnalysesReadResponses, AnalysesReingestData, AnalysesReingestErrors, AnalysesReingestResponses, AnnotationsAddNoteData, AnnotationsAddNoteErrors, AnnotationsAddNoteResponses, AnnotationsAddTagData, AnnotationsAddTagErrors, AnnotationsAddTagResponses, AnnotationsDeleteNoteData, AnnotationsDeleteNoteErrors, AnnotationsDeleteNoteResponses, AnnotationsListTagsData, AnnotationsListTagsErrors, AnnotationsListTagsResponses, AnnotationsReadData, AnnotationsReadErrors, AnnotationsReadResponses, AnnotationsRemoveTagData, AnnotationsRemoveTagErrors, AnnotationsRemoveTagResponses, AnnotationsUpdateNoteData, AnnotationsUpdateNoteErrors, AnnotationsUpdateNoteResponses, EventsDetailData, EventsDetailErrors, EventsDetailResponses, EventsFacetsData, EventsFacetsErrors, EventsFacetsResponses, EventsHistogramData, EventsHistogramErrors, EventsHistogramResponses, EventsSearchData, EventsSearchErrors, EventsSearchResponses, ExportIocsData, ExportIocsErrors, ExportIocsResponses, ExportReportData, ExportReportErrors, ExportReportResponses, GuestsActiveBuildData, GuestsActiveBuildErrors, GuestsActiveBuildResponses, GuestsCheckData, GuestsCheckErrors, GuestsCheckResponses, GuestsCloneData, GuestsCloneErrors, GuestsCloneResponses, GuestsContinueBuildData, GuestsContinueBuildErrors, GuestsContinueBuildResponses, GuestsDeleteData, GuestsDeleteErrors, GuestsDeleteResponses, GuestsListData, GuestsListErrors, GuestsListResponses, GuestsMediaData, GuestsMediaErrors, GuestsMediaResponses, GuestsProfilesData, GuestsProfilesErrors, GuestsProfilesResponses, GuestsReadBuildData, GuestsReadBuildErrors, GuestsReadBuildResponses, GuestsReadData, GuestsReadErrors, GuestsReadResponses, GuestsRestartBuildData, GuestsRestartBuildErrors, GuestsRestartBuildResponses, GuestsResumeBuildData, GuestsResumeBuildErrors, GuestsResumeBuildResponses, GuestsStartBuildData, GuestsStartBuildErrors, GuestsStartBuildResponses, JobsDownloadData, JobsDownloadErrors, JobsDownloadResponses, JobsReadData, JobsReadErrors, JobsReadResponses, QueryFieldsData, QueryFieldsErrors, QueryFieldsResponses, QueryValidateData, QueryValidateErrors, QueryValidateResponses, QueryValuesData, QueryValuesErrors, QueryValuesResponses, RulesHitsData, RulesHitsErrors, RulesHitsResponses, RulesListData, RulesListErrors, RulesListResponses, RulesReadData, RulesReadErrors, RulesReadResponses, RulesReloadData, RulesReloadErrors, RulesReloadResponses, RulesUpdateData, RulesUpdateErrors, RulesUpdateResponses, SettingsReadData, SettingsReadErrors, SettingsReadResponses, SettingsReplaceData, SettingsReplaceErrors, SettingsReplaceResponses, SystemHealthData, SystemHealthErrors, SystemHealthResponses, SystemWsMessageSchemasData, SystemWsMessageSchemasErrors, SystemWsMessageSchemasResponses, ViewsArtifactsData, ViewsArtifactsErrors, ViewsArtifactsResponses, ViewsAttackData, ViewsAttackErrors, ViewsAttackResponses, ViewsDetectionsData, ViewsDetectionsErrors, ViewsDetectionsResponses, ViewsDownloadArtifactData, ViewsDownloadArtifactErrors, ViewsDownloadArtifactResponses, ViewsIocsData, ViewsIocsErrors, ViewsIocsResponses, ViewsNetworkData, ViewsNetworkErrors, ViewsNetworkResponses, ViewsPcapData, ViewsPcapErrors, ViewsPcapResponses, ViewsProcessData, ViewsProcessErrors, ViewsProcessesData, ViewsProcessesErrors, ViewsProcessesResponses, ViewsProcessResponses, ViewsRegistryData, ViewsRegistryErrors, ViewsRegistryResponses, ViewsScreenshotData, ViewsScreenshotErrors, ViewsScreenshotResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -49,6 +49,136 @@ export const settingsReplace = <ThrowOnError extends boolean = false>(options: O
 /**
  * List
  *
+ * Every guest with its state, resources, address, options and last self-test.
+ *
+ * A guest whose record cannot be read is listed with the state `broken` and the reason, so that
+ * it can be seen and deleted. `502` when the guest control service is not reachable.
+ */
+export const guestsList = <ThrowOnError extends boolean = false>(options?: Options<GuestsListData, ThrowOnError>): RequestResult<GuestsListResponses, GuestsListErrors, ThrowOnError> => (options?.client ?? client).get<GuestsListResponses, GuestsListErrors, ThrowOnError>({ url: '/api/guests', ...options });
+
+/**
+ * Media
+ *
+ * Installation media found for the build wizard, one entry per image and the guest profile
+ * that recognised it, with the editions it offers. A file nothing recognised is listed with an
+ * `error` saying why.
+ */
+export const guestsMedia = <ThrowOnError extends boolean = false>(options?: Options<GuestsMediaData, ThrowOnError>): RequestResult<GuestsMediaResponses, GuestsMediaErrors, ThrowOnError> => (options?.client ?? client).get<GuestsMediaResponses, GuestsMediaErrors, ThrowOnError>({ url: '/api/guests/media', ...options });
+
+/**
+ * Profiles
+ *
+ * The kinds of guest that can be built: the options to offer, the rules a name must follow,
+ * the badges a guest earns from its options, and the package names a sample may use.
+ */
+export const guestsProfiles = <ThrowOnError extends boolean = false>(options?: Options<GuestsProfilesData, ThrowOnError>): RequestResult<GuestsProfilesResponses, GuestsProfilesErrors, ThrowOnError> => (options?.client ?? client).get<GuestsProfilesResponses, GuestsProfilesErrors, ThrowOnError>({ url: '/api/guests/profiles', ...options });
+
+/**
+ * Start Build
+ *
+ * Starts building a guest from an installation medium and a job that follows the build.
+ *
+ * The body is the control service's build parameters (profile, name, media, options, identity,
+ * resources); it checks them and answers `422` with what is wrong with which field. `409`
+ * while an analysis is queued, starting or running, or while another build or clone runs.
+ */
+export const guestsStartBuild = <ThrowOnError extends boolean = false>(options: Options<GuestsStartBuildData, ThrowOnError>): RequestResult<GuestsStartBuildResponses, GuestsStartBuildErrors, ThrowOnError> => (options.client ?? client).post<GuestsStartBuildResponses, GuestsStartBuildErrors, ThrowOnError>({
+    url: '/api/guests/build',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Active Build
+ *
+ * The build a job is following now: its guest, build and job. `404` when none is.
+ */
+export const guestsActiveBuild = <ThrowOnError extends boolean = false>(options?: Options<GuestsActiveBuildData, ThrowOnError>): RequestResult<GuestsActiveBuildResponses, GuestsActiveBuildErrors, ThrowOnError> => (options?.client ?? client).get<GuestsActiveBuildResponses, GuestsActiveBuildErrors, ThrowOnError>({ url: '/api/guests/builds/active', ...options });
+
+/**
+ * Read Build
+ *
+ * The build's status, steps, pause instructions and the last `tail` lines of its log.
+ * `404` when no build has that id.
+ */
+export const guestsReadBuild = <ThrowOnError extends boolean = false>(options: Options<GuestsReadBuildData, ThrowOnError>): RequestResult<GuestsReadBuildResponses, GuestsReadBuildErrors, ThrowOnError> => (options.client ?? client).get<GuestsReadBuildResponses, GuestsReadBuildErrors, ThrowOnError>({ url: '/api/guests/builds/{build_id}', ...options });
+
+/**
+ * Resume Build
+ *
+ * Runs a failed build again from the step that stopped it, and follows it with a job.
+ * `409` while an analysis is queued, starting or running, or when the build is not failed.
+ */
+export const guestsResumeBuild = <ThrowOnError extends boolean = false>(options: Options<GuestsResumeBuildData, ThrowOnError>): RequestResult<GuestsResumeBuildResponses, GuestsResumeBuildErrors, ThrowOnError> => (options.client ?? client).post<GuestsResumeBuildResponses, GuestsResumeBuildErrors, ThrowOnError>({ url: '/api/guests/builds/{build_id}/resume', ...options });
+
+/**
+ * Restart Build
+ *
+ * Runs a failed build again from its first step, and follows it with a job. `409` while an
+ * analysis is queued, starting or running, or when the build is not failed.
+ */
+export const guestsRestartBuild = <ThrowOnError extends boolean = false>(options: Options<GuestsRestartBuildData, ThrowOnError>): RequestResult<GuestsRestartBuildResponses, GuestsRestartBuildErrors, ThrowOnError> => (options.client ?? client).post<GuestsRestartBuildResponses, GuestsRestartBuildErrors, ThrowOnError>({ url: '/api/guests/builds/{build_id}/restart', ...options });
+
+/**
+ * Continue Build
+ *
+ * Carries on a paused build once the analyst has done what the pause asked. The job that
+ * follows the build resumes by itself; none is started when one already follows it. `409`
+ * while an analysis is queued, starting or running, or when the build is not paused.
+ */
+export const guestsContinueBuild = <ThrowOnError extends boolean = false>(options: Options<GuestsContinueBuildData, ThrowOnError>): RequestResult<GuestsContinueBuildResponses, GuestsContinueBuildErrors, ThrowOnError> => (options.client ?? client).post<GuestsContinueBuildResponses, GuestsContinueBuildErrors, ThrowOnError>({ url: '/api/guests/builds/{build_id}/continue', ...options });
+
+/**
+ * Delete
+ *
+ * Removes the guest: its VM, snapshot, disk and registration. Analyses that used it keep
+ * their data. `409` while an analysis is queued, starting or running, or when the guest is being
+ * built or cloned from; `404` when no guest has that name.
+ */
+export const guestsDelete = <ThrowOnError extends boolean = false>(options: Options<GuestsDeleteData, ThrowOnError>): RequestResult<GuestsDeleteResponses, GuestsDeleteErrors, ThrowOnError> => (options.client ?? client).delete<GuestsDeleteResponses, GuestsDeleteErrors, ThrowOnError>({ url: '/api/guests/{name}', ...options });
+
+/**
+ * Read
+ *
+ * One guest's record. `404` when no guest has that name.
+ */
+export const guestsRead = <ThrowOnError extends boolean = false>(options: Options<GuestsReadData, ThrowOnError>): RequestResult<GuestsReadResponses, GuestsReadErrors, ThrowOnError> => (options.client ?? client).get<GuestsReadResponses, GuestsReadErrors, ThrowOnError>({ url: '/api/guests/{name}', ...options });
+
+/**
+ * Check
+ *
+ * Runs the guest's health checks now: the VM is defined, its snapshot exists, CAPE lists it,
+ * and its agent answers after the snapshot is restored (which takes up to two minutes). `409`
+ * while an analysis is queued, starting or running, or while a build is running; `404` when no
+ * guest has that name.
+ */
+export const guestsCheck = <ThrowOnError extends boolean = false>(options: Options<GuestsCheckData, ThrowOnError>): RequestResult<GuestsCheckResponses, GuestsCheckErrors, ThrowOnError> => (options.client ?? client).post<GuestsCheckResponses, GuestsCheckErrors, ThrowOnError>({ url: '/api/guests/{name}/check', ...options });
+
+/**
+ * Clone
+ *
+ * Clones a ready guest into a new one and starts a job that follows the clone.
+ *
+ * The body is the control service's clone parameters (the new name and the options that may
+ * change); it checks them and answers `422` with what is wrong with which field. `409` while an
+ * analysis is queued, starting or running, while another build or clone runs, or when the guest
+ * is not ready; `404` when no guest has that name. The answer's `guest` is the new guest.
+ */
+export const guestsClone = <ThrowOnError extends boolean = false>(options: Options<GuestsCloneData, ThrowOnError>): RequestResult<GuestsCloneResponses, GuestsCloneErrors, ThrowOnError> => (options.client ?? client).post<GuestsCloneResponses, GuestsCloneErrors, ThrowOnError>({
+    url: '/api/guests/{name}/clone',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List
+ *
  * Newest first; `total` counts every match, not just this page.
  */
 export const analysesList = <ThrowOnError extends boolean = false>(options?: Options<AnalysesListData, ThrowOnError>): RequestResult<AnalysesListResponses, AnalysesListErrors, ThrowOnError> => (options?.client ?? client).get<AnalysesListResponses, AnalysesListErrors, ThrowOnError>({ url: '/api/analyses', ...options });
@@ -56,7 +186,11 @@ export const analysesList = <ThrowOnError extends boolean = false>(options?: Opt
 /**
  * Create
  *
- * Stores the sample and queues an analysis. `409` while the analysis guest is not ready.
+ * Stores the sample and queues an analysis on the chosen guest, or on the default guest.
+ *
+ * `409` when the guest does not exist or is not ready, when no guest has been built or is ready,
+ * and while any guest is being built or tested; `422` for a package the guest does not accept;
+ * `502` when the guest control service cannot be asked.
  */
 export const analysesCreate = <ThrowOnError extends boolean = false>(options: Options<AnalysesCreateData, ThrowOnError>): RequestResult<AnalysesCreateResponses, AnalysesCreateErrors, ThrowOnError> => (options.client ?? client).post<AnalysesCreateResponses, AnalysesCreateErrors, ThrowOnError>({
     ...formDataBodySerializer,
@@ -104,8 +238,8 @@ export const analysesReingest = <ThrowOnError extends boolean = false>(options: 
  * The guest stops within about a second and the analysis then moves on to processing by itself,
  * so the status answered is still `running`. Asking again is harmless. `409` unless the analysis
  * is `running` and its monitor has started in the guest (CAPE says `running` about 25 s earlier,
- * and ending the run in that gap leaves the guest agent dead); `502` when the helper in the CAPE
- * container cannot reach the guest.
+ * and ending the run in that gap leaves the guest agent dead, or the analysis records no guest);
+ * `502` when the guest control service cannot reach the guest agent.
  */
 export const analysesFinish = <ThrowOnError extends boolean = false>(options: Options<AnalysesFinishData, ThrowOnError>): RequestResult<AnalysesFinishResponses, AnalysesFinishErrors, ThrowOnError> => (options.client ?? client).post<AnalysesFinishResponses, AnalysesFinishErrors, ThrowOnError>({ url: '/api/analyses/{analysis_id}/finish', ...options });
 

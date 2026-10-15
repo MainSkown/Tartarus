@@ -44,6 +44,8 @@ function analysis(id: number, status: AnalysisStatus = 'done'): AnalysisRead {
     finished_at: null,
     summary: null,
     tags: [],
+    guest: null,
+    guest_badges: [],
   }
 }
 

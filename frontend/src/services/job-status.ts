@@ -4,6 +4,7 @@ import type { JobStatus } from '@/api'
 const STATUS_FINISHED: Record<JobStatus, boolean> = {
   pending: false,
   running: false,
+  paused: false,
   done: true,
   failed: true,
   interrupted: true,

@@ -5,6 +5,24 @@ export type ClientOptions = {
 };
 
 /**
+ * ActiveBuild
+ */
+export type ActiveBuild = {
+    /**
+     * Build Id
+     */
+    build_id: string;
+    /**
+     * Guest
+     */
+    guest: string;
+    /**
+     * Job Id
+     */
+    job_id: number;
+};
+
+/**
  * AnalysisPage
  */
 export type AnalysisPage = {
@@ -91,6 +109,18 @@ export type AnalysisRead = {
      * The analyst's tags on the analysis itself, by name.
      */
     tags: Array<string>;
+    /**
+     * Guest
+     *
+     * The guest the analysis runs on; the stored name even if deleted.
+     */
+    guest: string | null;
+    /**
+     * Guest Badges
+     *
+     * The guest's badges ("DEFENDER ON"); empty when the guest is gone or the guest control service cannot be asked.
+     */
+    guest_badges: Array<string>;
     /**
      * Queue Position
      *
@@ -279,6 +309,24 @@ export type AttackTechniqueHit = {
 };
 
 /**
+ * BadgeRule
+ */
+export type BadgeRule = {
+    /**
+     * Option
+     */
+    option: string;
+    /**
+     * Value
+     */
+    value: unknown;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
  * Body_analyses_create
  */
 export type BodyAnalysesCreate = {
@@ -291,9 +339,135 @@ export type BodyAnalysesCreate = {
     /**
      * Options
      *
-     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` and `interactive` (a desktop to drive; the run then lasts the whole timeout).
+     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's profile lists), `interactive` (a desktop to drive; the run then lasts the whole timeout) and `guest` (a ready guest; the default guest when omitted).
      */
     options?: string;
+};
+
+/**
+ * BuildPause
+ */
+export type BuildPause = {
+    /**
+     * Instructions
+     */
+    instructions: string;
+};
+
+export type BuildProgress = 'running' | 'paused' | 'failed' | 'succeeded';
+
+/**
+ * BuildStarted
+ *
+ * What starting, resuming, restarting or continuing a build answers: the job that follows
+ * the build, which may be one already following it.
+ */
+export type BuildStarted = {
+    /**
+     * Job Id
+     */
+    job_id: number;
+    /**
+     * Build Id
+     */
+    build_id: string;
+    /**
+     * Guest
+     */
+    guest: string;
+};
+
+/**
+ * BuildStep
+ */
+export type BuildStep = {
+    /**
+     * Name
+     */
+    name: string;
+    status: StepProgress;
+    /**
+     * Started
+     */
+    started?: string | null;
+    /**
+     * Finished
+     */
+    finished?: string | null;
+    /**
+     * Exit Code
+     */
+    exit_code?: number | null;
+    /**
+     * Weight
+     */
+    weight: number;
+    /**
+     * Timeout S
+     */
+    timeout_s: number;
+    /**
+     * Desktop
+     */
+    desktop: boolean;
+    /**
+     * Progress
+     */
+    progress: number;
+};
+
+/**
+ * BuildView
+ *
+ * A build as the GUI shows it: its status and the last lines of its log.
+ */
+export type BuildView = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Guest
+     */
+    guest: string;
+    /**
+     * Kind
+     */
+    kind: string;
+    status: BuildProgress;
+    /**
+     * Step
+     */
+    step: number;
+    /**
+     * Steps
+     */
+    steps: Array<BuildStep>;
+    /**
+     * Percent
+     */
+    percent: number;
+    /**
+     * Message
+     */
+    message?: string;
+    pause?: BuildPause | null;
+    /**
+     * Desktop
+     */
+    desktop?: boolean;
+    /**
+     * Created
+     */
+    created?: string | null;
+    /**
+     * Updated
+     */
+    updated?: string | null;
+    /**
+     * Log
+     */
+    log: Array<string>;
 };
 
 /**
@@ -782,6 +956,210 @@ export type FlowRow = {
 };
 
 /**
+ * Guest
+ *
+ * A guest's record. A `broken` one has only a name, the state and the error: its
+ * `guest.json` could not be read, and it is listed so that it can be seen and deleted.
+ */
+export type Guest = {
+    /**
+     * Name
+     */
+    name: string;
+    state: GuestState;
+    /**
+     * Error
+     */
+    error?: string | null;
+    /**
+     * Profile
+     */
+    profile?: string | null;
+    /**
+     * Kind
+     */
+    kind?: string | null;
+    /**
+     * Cloned From
+     */
+    cloned_from?: string | null;
+    /**
+     * Created
+     */
+    created?: string | null;
+    media?: GuestMedia | null;
+    /**
+     * Options
+     */
+    options?: {
+        [key: string]: unknown;
+    };
+    identity?: GuestIdentity | null;
+    resources?: GuestResources | null;
+    /**
+     * Ip
+     */
+    ip?: string | null;
+    machine?: MachineIdentity | null;
+    /**
+     * Work Dir
+     */
+    work_dir?: string | null;
+    /**
+     * Snapshot
+     */
+    snapshot?: string | null;
+    /**
+     * Disk Path
+     */
+    disk_path?: string | null;
+    /**
+     * Selftest
+     */
+    selftest?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Adopted
+     */
+    adopted?: boolean;
+    /**
+     * Giveaways
+     */
+    giveaways?: Array<string>;
+    /**
+     * Badges
+     */
+    badges?: Array<string>;
+    /**
+     * Build Id
+     */
+    build_id?: string | null;
+};
+
+/**
+ * GuestIdentity
+ */
+export type GuestIdentity = {
+    /**
+     * Account
+     */
+    account: string;
+    /**
+     * Machine
+     */
+    machine: string;
+    /**
+     * Password
+     */
+    password: string;
+};
+
+/**
+ * GuestMedia
+ */
+export type GuestMedia = {
+    /**
+     * File
+     */
+    file: string;
+    /**
+     * Variant
+     */
+    variant?: string | null;
+    /**
+     * Version
+     */
+    version?: string | null;
+    /**
+     * Language
+     */
+    language?: string | null;
+    /**
+     * Arch
+     */
+    arch: string;
+};
+
+export type GuestName = string;
+
+/**
+ * GuestProfile
+ *
+ * What the GUI renders the build wizard and the guest cards from, for one kind of guest.
+ */
+export type GuestProfile = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Family
+     */
+    family: string;
+    /**
+     * Arch
+     */
+    arch: string;
+    resources: ProfileResources;
+    media: ProfileMedia;
+    /**
+     * Options
+     */
+    options: Array<ProfileOption>;
+    identity: ProfileIdentity;
+    clone: ProfileClone;
+    /**
+     * Badges
+     */
+    badges: Array<BadgeRule>;
+    /**
+     * Packages
+     */
+    packages: Array<string>;
+    agent: ProfileAgent;
+    selftest: ProfileSelfTest;
+};
+
+/**
+ * GuestResources
+ */
+export type GuestResources = {
+    /**
+     * Vcpus
+     */
+    vcpus: number;
+    /**
+     * Ram Mb
+     */
+    ram_mb: number;
+    /**
+     * Disk Gb
+     */
+    disk_gb: number;
+};
+
+export type GuestState = 'building' | 'testing' | 'ready' | 'failed' | 'broken';
+
+/**
+ * HealthCheckResult
+ */
+export type HealthCheckResult = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Checks
+     */
+    checks: Array<HealthProbe>;
+};
+
+/**
  * HealthMessage
  *
  * `/ws/system`'s `health` push: the envelope `{type, ts, data}` from the backend spec's
@@ -798,6 +1176,24 @@ export type HealthMessage = {
      */
     ts: string;
     data: SystemHealth;
+};
+
+/**
+ * HealthProbe
+ */
+export type HealthProbe = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Ok
+     */
+    ok: boolean;
+    /**
+     * Message
+     */
+    message: string;
 };
 
 /**
@@ -966,6 +1362,48 @@ export type HttpRow = {
 };
 
 /**
+ * IdentityRule
+ */
+export type IdentityRule = {
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Pattern
+     */
+    pattern: string;
+    /**
+     * Reserved
+     */
+    reserved?: Array<string>;
+    /**
+     * Generator
+     */
+    generator: string;
+    /**
+     * Optional
+     */
+    optional?: boolean;
+};
+
+/**
+ * InteractiveOptions
+ */
+export type InteractiveOptions = {
+    /**
+     * Options
+     */
+    options: string;
+    /**
+     * Task Fields
+     */
+    task_fields?: {
+        [key: string]: boolean | number | string;
+    };
+};
+
+/**
  * Ioc
  */
 export type Ioc = {
@@ -1103,7 +1541,7 @@ export type JobRead = {
 /**
  * JobStatus
  */
-export type JobStatus = 'pending' | 'running' | 'done' | 'failed' | 'interrupted';
+export type JobStatus = 'pending' | 'running' | 'paused' | 'done' | 'failed' | 'interrupted';
 
 /**
  * JobType
@@ -1237,6 +1675,131 @@ export type LoadedModule = {
      * Loaded At
      */
     loaded_at: string;
+};
+
+/**
+ * MachineIdentity
+ */
+export type MachineIdentity = {
+    /**
+     * Uuid
+     */
+    uuid: string;
+    /**
+     * Mac
+     */
+    mac: string;
+    /**
+     * Smbios Serial
+     */
+    smbios_serial: string;
+    /**
+     * Board Serial
+     */
+    board_serial: string;
+    /**
+     * Disk Serial
+     */
+    disk_serial: string;
+};
+
+/**
+ * MediaEntry
+ *
+ * One installation medium as one profile read it, or a file nothing recognised (`profile` is
+ * None and `error` says why).
+ */
+export type MediaEntry = {
+    /**
+     * File
+     */
+    file: string;
+    /**
+     * Size
+     */
+    size: number;
+    /**
+     * Mtime
+     */
+    mtime: number;
+    /**
+     * Profile
+     */
+    profile?: string | null;
+    /**
+     * Kind
+     */
+    kind?: string | null;
+    /**
+     * Variants
+     */
+    variants?: Array<MediaVariant>;
+    /**
+     * Version
+     */
+    version?: string | null;
+    /**
+     * Build
+     */
+    build?: number | null;
+    /**
+     * Language
+     */
+    language?: string | null;
+    /**
+     * Arch
+     */
+    arch?: string | null;
+    /**
+     * Compression
+     */
+    compression?: string | null;
+    /**
+     * Sha256
+     */
+    sha256?: string | null;
+    /**
+     * Error
+     */
+    error?: string | null;
+};
+
+/**
+ * MediaVariant
+ */
+export type MediaVariant = {
+    /**
+     * Index
+     */
+    index: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Edition Id
+     */
+    edition_id?: string | null;
+    /**
+     * Arch
+     */
+    arch?: string | null;
+    /**
+     * Languages
+     */
+    languages?: Array<string>;
+    /**
+     * Default Language
+     */
+    default_language?: string | null;
+    /**
+     * Build
+     */
+    build?: number | null;
+    /**
+     * Installation Type
+     */
+    installation_type?: string | null;
 };
 
 /**
@@ -1570,6 +2133,124 @@ export type ProcessTree = {
      * Total
      */
     total: number;
+};
+
+/**
+ * ProfileAgent
+ */
+export type ProfileAgent = {
+    interactive: InteractiveOptions;
+};
+
+/**
+ * ProfileClone
+ */
+export type ProfileClone = {
+    /**
+     * Computer Name Editable
+     */
+    computer_name_editable: boolean;
+};
+
+/**
+ * ProfileIdentity
+ */
+export type ProfileIdentity = {
+    account: IdentityRule;
+    machine: IdentityRule;
+    password: IdentityRule;
+};
+
+/**
+ * ProfileMedia
+ */
+export type ProfileMedia = {
+    /**
+     * Kinds
+     */
+    kinds: Array<string>;
+};
+
+/**
+ * ProfileOption
+ */
+export type ProfileOption = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Type
+     */
+    type: 'bool' | 'string' | 'choice' | 'secret';
+    /**
+     * Default
+     */
+    default?: unknown;
+    /**
+     * Help
+     */
+    help?: string;
+    /**
+     * Choices
+     */
+    choices?: Array<string>;
+    /**
+     * Requires User Step
+     */
+    requires_user_step?: boolean;
+    /**
+     * Changeable On Clone
+     */
+    changeable_on_clone?: boolean;
+};
+
+/**
+ * ProfileResources
+ */
+export type ProfileResources = {
+    /**
+     * Vcpus
+     */
+    vcpus: number;
+    /**
+     * Ram Mb
+     */
+    ram_mb: number;
+    /**
+     * Disk Gb
+     */
+    disk_gb: number;
+    /**
+     * Min Disk Gb
+     */
+    min_disk_gb: number;
+};
+
+/**
+ * ProfileSelfTest
+ *
+ * What the self-test of a guest of this profile must observe in the analysis of its sample.
+ */
+export type ProfileSelfTest = {
+    /**
+     * Signals
+     */
+    signals: Array<ProfileSignal>;
+};
+
+/**
+ * ProfileSignal
+ */
+export type ProfileSignal = {
+    /**
+     * Id
+     */
+    id: string;
 };
 
 /**
@@ -2010,6 +2691,10 @@ export type SettingsBody = {
      */
     default_interactive?: boolean;
     /**
+     * The guest an analysis runs on when its options name none. Null, or a guest that is not ready or no longer exists, means the first ready guest.
+     */
+    default_guest?: GuestName | null;
+    /**
      * Disk Block Gb
      */
     disk_block_gb?: number;
@@ -2040,6 +2725,8 @@ export type SignatureSummary = {
 };
 
 export type SortOrder = '@timestamp' | '-@timestamp';
+
+export type StepProgress = 'pending' | 'running' | 'paused' | 'failed' | 'succeeded';
 
 /**
  * SystemHealth
@@ -2254,6 +2941,392 @@ export type SettingsReplaceResponses = {
 };
 
 export type SettingsReplaceResponse = SettingsReplaceResponses[keyof SettingsReplaceResponses];
+
+export type GuestsListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/guests';
+};
+
+export type GuestsListErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsListError = GuestsListErrors[keyof GuestsListErrors];
+
+export type GuestsListResponses = {
+    /**
+     * Response Guests List
+     *
+     * Successful Response
+     */
+    200: Array<Guest>;
+};
+
+export type GuestsListResponse = GuestsListResponses[keyof GuestsListResponses];
+
+export type GuestsMediaData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/guests/media';
+};
+
+export type GuestsMediaErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsMediaError = GuestsMediaErrors[keyof GuestsMediaErrors];
+
+export type GuestsMediaResponses = {
+    /**
+     * Response Guests Media
+     *
+     * Successful Response
+     */
+    200: Array<MediaEntry>;
+};
+
+export type GuestsMediaResponse = GuestsMediaResponses[keyof GuestsMediaResponses];
+
+export type GuestsProfilesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/guests/profiles';
+};
+
+export type GuestsProfilesErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsProfilesError = GuestsProfilesErrors[keyof GuestsProfilesErrors];
+
+export type GuestsProfilesResponses = {
+    /**
+     * Response Guests Profiles
+     *
+     * Successful Response
+     */
+    200: Array<GuestProfile>;
+};
+
+export type GuestsProfilesResponse = GuestsProfilesResponses[keyof GuestsProfilesResponses];
+
+export type GuestsStartBuildData = {
+    /**
+     * Params
+     */
+    body: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/guests/build';
+};
+
+export type GuestsStartBuildErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsStartBuildError = GuestsStartBuildErrors[keyof GuestsStartBuildErrors];
+
+export type GuestsStartBuildResponses = {
+    /**
+     * Successful Response
+     */
+    202: BuildStarted;
+};
+
+export type GuestsStartBuildResponse = GuestsStartBuildResponses[keyof GuestsStartBuildResponses];
+
+export type GuestsActiveBuildData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/guests/builds/active';
+};
+
+export type GuestsActiveBuildErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsActiveBuildError = GuestsActiveBuildErrors[keyof GuestsActiveBuildErrors];
+
+export type GuestsActiveBuildResponses = {
+    /**
+     * Successful Response
+     */
+    200: ActiveBuild;
+};
+
+export type GuestsActiveBuildResponse = GuestsActiveBuildResponses[keyof GuestsActiveBuildResponses];
+
+export type GuestsReadBuildData = {
+    body?: never;
+    path: {
+        /**
+         * Build Id
+         */
+        build_id: string;
+    };
+    query?: {
+        /**
+         * Tail
+         */
+        tail?: number;
+    };
+    url: '/api/guests/builds/{build_id}';
+};
+
+export type GuestsReadBuildErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsReadBuildError = GuestsReadBuildErrors[keyof GuestsReadBuildErrors];
+
+export type GuestsReadBuildResponses = {
+    /**
+     * Successful Response
+     */
+    200: BuildView;
+};
+
+export type GuestsReadBuildResponse = GuestsReadBuildResponses[keyof GuestsReadBuildResponses];
+
+export type GuestsResumeBuildData = {
+    body?: never;
+    path: {
+        /**
+         * Build Id
+         */
+        build_id: string;
+    };
+    query?: never;
+    url: '/api/guests/builds/{build_id}/resume';
+};
+
+export type GuestsResumeBuildErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsResumeBuildError = GuestsResumeBuildErrors[keyof GuestsResumeBuildErrors];
+
+export type GuestsResumeBuildResponses = {
+    /**
+     * Successful Response
+     */
+    202: BuildStarted;
+};
+
+export type GuestsResumeBuildResponse = GuestsResumeBuildResponses[keyof GuestsResumeBuildResponses];
+
+export type GuestsRestartBuildData = {
+    body?: never;
+    path: {
+        /**
+         * Build Id
+         */
+        build_id: string;
+    };
+    query?: never;
+    url: '/api/guests/builds/{build_id}/restart';
+};
+
+export type GuestsRestartBuildErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsRestartBuildError = GuestsRestartBuildErrors[keyof GuestsRestartBuildErrors];
+
+export type GuestsRestartBuildResponses = {
+    /**
+     * Successful Response
+     */
+    202: BuildStarted;
+};
+
+export type GuestsRestartBuildResponse = GuestsRestartBuildResponses[keyof GuestsRestartBuildResponses];
+
+export type GuestsContinueBuildData = {
+    body?: never;
+    path: {
+        /**
+         * Build Id
+         */
+        build_id: string;
+    };
+    query?: never;
+    url: '/api/guests/builds/{build_id}/continue';
+};
+
+export type GuestsContinueBuildErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsContinueBuildError = GuestsContinueBuildErrors[keyof GuestsContinueBuildErrors];
+
+export type GuestsContinueBuildResponses = {
+    /**
+     * Successful Response
+     */
+    202: BuildStarted;
+};
+
+export type GuestsContinueBuildResponse = GuestsContinueBuildResponses[keyof GuestsContinueBuildResponses];
+
+export type GuestsDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/guests/{name}';
+};
+
+export type GuestsDeleteErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsDeleteError = GuestsDeleteErrors[keyof GuestsDeleteErrors];
+
+export type GuestsDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type GuestsDeleteResponse = GuestsDeleteResponses[keyof GuestsDeleteResponses];
+
+export type GuestsReadData = {
+    body?: never;
+    path: {
+        /**
+         * Name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/guests/{name}';
+};
+
+export type GuestsReadErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsReadError = GuestsReadErrors[keyof GuestsReadErrors];
+
+export type GuestsReadResponses = {
+    /**
+     * Successful Response
+     */
+    200: Guest;
+};
+
+export type GuestsReadResponse = GuestsReadResponses[keyof GuestsReadResponses];
+
+export type GuestsCheckData = {
+    body?: never;
+    path: {
+        /**
+         * Name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/guests/{name}/check';
+};
+
+export type GuestsCheckErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsCheckError = GuestsCheckErrors[keyof GuestsCheckErrors];
+
+export type GuestsCheckResponses = {
+    /**
+     * Successful Response
+     */
+    200: HealthCheckResult;
+};
+
+export type GuestsCheckResponse = GuestsCheckResponses[keyof GuestsCheckResponses];
+
+export type GuestsCloneData = {
+    /**
+     * Params
+     */
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        /**
+         * Name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/guests/{name}/clone';
+};
+
+export type GuestsCloneErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsCloneError = GuestsCloneErrors[keyof GuestsCloneErrors];
+
+export type GuestsCloneResponses = {
+    /**
+     * Successful Response
+     */
+    202: BuildStarted;
+};
+
+export type GuestsCloneResponse = GuestsCloneResponses[keyof GuestsCloneResponses];
 
 export type AnalysesListData = {
     body?: never;
