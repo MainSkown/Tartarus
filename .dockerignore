@@ -1,0 +1,10 @@
+# The cape image is built from the repo root (it copies cape/ and guest/); nothing else belongs in
+# its build context, and data/ alone is several GB of ISOs.
+*
+!cape
+!guest
+**/__pycache__
+**/*.pyc
+cape/tests
+**/.pytest_cache
+**/.ruff_cache

@@ -130,7 +130,8 @@ services:
     container_name: tartarus-cape
     image: tartarus-cape:latest
     build:
-      context: ./cape
+      context: .
+      dockerfile: cape/Dockerfile
       args:
         CAPE_REF: ${CAPE_REF:-9f806acd24ae23ee9a52cf4f1e82657635f07659}
     restart: unless-stopped

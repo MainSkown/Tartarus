@@ -23,10 +23,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         aptitude build-essential ca-certificates gpg lsb-release python3-pip sudo wget
 WORKDIR /build
 COPY --from=cape-source /opt/CAPEv2/installer/kvm-qemu.sh ./
-COPY build/kvm-config.sh ./
+COPY cape/build/kvm-config.sh ./
 RUN bash kvm-qemu.sh qemu
 RUN bash kvm-qemu.sh seabios
-COPY build/runtime-packages.sh ./
+COPY cape/build/runtime-packages.sh ./
 RUN mkdir /out \
     && cp /tmp/qemu-*_builded.deb /out/qemu.deb \
     && cp /usr/share/qemu/bios.bin /usr/share/qemu/bios-256k.bin /out/ \
@@ -53,7 +53,7 @@ RUN cd "guacamole-server-${GUACAMOLE_VERSION}" \
     && make install DESTDIR=/out/root \
     && make install \
     && ldconfig
-COPY build/runtime-packages.sh ./
+COPY cape/build/runtime-packages.sh ./
 RUN ./runtime-packages.sh /usr/local/sbin/guacd /usr/local/lib/libguac*.so > /out/runtime-packages
 
 
@@ -73,7 +73,7 @@ RUN uv sync --frozen --no-dev
 # cape2.sh installs libvirt-python separately, pinned to the libvirt it runs against.
 RUN uv pip install --python .venv/bin/python "libvirt-python==$(pkg-config --modversion libvirt)"
 RUN .venv/bin/python utils/community.py -waf -cr
-COPY build/runtime-packages.sh /build/
+COPY cape/build/runtime-packages.sh /build/
 RUN find .venv -name '*.so*' -type f -print0 | xargs -0 /build/runtime-packages.sh > /build/venv-runtime-packages
 
 
@@ -135,7 +135,7 @@ RUN rm -rf /etc/libvirt/qemu \
 # Store app (the Windows 11 Notepad) then hangs in ntdll waits and never opens a window. The
 # analyzer is zipped from this directory and uploaded to the guest for every task, so patching it here
 # fixes that without touching the guest. The patch fails the build if CAPE_REF moved its anchors.
-COPY patches/skip-packaged-apps.py /tmp/skip-packaged-apps.py
+COPY cape/patches/skip-packaged-apps.py /tmp/skip-packaged-apps.py
 RUN python3 /tmp/skip-packaged-apps.py /opt/CAPEv2/analyzer/windows/analyzer.py \
     && python3 -c "import ast; ast.parse(open('/opt/CAPEv2/analyzer/windows/analyzer.py').read())" \
     && grep -q 'skips_packaged_app(filepath, self.analyzer.package_name)' /opt/CAPEv2/analyzer/windows/analyzer.py \
@@ -146,14 +146,16 @@ RUN python3 /tmp/skip-packaged-apps.py /opt/CAPEv2/analyzer/windows/analyzer.py 
 RUN apt-get update && apt-get install -y --no-install-recommends wimtools \
     && rm -rf /var/lib/apt/lists/*
 
-COPY libvirt/qemu.conf /etc/libvirt/qemu.conf
-COPY supervisord.conf /etc/supervisor/conf.d/cape.conf
-COPY templates/ /usr/local/lib/tartarus/templates/
-COPY bin/ /usr/local/lib/tartarus/
+COPY cape/libvirt/qemu.conf /etc/libvirt/qemu.conf
+COPY cape/supervisord.conf /etc/supervisor/conf.d/cape.conf
+COPY cape/templates/ /usr/local/lib/tartarus/templates/
+COPY cape/bin/ /usr/local/lib/tartarus/
 # Beside the scripts, which put their own directory on the import path.
-COPY guest_engine/ /usr/local/lib/tartarus/guest_engine/
-COPY entrypoint.sh /usr/local/bin/cape-entrypoint
-COPY --chown=cape:cape conf/ /opt/CAPEv2/custom/conf/
+COPY cape/guest_engine/ /usr/local/lib/tartarus/guest_engine/
+COPY guest/profiles/ /usr/local/lib/tartarus/profiles/
+COPY guest/steps/ /usr/local/lib/tartarus/steps/
+COPY cape/entrypoint.sh /usr/local/bin/cape-entrypoint
+COPY --chown=cape:cape cape/conf/ /opt/CAPEv2/custom/conf/
 
 HEALTHCHECK --interval=15s --timeout=10s --start-period=120s --retries=5 \
     CMD virsh -q -c qemu:///system list >/dev/null \
