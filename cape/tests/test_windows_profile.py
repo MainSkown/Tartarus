@@ -844,6 +844,14 @@ class TestSysmon:
 
 
 class TestFactsScript:
+    def test_words_are_split_without_cutting_a_non_ascii_letter_out_of_them(self):
+        text = script_text("selftest/guest-facts.ps1")
+        assert "\\p{L}" in text
+
+    def test_firewall_rules_of_windows_own_packages_are_not_scanned(self):
+        text = script_text("selftest/guest-facts.ps1")
+        assert "StartsWith('@')" in text
+
     def test_keeps_the_fact_lines_verify_guest_relies_on(self):
         text = script_text("selftest/guest-facts.ps1")
         for key in (

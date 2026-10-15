@@ -53,6 +53,8 @@ def test_names_that_say_what_the_machine_is_are_found(text, word):
         "analog",
         "canal",
         "",
+        "Usługa niejawnego programu testów systemu Windows",
+        "Zabezpieczenia urządzenia testowe",
     ],
 )
 def test_ordinary_names_and_words_that_merely_contain_a_short_giveaway_pass(text):

@@ -14,8 +14,16 @@ TOKEN_PREFIX_GIVEAWAYS = ("analy",)
 _TOKEN = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
 
 
+_WORD = re.compile(r"[^\W_]+")
+
+
 def tokens(text: str) -> list[str]:
-    return [token.lower() for token in _TOKEN.findall(text)]
+    """Words of `text`. Camel-case is split only in plain ASCII words: cutting a word such as the
+    Polish `testów` at its accented letter would leave a bare `test` that is not in the text."""
+    found: list[str] = []
+    for word in _WORD.findall(text):
+        found.extend(_TOKEN.findall(word) if word.isascii() else [word])
+    return [token.lower() for token in found]
 
 
 def find_giveaway(text: str) -> str | None:

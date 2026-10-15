@@ -67,7 +67,13 @@ $AllowedTokenHits = @('Administrator', 'AdministratorAccount')
 function Split-Tokens([string] $text) {
   # Same rule as guest_engine.giveaways.tokens: split on non-alphanumerics and camel-case, so a
   # short TokenWords entry inside an ordinary English word never matches by accident.
-  [regex]::Matches($text, '[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+') | ForEach-Object { $_.Value.ToLower() }
+  # A word with a non-ASCII letter stays whole: cutting `testów` at its accent would leave `test`.
+  foreach ($word in [regex]::Matches($text, '[\p{L}\p{Nd}]+')) {
+    if ($word.Value -match '^[\x00-\x7F]+$') {
+      [regex]::Matches($word.Value, '[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+') | ForEach-Object { $_.Value.ToLower() }
+    }
+    else { $word.Value.ToLower() }
+  }
 }
 
 function Find-Giveaway([string] $text) {
@@ -106,7 +112,9 @@ foreach ($service in Get-Service) {
   Report-Giveaway 'service' $service.DisplayName
 }
 
+# Rules that belong to a Windows package carry a resource-string group (@{...}); every install has them.
 foreach ($rule in Get-NetFirewallRule -PolicyStore ActiveStore -ErrorAction SilentlyContinue) {
+  if ($rule.Group -and $rule.Group.StartsWith('@')) { continue }
   Report-Giveaway 'firewall rule' $rule.DisplayName
 }
 
