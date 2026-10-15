@@ -180,6 +180,11 @@ def break_record(guests, name, content):
     (guests.root / name / "guest.json").write_text(content)
 
 
+def break_record_of_new_guest(guests, name, content):
+    guests.create(make_guest(name))
+    break_record(guests, name, content)
+
+
 def test_a_corrupt_record_does_not_hide_the_readable_guests(guests):
     guests.create(make_guest("alpha", "192.168.150.10"))
     guests.create(make_guest("bravo", "192.168.150.11"))
@@ -321,6 +326,29 @@ def test_allocation_skips_the_addresses_of_every_guest_including_failed_ones(gue
     guests.create(make_guest("bravo", "192.168.150.11", state="failed"))
 
     assert guests.allocate_ip(SUBNET) == "192.168.150.12"
+
+
+def test_a_guest_whose_record_is_missing_fields_still_holds_its_address(guests):
+    guests.create(make_guest("alpha", "192.168.150.10"))
+    guests.create(make_guest("bravo", "192.168.150.11"))
+    break_record(guests, "bravo", '{"name": "bravo", "ip": "192.168.150.11"}')
+
+    assert guests.allocate_ip(SUBNET) == "192.168.150.12"
+
+
+def test_a_guest_whose_record_is_truncated_still_holds_its_address(guests):
+    guests.create(make_guest("alpha", "192.168.150.10"))
+    guests.create(make_guest("bravo", "192.168.150.11"))
+    text = (guests.root / "bravo" / "guest.json").read_text()
+    break_record(guests, "bravo", text[: text.rindex('"machine"')])
+
+    assert guests.allocate_ip(SUBNET) == "192.168.150.12"
+
+
+def test_an_address_of_a_corrupt_record_that_is_not_one_is_ignored(guests):
+    break_record_of_new_guest(guests, "alpha", '{"ip": "not-an-address"}')
+
+    assert guests.allocate_ip(SUBNET) == "192.168.150.10"
 
 
 def test_a_deleted_guests_address_is_free_again(guests):

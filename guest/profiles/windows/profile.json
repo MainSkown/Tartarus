@@ -298,5 +298,25 @@
     "agent_s": 900,
     "idle_s": 60,
     "shutdown_s": 300
+  },
+  "adoption": {
+    "account": "Analyst",
+    "machine": "DESKTOP-7A3K2P9",
+    "password": "Tartarus1!",
+    "work_dir": "C:\\tartarus",
+    "media": {
+      "file": "Win11_25H2_Polish_x64_v2.iso",
+      "variant": "5",
+      "version": "10.0.26200",
+      "language": "pl-PL",
+      "arch": "amd64"
+    },
+    "options": {
+      "defender": true,
+      "decoys": false,
+      "sysmon": false,
+      "key": "",
+      "keyboard": "Polish (Programmers)"
+    }
   }
 }

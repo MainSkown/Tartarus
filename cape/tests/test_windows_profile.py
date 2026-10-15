@@ -375,6 +375,9 @@ LINE_ALLOWED = {
     ),
     # The EICAR test string's own text (Microsoft's standard string, not a project giveaway);
     # it is still split across two variables so no single literal spells the whole marker.
+    # The adoption block records the guest M0b built before this scan existed, giveaways and all;
+    # the card says so (decision 16), and it is the only place these two values are written.
+    "profile.json": ('"password": "Tartarus1!"', '"work_dir": "C:\\\\tartarus"'),
     "tamper-off.ps1": ("$eicarSecondHalf = ",),
     "defender-on.ps1": ("$eicarSecondHalf = ",),
 }

@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "STEP Giving the copy its own identity"
+grep -o "\"cloned_from\": \"[a-z0-9-]*\"" "$TT_CONTEXT_JSON" | head -1 >> "$TT_GUEST_DIR/context-seen"
+echo "$TT_STEP" >> "$TT_GUEST_DIR/ran"

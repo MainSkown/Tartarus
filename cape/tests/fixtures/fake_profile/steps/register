@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "STEP Registering"
+echo "LOG the engine registers the guest once the last step is done"

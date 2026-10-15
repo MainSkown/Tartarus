@@ -10,6 +10,7 @@ import ipaddress
 import json
 import os
 import random
+import re
 import shutil
 import uuid
 import xml.etree.ElementTree as ET
@@ -115,6 +116,9 @@ class Guest:
         )
 
 
+_RAW_ADDRESS = re.compile(r'"ip"\s*:\s*"([^"]*)"')
+
+
 def _timestamp(now: datetime | None) -> str:
     return (now or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -218,6 +222,20 @@ def _read_guest(file: Path) -> Guest:
         raise ValueError(f"{GUEST_FILE} has the wrong fields ({error})") from None
 
 
+def _address_in_broken_record(file: Path) -> str | None:
+    """The `ip` of a record that cannot be parsed as a guest, so its address is never reused."""
+    try:
+        match = _RAW_ADDRESS.search(file.read_text())
+    except OSError:
+        return None
+    if match is None:
+        return None
+    try:
+        return str(ipaddress.ip_address(match.group(1)))
+    except ValueError:
+        return None
+
+
 class Registry:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -288,7 +306,14 @@ class Registry:
         shutil.rmtree(self.root / name)
 
     def allocate_ip(self, subnet: str) -> str:
-        return next_free_ip(subnet, {guest.ip for guest in self.list()})
+        guests, broken = self._scan()
+        held = {guest.ip for guest in guests}
+        held.update(
+            address
+            for name, _ in broken
+            if (address := _address_in_broken_record(self.root / name / GUEST_FILE))
+        )
+        return next_free_ip(subnet, held)
 
     def adopt(
         self, domain_xml: str, registration: str, profile: Profile, now: datetime | None = None

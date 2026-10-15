@@ -1,0 +1,9 @@
+#!/bin/sh
+echo "$TT_STEP" >> "$TT_GUEST_DIR/ran"
+if [ -e "$TT_GUEST_DIR/answered" ]; then
+    echo "STEP Thank you"
+    exit 0
+fi
+touch "$TT_GUEST_DIR/answered"
+echo "PAUSE Press the green button on the desktop, then continue"
+exit 75

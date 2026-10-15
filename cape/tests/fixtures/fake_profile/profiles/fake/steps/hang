@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "STEP Waiting for something that never comes"
+while [ ! -e "$TT_GUEST_DIR/release" ]; do sleep 0.05; done

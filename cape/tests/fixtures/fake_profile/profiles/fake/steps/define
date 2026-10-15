@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "STEP Defining the VM"
+touch "$TT_GUEST_DIR/defined"
+echo "$TT_STEP" >> "$TT_GUEST_DIR/ran"

@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "id": "fake",
+  "display_name": "Fake OS",
+  "family": "toy",
+  "cape": {
+    "platform": "linux",
+    "tags": [
+      "fake"
+    ]
+  },
+  "arch": "x64",
+  "hardware": {
+    "machine": "q35",
+    "boot": "uefi",
+    "secure_boot": false,
+    "tpm": false,
+    "disk_bus": "sata",
+    "nic_model": "e1000e",
+    "clock": "utc"
+  },
+  "resources": {
+    "vcpus": 2,
+    "ram_mb": 2048,
+    "disk_gb": 10,
+    "min_disk_gb": 5,
+    "scratch_gb": 1
+  },
+  "media": {
+    "kinds": [
+      "installer"
+    ],
+    "inspector": "inspector"
+  },
+  "options": [
+    {
+      "key": "pause",
+      "label": "Ask the user",
+      "type": "bool",
+      "default": false,
+      "help": "Makes the build stop once and wait.",
+      "changeable_on_clone": true
+    },
+    {
+      "key": "slow",
+      "label": "Hang",
+      "type": "bool",
+      "default": false,
+      "help": "Makes one step run past its timeout."
+    },
+    {
+      "key": "token",
+      "label": "Token",
+      "type": "secret",
+      "default": "",
+      "help": "A secret option."
+    }
+  ],
+  "identity": {
+    "account": {
+      "label": "Username",
+      "pattern": "[a-z][a-z0-9]{0,19}",
+      "reserved": [
+        "root"
+      ],
+      "generator": "first_name_lower",
+      "optional": true
+    },
+    "machine": {
+      "label": "Hostname",
+      "pattern": "[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?",
+      "reserved": [
+        "localhost"
+      ],
+      "generator": "hostname",
+      "optional": true
+    },
+    "password": {
+      "label": "Password",
+      "pattern": "[\\x20-\\x7e]{8,64}",
+      "reserved": [],
+      "generator": "password",
+      "optional": true
+    }
+  },
+  "clone": {
+    "computer_name_editable": true
+  },
+  "pipelines": {
+    "build": {
+      "installer": [
+        {
+          "step": "preflight"
+        },
+        {
+          "step": "define"
+        },
+        {
+          "step": "install",
+          "desktop": true,
+          "timeout_s": 30,
+          "weight": 4
+        },
+        {
+          "step": "ask",
+          "desktop": true,
+          "weight": 2,
+          "when": {
+            "option": "pause",
+            "value": true
+          }
+        },
+        {
+          "step": "hang",
+          "timeout_s": 1,
+          "when": {
+            "option": "slow",
+            "value": true
+          }
+        },
+        {
+          "step": "verify-disk"
+        },
+        {
+          "step": "snapshot",
+          "weight": 2
+        },
+        {
+          "step": "register"
+        }
+      ]
+    },
+    "clone": [
+      {
+        "step": "preflight"
+      },
+      {
+        "step": "copy",
+        "weight": 3
+      },
+      {
+        "step": "define"
+      },
+      {
+        "step": "reconfigure",
+        "desktop": true,
+        "weight": 3
+      },
+      {
+        "step": "ask",
+        "desktop": true,
+        "weight": 2,
+        "when": {
+          "option": "pause",
+          "value": true
+        }
+      },
+      {
+        "step": "verify-disk"
+      },
+      {
+        "step": "snapshot",
+        "weight": 2
+      },
+      {
+        "step": "register"
+      }
+    ]
+  },
+  "agent": {
+    "port": 8000,
+    "path_style": "posix",
+    "ready": {
+      "marker": null
+    },
+    "finish_dir": "/tmp",
+    "work_root": "/var/lib",
+    "shutdown": "acpi",
+    "interactive": {
+      "options": "",
+      "task_fields": {}
+    },
+    "pre_snapshot": null
+  },
+  "selftest": {
+    "sample": {
+      "source": "selftest/benign.c",
+      "build": [
+        "cc"
+      ]
+    },
+    "signals": [
+      {
+        "id": "report.present"
+      }
+    ],
+    "facts": {
+      "script": "selftest/facts.sh"
+    },
+    "extras": []
+  },
+  "packages": [
+    "generic"
+  ],
+  "badges": [
+    {
+      "option": "pause",
+      "value": true,
+      "label": "PAUSES"
+    }
+  ],
+  "timeouts": {
+    "agent_s": 60,
+    "idle_s": 5,
+    "shutdown_s": 30
+  },
+  "adoption": {
+    "account": "analyst",
+    "machine": "adopted-pc",
+    "password": "Adopted-pass-1",
+    "work_dir": "/var/lib/adopted",
+    "media": {
+      "file": "old.fake",
+      "variant": "1",
+      "version": "1.0",
+      "language": "en-US",
+      "arch": "x64"
+    },
+    "options": {
+      "pause": false,
+      "slow": false,
+      "token": ""
+    }
+  }
+}

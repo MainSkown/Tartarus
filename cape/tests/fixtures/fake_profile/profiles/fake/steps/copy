@@ -1,0 +1,5 @@
+#!/bin/sh
+echo "STEP Copying the disk"
+echo "PROGRESS 50"
+touch "$TT_GUEST_DIR/copied"
+echo "$TT_STEP" >> "$TT_GUEST_DIR/ran"

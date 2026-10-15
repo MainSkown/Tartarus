@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "STEP Checking the host"
+echo "PROGRESS 100"
+echo "LOG enough room for everything"

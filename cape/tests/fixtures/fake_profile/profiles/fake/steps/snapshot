@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "STEP Taking the snapshot"
+touch "$TT_GUEST_DIR/snapshotted"
+echo "$TT_STEP" >> "$TT_GUEST_DIR/ran"

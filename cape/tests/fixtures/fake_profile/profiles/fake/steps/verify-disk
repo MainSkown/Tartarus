@@ -1,0 +1,7 @@
+#!/bin/sh
+echo "STEP Verifying the disk"
+echo "$TT_STEP" >> "$TT_GUEST_DIR/ran"
+if [ -e "$TT_GUEST_DIR/break" ]; then
+    echo "the disk image is corrupt" >&2
+    exit 3
+fi
