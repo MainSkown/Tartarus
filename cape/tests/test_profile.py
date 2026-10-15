@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 import stat
 from pathlib import Path
 
@@ -63,7 +64,8 @@ def test_the_windows_fixture_expresses_the_decisions_of_the_plan():
     assert profile.agent.path_style == "windows"
     assert profile.agent.finish_dir == "C:\\Windows\\Temp"
     assert profile.agent.shutdown == "acpi"
-    assert [entry.step for entry in profile.build_pipeline("installer")] == [
+    steps = profile.build_pipeline("installer", {"defender": False})
+    assert [entry.step for entry in steps] == [
         "preflight",
         "define",
         "install",
@@ -72,8 +74,8 @@ def test_the_windows_fixture_expresses_the_decisions_of_the_plan():
         "snapshot",
         "register",
     ]
-    assert profile.build_pipeline("installer")[2].desktop is True
-    assert profile.build_pipeline("installer")[0].desktop is False
+    assert steps[2].desktop is True
+    assert steps[0].desktop is False
 
 
 def test_the_linux_fixture_expresses_what_the_linux_paper_design_needs():
@@ -84,7 +86,7 @@ def test_the_linux_fixture_expresses_what_the_linux_paper_design_needs():
     assert profile.hardware.clock == "utc"
     assert profile.agent.path_style == "posix"
     assert profile.agent.pre_snapshot == "sync-disk"
-    assert [s.step for s in profile.build_pipeline("disk_image")][:3] == [
+    assert [s.step for s in profile.build_pipeline("disk_image", {})][:3] == [
         "preflight",
         "fetch_payload",
         "define",
@@ -114,9 +116,175 @@ def test_option_defaults_are_the_default_of_every_option():
     }
 
 
+def test_interactive_runs_are_described_by_cape_options_and_by_task_fields():
+    windows = sample_profile("windows").agent.interactive
+    linux = sample_profile("ubuntu").agent.interactive
+
+    assert (windows.options, windows.task_fields) == ("interactive=1,nohuman=yes", {})
+    assert (linux.options, linux.task_fields) == ("", {"enforce_timeout": True})
+
+
+def test_task_fields_may_be_flags_numbers_or_text():
+    data = with_value(
+        profile_data("ubuntu"),
+        "agent.interactive.task_fields",
+        {"enforce_timeout": True, "timeout": 300, "route": "none"},
+    )
+
+    assert parse_profile(data).agent.interactive.task_fields == {
+        "enforce_timeout": True,
+        "timeout": 300,
+        "route": "none",
+    }
+
+
+def test_task_fields_default_to_none():
+    data = without(profile_data("ubuntu"), "agent.interactive.task_fields")
+
+    assert parse_profile(data).agent.interactive.task_fields == {}
+
+
+def test_the_hardware_persona_names_the_smbios_persona_and_defaults_to_the_default_one():
+    assert sample_profile("windows").hardware.persona == "default"
+    assert sample_profile("ubuntu").hardware.persona == "lab-desktop"
+
+
 def test_agent_work_root_is_where_a_guests_working_folder_is_made():
     assert sample_profile("windows").agent.work_root == "C:\\ProgramData"
     assert sample_profile("ubuntu").agent.work_root == "/var/lib"
+
+
+def test_what_may_change_on_a_clone_is_read_from_the_option_flags_alone():
+    assert sample_profile("windows").clone_changeable_options() == {"defender", "decoys"}
+    assert sample_profile("ubuntu").clone_changeable_options() == {"decoys"}
+
+
+def test_a_separate_list_of_changeable_options_is_rejected_and_points_at_the_option_flag():
+    data = with_value(profile_data("windows"), "clone.changeable_options", ["defender"])
+
+    assert "changeable_on_clone" in problems_of(data)["clone.changeable_options"]
+
+
+# --- conditional pipeline entries --------------------------------------------------------
+
+
+def step_names_of(entries) -> list[str]:
+    return [entry.step for entry in entries]
+
+
+def test_a_conditional_build_step_runs_only_for_the_options_that_match():
+    profile = sample_profile("windows")
+
+    defender_on = step_names_of(profile.build_pipeline("installer", {"defender": True}))
+    defender_off = step_names_of(profile.build_pipeline("installer", {"defender": False}))
+
+    assert "tamper-off" not in defender_on
+    assert defender_off == [
+        "preflight",
+        "define",
+        "install",
+        "provision",
+        "tamper-off",
+        "snapshot",
+        "register",
+    ]
+    assert [step for step in defender_off if step != "tamper-off"] == defender_on
+
+
+def test_options_the_caller_leaves_out_take_the_profiles_defaults():
+    profile = sample_profile("windows")
+
+    assert profile.build_pipeline("installer", {}) == profile.build_pipeline(
+        "installer", {"defender": True}
+    )
+
+
+def test_the_clone_pipeline_is_chosen_by_the_options_of_the_clone_too():
+    profile = sample_profile("windows")
+
+    assert "tamper-off" not in step_names_of(profile.clone_pipeline({"defender": True}))
+    assert step_names_of(profile.clone_pipeline({"defender": False})) == [
+        "preflight",
+        "copy",
+        "define",
+        "reconfigure",
+        "tamper-off",
+        "snapshot",
+        "register",
+    ]
+
+
+def test_a_step_needed_in_a_build_and_in_a_clone_is_in_both_pipelines_but_named_once():
+    profile = sample_profile("windows")
+
+    assert "tamper-off" in step_names_of(profile.build_pipeline("installer", {"defender": False}))
+    assert "tamper-off" in step_names_of(profile.clone_pipeline({"defender": False}))
+    assert sorted(profile.step_names()).count("tamper-off") == 1
+
+
+def test_a_negated_condition_runs_the_step_for_every_other_value():
+    data = with_value(
+        profile_data("ubuntu"), "pipelines.clone.3.when", {"option": "desktop", "not": "none"}
+    )
+    profile = parse_profile(data)
+
+    assert "reconfigure" in step_names_of(profile.clone_pipeline({"desktop": "gnome"}))
+    assert "reconfigure" not in step_names_of(profile.clone_pipeline({"desktop": "none"}))
+
+
+def test_a_step_without_a_condition_always_runs():
+    profile = sample_profile("ubuntu")
+
+    assert step_names_of(profile.clone_pipeline({"desktop": "none"}))[:3] == [
+        "preflight",
+        "copy",
+        "define",
+    ]
+
+
+def test_a_conditional_pipeline_survives_the_round_trip_through_the_dictionary():
+    data = with_value(
+        profile_data("ubuntu"), "pipelines.clone.3.when", {"option": "desktop", "not": "none"}
+    )
+    profile = parse_profile(data)
+
+    assert parse_profile(profile.to_dict()) == profile
+    assert profile.to_dict()["pipelines"]["clone"][3]["when"] == {
+        "option": "desktop",
+        "not": "none",
+    }
+    assert profile.to_dict()["pipelines"]["clone"][0]["when"] is None
+
+
+CONDITION_CASES = [
+    # (the `when` object, expected problem path)
+    ({"option": "nope", "value": True}, "pipelines.clone[3].when.option"),
+    ({"option": "defender", "value": "yes"}, "pipelines.clone[3].when.value"),
+    ({"option": "defender", "not": "yes"}, "pipelines.clone[3].when.not"),
+    ({"option": "keyboard", "value": "fr-FR"}, "pipelines.clone[3].when.value"),
+    ({"option": "defender"}, "pipelines.clone[3].when"),
+    ({"option": "defender", "value": True, "not": False}, "pipelines.clone[3].when"),
+    ({"value": True}, "pipelines.clone[3].when.option"),
+    ({"option": "defender", "value": True, "extra": 1}, "pipelines.clone[3].when.extra"),
+    ("defender", "pipelines.clone[3].when"),
+]
+
+
+@pytest.mark.parametrize(("when", "expected"), CONDITION_CASES)
+def test_a_bad_condition_is_reported_with_its_path(when, expected):
+    data = with_value(profile_data("windows"), "pipelines.clone.3.when", when)
+
+    assert expected in problems_of(data)
+
+
+def test_a_condition_on_a_build_step_is_checked_against_the_options_too():
+    data = with_value(
+        profile_data("windows"),
+        "pipelines.build.installer.4.when",
+        {"option": "nope", "value": True},
+    )
+
+    assert "pipelines.build.installer[4].when.option" in problems_of(data)
 
 
 def test_the_linux_fixture_has_no_windows_terms():
@@ -127,7 +295,7 @@ def test_the_linux_fixture_has_no_windows_terms():
 
 def test_defaults_fill_in_the_optional_fields():
     profile = sample_profile("windows")
-    preflight = profile.build_pipeline("installer")[0]
+    preflight = profile.build_pipeline("installer", {})[0]
 
     assert (preflight.desktop, preflight.weight) == (False, 1)
     assert preflight.timeout_s > 0
@@ -161,6 +329,9 @@ CASES = [
     ("windows", "hardware.machine", "", None),
     ("windows", "hardware.tpm", GONE, None),
     ("windows", "hardware.nic_model", 5, None),
+    ("windows", "hardware.persona", "Dell Latitude", None),
+    ("windows", "hardware.persona", "", None),
+    ("windows", "hardware.persona", 5, None),
     ("windows", "resources.vcpus", 0, None),
     ("windows", "resources.vcpus", 9, None),
     ("windows", "resources.vcpus", "2", None),
@@ -189,15 +360,6 @@ CASES = [
     ("windows", "options.0.colour", "red", None),
     ("windows", "options.0.label", GONE, None),
     ("windows", "options.0.help", GONE, None),
-    ("windows", "options.2.changeable_on_clone", True, None),
-    ("windows", "clone.changeable_options", ["defender", "nope"], "clone.changeable_options[1]"),
-    ("windows", "clone.changeable_options", ["defender"], "options[1].changeable_on_clone"),
-    (
-        "windows",
-        "clone.changeable_options",
-        ["defender", "decoys", "sysmon"],
-        "clone.changeable_options[2]",
-    ),
     ("windows", "clone.computer_name_editable", "yes", None),
     ("windows", "clone", GONE, None),
     ("windows", "identity.account.pattern", "(", None),
@@ -240,7 +402,37 @@ CASES = [
     ("windows", "adoption.options.nope", True, None),
     ("windows", "adoption.options.defender", "yes", None),
     ("windows", "adoption.options.keyboard", "fr-FR", None),
-    ("windows", "agent.interactive_options", 5, None),
+    ("windows", "agent.interactive_options", "interactive=1", None),
+    ("windows", "agent.interactive", GONE, None),
+    ("windows", "agent.interactive", "interactive=1", None),
+    ("windows", "agent.interactive.options", 5, None),
+    ("windows", "agent.interactive.options", GONE, None),
+    ("windows", "agent.interactive.task_fields", ["enforce_timeout"], None),
+    (
+        "windows",
+        "agent.interactive.task_fields",
+        {"Enforce-Timeout": True},
+        "agent.interactive.task_fields.Enforce-Timeout",
+    ),
+    (
+        "windows",
+        "agent.interactive.task_fields",
+        {"enforce_timeout": 1.5},
+        "agent.interactive.task_fields.enforce_timeout",
+    ),
+    (
+        "windows",
+        "agent.interactive.task_fields",
+        {"enforce_timeout": None},
+        "agent.interactive.task_fields.enforce_timeout",
+    ),
+    (
+        "windows",
+        "agent.interactive.task_fields",
+        {"enforce_timeout": [1]},
+        "agent.interactive.task_fields.enforce_timeout",
+    ),
+    ("windows", "agent.interactive.extra", 1, None),
     ("windows", "agent.pre_snapshot", 5, None),
     ("windows", "agent.pre_snapshot", "Bad Name", None),
     ("windows", "selftest.sample.source", "", None),
@@ -327,7 +519,7 @@ def make_executable(path: Path) -> None:
 
 def install_profile(root: Path, data: dict, *, skip_steps: frozenset[str] = frozenset()) -> Path:
     directory = root / data["id"]
-    directory.mkdir(parents=True)
+    shutil.copytree(PROFILE_FIXTURES / data["id"], directory)
     (directory / "profile.json").write_text(json.dumps(data))
     for step in parse_profile(data).step_names():
         if step not in GENERIC_STEPS and step not in skip_steps:
@@ -382,6 +574,47 @@ def test_a_step_file_that_is_not_executable_is_rejected(profiles_dir, generic_st
         ProfileError, match=r"pipelines\.build\.installer\[2\]\.step.*not executable"
     ):
         load_profile(directory, generic_steps)
+
+
+@pytest.mark.parametrize(
+    ("field", "file"),
+    [
+        ("selftest.sample.source", "selftest/benign.c"),
+        ("selftest.facts.script", "selftest/guest-facts.ps1"),
+    ],
+)
+def test_a_self_test_file_the_profile_names_must_exist_in_its_directory(
+    profiles_dir, generic_steps, field, file
+):
+    directory = install_profile(profiles_dir, profile_data("windows"))
+    (directory / file).unlink()
+
+    with pytest.raises(ProfileError) as raised:
+        load_profile(directory, generic_steps)
+
+    message = str(raised.value)
+    assert field in message
+    assert str(directory / file) in message
+
+
+@pytest.mark.parametrize("path", ["../outside.c", "/etc/hostname"])
+def test_a_self_test_file_cannot_point_outside_the_profile_directory(
+    profiles_dir, generic_steps, path
+):
+    data = with_value(profile_data("windows"), "selftest.sample.source", path)
+    directory = install_profile(profiles_dir, data)
+    (profiles_dir / "outside.c").write_text("int main(void) { return 0; }")
+
+    with pytest.raises(ProfileError, match=r"selftest\.sample\.source.*inside the profile"):
+        load_profile(directory, generic_steps)
+
+
+def test_a_profile_without_a_facts_script_needs_no_such_file(profiles_dir, generic_steps):
+    data = without(profile_data("windows"), "selftest.facts")
+    directory = install_profile(profiles_dir, data)
+    (directory / "selftest" / "guest-facts.ps1").unlink()
+
+    assert load_profile(directory, generic_steps).selftest.facts is None
 
 
 def test_the_pre_snapshot_step_must_exist_too(profiles_dir, generic_steps):

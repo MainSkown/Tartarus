@@ -173,6 +173,55 @@ def test_listing_is_in_creation_order_and_ignores_strays(guests):
 
 def test_an_empty_or_missing_registry_lists_nothing(guests):
     assert guests.list() == []
+    assert guests.broken() == []
+
+
+def break_record(guests, name, content):
+    (guests.root / name / "guest.json").write_text(content)
+
+
+def test_a_corrupt_record_does_not_hide_the_readable_guests(guests):
+    guests.create(make_guest("alpha", "192.168.150.10"))
+    guests.create(make_guest("bravo", "192.168.150.11"))
+    break_record(guests, "bravo", "{not json")
+
+    assert [guest.name for guest in guests.list()] == ["alpha"]
+
+
+@pytest.mark.parametrize(
+    ("content", "reason"),
+    [
+        ("{not json", "not valid JSON"),
+        ("[]", "not a guest record"),
+        ('{"name": "bravo"}', "is missing"),
+        ("", "not valid JSON"),
+    ],
+)
+def test_a_corrupt_record_is_listed_as_broken_with_a_readable_reason(guests, content, reason):
+    guests.create(make_guest("alpha", "192.168.150.10"))
+    guests.create(make_guest("bravo", "192.168.150.11"))
+    break_record(guests, "bravo", content)
+
+    [(name, message)] = guests.broken()
+
+    assert name == "bravo"
+    assert reason in message
+
+
+def test_a_record_that_cannot_be_read_is_broken_too(guests):
+    guests.create(make_guest("alpha"))
+    (guests.root / "alpha" / "guest.json").chmod(0)
+
+    try:
+        assert [name for name, _ in guests.broken()] == ["alpha"]
+    finally:
+        (guests.root / "alpha" / "guest.json").chmod(0o600)
+
+
+def test_intact_records_are_not_broken(guests):
+    guests.create(make_guest())
+
+    assert guests.broken() == []
 
 
 def test_the_state_can_be_changed_and_is_persisted(guests):

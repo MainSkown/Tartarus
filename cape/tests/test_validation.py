@@ -390,6 +390,20 @@ def test_an_option_that_is_not_changeable_may_be_repeated_as_it_is_but_not_alter
     assert "options.sysmon" in clone_fields(other)
 
 
+def test_which_options_a_clone_may_change_is_decided_by_the_option_flag_alone():
+    data = with_value(profile_data("windows"), "options.0.changeable_on_clone", False)
+    data = with_value(data, "options.2.changeable_on_clone", True)
+    profiles = {"windows": parse_profile(data)}
+    source = source_guest()
+
+    allowed = {"name": "win-two", "options": {"sysmon": not source.options["sysmon"]}}
+    refused = {"name": "win-two", "options": {"defender": not source.options["defender"]}}
+
+    spec = validate_clone("win", allowed, context([source], profiles), seeded(1))
+    assert spec.options["sysmon"] is not source.options["sysmon"]
+    assert "options.defender" in clone_fields(refused, profiles=profiles)
+
+
 @pytest.mark.parametrize(
     ("params", "field"),
     [

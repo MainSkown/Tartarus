@@ -18,7 +18,8 @@
     "tpm": false,
     "disk_bus": "sata",
     "nic_model": "e1000e",
-    "clock": "utc"
+    "clock": "utc",
+    "persona": "lab-desktop"
   },
   "resources": {
     "vcpus": 2,
@@ -122,9 +123,6 @@
     }
   },
   "clone": {
-    "changeable_options": [
-      "decoys"
-    ],
     "computer_name_editable": true
   },
   "pipelines": {
@@ -219,7 +217,12 @@
     "finish_dir": "/tmp",
     "work_root": "/var/lib",
     "shutdown": "acpi",
-    "interactive_options": "",
+    "interactive": {
+      "options": "",
+      "task_fields": {
+        "enforce_timeout": true
+      }
+    },
     "pre_snapshot": "sync-disk"
   },
   "selftest": {

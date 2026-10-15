@@ -34,6 +34,8 @@ NIC_OUI = "00:14:22"
 DISK_SERIAL_PREFIX = "S4EWNX0"
 KIB_PER_MIB = 1024
 
+type BrokenGuests = list[tuple[str, str]]  # (guest name, why its record cannot be read)
+
 
 @dataclass(frozen=True)
 class GuestIdentity:
@@ -198,6 +200,24 @@ def write_atomically(path: Path, text: str, mode: int = 0o644) -> None:
         os.close(directory)
 
 
+def _read_guest(file: Path) -> Guest:
+    """The record in `file`; raises ValueError saying what is wrong with it."""
+    try:
+        data = json.loads(file.read_text())
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{GUEST_FILE} is not valid JSON ({error})") from None
+    except OSError as error:
+        raise ValueError(f"{GUEST_FILE} cannot be read ({error.strerror})") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{GUEST_FILE} is not a guest record: it must be a JSON object")
+    try:
+        return Guest.from_dict(data)
+    except KeyError as error:
+        raise ValueError(f"{GUEST_FILE} is missing {error}") from None
+    except TypeError as error:
+        raise ValueError(f"{GUEST_FILE} has the wrong fields ({error})") from None
+
+
 class Registry:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -225,16 +245,30 @@ class Registry:
         return guest
 
     def get(self, name: str) -> Guest:
-        try:
-            return Guest.from_dict(json.loads(self._file(name).read_text()))
-        except FileNotFoundError:
-            raise GuestNotFound(name) from None
+        file = self._file(name)
+        if not file.is_file():
+            raise GuestNotFound(name)
+        return _read_guest(file)
+
+    def _scan(self) -> tuple[list[Guest], BrokenGuests]:
+        guests: list[Guest] = []
+        broken: BrokenGuests = []
+        if self.root.is_dir():
+            for path in sorted(self.root.iterdir()):
+                if not self.exists(path.name):
+                    continue
+                try:
+                    guests.append(_read_guest(path / GUEST_FILE))
+                except ValueError as error:
+                    broken.append((path.name, str(error)))
+        return sorted(guests, key=lambda guest: (guest.created, guest.name)), broken
 
     def list(self) -> list[Guest]:
-        if not self.root.is_dir():
-            return []
-        guests = [self.get(path.name) for path in self.root.iterdir() if self.exists(path.name)]
-        return sorted(guests, key=lambda guest: (guest.created, guest.name))
+        return self._scan()[0]
+
+    def broken(self) -> BrokenGuests:
+        """The guests whose record cannot be read, each with why, in name order."""
+        return self._scan()[1]
 
     def update(self, name: str, **changes: Any) -> Guest:
         if "state" in changes and changes["state"] not in STATES:

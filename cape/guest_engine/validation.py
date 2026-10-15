@@ -340,7 +340,7 @@ def validate_clone(
     _reject_unknown(request, CLONE_FIELDS, problems)
     name = _check_name(request, context, problems)
     inherited = {**profile.option_defaults(), **source.options}
-    locked = set(inherited) - set(profile.clone.changeable_options)
+    locked = set(inherited) - profile.clone_changeable_options()
     options = _resolve_options(
         _object(request, "options", problems), profile, inherited, locked, problems
     )

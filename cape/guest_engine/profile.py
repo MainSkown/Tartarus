@@ -7,7 +7,7 @@ A profile is a directory `<profiles dir>/<id>/` holding `profile.json` and the p
 import json
 import os
 import re
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -21,6 +21,7 @@ OWN_STEPS_DIR = "steps"
 SLUG = re.compile(r"[a-z][a-z0-9-]{1,31}")
 STEP_NAME = re.compile(r"[a-z][a-z0-9_-]{0,63}")
 OPTION_KEY = re.compile(r"[a-z][a-z0-9_]{0,31}")
+TASK_FIELD = re.compile(r"[a-z][a-z0-9_]{0,63}")
 MODULE_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")
 PACKAGE_NAME = re.compile(r"[A-Za-z0-9_]{1,64}")
 CAPE_TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,31}")
@@ -51,6 +52,7 @@ MIN_VCPUS, MAX_VCPUS = 1, 8
 MIN_RAM_MB, MAX_RAM_MB = 2048, 32768
 MAX_PORT = 65535
 DEFAULT_STEP_TIMEOUT_S = 600
+DEFAULT_PERSONA = "default"
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,7 @@ class Hardware:
     disk_bus: str
     nic_model: str
     clock: str
+    persona: str = DEFAULT_PERSONA
 
 
 @dataclass(frozen=True)
@@ -115,8 +118,22 @@ class Identity:
 
 @dataclass(frozen=True)
 class Clone:
-    changeable_options: list[str]
     computer_name_editable: bool
+
+
+@dataclass(frozen=True)
+class Condition:
+    """Holds when the option equals `value`, or, with `negated`, when it does not."""
+
+    option: str
+    value: Any
+    negated: bool = False
+
+    def holds(self, option_values: Mapping[str, Any]) -> bool:
+        return (option_values[self.option] == self.value) != self.negated
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"option": self.option, ("not" if self.negated else "value"): self.value}
 
 
 @dataclass(frozen=True)
@@ -125,6 +142,12 @@ class PipelineStep:
     desktop: bool
     timeout_s: int
     weight: int
+    when: Condition | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["when"] = self.when.to_dict() if self.when else None
+        return data
 
 
 @dataclass(frozen=True)
@@ -139,6 +162,14 @@ class AgentReady:
 
 
 @dataclass(frozen=True)
+class Interactive:
+    """How an analysis the analyst can watch is asked for: CAPE options and extra task fields."""
+
+    options: str
+    task_fields: dict[str, bool | int | str]
+
+
+@dataclass(frozen=True)
 class Agent:
     port: int
     path_style: str
@@ -146,7 +177,7 @@ class Agent:
     finish_dir: str
     work_root: str
     shutdown: str
-    interactive_options: str
+    interactive: Interactive
     pre_snapshot: str | None
 
     @property
@@ -243,30 +274,63 @@ class Profile:
         """The JSON form of the profile, which `parse_profile` reads back to an equal profile."""
         data = asdict(self)
         del data["directory"], data["step_search_path"]
+        data["pipelines"] = {
+            "build": {
+                kind: [entry.to_dict() for entry in entries]
+                for kind, entries in self.pipelines.build.items()
+            },
+            "clone": [entry.to_dict() for entry in self.pipelines.clone],
+        }
         return data
 
     def option(self, key: str) -> Option | None:
         return next((option for option in self.options if option.key == key), None)
 
+    def clone_changeable_options(self) -> set[str]:
+        return {option.key for option in self.options if option.changeable_on_clone}
+
     def option_defaults(self) -> dict[str, Any]:
         return {option.key: option.default for option in self.options}
 
-    def build_pipeline(self, media_kind: str) -> list[PipelineStep]:
-        return self.pipelines.build[media_kind]
+    def build_pipeline(
+        self, media_kind: str, option_values: Mapping[str, Any]
+    ) -> list[PipelineStep]:
+        """The steps of a build of `media_kind` for these options, in order."""
+        return self._applicable(self.pipelines.build[media_kind], option_values)
+
+    def clone_pipeline(self, option_values: Mapping[str, Any]) -> list[PipelineStep]:
+        """The steps of a clone with these options, in order."""
+        return self._applicable(self.pipelines.clone, option_values)
+
+    def _applicable(
+        self, entries: list[PipelineStep], option_values: Mapping[str, Any]
+    ) -> list[PipelineStep]:
+        effective = {**self.option_defaults(), **option_values}
+        return [entry for entry in entries if entry.when is None or entry.when.holds(effective)]
+
+    def pipeline_entries(self) -> list[tuple[str, PipelineStep]]:
+        """Every pipeline entry with the field path it was read from."""
+        entries = [
+            (f"pipelines.build.{kind}[{index}]", entry)
+            for kind, steps in self.pipelines.build.items()
+            for index, entry in enumerate(steps)
+        ]
+        return entries + [
+            (f"pipelines.clone[{index}]", entry) for index, entry in enumerate(self.pipelines.clone)
+        ]
 
     def step_references(self) -> list[tuple[str, str]]:
         """Every (field path, step name) the profile names, for the loader's existence check."""
-        references = [
-            (f"pipelines.build.{kind}[{index}].step", entry.step)
-            for kind, entries in self.pipelines.build.items()
-            for index, entry in enumerate(entries)
-        ]
-        references += [
-            (f"pipelines.clone[{index}].step", entry.step)
-            for index, entry in enumerate(self.pipelines.clone)
-        ]
+        references = [(f"{path}.step", entry.step) for path, entry in self.pipeline_entries()]
         if self.agent.pre_snapshot:
             references.append(("agent.pre_snapshot", self.agent.pre_snapshot))
+        return references
+
+    def own_file_references(self) -> list[tuple[str, str]]:
+        """Every (field path, relative path) of a file the profile ships in its own directory."""
+        references = [("selftest.sample.source", self.selftest.sample.source)]
+        if self.selftest.facts:
+            references.append(("selftest.facts.script", self.selftest.facts.script))
         return references
 
     def step_names(self) -> set[str]:
@@ -311,7 +375,7 @@ class _Reader:
         return iter(list(self._data))
 
     def fail(self, key: str, reason: str) -> None:
-        self._problems.setdefault(f"{self._path}.{key}" if self._path else key, reason)
+        self._problems.setdefault(self._child(key), reason)
 
     def value(self, key: str) -> Any:
         self._seen.add(key)
@@ -433,7 +497,7 @@ class _Reader:
         ]
 
     def _child(self, key: str) -> str:
-        return f"{self._path}.{key}" if self._path else key
+        return ".".join(part for part in (self._path, key) if part)
 
 
 def option_value_problem(option: Option, value: Any) -> str | None:
@@ -462,6 +526,7 @@ def _hardware(reader: _Reader) -> Hardware:
         disk_bus=reader.choice("disk_bus", DISK_BUSES),
         nic_model=reader.string("nic_model"),
         clock=reader.choice("clock", CLOCKS),
+        persona=reader.string("persona", rule=SLUG, default=DEFAULT_PERSONA),
     )
     if hardware.secure_boot and hardware.boot != "uefi":
         reader.fail("secure_boot", "needs boot to be uefi")
@@ -545,12 +610,22 @@ def _identity(reader: _Reader) -> Identity:
 
 
 def _clone(reader: _Reader) -> Clone:
-    clone = Clone(
-        changeable_options=reader.string_list("changeable_options", default=[]),
-        computer_name_editable=reader.boolean("computer_name_editable"),
-    )
+    if reader.value("changeable_options") is not None:
+        reader.fail("changeable_options", "is gone: set changeable_on_clone on the option instead")
+    clone = Clone(computer_name_editable=reader.boolean("computer_name_editable"))
     reader.done()
     return clone
+
+
+def _condition(reader: _Reader | None) -> Condition | None:
+    if reader is None:
+        return None
+    option = reader.string("option", rule=OPTION_KEY)
+    equals, differs = reader.value("value"), reader.value("not")
+    if (equals is None) == (differs is None):
+        reader.fail("", "needs exactly one of value or not")
+    reader.done()
+    return Condition(option, equals if differs is None else differs, negated=differs is not None)
 
 
 def _pipeline_step(reader: _Reader) -> PipelineStep:
@@ -559,6 +634,7 @@ def _pipeline_step(reader: _Reader) -> PipelineStep:
         desktop=reader.boolean("desktop", default=False),
         timeout_s=reader.integer("timeout_s", minimum=1, default=DEFAULT_STEP_TIMEOUT_S),
         weight=reader.integer("weight", minimum=1, default=1),
+        when=_condition(reader.optional_object("when")),
     )
     reader.done()
     return entry
@@ -586,6 +662,30 @@ def _pipelines(reader: _Reader, media_kinds: list[str]) -> Pipelines:
     return pipelines
 
 
+def _task_fields(reader: _Reader) -> dict[str, bool | int | str]:
+    fields = reader.optional_object("task_fields")
+    if fields is None:
+        return {}
+    task_fields: dict[str, bool | int | str] = {}
+    for name in fields:
+        value = fields.value(name)
+        if not TASK_FIELD.fullmatch(name):
+            fields.fail(name, f"must be a lower-case identifier ({TASK_FIELD.pattern})")
+        elif not isinstance(value, bool | int | str):
+            fields.fail(name, "must be true or false, a whole number or text")
+        else:
+            task_fields[name] = value
+    return task_fields
+
+
+def _interactive(reader: _Reader) -> Interactive:
+    interactive = Interactive(
+        options=reader.string("options", empty=True), task_fields=_task_fields(reader)
+    )
+    reader.done()
+    return interactive
+
+
 def _agent(reader: _Reader) -> Agent:
     ready_reader = reader.object("ready")
     ready = AgentReady(ready_reader.optional_string("marker"))
@@ -597,7 +697,7 @@ def _agent(reader: _Reader) -> Agent:
         finish_dir=reader.string("finish_dir"),
         work_root=reader.string("work_root"),
         shutdown=reader.choice("shutdown", SHUTDOWN_MODES),
-        interactive_options=reader.string("interactive_options", default="", empty=True),
+        interactive=_interactive(reader.object("interactive")),
         pre_snapshot=reader.optional_string("pre_snapshot", rule=STEP_NAME),
     )
     reader.done()
@@ -702,22 +802,9 @@ def _adoption(reader: _Reader | None) -> Adoption | None:
 
 def _check_options(profile: Profile, problems: dict[str, str]) -> None:
     keys = [option.key for option in profile.options]
-    flagged = {option.key for option in profile.options if option.changeable_on_clone}
     for index, option in enumerate(profile.options):
         if option.key in keys[:index]:
             problems.setdefault(f"options[{index}].key", f"'{option.key}' is defined twice")
-        if option.changeable_on_clone and option.key not in profile.clone.changeable_options:
-            problems.setdefault(
-                f"options[{index}].changeable_on_clone",
-                "must also be listed in clone.changeable_options",
-            )
-    for index, key in enumerate(profile.clone.changeable_options):
-        if key not in keys:
-            problems.setdefault(f"clone.changeable_options[{index}]", f"'{key}' is not an option")
-        elif key not in flagged:
-            problems.setdefault(
-                f"clone.changeable_options[{index}]", f"option '{key}' is not changeable_on_clone"
-            )
 
 
 def _check_adoption(profile: Profile, problems: dict[str, str]) -> None:
@@ -732,15 +819,32 @@ def _check_adoption(profile: Profile, problems: dict[str, str]) -> None:
             problems.setdefault(path, problem)
 
 
+def _check_option_value(
+    profile: Profile, key: str, value: Any, paths: tuple[str, str], problems: dict[str, str]
+) -> None:
+    """`value` must be one the option `key` accepts; `paths` locate the key and the value."""
+    key_path, value_path = paths
+    option = profile.option(key)
+    if option is None:
+        problems.setdefault(key_path, f"'{key}' is not an option")
+    elif value is None:
+        problems.setdefault(value_path, "is required")
+    elif problem := option_value_problem(option, value):
+        problems.setdefault(value_path, problem)
+
+
 def _check_badges(profile: Profile, problems: dict[str, str]) -> None:
     for index, badge in enumerate(profile.badges):
-        option = profile.option(badge.option)
-        if option is None:
-            problems.setdefault(f"badges[{index}].option", f"'{badge.option}' is not an option")
-        elif badge.value is None:
-            problems.setdefault(f"badges[{index}].value", "is required")
-        elif problem := option_value_problem(option, badge.value):
-            problems.setdefault(f"badges[{index}].value", problem)
+        paths = (f"badges[{index}].option", f"badges[{index}].value")
+        _check_option_value(profile, badge.option, badge.value, paths, problems)
+
+
+def _check_conditions(profile: Profile, problems: dict[str, str]) -> None:
+    for path, entry in profile.pipeline_entries():
+        if entry.when is not None:
+            value_key = "not" if entry.when.negated else "value"
+            paths = (f"{path}.when.option", f"{path}.when.{value_key}")
+            _check_option_value(profile, entry.when.option, entry.when.value, paths, problems)
 
 
 def parse_profile(data: object, source: str = PROFILE_FILE) -> Profile:
@@ -776,6 +880,7 @@ def parse_profile(data: object, source: str = PROFILE_FILE) -> Profile:
     _check_options(profile, problems)
     _check_adoption(profile, problems)
     _check_badges(profile, problems)
+    _check_conditions(profile, problems)
     if problems:
         raise ProfileError(source, problems)
     return profile
@@ -807,6 +912,14 @@ def _missing_step_reason(name: str, search_path: Sequence[Path]) -> str:
     return f"no executable step '{name}' in {searched}"
 
 
+def _own_file_problem(directory: Path, relative: str) -> str | None:
+    if Path(relative).is_absolute() or ".." in Path(relative).parts:
+        return f"'{relative}' must be a relative path inside the profile directory"
+    if not (directory / relative).is_file():
+        return f"no such file {directory / relative}"
+    return None
+
+
 def _read_profile_json(file: Path) -> object:
     try:
         text = file.read_text()
@@ -821,7 +934,7 @@ def _read_profile_json(file: Path) -> object:
 
 
 def load_profile(directory: Path, generic_steps_dir: Path) -> Profile:
-    """Load `directory/profile.json` and check that every step it names is an executable file.
+    """Load `directory/profile.json` and check that every step and self-test file it names exists.
 
     Steps are looked up in the profile's own `steps/` directory first, then in `generic_steps_dir`.
     """
@@ -834,6 +947,9 @@ def load_profile(directory: Path, generic_steps_dir: Path) -> Profile:
     for path, step in profile.step_references():
         if find_step(step, search_path) is None:
             problems.setdefault(path, _missing_step_reason(step, search_path))
+    for path, relative in profile.own_file_references():
+        if problem := _own_file_problem(directory, relative):
+            problems.setdefault(path, problem)
     if problems:
         raise ProfileError(str(file), problems)
     return replace(profile, directory=directory, step_search_path=search_path)

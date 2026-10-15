@@ -110,10 +110,6 @@
     }
   },
   "clone": {
-    "changeable_options": [
-      "defender",
-      "decoys"
-    ],
     "computer_name_editable": true
   },
   "pipelines": {
@@ -140,7 +136,11 @@
         {
           "step": "tamper-off",
           "timeout_s": 600,
-          "weight": 5
+          "weight": 5,
+          "when": {
+            "option": "defender",
+            "value": false
+          }
         },
         {
           "step": "snapshot",
@@ -168,6 +168,14 @@
         "timeout_s": 600
       },
       {
+        "step": "tamper-off",
+        "timeout_s": 600,
+        "when": {
+          "option": "defender",
+          "value": false
+        }
+      },
+      {
         "step": "snapshot",
         "timeout_s": 600
       },
@@ -186,7 +194,10 @@
     "finish_dir": "C:\\Windows\\Temp",
     "work_root": "C:\\ProgramData",
     "shutdown": "acpi",
-    "interactive_options": "interactive=1,nohuman=yes",
+    "interactive": {
+      "options": "interactive=1,nohuman=yes",
+      "task_fields": {}
+    },
     "pre_snapshot": null
   },
   "selftest": {
