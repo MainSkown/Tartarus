@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest e2e hooks
+.PHONY: help dev up down logs test test-cape test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -18,9 +18,12 @@ down: ## Stop the stack
 logs: ## Follow the stack logs
 	docker compose logs -f
 
-test: ## Run backend and frontend unit tests
+test: test-cape ## Run backend, cape-side and frontend unit tests
 	cd backend && uv run pytest -m "not integration"
 	cd frontend && npm run test:unit
+
+test-cape: ## Run the unit tests of the code that runs inside the cape container
+	cd cape && uv run --no-project --with pytest pytest -q
 
 test-integration: ## Run backend tests that need Docker
 	cd backend && uv run pytest -m integration
@@ -29,6 +32,8 @@ lint: ## Run ruff, mypy, eslint and the TypeScript check
 	cd backend && uv run ruff check
 	cd backend && uv run ruff format --check
 	cd backend && uv run mypy app
+	cd cape && uv run --no-project --with ruff ruff check guest_engine tests
+	cd cape && uv run --no-project --with ruff ruff format --check guest_engine tests
 	cd frontend && npm run lint
 	cd frontend && npm run typecheck
 
