@@ -1,0 +1,99 @@
+WIM Information:
+----------------
+Path:           /run/scan/x/sources/install.esd
+GUID:           0x4099e7aeaddb354883ad0408603024aa
+Version:        68864
+Image Count:    3
+Compression:    LZMS
+Chunk Size:     32768 bytes
+Part Number:    1/1
+Boot Index:     0
+Size:           4163928544 bytes
+Attributes:     Relative path junction
+
+Available Images:
+-----------------
+Index:                  1
+Name:                   Windows 11 Home
+Description:            Windows 11 Home
+Display Name:           Windows 11 Home
+Display Description:    Windows 11 Home
+Directory Count:        32989
+File Count:             143312
+Total Bytes:            23615813816
+Hard Link Bytes:        9955387742
+Creation Time:          Sat Mar 07 00:09:02 2026 UTC
+Last Modification Time: Sat Mar 07 00:41:02 2026 UTC
+Architecture:           x86_64
+Product Name:           Microsoft® Windows® Operating System
+Edition ID:             Core
+Installation Type:      Client
+Product Type:           WinNT
+Product Suite:          Terminal Server
+Languages:              pl-PL 
+Default Language:       pl-PL
+System Root:            WINDOWS
+Major Version:          10
+Minor Version:          0
+Build:                  26200
+Service Pack Build:     8037
+Service Pack Level:     0
+Flags:                  Core
+WIMBoot compatible:     no
+
+Index:                  2
+Name:                   Windows 11 Home N
+Description:            Windows 11 Home N
+Display Name:           Windows 11 Home N
+Display Description:    Windows 11 Home N
+Directory Count:        32052
+File Count:             136698
+Total Bytes:            22988803989
+Hard Link Bytes:        9745225797
+Creation Time:          Sat Mar 07 00:06:50 2026 UTC
+Last Modification Time: Sat Mar 07 00:41:20 2026 UTC
+Architecture:           x86_64
+Product Name:           Microsoft® Windows® Operating System
+Edition ID:             CoreN
+Installation Type:      Client
+Product Type:           WinNT
+Product Suite:          Terminal Server
+Languages:              pl-PL 
+Default Language:       pl-PL
+System Root:            WINDOWS
+Major Version:          10
+Minor Version:          0
+Build:                  26200
+Service Pack Build:     8037
+Service Pack Level:     0
+Flags:                  CoreN
+WIMBoot compatible:     no
+
+Index:                  3
+Name:                   Windows 11 Pro
+Description:            Windows 11 Pro
+Display Name:           Windows 11 Pro
+Display Description:    Windows 11 Pro
+Directory Count:        33200
+File Count:             145217
+Total Bytes:            24661507674
+Hard Link Bytes:        10337269720
+Creation Time:          Sat Mar 07 00:08:24 2026 UTC
+Last Modification Time: Sat Mar 07 00:42:32 2026 UTC
+Architecture:           x86_64
+Product Name:           Microsoft® Windows® Operating System
+Edition ID:             Professional
+Installation Type:      Client
+Product Type:           WinNT
+Product Suite:          Terminal Server
+Languages:              pl-PL 
+Default Language:       pl-PL
+System Root:            WINDOWS
+Major Version:          10
+Minor Version:          0
+Build:                  26200
+Service Pack Build:     8037
+Service Pack Level:     0
+Flags:                  Professional
+WIMBoot compatible:     no
+

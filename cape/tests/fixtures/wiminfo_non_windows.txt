@@ -1,0 +1,26 @@
+WIM Information:
+----------------
+Path:           /run/scan/x/sources/install.wim
+GUID:           0x1f8e0d3a2c5b4e97a6d14b0c93e8f712
+Version:        68864
+Image Count:    1
+Compression:    LZX
+Chunk Size:     32768 bytes
+Part Number:    1/1
+Boot Index:     0
+Size:           204864 bytes
+Attributes:     Relative path junction
+
+Available Images:
+-----------------
+Index:                  1
+Name:                   backup
+Description:            
+Directory Count:        3
+File Count:             12
+Total Bytes:            88211
+Hard Link Bytes:        0
+Creation Time:          Sat Mar 07 00:08:24 2026 UTC
+Last Modification Time: Sat Mar 07 00:08:24 2026 UTC
+WIMBoot compatible:     no
+
