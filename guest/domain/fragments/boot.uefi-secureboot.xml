@@ -1,0 +1,2 @@
+<loader readonly='yes' secure='yes' type='pflash'>/usr/share/OVMF/OVMF_CODE_4M.ms.fd</loader>
+<nvram template='/usr/share/OVMF/OVMF_VARS_4M.ms.fd'>${nvram}</nvram>

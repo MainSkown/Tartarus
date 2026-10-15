@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Prepares the guest's disk and defines its libvirt domain from the profile's hardware block.
+# A build starts from a blank disk (installer media) or a resized copy of an installed image; a
+# clone arrives with its disk already copied. Idempotent: whatever an earlier attempt left is replaced.
+set -uo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+context_var DISK_GB guest.resources.disk_gb
+
+discard_earlier_files() { rm -f "$DISK_PATH" "$NVRAM_PATH" "$CLEAN_MEMORY" "$CLEAN_OVERLAY"; }
+
+create_blank_disk() {
+    qemu-img create -f qcow2 "$DISK_PATH" "${DISK_GB}G" >/dev/null || fail "qemu-img could not create the disk"
+}
+
+disk_from_image() {
+    qemu-img convert -O qcow2 "$MEDIA_PATH" "$DISK_PATH" || fail "qemu-img could not convert $MEDIA_FILE"
+    qemu-img resize "$DISK_PATH" "${DISK_GB}G" >/dev/null || fail "qemu-img could not resize the disk to ${DISK_GB} GB"
+}
+
+prepare_disk() {
+    if [[ $BUILD_KIND == clone ]]; then
+        [[ -f $DISK_PATH ]] || fail "the disk $DISK_PATH is missing: the copy step has to run before define"
+        return
+    fi
+    discard_earlier_files
+    if [[ $(media_kind) == installer ]]; then
+        create_blank_disk
+    else
+        disk_from_image
+    fi
+}
+
+step "Defining the virtual machine"
+mkdir -p "$IMAGES_DIR" "$NVRAM_DIR" "$TT_BUILD_DIR"
+progress 10
+if [[ $BUILD_KIND == build && $(media_kind) == installer ]]; then
+    mode=install
+    media_options=(--media "$MEDIA_PATH")
+else
+    mode=run
+    media_options=()
+fi
+# Rendered before the disk is touched: unsupported hardware must fail with nothing created.
+render_domain "$mode" "${media_options[@]}"
+progress 30
+prepare_disk
+progress 70
+define_rendered "$mode"
+guest_record set disk_path "$(json_string "$DISK_PATH")" || fail "could not record the disk in the guest record"
+progress 100
+log "defined $GUEST_NAME ($mode mode)"

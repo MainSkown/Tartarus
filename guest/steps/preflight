@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Checks that the host can build the guest before anything is created. Idempotent: a leftover
+# domain of this very guest from an earlier attempt is removed, never reported as a clash.
+set -uo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+RESERVE_GB=20
+KVM_DEVICE=${TT_KVM_DEVICE:-/dev/kvm}
+CPUINFO=${TT_CPUINFO:-/proc/cpuinfo}
+
+check_kvm() {
+    [[ -e $KVM_DEVICE ]] || fail "KVM is unavailable: $KVM_DEVICE does not exist (is the container privileged, and is virtualization on in the BIOS?)"
+    [[ -c $KVM_DEVICE && -r $KVM_DEVICE && -w $KVM_DEVICE ]] || fail "$KVM_DEVICE is not a usable device for this user"
+    grep -qE '^flags.*\b(vmx|svm)\b' "$CPUINFO" || fail "the CPU shows neither vmx nor svm: hardware virtualization is off or missing"
+}
+
+# What this guest's earlier, failed attempt already occupies counts as free: the build replaces it.
+own_files_mb() {
+    local file total=0 size
+    for file in "$DISK_PATH" "$CLEAN_MEMORY" "$CLEAN_OVERLAY"; do
+        [[ -f $file ]] || continue
+        size=$(du -s -B1M "$file" | cut -f1)
+        total=$((total + size))
+    done
+    echo "$total"
+}
+
+check_free_space() {
+    local disk_gb scratch_gb required_gb free_mb
+    context_var disk_gb guest.resources.disk_gb
+    context_var scratch_gb profile.resources.scratch_gb 0
+    required_gb=$((disk_gb + scratch_gb + RESERVE_GB))
+    mkdir -p "$IMAGES_DIR"
+    free_mb=$(df -B1M --output=avail "$IMAGES_DIR" | tail -n1 | tr -d ' ')
+    (( free_mb + $(own_files_mb) >= required_gb * 1024 )) ||
+        fail "not enough space in $IMAGES_DIR: the guest needs ${required_gb} GB (disk ${disk_gb} + scratch ${scratch_gb} + reserve ${RESERVE_GB}), $((free_mb / 1024)) GB is free"
+}
+
+check_media() {
+    [[ $BUILD_KIND == build && -n $MEDIA_FILE ]] || return 0
+    [[ -f $MEDIA_PATH && -r $MEDIA_PATH ]] || fail "the installation media $MEDIA_FILE is not readable in $MEDIA_DIR"
+}
+
+# Only a domain built for this guest may be replaced; its uuid is fixed when the guest is created.
+settle_existing_domain() {
+    domain_exists || return 0
+    local existing
+    existing=$(vsh domuuid "$GUEST_NAME" 2>/dev/null)
+    [[ ${existing,,} == "${GUEST_UUID,,}" ]] ||
+        fail "a libvirt domain named $GUEST_NAME already exists and is not this guest's"
+    log "removing the domain left by an earlier attempt"
+    remove_domain
+}
+
+# A record too damaged to parse still counts: its address must not be handed out twice.
+address_holder() {
+    python3 -I - "$REGISTRY_ROOT" "$GUEST_NAME" "$GUEST_IP" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+root, own, address = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+for record in sorted(root.glob("*/guest.json")):
+    if record.parent.name == own:
+        continue
+    text = record.read_text(errors="replace")
+    try:
+        data = json.loads(text)
+        held = data.get("ip") if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        found = re.search(r'"ip"\s*:\s*"([^"]*)"', text)
+        held = found.group(1) if found else None
+    if held == address:
+        print(record.parent.name)
+        break
+PY
+}
+
+check_address() {
+    local holder
+    holder=$(address_holder)
+    [[ -z $holder ]] || fail "the address $GUEST_IP is already held by the guest $holder"
+}
+
+step "Checking the host"
+check_kvm
+progress 20
+check_free_space
+progress 40
+check_media
+progress 60
+settle_existing_domain
+progress 80
+check_address
+progress 100
+log "the host can build $GUEST_NAME"

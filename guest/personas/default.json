@@ -1,0 +1,26 @@
+{
+  "bios": {"vendor": "Dell Inc.", "version": "2.18.0", "date": "07/14/2024"},
+  "system": {
+    "manufacturer": "Dell Inc.",
+    "product": "OptiPlex 7090",
+    "version": "Not Specified",
+    "serial": "${smbios_serial}",
+    "uuid": "${uuid}",
+    "sku": "0A26",
+    "family": "OptiPlex"
+  },
+  "baseboard": {
+    "manufacturer": "Dell Inc.",
+    "product": "0K240Y",
+    "version": "A01",
+    "serial": "${board_serial}"
+  },
+  "chassis": {
+    "manufacturer": "Dell Inc.",
+    "version": "Not Specified",
+    "serial": "${smbios_serial}",
+    "asset": "Not Specified",
+    "sku": "Desktop"
+  },
+  "oem_strings": ["Dell System", "1[0A26]"]
+}

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Profiles name this step so a pipeline reads as build, snapshot, register. The engine registers the
+# guest with CAPE itself once the last step succeeds, so there is nothing left to do here.
+set -uo pipefail
+
+printf 'STEP Handing the guest over to CAPE\n'
+printf 'PROGRESS 100\n'

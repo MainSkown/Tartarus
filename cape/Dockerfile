@@ -154,6 +154,8 @@ COPY cape/bin/ /usr/local/lib/tartarus/
 COPY cape/guest_engine/ /usr/local/lib/tartarus/guest_engine/
 COPY guest/profiles/ /usr/local/lib/tartarus/profiles/
 COPY guest/steps/ /usr/local/lib/tartarus/steps/
+COPY guest/domain/ /usr/local/lib/tartarus/domain/
+COPY guest/personas/ /usr/local/lib/tartarus/personas/
 COPY cape/entrypoint.sh /usr/local/bin/cape-entrypoint
 COPY --chown=cape:cape cape/conf/ /opt/CAPEv2/custom/conf/
 

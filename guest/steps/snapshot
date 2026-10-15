@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# Takes the guest's clean baseline: shut it down cleanly, boot it from its disk, wait until the agent
+# answers, let it idle, then take the external disk-and-memory snapshot CAPE reverts to for every
+# task. The guest is left powered off (CAPE powers a running registered machine off anyway).
+# Idempotent: once the snapshot exists, a re-run only makes sure the guest is off and recorded.
+set -uo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+context_var AGENT_PORT profile.agent.port
+context_var AGENT_TIMEOUT_S profile.timeouts.agent_s
+context_var IDLE_S profile.timeouts.idle_s
+context_var SHUTDOWN_TIMEOUT_S profile.timeouts.shutdown_s
+context_var PRE_SNAPSHOT_STEP profile.agent.pre_snapshot ""
+
+snapshot_exists() { vsh snapshot-list "$GUEST_NAME" --name 2>/dev/null | grep -qxF "$SNAPSHOT_NAME"; }
+
+agent_answers() {
+    [[ $(curl -s -o /dev/null -w '%{http_code}' -m 5 "http://$GUEST_IP:$AGENT_PORT/" 2>/dev/null) == 200 ]]
+}
+
+# A clean ACPI shutdown, never a power-off first: a hard stop right after provisioning loses what
+# the guest has not flushed yet.
+shut_down_guest() {
+    domain_running || return 0
+    vsh shutdown "$GUEST_NAME" >/dev/null 2>&1
+    wait_for "$SHUTDOWN_TIMEOUT_S" 5 domain_shut_off && return
+    log "warning: no clean shutdown within ${SHUTDOWN_TIMEOUT_S}s, forcing power-off"
+    vsh destroy "$GUEST_NAME" >/dev/null 2>&1
+}
+
+system_disk_target() {
+    vsh dumpxml "$GUEST_NAME" | python3 -I -c '
+import sys
+import xml.etree.ElementTree as ET
+
+disk = ET.parse(sys.stdin).find("devices/disk[@device=\"disk\"]/target")
+if disk is None or not disk.get("dev"):
+    sys.exit(3)
+print(disk.get("dev"))
+'
+}
+
+find_profile_step() {
+    local candidate
+    for candidate in "$TT_PROFILE_DIR/steps/$1" "$STEPS_LIB/../$1"; do
+        [[ -x $candidate ]] && { echo "$candidate"; return; }
+    done
+    return 1
+}
+
+run_pre_snapshot_step() {
+    [[ -n $PRE_SNAPSHOT_STEP ]] || return 0
+    local path
+    path=$(find_profile_step "$PRE_SNAPSHOT_STEP") || fail "the profile's pre-snapshot step '$PRE_SNAPSHOT_STEP' was not found"
+    "$path" || fail "the pre-snapshot step '$PRE_SNAPSHOT_STEP' failed"
+}
+
+# External, not internal: libvirt 10.0 refuses internal snapshots of any UEFI (pflash) domain.
+# The base disk becomes the snapshot's read-only backing file; each revert replaces the overlay.
+take_clean_snapshot() {
+    local target
+    target=$(system_disk_target) || fail "the domain has no system disk to snapshot"
+    vsh snapshot-create-as "$GUEST_NAME" "$SNAPSHOT_NAME" "Tartarus clean baseline" --atomic \
+        --memspec "file=$CLEAN_MEMORY,snapshot=external" \
+        --diskspec "$target,snapshot=external,file=$CLEAN_OVERLAY" >/dev/null || fail "snapshot-create-as failed"
+}
+
+power_off_and_record() {
+    vsh destroy "$GUEST_NAME" >/dev/null 2>&1
+    guest_record set snapshot "$(json_string "$SNAPSHOT_NAME")" || fail "could not record the snapshot in the guest record"
+}
+
+step "Taking the clean snapshot"
+if snapshot_exists; then
+    log "the snapshot $SNAPSHOT_NAME already exists"
+    power_off_and_record
+    progress 100
+    exit 0
+fi
+
+step "Shutting the guest down"
+shut_down_guest
+progress 15
+define_domain run
+vsh start "$GUEST_NAME" >/dev/null || fail "the guest did not start"
+step "Waiting for the agent"
+progress 30
+wait_for "$AGENT_TIMEOUT_S" 5 agent_answers || fail "the agent did not answer within ${AGENT_TIMEOUT_S}s after the clean boot"
+progress 55
+run_pre_snapshot_step
+step "Letting the guest idle for ${IDLE_S}s"
+sleep "$IDLE_S"
+progress 85
+step "Taking the snapshot"
+take_clean_snapshot
+# The snapshot holds the running state; nothing after it needs to reach the disk.
+power_off_and_record
+progress 100

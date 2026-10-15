@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Downloads what the profile pins in its manifest.sha256 into the cache, verified. A file already
+# in the cache is used only after its hash is checked again; a download is checked before it is
+# moved to its final name, so the cache never holds a file nobody verified.
+set -uo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+
+MANIFEST=$TT_PROFILE_DIR/manifest.sha256
+SHA256_HEX='^[0-9a-f]{64}$'
+SAFE_NAME='^[A-Za-z0-9][A-Za-z0-9._+-]*$'
+HTTP_URL='^https?://'
+
+# "<sha256> <name> <url>" entries, without comments and blank lines.
+manifest_entries() { grep -vE '^[[:space:]]*(#|$)' "$MANIFEST"; }
+
+has_sha256() { [[ -f $2 && $(sha256sum "$2" | cut -d' ' -f1) == "$1" ]]; }
+
+check_entry() {
+    local hash=$1 name=$2 url=$3
+    [[ $hash =~ $SHA256_HEX ]] || fail "manifest entry '$name' has no sha256"
+    [[ $name =~ $SAFE_NAME ]] || fail "manifest name '$name' is not a plain file name"
+    [[ $url =~ $HTTP_URL ]] || fail "manifest url '$url' is not http or https"
+}
+
+fetch_entry() {
+    local hash=$1 name=$2 url=$3 target=$CACHE_DIR/$2 partial=$CACHE_DIR/$2.part
+    if has_sha256 "$hash" "$target"; then
+        log "cached $name"
+        return
+    fi
+    log "fetching $name"
+    curl -fsSL --retry 3 --connect-timeout 30 -o "$partial" "$url" || { rm -f "$partial"; fail "download failed: $url"; }
+    has_sha256 "$hash" "$partial" || { rm -f "$partial"; fail "sha256 mismatch for $name"; }
+    mv -f "$partial" "$target"
+}
+
+step "Downloading and verifying the pinned files"
+if [[ ! -f $MANIFEST ]]; then
+    log "nothing to fetch: the profile pins no downloads"
+    progress 100
+    exit 0
+fi
+mkdir -p "$CACHE_DIR"
+# Read up front: a command in the loop that reads stdin must not swallow the remaining entries.
+mapfile -t entries < <(manifest_entries)
+for entry in "${entries[@]}"; do
+    read -r hash name url <<<"$entry"
+    check_entry "$hash" "$name" "$url"
+done
+done_count=0
+for entry in "${entries[@]}"; do
+    read -r hash name url <<<"$entry"
+    fetch_entry "$hash" "$name" "$url"
+    done_count=$((done_count + 1))
+    progress $((100 * done_count / ${#entries[@]}))
+done
+progress 100

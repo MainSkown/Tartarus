@@ -1,0 +1,5 @@
+<clock offset='localtime'>
+  <timer name='rtc' tickpolicy='catchup'/>
+  <timer name='pit' tickpolicy='delay'/>
+  <timer name='hpet' present='no'/>
+</clock>
