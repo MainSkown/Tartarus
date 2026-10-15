@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "id": "ubuntu",
+  "display_name": "Ubuntu (autoinstall)",
+  "family": "linux",
+  "cape": {
+    "platform": "linux",
+    "tags": [
+      "linux",
+      "ubuntu"
+    ]
+  },
+  "arch": "x64",
+  "hardware": {
+    "machine": "q35",
+    "boot": "uefi",
+    "secure_boot": true,
+    "tpm": false,
+    "disk_bus": "sata",
+    "nic_model": "e1000e",
+    "clock": "utc"
+  },
+  "resources": {
+    "vcpus": 2,
+    "ram_mb": 4096,
+    "disk_gb": 40,
+    "min_disk_gb": 20,
+    "scratch_gb": 6
+  },
+  "media": {
+    "kinds": [
+      "installer",
+      "disk_image"
+    ],
+    "inspector": "linux_media"
+  },
+  "options": [
+    {
+      "key": "desktop",
+      "label": "Desktop",
+      "type": "choice",
+      "default": "gnome",
+      "choices": [
+        "gnome",
+        "none"
+      ],
+      "help": "GNOME is what screenshots and the desktop view need; none is a console-only server."
+    },
+    {
+      "key": "locale",
+      "label": "Locale",
+      "type": "string",
+      "default": "en_US.UTF-8",
+      "help": "Install-time locale."
+    },
+    {
+      "key": "keyboard",
+      "label": "Keyboard layout",
+      "type": "string",
+      "default": "us",
+      "help": "Console layout."
+    },
+    {
+      "key": "timezone",
+      "label": "Time zone",
+      "type": "string",
+      "default": "UTC",
+      "help": "Zone name."
+    },
+    {
+      "key": "decoys",
+      "label": "Make it look used",
+      "type": "bool",
+      "default": true,
+      "help": "Documents and shell history.",
+      "changeable_on_clone": true
+    }
+  ],
+  "identity": {
+    "account": {
+      "label": "Username",
+      "pattern": "[a-z_][a-z0-9_-]{0,30}",
+      "reserved": [
+        "root",
+        "daemon",
+        "bin",
+        "sys",
+        "sync",
+        "games",
+        "man",
+        "lp",
+        "mail",
+        "news",
+        "uucp",
+        "proxy",
+        "www-data",
+        "backup",
+        "list",
+        "irc",
+        "nobody",
+        "ubuntu",
+        "admin"
+      ],
+      "generator": "first_name_lower",
+      "optional": true
+    },
+    "machine": {
+      "label": "Hostname",
+      "pattern": "[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?",
+      "reserved": [
+        "localhost"
+      ],
+      "generator": "hostname",
+      "optional": true
+    },
+    "password": {
+      "label": "Password",
+      "pattern": "[\\x20-\\x7e]{8,64}",
+      "reserved": [],
+      "generator": "password",
+      "optional": true
+    }
+  },
+  "clone": {
+    "changeable_options": [
+      "decoys"
+    ],
+    "computer_name_editable": true
+  },
+  "pipelines": {
+    "build": {
+      "installer": [
+        {
+          "step": "preflight"
+        },
+        {
+          "step": "fetch_payload"
+        },
+        {
+          "step": "define"
+        },
+        {
+          "step": "remaster_media"
+        },
+        {
+          "step": "install",
+          "desktop": true,
+          "timeout_s": 2400
+        },
+        {
+          "step": "provision",
+          "desktop": true,
+          "timeout_s": 1800
+        },
+        {
+          "step": "sanitize"
+        },
+        {
+          "step": "snapshot"
+        },
+        {
+          "step": "register"
+        }
+      ],
+      "disk_image": [
+        {
+          "step": "preflight"
+        },
+        {
+          "step": "fetch_payload"
+        },
+        {
+          "step": "define"
+        },
+        {
+          "step": "provision",
+          "desktop": true,
+          "timeout_s": 1200
+        },
+        {
+          "step": "sanitize"
+        },
+        {
+          "step": "snapshot"
+        },
+        {
+          "step": "register"
+        }
+      ]
+    },
+    "clone": [
+      {
+        "step": "preflight"
+      },
+      {
+        "step": "copy"
+      },
+      {
+        "step": "define"
+      },
+      {
+        "step": "reconfigure",
+        "desktop": true
+      },
+      {
+        "step": "snapshot"
+      },
+      {
+        "step": "register"
+      }
+    ]
+  },
+  "agent": {
+    "port": 8000,
+    "path_style": "posix",
+    "ready": {
+      "marker": "{work_dir}/provision.done"
+    },
+    "finish_dir": "/tmp",
+    "work_root": "/var/lib",
+    "shutdown": "acpi",
+    "interactive_options": "",
+    "pre_snapshot": "sync-disk"
+  },
+  "selftest": {
+    "sample": {
+      "source": "selftest/benign.c",
+      "build": [
+        "gcc",
+        "-static",
+        "-O1"
+      ]
+    },
+    "signals": [
+      {
+        "id": "report.present"
+      },
+      {
+        "id": "report.dns_answer"
+      },
+      {
+        "id": "storage.monitor_log",
+        "path": "logs/strace.log"
+      },
+      {
+        "id": "report.child_process"
+      }
+    ],
+    "facts": {
+      "script": "selftest/facts.sh"
+    },
+    "extras": []
+  },
+  "packages": [
+    "generic",
+    "bash",
+    "python",
+    "python_whl",
+    "perl",
+    "deb"
+  ],
+  "badges": [
+    {
+      "option": "desktop",
+      "value": "none",
+      "label": "NO DESKTOP"
+    }
+  ],
+  "timeouts": {
+    "agent_s": 600,
+    "idle_s": 60,
+    "shutdown_s": 180
+  }
+}

@@ -1,0 +1,271 @@
+{
+  "schema_version": 1,
+  "id": "windows",
+  "display_name": "Windows 11",
+  "family": "windows",
+  "cape": {
+    "platform": "windows",
+    "tags": [
+      "windows",
+      "win11"
+    ]
+  },
+  "arch": "x64",
+  "hardware": {
+    "machine": "q35",
+    "boot": "uefi",
+    "secure_boot": true,
+    "tpm": true,
+    "disk_bus": "sata",
+    "nic_model": "e1000e",
+    "clock": "localtime"
+  },
+  "resources": {
+    "vcpus": 2,
+    "ram_mb": 4096,
+    "disk_gb": 80,
+    "min_disk_gb": 64,
+    "scratch_gb": 20
+  },
+  "media": {
+    "kinds": [
+      "installer"
+    ],
+    "inspector": "windows_iso"
+  },
+  "options": [
+    {
+      "key": "defender",
+      "label": "Microsoft Defender",
+      "type": "bool",
+      "default": true,
+      "help": "On is the default install; off is built with a scripted Tamper Protection step.",
+      "requires_user_step": false,
+      "changeable_on_clone": true
+    },
+    {
+      "key": "decoys",
+      "label": "Make it look used",
+      "type": "bool",
+      "default": true,
+      "help": "Documents, browser history and recent files.",
+      "changeable_on_clone": true
+    },
+    {
+      "key": "sysmon",
+      "label": "Sysmon",
+      "type": "bool",
+      "default": true,
+      "help": "Installs Sysmon with the pinned configuration."
+    },
+    {
+      "key": "key",
+      "label": "Product key",
+      "type": "secret",
+      "default": "",
+      "help": "Optional; XXXXX-XXXXX-XXXXX-XXXXX-XXXXX."
+    },
+    {
+      "key": "keyboard",
+      "label": "Keyboard layout",
+      "type": "choice",
+      "default": "pl-PL",
+      "choices": [
+        "pl-PL",
+        "en-US",
+        "de-DE"
+      ],
+      "help": "The layout the guest boots with."
+    }
+  ],
+  "identity": {
+    "account": {
+      "label": "Username",
+      "pattern": "[A-Za-z][A-Za-z0-9_-]{0,19}",
+      "reserved": [
+        "Administrator",
+        "Guest",
+        "DefaultAccount",
+        "SYSTEM",
+        "WDAGUtilityAccount"
+      ],
+      "generator": "first_name",
+      "optional": true
+    },
+    "machine": {
+      "label": "Computer name",
+      "pattern": "(?!\\d+$)[A-Za-z0-9]([A-Za-z0-9-]{0,13}[A-Za-z0-9])?",
+      "reserved": [
+        "localhost"
+      ],
+      "generator": "computer_name",
+      "optional": true
+    },
+    "password": {
+      "label": "Password",
+      "pattern": "[\\x20-\\x7e]{8,64}",
+      "reserved": [],
+      "generator": "password",
+      "optional": true
+    }
+  },
+  "clone": {
+    "changeable_options": [
+      "defender",
+      "decoys"
+    ],
+    "computer_name_editable": true
+  },
+  "pipelines": {
+    "build": {
+      "installer": [
+        {
+          "step": "preflight"
+        },
+        {
+          "step": "define"
+        },
+        {
+          "step": "install",
+          "desktop": true,
+          "timeout_s": 5400,
+          "weight": 60
+        },
+        {
+          "step": "provision",
+          "desktop": true,
+          "timeout_s": 900,
+          "weight": 20
+        },
+        {
+          "step": "tamper-off",
+          "timeout_s": 600,
+          "weight": 5
+        },
+        {
+          "step": "snapshot",
+          "timeout_s": 600
+        },
+        {
+          "step": "register",
+          "timeout_s": 300
+        }
+      ]
+    },
+    "clone": [
+      {
+        "step": "preflight"
+      },
+      {
+        "step": "copy",
+        "timeout_s": 900
+      },
+      {
+        "step": "define"
+      },
+      {
+        "step": "reconfigure",
+        "timeout_s": 600
+      },
+      {
+        "step": "snapshot",
+        "timeout_s": 600
+      },
+      {
+        "step": "register",
+        "timeout_s": 300
+      }
+    ]
+  },
+  "agent": {
+    "port": 8000,
+    "path_style": "windows",
+    "ready": {
+      "marker": "{work_dir}\\provision.done"
+    },
+    "finish_dir": "C:\\Windows\\Temp",
+    "work_root": "C:\\ProgramData",
+    "shutdown": "acpi",
+    "interactive_options": "interactive=1,nohuman=yes",
+    "pre_snapshot": null
+  },
+  "selftest": {
+    "sample": {
+      "source": "selftest/benign.c",
+      "build": [
+        "x86_64-w64-mingw32-gcc",
+        "-O1"
+      ]
+    },
+    "signals": [
+      {
+        "id": "report.present"
+      },
+      {
+        "id": "events.process"
+      },
+      {
+        "id": "events.file"
+      },
+      {
+        "id": "events.registry"
+      },
+      {
+        "id": "report.dns_answer"
+      }
+    ],
+    "facts": {
+      "script": "selftest/guest-facts.ps1"
+    },
+    "extras": [
+      "pafish"
+    ]
+  },
+  "packages": [
+    "exe",
+    "dll",
+    "doc",
+    "pdf",
+    "js",
+    "vbs",
+    "ps1",
+    "zip"
+  ],
+  "badges": [
+    {
+      "option": "defender",
+      "value": true,
+      "label": "DEFENDER ON"
+    },
+    {
+      "option": "defender",
+      "value": false,
+      "label": "DEFENDER OFF"
+    }
+  ],
+  "timeouts": {
+    "agent_s": 900,
+    "idle_s": 60,
+    "shutdown_s": 300
+  },
+  "adoption": {
+    "account": "Analyst",
+    "machine": "DESKTOP-7A3K2P9",
+    "password": "Tartarus1!",
+    "work_dir": "C:\\tartarus",
+    "media": {
+      "file": "Win11_25H2_Polish_x64_v2.iso",
+      "variant": "5",
+      "version": "10.0.26200",
+      "language": "pl-PL",
+      "arch": "amd64"
+    },
+    "options": {
+      "defender": true,
+      "decoys": false,
+      "sysmon": false,
+      "key": "",
+      "keyboard": "pl-PL"
+    }
+  }
+}
