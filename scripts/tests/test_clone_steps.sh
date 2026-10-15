@@ -516,6 +516,7 @@ new_sandbox() {
     ctx_set guest.ip "\"$GUEST_ADDRESS\""
     CTX_MAC=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["guest"]["machine"]["mac"])' "$SB/ctx/context.json")
     printf '%s' "$CTX_MAC" >"$STUB_DIR/mac"
+    ctx_set source '{"ip": "127.0.0.250"}'
     WORK_ON_DISK="$SB/disk/ProgramData/abcdefgh"
     LOG_FILE=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["log_file"])' "$PROFILE/names.json")
     TOKEN=""
@@ -689,6 +690,15 @@ test_reconfigure_does_not_assume_the_address_the_guest_will_be_given() {
     new_sandbox
     run_reconfigure
     assert_status 0 && requests_satisfy 'assert executes[0]["host"] != "'$GUEST_ADDRESS'"'
+}
+
+# A source built by the real provisioning has a static address, so its copy boots there, not on DHCP.
+test_reconfigure_finds_a_copy_that_booted_on_its_sources_static_address() {
+    new_sandbox
+    SCENARIO_ALIVE_BEFORE="127.0.0.250"
+    LEASES="-"
+    run_reconfigure
+    assert_status 0 && requests_satisfy 'assert executes[0]["host"] == "127.0.0.250", executes[0]["host"]'
 }
 
 test_reconfigure_waits_for_an_agent_that_is_not_up_yet() {

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Gives the cloned guest its own identity. The copy is booted cold; DHCP gives it an address that is
-# neither the source's nor the one it will keep, so it is found by its new MAC in libvirt's lease
-# table. Through the agent it then gets its static address, its computer name, a fresh MachineGuid
+# Gives the cloned guest its own identity. The copy is booted cold and could be on any of three
+# addresses: the one it will keep (a re-run), one DHCP leased to its new MAC (a source that never got
+# a static address), or its source's static one (the source is powered off during a clone, so it is
+# free). Through the agent it then gets its static address, its computer name, a fresh MachineGuid
 # and empty event logs (and decoys when asked for), is rebooted, and is checked at its final
 # address. The guest is left running for the steps that follow. Idempotent: every change is
 # skipped or redone harmlessly, and a copy that already has its final address is found there.
@@ -10,6 +11,7 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
 
 context_var MACHINE_NAME guest.identity.machine
+context_var SOURCE_IP source.ip
 context_var GUEST_MAC guest.machine.mac
 context_var GATEWAY host.gateway
 context_var SUBNET host.subnet
@@ -50,8 +52,13 @@ find_agent_address() {
         return
     fi
     leased=$(leased_address)
-    [[ -n $leased ]] || return 1
-    AGENT_IP=$leased
+    if [[ -n $leased ]]; then
+        AGENT_IP=$leased
+    elif agent_answers_at "$SOURCE_IP"; then
+        AGENT_IP=$SOURCE_IP
+    else
+        return 1
+    fi
 }
 
 # report_from <address>: sets REPORT to the script's output; fails when the script did not run or failed.
@@ -95,7 +102,7 @@ start_guest
 step "Finding the copy on the network"
 progress 15
 wait_for "$LEASE_WAIT_S" "$PROBE_S" find_agent_address ||
-    fail "no DHCP lease for the MAC $GUEST_MAC and nothing answers at $GUEST_IP within ${LEASE_WAIT_S}s"
+    fail "no DHCP lease for the MAC $GUEST_MAC and nothing answers at $GUEST_IP or $SOURCE_IP within ${LEASE_WAIT_S}s"
 log "the copy is at $AGENT_IP"
 progress 25
 wait_for "$AGENT_WAIT_S" "$PROBE_S" agent_answers_at "$AGENT_IP" || fail "the guest agent at $AGENT_IP did not answer within ${AGENT_WAIT_S}s"
