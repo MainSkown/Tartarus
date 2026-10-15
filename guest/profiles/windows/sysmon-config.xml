@@ -1,0 +1,32 @@
+<!-- Sysmon configuration, written for this project rather than copied from a third-party set
+     (SwiftOnSecurity and similar configs log far more than a short-lived analysis run needs).
+     Strategy: include only the five event types the self-test and the ingest pipeline read
+     (ProcessCreate, NetworkConnect, FileCreate, RegistryEvent for value-set/key-create, plus
+     ProcessTerminate for process lifetime), exclude the noisy, low-value sources within each
+     (child processes of the agent itself, temp/cache file churn, loopback and the agent's own
+     port, HKLM policy keys this profile writes during provisioning), and leave ImageLoad, FileCreateStreamHash,
+     DNS and the remaining event types off entirely: they are expensive to collect and the
+     analyzer's own instrumentation already covers process, file, registry and network behaviour
+     in the report. -->
+<Sysmon schemaversion="4.70">
+  <EventFiltering>
+    <ProcessCreate onmatch="exclude">
+      <Image condition="end with">conhost.exe</Image>
+    </ProcessCreate>
+    <ProcessTerminate onmatch="exclude">
+      <Image condition="end with">conhost.exe</Image>
+    </ProcessTerminate>
+    <FileCreate onmatch="exclude">
+      <TargetFilename condition="contains">\AppData\Local\Temp\</TargetFilename>
+      <TargetFilename condition="contains">\Windows\Prefetch\</TargetFilename>
+    </FileCreate>
+    <NetworkConnect onmatch="exclude">
+      <DestinationIp condition="is">127.0.0.1</DestinationIp>
+      <DestinationPort condition="is">8000</DestinationPort>
+    </NetworkConnect>
+    <RegistryEvent onmatch="exclude">
+      <TargetObject condition="begin with">HKLM\SOFTWARE\Policies\Microsoft\Windows Defender</TargetObject>
+      <TargetObject condition="contains">\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs</TargetObject>
+    </RegistryEvent>
+  </EventFiltering>
+</Sysmon>

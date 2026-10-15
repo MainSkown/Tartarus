@@ -94,10 +94,42 @@ with open(sys.argv[1]) as handle:
 PY
 }
 
+# The Windows profile's names table and keyboard table, read once for render_autounattend: a
+# minimal bridge so this pre-C2b script still renders the moved, parameterised template; the
+# profile engine (C2b) reads the same files itself and this duplication goes away then.
+read_profile_names() {
+    python3 -I - "$GUEST_SRC/profiles/windows/names.json" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+mapping = {
+    "firewall_rule": "PROFILE_FIREWALL_RULE_NAME", "scheduled_task": "PROFILE_TASK_NAME",
+    "log_file": "PROFILE_LOG_FILE", "done_marker": "PROFILE_DONE_MARKER",
+    "cd_marker_file": "PROFILE_CD_MARKER_FILE", "cd_volume_label": "PROFILE_CD_VOLUME_LABEL",
+    "first_logon_description": "PROFILE_FIRST_LOGON_DESCRIPTION",
+}
+import shlex
+for key, var in mapping.items():
+    print(f"{var}={shlex.quote(data[key])}")
+PY
+}
+
+# PowerShell boolean literal text ($true/$false) for a true/false shell value.
+ps_bool() { [[ $1 == true ]] && echo '$true' || echo '$false'; }
+
 render_autounattend() {
+    local defender=${GUEST_DEFENDER:-true} decoys=${GUEST_DECOYS:-false} sysmon=${GUEST_SYSMON:-true}
+    local product_key=${GUEST_PRODUCT_KEY:-} product_key_block=""
+    [[ -n $product_key ]] && product_key_block="<ProductKey><Key>$product_key</Key><WillShowUI>OnError</WillShowUI></ProductKey>"
+    eval "$(read_profile_names)"
     GUEST_USERNAME=$GUEST_USERNAME GUEST_PASSWORD=$GUEST_PASSWORD GUEST_HOSTNAME=$GUEST_HOSTNAME \
         IMAGE_INDEX=$IMAGE_INDEX UI_LANG=$UI_LANG INPUT_LOCALE=$INPUT_LOCALE \
-        render_template "$GUEST_SRC/autounattend.xml.tpl"
+        WORK_DIR=${GUEST_WORK_DIR:-C:\\ProgramData\\guestwork} GUEST_IP=$GUEST_IP \
+        DEFENDER=$(ps_bool "$defender") DECOYS=$(ps_bool "$decoys") SYSMON=$(ps_bool "$sysmon") \
+        PRODUCT_KEY_BLOCK=$product_key_block \
+        FIREWALL_RULE_NAME=$PROFILE_FIREWALL_RULE_NAME TASK_NAME=$PROFILE_TASK_NAME \
+        LOG_FILE=$PROFILE_LOG_FILE DONE_MARKER=$PROFILE_DONE_MARKER \
+        CD_MARKER_FILE=$PROFILE_CD_MARKER_FILE FIRST_LOGON_DESCRIPTION=$PROFILE_FIRST_LOGON_DESCRIPTION \
+        render_template "$GUEST_SRC/profiles/windows/autounattend.xml.tpl"
 }
 
 # mode: "install" attaches both CDs and boots the installer; "run" ejects them and boots the disk.
@@ -166,13 +198,18 @@ download_into_cache() {
     done
 }
 
+PROVISION_SCRIPTS=(provision.ps1 defender-settings.ps1 decoys.ps1 sysmon-config.xml)
+
 stage_unattend_iso() {
     say "staging the answer-file ISO"
-    local iso_root=$BUILD_DIR/iso entry name
+    local iso_root=$BUILD_DIR/iso entry name script
     in_cape rm -rf "$BUILD_DIR"
     in_cape mkdir -p "$iso_root/provision" "$iso_root/payload"
     render_autounattend | in_cape sh -c "cat >'$iso_root/autounattend.xml'"
-    compose cp "$GUEST_SRC/provision/." "cape:$iso_root/provision/" >/dev/null || die "could not copy the provisioning scripts"
+    for script in "${PROVISION_SCRIPTS[@]}"; do
+        compose cp "$GUEST_SRC/profiles/windows/$script" "cape:$iso_root/provision/$script" >/dev/null \
+            || die "could not copy $script"
+    done
     load_manifest
     for entry in "${MANIFEST_ENTRIES[@]}"; do
         read -r _ name _ <<<"$entry"
@@ -180,8 +217,9 @@ stage_unattend_iso() {
     done
     in_cape cp /opt/CAPEv2/agent/agent.py "$iso_root/payload/agent.py" \
         || die "CAPE agent.py not found at /opt/CAPEv2/agent/agent.py"
-    in_cape touch "$iso_root/tartarus-provision.marker"
-    in_cape xorriso -as mkisofs -quiet -V TARTARUS -J -joliet-long -r -o "$UNATTEND_ISO" "$iso_root" \
+    eval "$(read_profile_names)"
+    in_cape touch "$iso_root/$PROFILE_CD_MARKER_FILE"
+    in_cape xorriso -as mkisofs -quiet -V "$PROFILE_CD_VOLUME_LABEL" -J -joliet-long -r -o "$UNATTEND_ISO" "$iso_root" \
         || die "could not build the answer-file ISO"
 }
 
@@ -240,12 +278,18 @@ agent_answers() { [[ $(in_cape curl -s -o /dev/null -w '%{http_code}' -m 5 "$AGE
 # provision.ps1 starts the agent before its last log lines and the done marker are written, so the
 # agent alone does not mean provisioning finished.
 provisioning_done() {
+    local work_dir=${GUEST_WORK_DIR:-C:\\ProgramData\\guestwork} marker
+    eval "$(read_profile_names)"
+    marker="${work_dir}\\${PROFILE_DONE_MARKER}"
     agent_answers &&
-        [[ $(in_cape curl -s -o /dev/null -w '%{http_code}' -m 10 -F 'filepath=C:\tartarus\provision.done' "$AGENT/retrieve") == 200 ]]
+        [[ $(in_cape curl -s -o /dev/null -w '%{http_code}' -m 10 -F "filepath=$marker" "$AGENT/retrieve") == 200 ]]
 }
 
 save_provision_log() {
-    in_cape sh -c "curl -s -m 20 -F 'filepath=C:\\tartarus\\provision.log' '$AGENT/retrieve' | tr -d '\\r' >'$BUILD_DIR/provision.log'"
+    local work_dir=${GUEST_WORK_DIR:-C:\\ProgramData\\guestwork} log
+    eval "$(read_profile_names)"
+    log="${work_dir}\\${PROFILE_LOG_FILE}"
+    in_cape sh -c "curl -s -m 20 -F 'filepath=$log' '$AGENT/retrieve' | tr -d '\\r' >'$BUILD_DIR/provision.log'"
     in_cape cat "$BUILD_DIR/provision.log" | sed 's/^/  guest: /'
 }
 

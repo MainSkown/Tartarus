@@ -186,7 +186,7 @@ Rebuilding replaces it after the new one passes its checks.
    - A MAC address with a real vendor prefix (OUI).
    - Q35/UEFI with emulated TPM for Windows 11.
    - VNC display bound inside the container only.
-3. **Unattended install:** generate `autounattend.xml` (`guest/autounattend.xml.j2`) and attach it
+3. **Unattended install:** generate `autounattend.xml` (`guest/profiles/windows/autounattend.xml.tpl`) and attach it
    with the provisioning scripts on a second ISO. Windows installs with no prompts.
 4. **Provision** (first-logon PowerShell, logged back to the wizard):
    - Disable Windows Update, UAC prompts, the firewall, telemetry, sleep/hibernate and
@@ -201,7 +201,7 @@ Rebuilding replaces it after the new one passes its checks.
      a sample before it runs.
    - Install 32-bit Python 3.12 and Pillow.
    - Install CAPE `agent.py` as a scheduled task that starts at logon with highest privileges.
-   - Install Sysmon with `guest/sysmon-config.xml`.
+   - Install Sysmon with `guest/profiles/windows/sysmon-config.xml`.
    - Set a static IP of `192.168.150.10` with gateway and DNS `192.168.150.1`.
    - Apply the decoys if that option was chosen.
 5. **Snapshot:** shut down with ACPI (never `virsh destroy`, which loses Windows' unflushed writes),

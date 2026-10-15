@@ -31,7 +31,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO=$PWD
 
-SAMPLE_SRC=$REPO/guest/testsample/benign.c
+SAMPLE_SRC=$REPO/guest/profiles/windows/selftest/benign.c
 SAMPLE_DIR=${TMPDIR:-/tmp}/tt-guest-verify
 SAMPLES_IN_BACKEND=/data/samples
 BROWSER_SECONDS=${E2E_BROWSER_SECONDS:-480}

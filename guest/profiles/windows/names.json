@@ -1,0 +1,9 @@
+{
+  "done_marker": "setup.state",
+  "log_file": "setup.log",
+  "firewall_rule": "Windows Remote Assistance Service",
+  "scheduled_task": "RemoteAssistanceSessionSync",
+  "cd_volume_label": "SETUP_MEDIA",
+  "cd_marker_file": "setup.cfg",
+  "first_logon_description": "Finalizing device setup"
+}

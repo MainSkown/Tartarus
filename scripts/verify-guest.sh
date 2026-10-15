@@ -13,7 +13,7 @@ GUEST_IP="" GATEWAY_IP="" AGENT=""
 CAPE_IMAGE=tartarus-cape:latest
 CALLBACK=tt-callback
 CALLBACK_PORT=8080
-SAMPLE_SRC=$REPO/guest/testsample/benign.c
+SAMPLE_SRC=$REPO/guest/profiles/windows/selftest/benign.c
 SAMPLE_DIR=${TMPDIR:-/tmp}/tt-guest-verify
 AGENT_TIMEOUT=${GUEST_AGENT_TIMEOUT:-300}
 ANALYSIS_TIMEOUT=${GUEST_ANALYSIS_TIMEOUT:-900}
@@ -100,7 +100,7 @@ restore_snapshot_and_reach_agent() {
 
 # Information only: what the guest reports about itself, and how each provisioning step ended,
 # read through CAPE's own agent (/store, /execute, /retrieve) on the restored guest.
-GUEST_FACTS=$REPO/guest/selftest/guest-facts.ps1
+GUEST_FACTS=$REPO/guest/profiles/windows/selftest/guest-facts.ps1
 
 agent_stdout() {
     python3 -I -c 'import json,sys

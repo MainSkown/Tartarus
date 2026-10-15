@@ -1,4 +1,4 @@
-# Builds the harmless Windows sample (guest/testsample/benign.c) with mingw-w64 in a throwaway
+# Builds the harmless Windows sample (guest/profiles/windows/selftest/benign.c) with mingw-w64 in a throwaway
 # container. Sourced by scripts that submit it; expects SAMPLE_SRC and SAMPLE_DIR to be set.
 
 build_sample() {
