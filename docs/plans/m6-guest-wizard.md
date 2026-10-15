@@ -127,12 +127,25 @@ else is built.
    - **State:** `building` → `testing` (registered, hidden from the Submit dialog) → `ready`, or `failed`
      (unregistered, files kept so a step can be retried). Only `ready` guests are offered for detonation.
    - **Addresses.** Every guest gets its own static IP, the next free one from `.10` (`.10`, `.11`, …), set in
-     provisioning (`provision.ps1` already takes `-GuestIp`). Two machines sharing one IP is the part CAPE's
-     machine table and the rooter's per-IP rules might not tolerate; S0b settles it, and distinct
-     addresses cost nothing. At most 5 guests (a `/24` is not the limit; disk is).
+     provisioning (`provision.ps1` already takes `-GuestIp`). **S0b:** CAPE accepts two machines
+     with the same IP silently (no warning, not run), so the control service enforces unique addresses
+     itself. Static addresses run from `.10` to `.99`. The libvirt DHCP range, today the single address `.10`
+     with `dhcp-lease-max=1` (`cape/entrypoint.sh:17`, `start-guest-network`), moves to a **separate pool**
+     (`.100` to `.119`): a guest that cold-boots on DHCP (every clone does, S0d) must never compete with a
+     registered guest's static address, and a second cold-booting client got no reply while the first held `.10`.
+     At most 5 guests (a `/24` is not the limit; disk is).
    - **One registration.** The control service renders a single `kvm.conf.d/guests.conf` with
      `machines = a,b,c` and a section per guest, from every `testing` and `ready` guest, and restarts `cape`.
-     This replaces the file-per-guest writes of `build-guest.sh`.
+     This replaces the file-per-guest writes of `build-guest.sh`. **S0b:** two machines in one file work
+     (`[kvm] machines = win,win2` plus a section each, win2 at `.11`), CAPE lists both and runs a task on the
+     one named; the PCAP, ResultServer connection, rooter rules, INetSim answer and callback all belong to the
+     right guest, and one ResultServer bind (`192.168.150.1:2042`) serves both because the guest is identified
+     by its source address. Rules the control service must keep: it owns the **whole** `kvm.conf.d` directory
+     (CAPE merges every `*.conf` in sorted order and the last `machines` key wins, so a leftover `win.conf`
+     silently un-registers the rest); the order is **define the domain, then register, then restart `cape`,
+     then check `machines/list`** (never `supervisorctl`: a registered machine that libvirt does not know
+     leaves `cape` "RUNNING" while tasks stay pending), and on deletion unregister before undefine; the
+     backend keys on the **label**, since CAPE recreates its machine rows, and ids, on every start.
    - **Adoption.** The guest M0b built (`win`, `.10`) is adopted on the first start of the control service: its
      `guest.json` is written from the domain XML and the registration file, nothing is rebuilt. `make
      verify-guest` and the e2e keep working with `win`.
@@ -151,13 +164,19 @@ else is built.
    guest deleted since, the stored name is shown plainly. `finish-run` takes the **guest's name** with
    each request instead of its fixed address (the control service looks up that guest's address, agent port
    and finish folder in its `guest.json` and profile; the backend never supplies an address, so there is
-   nothing to validate and no path to inject). The v1 rule "one analysis at a time"
+   nothing to validate and no path to inject). **S0b:** the backend always sends `machine` (omitted, CAPE alternates between the
+   registered guests), and reads the `error` field of the answer, because an unknown `machine` is HTTP 200 with
+   `{"error": true, "error_value": "Machine 'x' does not exist…"}` and no task. The v1 rule "one analysis at a time"
    stays, enforced by the backend's queue as today, so two guests never run together. **Confirm.**
 7. **Builds, deletes and analyses exclude each other.** Registering or deleting a guest restarts `cape`, and
-   `cuckoo.py` powers off a running registered machine when it starts (M0b), which would kill an analysis. So
+   **S0b measured what that does**: a graceful `supervisorctl restart cape` destroys the running guest while
+   `cape` stops (0.2 s after the signal), a hard kill is handled at the next start, and either way the task ends
+   `failed_analysis` with no report and no callback; a task still queued for a machine that the new
+   registration removes is failed at the next start. The sniffer's `tcpdump` can leak across the restart, so
+   the control service kills strays after it. So
    while a build is running `POST /analyses` answers `409` with the reason; a build's register step, a
    delete, a build start and `[RUN CHECKS]` (which reverts a snapshot) are refused with `409` while an
-   analysis is queued, starting or running. The cost is that no sample can be detonated for the 14 minutes
+   analysis is queued (including `pending` in CAPE), starting or running. The cost is that no sample can be detonated for the 14 minutes
    of a build; narrowing the exclusion to the register step is a possible refinement. The Agent check runs on
    demand only: CAPE reverts the snapshot before every task, so "before each analysis" would do it twice.
    **Confirm (spec change).**
@@ -217,22 +236,38 @@ else is built.
       the analyst gave (or a new random one; the same validation as a build, so never the source's), the next
       free IP. The copy is defined with these, so nothing of the
       source's hardware identity survives.
-    - **Reconfigure** boots the copy at the source's old address (the source is powered off; an exclusion rule,
-      decision 7, keeps analyses from using it at the same time), waits for the agent, then through the
-      agent (`/execute`, `C:/` paths): sets the new IP, renames the computer, applies the requested changes, and
-      reboots once. The settings that make sense on a copy are: **computer name**, **Defender** on or off,
+    - **Reconfigure** cold-boots the copy and finds it by its **new MAC in libvirt's DHCP lease table** (S0d:
+      the source's base disk boots on DHCP, not on the static address `provision.ps1` set, so the copy's
+      address is not the source's; with the separate pool of decision 5 it never collides with a registered
+      guest), waits for the agent there, then through the agent: sets the static IP **idempotently** (it
+      does not assume the address it booted with), renames the computer, applies the requested changes, and
+      reboots once. Agent details S0d found: its PowerShell is **32-bit**, so the scripts run through
+      `C:/Windows/Sysnative/WindowsPowerShell/v1.0/powershell.exe` (`manage-bde`, `query` and the 64-bit
+      registry view are missing otherwise), the IP-changing call is made with `async=1` (the HTTP call dies
+      when the address changes), and `Rename-Computer -Force` needs only an elevated session and takes effect
+      after the reboot. Measured: a clone takes about 3.5 minutes of machine time (convert 11 s, cold boot to
+      agent 53 s, reconfigure and reboot under 50 s, shutdown 7 s, boot 24 s, idle 60 s, snapshot 2 s) and
+      about 21 GB (17.9 GB disk, 3.1 GB memory file). The settings that make sense on a copy are: **computer name**, **Defender** on or off,
       **decoys** (added), **resources** (vCPUs, RAM); inherited and shown greyed: ISO, edition, language,
       keyboard, username and password, disk size. The username is inherited because renaming an account
       leaves its profile folder (`C:\Users\<old name>`) behind, which is a worse giveaway than the name; a
       different username needs a build.
     - **Defender off** needs the Tamper Protection pause of decision 11 when the source had it on, exactly as in
       a fresh build (the desktop shows the copy at its temporary address). **Defender on** from a source that has
-      it off is scripted; S0d checks that it takes.
+      it off is scripted; whether it takes is still unverified (it needs the Tamper Protection state of S0c).
     - The snapshot, registration and self-test then run as for a build, on the copy, with its Defender
       verdict (decision 10). A clone that fails ends `failed`, unregistered, with the source untouched.
-    - **S0d decides the details** (new MAC and TPM under the same Windows, the cold boot from a crash-consistent
-      disk, the IP change on the existing adapter); if the new MAC makes Windows treat the adapter as new, the
-      reconfigure step finds it by hardware instead of by name, as `provision.ps1` already does.
+    - **S0d settled the details** ([findings](m6-spikes/S0d-findings.md)): the crash-consistent copy cold-boots
+      with no repair, activation, Secure Boot or hardware prompt; the fresh TPM is re-owned automatically within
+      about 45 s (no BitLocker key protector, so it cannot lock the clone out); Secure Boot stays on with the
+      copied nvram; the adapter keeps its name and GUID after the MAC change, so `provision.ps1`'s lookup
+      works unchanged; the new name and IP survive two reboots and a snapshot revert. **The source's disk
+      is found through the snapshot's backing chain**, not by name: `win` has no `win-clean.qcow2` after
+      reverts (CAPE replaces the overlay with `win.<epoch>`).
+    - **What a clone still shares with its source** (S0d): `MachineGuid`, the machine SID, the install date and
+      the event log. The reconfigure step therefore also **regenerates `MachineGuid` and clears the event
+      logs** (`wevtutil cl`), both cheap; neither was tried in S0d, so each gets a test in C4 and a check in the
+      proof wave. The SID cannot change without Sysprep; accepted and said on the card.
       **Confirm.**
 16. **Nothing in the guest says Tartarus.** M0b's guest has, readable by any process in it: the folder
     `C:\tartarus` (the agent, the installers and `provision.log`, kept for good), a firewall rule called
@@ -255,7 +290,7 @@ else is built.
     the top-level folders, and **fails the build** if it finds any. **Not fixed, and said so on the card:** the
     guest M0b already built (`win`, adopted by decision 5) keeps its `Analyst` account, `C:\tartarus`
     and its other names, and so does every clone of it except for the computer name; rebuilding is the way to a
-    clean one. CAPE's own traces during a run (its analyzer folder in `%TEMP%`, the agent process) are CAPE's
+    clean one. Likewise a clone carries its source's SID and install date (decision 15). CAPE's own traces during a run (its analyzer folder in `%TEMP%`, the agent process) are CAPE's
     and are not addressed here.
 
 17. **Guests are OS-independent; Windows is the first guest profile.** Decisions 3 (the Windows name rules),
@@ -380,14 +415,20 @@ needing libvirt or a guest is a named `verify-*` script check.
   `domain.xml.tpl`; the CAPE source lines it cites exist. Everything about Ubuntu autoinstall, cloud-init and
   preseed is from memory (its fetches of Canonical's pages failed) and must be verified when a Linux profile is
   built, not before.
-- **S0d** (clone by hand), **S0b** (two machines in CAPE) and **S0c** (Tamper Protection, with the user) are
-  pending; S0d runs first and leaves a cloned `win2` for S0b.
+- **S0d done (2026-10-15)**, [findings](m6-spikes/S0d-findings.md). The clone works (details in decision 15);
+  the planner checked that `win` was untouched and `win2` is defined, snapshotted, shut off and unregistered.
+- **S0b done (2026-10-15)**, [findings](m6-spikes/S0b-findings.md). CAPE serves two registered machines and
+  routes by label (decisions 5 to 7). The planner checked the restore: `win.conf` has the same hash, no
+  listener file or stray `tcpdump` is left; the agent reports `make verify-guest` 12 OK, 0 failed (twice), not
+  re-run by the planner. Not verified: two tasks at once, a real cold boot of `win`, two machines on one IP in an
+  analysis, `route=internet`.
+- **S0c** (Tamper Protection, with the user) is pending.
 
 ### Wave 2 (parallel, disjoint files)
 
 | ID | Task | Model | Deliverables | Tests first |
 |---|---|---|---|---|
-| **C1** | Control service | Sonnet, **care** | `cape/bin/guest-control` and the HTTP boilerplate it shares with `finish-run` (one module, `finish-run` moved onto it, and made to take the guest name per request and resolve its address, agent port and finish folder from `guest.json` and the profile; no Windows path left in it); token auth; the `tartarus-control` network, compose and `.env.example` (`GUEST_CONTROL_TOKEN`); `verify-cape` checks (token, refusal, isolation from other containers, libvirt TCP still off) | Handler tests with a fake runner: auth, validation errors (decision 3), unknown routes, `finish-run` tests still green with the guest name (an unknown name is a `404`, nothing is looked up from the request); the new `verify-cape` checks fail before the service exists |
+| **C1** | Control service | Sonnet, **care** | `cape/bin/guest-control` and the HTTP boilerplate it shares with `finish-run` (one module, `finish-run` moved onto it, and made to take the guest name per request and resolve its address, agent port and finish folder from `guest.json` and the profile; no Windows path left in it); token auth; the DHCP pool moved to `.100`-`.119` (`entrypoint.sh`, `start-guest-network`) and `verify-cape`'s probe and its stash of every `*.conf` adjusted to it; the post-restart `tcpdump` cleanup; the `tartarus-control` network, compose and `.env.example` (`GUEST_CONTROL_TOKEN`); `verify-cape` checks (token, refusal, isolation from other containers, libvirt TCP still off) | Handler tests with a fake runner: auth, validation errors (decision 3), unknown routes, `finish-run` tests still green with the guest name (an unknown name is a `404`, nothing is looked up from the request); the new `verify-cape` checks fail before the service exists |
 | **C2** | Build engine, registry and profiles | Sonnet, **care** | The profile schema and loader (decision 17 with the S0e amendments: `hardware` block, typed media, `agent` block, `identity`, signal catalog, pause from any step, `schema_version`), validation of every profile in the repo, the step contract and the generic pause; the fake profile for tests; `build-guest.sh` split into generic steps under `guest/steps/` and the Windows ones under `guest/profiles/windows/steps/`, installed in the image; the sequencer and per-guest `state.json` (resume from the last completed step, restart from scratch, a failed step keeps its log); the registry (`guest.json`), address allocation, the single-registration renderer and the adoption of the M0b `win` guest (decisions 2 and 5); delete guest; `make build-guest` as a wrapper | Bash tests (`scripts/tests/`) for every pure helper as today; registry tests: allocation skips taken addresses and deleted ones, the registration lists exactly the `testing` and `ready` guests, adoption writes the right `guest.json` from fixture XML; sequencer tests with fake steps: order, failure, resume, restart, interruption mid-step, pause and continue; the fake profile end to end (build and clone, no Windows file touched); a profile with a missing step file or a bad schema is rejected at load; the full real build is Wave 5 |
 | **C3** | Media scan | Sonnet | `GET /media` in the control service: the inspector interface (media file in, `[{profile, variant, version, language, arch}]` out) and the Windows inspector per S0a: metadata parser (pure), loop-device handling and cleanup (create the node, detach in a `finally`, clean stale mounts at start), the error table of S0a (unreadable, not an ISO, truncated, not Windows, no `install.wim` or `.esd`); no cache | Parser tests on `wiminfo` output fixtures including a multi-language and an ESD sample; mount cleanup after a failed `wiminfo` and at start-up |
 | **C4** | Clone pipeline | Sonnet, **care** | The copy and reconfigure steps of decision 15 as step files in the same engine as C2 (so C4 follows C2's step interface, and runs in parallel with it against an agreed one): disk and nvram copy, new identity, fresh TPM, the agent-driven reconfigure (`guest/clone/reconfigure.ps1`, safe to run twice), clone parameters and their validation (decision 3: source must be `ready`, name unique, Defender and decoys flags, resources) | The pure parts: parameter validation, the identity differs from the source's in every field, the reconfigure script renders with hostile names escaped, a computer name equal to the source's or on the giveaway list is refused, the step list for a clone is exactly the one in decision 15; sequencer tests with fake steps for a clone failing at each step and leaving the source untouched. The real copy and boot are Wave 5 |
