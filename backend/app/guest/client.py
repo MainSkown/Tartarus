@@ -1,4 +1,6 @@
+import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, Protocol, Self
 
@@ -19,12 +21,24 @@ from app.guest.schemas import (
     GuestProfile,
     HealthCheckResult,
     MediaEntry,
+    SelfTestChecks,
+    SelfTestSample,
 )
 
+CONNECT_TIMEOUT_S = 5.0
 # A check restores the guest's snapshot and waits for its agent (up to two minutes).
-DEFAULT_TIMEOUT = httpx.Timeout(150.0, connect=5.0)
+DEFAULT_TIMEOUT = httpx.Timeout(150.0, connect=CONNECT_TIMEOUT_S)
+# The self-test's checks run guest-facts and the EICAR proofs after the same restore.
+SELFTEST_CHECKS_TIMEOUT_S = 240.0
+SAMPLE_CAP = 16 * 1024 * 1024
 NO_MESSAGE = "the guest control service refused the request without saying why"
 AUTH_REFUSED_STATUSES = frozenset({httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN})
+# The finish route answers 502 with the reason the guest agent could not be asked, and so do the
+# self-test's checks.
+EXPLAINED_SERVER_ERRORS = frozenset({httpx.codes.BAD_GATEWAY})
+# The sample route answers 500 with the reason building the sample failed.
+SAMPLE_EXPLAINED_SERVER_ERRORS = EXPLAINED_SERVER_ERRORS | {httpx.codes.INTERNAL_SERVER_ERROR}
+SAMPLE_FILENAME_HEADER = "X-Filename"
 
 _PROFILES = TypeAdapter(list[GuestProfile])
 _MEDIA = TypeAdapter(list[MediaEntry])
@@ -34,6 +48,14 @@ _CHECK = TypeAdapter(HealthCheckResult)
 _BUILD = TypeAdapter(BuildStatus)
 _LOG_LINES = TypeAdapter(list[str])
 _DISPLAY = TypeAdapter(GuestDisplay)
+_SELFTEST_CHECKS = TypeAdapter(SelfTestChecks)
+
+
+@dataclass(frozen=True)
+class _Reply:
+    status: int
+    headers: httpx.Headers
+    content: bytes
 
 
 class GuestControl(Protocol):
@@ -77,6 +99,10 @@ class GuestControl(Protocol):
 
     async def finish_task(self, task_id: int, guest: str) -> None: ...
 
+    async def selftest_sample(self, name: str) -> SelfTestSample: ...
+
+    async def selftest_checks(self, name: str) -> SelfTestChecks: ...
+
 
 class HttpGuestControl:
     """Async client of the guest control service. It never retries: the callers decide."""
@@ -90,6 +116,7 @@ class HttpGuestControl:
         timeout: httpx.Timeout = DEFAULT_TIMEOUT,
     ) -> None:
         self._token = token
+        self._timeout = timeout
         self._http = httpx.AsyncClient(base_url=base_url, transport=transport, timeout=timeout)
 
     @classmethod
@@ -176,7 +203,27 @@ class HttpGuestControl:
         if not (isinstance(body, dict) and body.get("finished") is True):
             raise GuestControlBadResponse("finish_task", "not a finish")
 
-    async def _send(
+    async def selftest_sample(self, name: str) -> SelfTestSample:
+        call = "selftest_sample"
+        reply = await self._exchange(
+            call, "GET", f"/guests/{name}/selftest/sample", max_bytes=SAMPLE_CAP
+        )
+        _fail_unless_ok(call, reply, SAMPLE_EXPLAINED_SERVER_ERRORS)
+        filename = reply.headers.get(SAMPLE_FILENAME_HEADER)
+        if not filename:
+            raise GuestControlBadResponse(call, f"no {SAMPLE_FILENAME_HEADER} header")
+        return SelfTestSample(filename, reply.content)
+
+    async def selftest_checks(self, name: str) -> SelfTestChecks:
+        body = await self._send(
+            "selftest_checks",
+            "POST",
+            f"/guests/{name}/selftest/checks",
+            patience=httpx.Timeout(SELFTEST_CHECKS_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
+        )
+        return _parsed("selftest_checks", _SELFTEST_CHECKS, body)
+
+    async def _send(  # noqa: PLR0913 - the request's parts
         self,
         call: str,
         method: str,
@@ -184,37 +231,81 @@ class HttpGuestControl:
         body: Mapping[str, Any] | None = None,
         *,
         query: Mapping[str, Any] | None = None,
+        patience: httpx.Timeout | None = None,
     ) -> Any:
+        reply = await self._exchange(
+            call, method, path, body, query=query, patience=patience, max_bytes=None
+        )
+        return _answer(call, reply)
+
+    async def _exchange(  # noqa: PLR0913 - the request's parts
+        self,
+        call: str,
+        method: str,
+        path: str,
+        body: Mapping[str, Any] | None = None,
+        *,
+        query: Mapping[str, Any] | None = None,
+        patience: httpx.Timeout | None = None,
+        max_bytes: int | None = None,
+    ) -> _Reply:
         if self._token is None:
             raise GuestControlNotConfigured(call)
+        request = self._http.build_request(
+            method,
+            path,
+            json=body,
+            params=query,
+            headers={"Authorization": f"Bearer {self._token}"},
+            timeout=patience or self._timeout,
+        )
         try:
-            response = await self._http.request(
-                method,
-                path,
-                json=body,
-                params=query,
-                headers={"Authorization": f"Bearer {self._token}"},
-            )
+            response = await self._http.send(request, stream=True)
+            try:
+                content = await _read_within(call, response, max_bytes)
+            finally:
+                await response.aclose()
         except httpx.TransportError as error:
             # Only the type: httpx messages can carry the URL.
             raise GuestControlUnreachable(call, type(error).__name__) from None
-        return _answer(call, response)
+        return _Reply(response.status_code, response.headers, content)
 
 
-def _answer(call: str, response: httpx.Response) -> Any:
-    status = response.status_code
-    parsed = _json_or_none(response)
+async def _read_within(call: str, response: httpx.Response, max_bytes: int | None) -> bytes:
+    if max_bytes is None:
+        return await response.aread()
+    announced = response.headers.get("Content-Length", "")
+    if announced.isdigit() and int(announced) > max_bytes:
+        raise GuestControlBadResponse(call, f"body too large (over {max_bytes} bytes)")
+    received = bytearray()
+    async for chunk in response.aiter_bytes():
+        received += chunk
+        if len(received) > max_bytes:
+            raise GuestControlBadResponse(call, f"body too large (over {max_bytes} bytes)")
+    return bytes(received)
+
+
+def _fail_unless_ok(
+    call: str, reply: _Reply, explained_server_errors: frozenset[int] = EXPLAINED_SERVER_ERRORS
+) -> None:
+    status = reply.status
+    if status < httpx.codes.BAD_REQUEST:
+        return
+    parsed = _json_or_none(reply.content)
     if status in AUTH_REFUSED_STATUSES:
         raise GuestControlUnreachable(call, "the token was refused")
-    # The finish route answers 502 with the reason the guest agent could not be asked.
-    if status == httpx.codes.BAD_GATEWAY and _message_of(parsed):
+    if status in explained_server_errors and _message_of(parsed):
         raise _rejection(call, status, parsed)
     if status >= httpx.codes.INTERNAL_SERVER_ERROR:
         raise GuestControlUnreachable(call, f"HTTP {status}")
-    if status >= httpx.codes.BAD_REQUEST:
-        raise _rejection(call, status, parsed)
-    if status == httpx.codes.NO_CONTENT:
+    raise _rejection(call, status, parsed)
+
+
+def _answer(call: str, reply: _Reply) -> Any:
+    _fail_unless_ok(call, reply)
+    if reply.status == httpx.codes.NO_CONTENT:
         return None
+    parsed = _json_or_none(reply.content)
     if parsed is None:
         raise GuestControlBadResponse(call, "not JSON")
     return parsed
@@ -235,9 +326,9 @@ def _message_of(parsed: Any) -> str:
     return message if isinstance(message, str) else ""
 
 
-def _json_or_none(response: httpx.Response) -> Any:
+def _json_or_none(content: bytes) -> Any:
     try:
-        return response.json()
+        return json.loads(content)
     except ValueError:
         return None
 

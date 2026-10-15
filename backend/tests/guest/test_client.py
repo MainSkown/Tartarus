@@ -1,12 +1,17 @@
 import json
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import httpx
 import pytest
 
 from app.config import Settings
-from app.guest.client import HttpGuestControl
+from app.guest.client import (
+    DEFAULT_TIMEOUT,
+    SAMPLE_CAP,
+    SELFTEST_CHECKS_TIMEOUT_S,
+    HttpGuestControl,
+)
 from app.guest.errors import (
     GuestControlBadResponse,
     GuestControlError,
@@ -398,3 +403,129 @@ async def test_the_token_is_in_no_log_line_and_no_exception_text(
 
     assert TOKEN not in caplog.text
     assert all(TOKEN not in text for text in texts)
+
+
+# --- the self-test -----------------------------------------------------------------------------
+
+CHECKS_ANSWER = {
+    "facts": {"os.hostname": "DESKTOP-4F7Q", "os.user": "jan"},
+    "giveaways": ["scheduled task: SandboxAgent"],
+    "proofs": {"eicar": {"ok": False, "message": "the file is still there"}},
+    "log": ["restored the snapshot", "ran guest-facts"],
+}
+
+
+def sample_response(content: bytes = b"MZ pretend", filename: str = "benign.exe") -> httpx.Response:
+    return httpx.Response(200, content=content, headers={"X-Filename": filename})
+
+
+async def test_selftest_sample_gets_the_bytes_and_the_file_name_from_the_header() -> None:
+    control = serving("GET", "/guests/lab1/selftest/sample", sample_response())
+
+    sample = await control_with(control).selftest_sample("lab1")
+
+    assert (sample.filename, sample.content) == ("benign.exe", b"MZ pretend")
+
+
+async def test_selftest_sample_without_a_file_name_header_is_a_bad_response() -> None:
+    control = serving("GET", "/guests/lab1/selftest/sample", httpx.Response(200, content=b"MZ"))
+
+    with pytest.raises(GuestControlBadResponse):
+        await control_with(control).selftest_sample("lab1")
+
+
+async def test_selftest_sample_of_exactly_the_cap_is_accepted() -> None:
+    control = serving("GET", "/guests/lab1/selftest/sample", sample_response(b"x" * SAMPLE_CAP))
+
+    sample = await control_with(control).selftest_sample("lab1")
+
+    assert len(sample.content) == SAMPLE_CAP
+
+
+async def test_selftest_sample_over_the_cap_is_refused_whatever_the_headers_say() -> None:
+    chunk = b"x" * 1024 * 1024
+
+    async def endless() -> AsyncIterator[bytes]:
+        for _ in range(SAMPLE_CAP // len(chunk) + 1):
+            yield chunk
+
+    response = httpx.Response(200, content=endless(), headers={"X-Filename": "big.exe"})
+    control = serving("GET", "/guests/lab1/selftest/sample", response)
+
+    with pytest.raises(GuestControlBadResponse) as error:
+        await control_with(control).selftest_sample("lab1")
+
+    assert "too large" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        (404, "no guest named lab1"),
+        (409, "the profile defines no sample"),
+        (500, "building the sample failed: gcc exited 1"),
+    ],
+)
+async def test_selftest_sample_refusals_are_rejections_with_the_services_message(
+    status: int, message: str
+) -> None:
+    control = serving(
+        "GET", "/guests/lab1/selftest/sample", json_response({"error": message}, status)
+    )
+
+    with pytest.raises(GuestControlRejected) as error:
+        await control_with(control).selftest_sample("lab1")
+
+    assert (error.value.status, error.value.message) == (status, message)
+
+
+async def test_selftest_checks_posts_and_parses_the_facts_giveaways_proofs_and_log() -> None:
+    control = serving("POST", "/guests/lab1/selftest/checks", json_response(CHECKS_ANSWER))
+
+    checks = await control_with(control).selftest_checks("lab1")
+
+    assert checks.facts["os.hostname"] == "DESKTOP-4F7Q"
+    assert checks.giveaways == ["scheduled task: SandboxAgent"]
+    assert checks.proofs["eicar"].ok is False
+    assert checks.proofs["eicar"].message == "the file is still there"
+    assert checks.log == ["restored the snapshot", "ran guest-facts"]
+
+
+async def test_selftest_checks_waits_longer_than_the_other_calls() -> None:
+    control = RecordingControl(
+        {
+            ("POST", "/guests/lab1/selftest/checks"): json_response(CHECKS_ANSWER),
+            ("GET", "/guests"): json_response([]),
+        }
+    )
+    client = control_with(control)
+
+    await client.selftest_checks("lab1")
+    await client.guests()
+
+    checks_request, guests_request = control.requests
+    assert checks_request.extensions["timeout"]["read"] == SELFTEST_CHECKS_TIMEOUT_S
+    assert guests_request.extensions["timeout"]["read"] == DEFAULT_TIMEOUT.read
+
+
+@pytest.mark.parametrize("status", [404, 409, 502])
+async def test_selftest_checks_refusals_are_rejections_with_the_services_message(
+    status: int,
+) -> None:
+    control = serving(
+        "POST",
+        "/guests/lab1/selftest/checks",
+        json_response({"error": "a build is running"}, status),
+    )
+
+    with pytest.raises(GuestControlRejected) as error:
+        await control_with(control).selftest_checks("lab1")
+
+    assert (error.value.status, error.value.message) == (status, "a build is running")
+
+
+async def test_selftest_checks_of_the_wrong_shape_is_a_bad_response() -> None:
+    control = serving("POST", "/guests/lab1/selftest/checks", json_response({"facts": 3}))
+
+    with pytest.raises(GuestControlBadResponse):
+        await control_with(control).selftest_checks("lab1")

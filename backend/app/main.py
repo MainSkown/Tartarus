@@ -7,6 +7,7 @@ from opensearchpy import AsyncOpenSearch
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.analyses.runner import build_runner
+from app.analyses.submission import AnalysisSubmitter
 from app.analyses.summary import read_report
 from app.api import api_router
 from app.api.internal import router as internal_router
@@ -22,7 +23,7 @@ from app.guest.build_job import BuildTracking, guest_build_handler, reattach_gue
 from app.guest.client import GuestControl, HttpGuestControl
 from app.guest.health import GuestCheck
 from app.guest.http_errors import install_guest_control_error_handler
-from app.guest.selftest import NoSelfTest
+from app.guest.selftest_runner import GuestSelfTest
 from app.health import HealthCheck, OpenSearchCheck, PostgresCheck
 from app.ingest.ingester import ReportIngester
 from app.jobs.runner import JobRunner
@@ -110,8 +111,10 @@ def _build_lifespan(
             ),
         )
         build_tracking = BuildTracking(job_runner)
+        submitter = AnalysisSubmitter(sample_store, guest_control, runner)
+        selftest = GuestSelfTest(guest_control, submitter, app.state.session_factory, event_index)
         job_runner.register(
-            JobType.GUEST_BUILD, guest_build_handler(guest_control, build_tracking, NoSelfTest())
+            JobType.GUEST_BUILD, guest_build_handler(guest_control, build_tracking, selftest)
         )
         app.state.job_runner = job_runner
         app.state.build_tracking = build_tracking

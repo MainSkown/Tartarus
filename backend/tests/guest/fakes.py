@@ -9,6 +9,9 @@ from app.guest.schemas import (
     GuestProfile,
     HealthCheckResult,
     MediaEntry,
+    ProofResult,
+    SelfTestChecks,
+    SelfTestSample,
 )
 from tests.guest.captured import captured
 
@@ -45,6 +48,8 @@ class FakeGuestControl:
         self.polled = 0
         self.started_build_id = BUILD_ID
         self.error_by_call: dict[str, Exception] = {}
+        self.selftest_sample_listed = SelfTestSample("benign.exe", b"MZ pretend")
+        self.selftest_checks_listed = clean_checks()
 
     def _record(self, call: str, argument: Any = None) -> None:
         self.calls.append((call, argument))
@@ -111,6 +116,28 @@ class FakeGuestControl:
 
     async def complete(self, build_id: str, *, passed: bool, selftest: Mapping[str, Any]) -> None:
         self._record("complete", (build_id, passed, dict(selftest)))
+
+    async def selftest_sample(self, name: str) -> SelfTestSample:
+        self._record("selftest_sample", name)
+        return self.selftest_sample_listed
+
+    async def selftest_checks(self, name: str) -> SelfTestChecks:
+        self._record("selftest_checks", name)
+        return self.selftest_checks_listed
+
+
+def clean_checks() -> SelfTestChecks:
+    """What the checks of a healthy guest with Defender off say."""
+    return SelfTestChecks(
+        facts={
+            "os.hostname": "DESKTOP-4F7Q",
+            "os.user": "jan",
+            "defender.realtime_enabled": "False",
+        },
+        giveaways=[],
+        proofs={"eicar": ProofResult(ok=True, message="the file stayed")},
+        log=["restored the snapshot"],
+    )
 
 
 def a_build(status: BuildProgress, *, pause: str | None = None, **fields: Any) -> BuildStatus:

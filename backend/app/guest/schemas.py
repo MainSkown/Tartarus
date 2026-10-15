@@ -4,6 +4,7 @@ The control service may grow fields; the models ignore what they do not name. No
 specific to an operating system: what differs between them arrives as data in `GuestProfile`.
 """
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -128,6 +129,16 @@ class ProfileAgent(ControlModel):
     interactive: InteractiveOptions
 
 
+class ProfileSignal(ControlModel):
+    id: str
+
+
+class ProfileSelfTest(ControlModel):
+    """What the self-test of a guest of this profile must observe in the analysis of its sample."""
+
+    signals: list[ProfileSignal]
+
+
 class GuestProfile(ControlModel):
     """What the GUI renders the build wizard and the guest cards from, for one kind of guest."""
 
@@ -143,6 +154,7 @@ class GuestProfile(ControlModel):
     badges: list[BadgeRule]
     packages: list[str]
     agent: ProfileAgent
+    selftest: ProfileSelfTest
 
 
 class MediaVariant(ControlModel):
@@ -244,3 +256,23 @@ class GuestDisplay(ControlModel):
 
     host: str
     port: int
+
+
+@dataclass(frozen=True)
+class SelfTestSample:
+    filename: str
+    content: bytes
+
+
+class ProofResult(ControlModel):
+    ok: bool
+    message: str
+
+
+class SelfTestChecks(ControlModel):
+    """What the control service found by looking inside the guest, for the self-test to judge."""
+
+    facts: dict[str, str]
+    giveaways: list[str]
+    proofs: dict[str, ProofResult]
+    log: list[str] = Field(default_factory=list)
