@@ -440,7 +440,7 @@ def escaped_values(values: dict[str, str]) -> dict[str, str]:
 
 def product_key_block(key: str) -> str:
     if not key:
-        return ""
+        return "<ProductKey><Key /><WillShowUI>OnError</WillShowUI></ProductKey>"
     return (
         f"<ProductKey><Key>{escape(key, QUOTE_ENTITIES)}</Key>"
         "<WillShowUI>OnError</WillShowUI></ProductKey>"
@@ -500,16 +500,11 @@ class TestAutounattendTemplate:
         parse(document)
         assert "${" not in document
 
-    def test_the_product_key_element_is_absent_without_a_key(self, names, keyboards):
+    def test_without_a_key_setup_is_told_to_ask_only_on_error(self, names, keyboards):
         root = parse(render_autounattend(names, keyboards))
-        assert list(root.iter(UNATTEND + "ProductKey")) == []
-        assert element_texts(root, "Key") == ["/IMAGE/INDEX"]
-
-    def test_a_blank_product_key_is_never_rendered_as_an_empty_element(self, names, keyboards):
-        document = render_autounattend(names, keyboards)
-        assert "<Key />" not in document
-        assert "<Key/>" not in document
-        assert "<Key></Key>" not in document
+        assert len(list(root.iter(UNATTEND + "ProductKey"))) == 1
+        assert element_texts(root, "WillShowUI") == ["OnError"]
+        assert element_texts(root, "Key").count("/IMAGE/INDEX") == 1
 
     def test_the_product_key_is_in_a_product_key_element_when_given(self, names, keyboards):
         root = parse(

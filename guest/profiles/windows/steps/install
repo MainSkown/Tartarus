@@ -10,6 +10,9 @@ GUARD_S=${INSTALL_GUARD_SECONDS:-7200}
 POLL_S=${INSTALL_POLL_SECONDS:-15}
 KEY_PRESSES=${INSTALL_KEY_PRESSES:-20}
 KEY_INTERVAL_S=${INSTALL_KEY_INTERVAL:-1}
+SETUP_STARTED_BYTES=${INSTALL_START_BYTES:-524288000}
+SETUP_START_CHECK_S=${INSTALL_START_CHECK:-180}
+SETUP_START_ATTEMPTS=${INSTALL_START_ATTEMPTS:-3}
 TYPICAL_INSTALL_S=${INSTALL_TYPICAL_SECONDS:-900}
 AGENT_SCRIPT=${TT_AGENT_SCRIPT:-/opt/CAPEv2/agent/agent.py}
 STAGING=$TT_BUILD_DIR/answer-files
@@ -78,6 +81,24 @@ dismiss_press_any_key() {
     done
 }
 
+disk_bytes_used() { stat -c '%b %B' "$DISK_PATH" 2>/dev/null | awk '{print $1 * $2}' | grep . || echo 0; }
+
+# Setup copies the image onto the blank disk within minutes, so a disk that stays nearly empty means
+# the boot prompt was missed (its window is short and its timing varies with the firmware).
+setup_is_writing() { (($(disk_bytes_used) >= SETUP_STARTED_BYTES)); }
+
+boot_until_setup_is_writing() {
+    local attempt
+    for ((attempt = 1; attempt <= SETUP_START_ATTEMPTS; attempt++)); do
+        dismiss_press_any_key
+        wait_for "$SETUP_START_CHECK_S" 5 setup_is_writing && return 0
+        ((attempt < SETUP_START_ATTEMPTS)) || break
+        log "Setup has not started writing to the disk (attempt $attempt of $SETUP_START_ATTEMPTS); resetting the guest to catch the boot prompt again"
+        vsh reset "$GUEST_NAME" >/dev/null 2>&1
+    done
+    fail "Setup has not started writing to the disk after $SETUP_START_ATTEMPTS boot attempts; look at the guest's screen"
+}
+
 WAIT_STARTED=$SECONDS
 WAIT_MINUTES_LOGGED=0
 WAIT_PERCENT_SHOWN=0
@@ -127,7 +148,7 @@ else
     progress 8
     boot_installer
     progress "$WAIT_PROGRESS_FROM"
-    dismiss_press_any_key
+    boot_until_setup_is_writing
 fi
 wait_for_provisioning
 progress 100

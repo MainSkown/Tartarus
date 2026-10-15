@@ -151,10 +151,11 @@ class TestHostileValuesCannotChangeTheDocument:
 
 class TestTheProductKeyElement:
     @pytest.mark.parametrize("blank", ["", "   ", None])
-    def test_it_is_absent_without_a_key(self, blank):
-        text = rendered(options={"key": blank})
-        assert "ProductKey" not in text
-        assert parsed(options={"key": blank}).findall(".//u:ProductKey", NAMESPACE) == []
+    def test_without_a_key_it_is_the_form_m0b_proved_so_setup_skips_the_key_page(self, blank):
+        root = parsed(options={"key": blank})
+        assert len(root.findall(".//u:ProductKey", NAMESPACE)) == 1
+        assert texts(root, ".//u:ProductKey/u:Key") == [None]
+        assert texts(root, ".//u:ProductKey/u:WillShowUI") == ["OnError"]
 
     def test_it_is_present_with_the_key_and_asks_only_on_error(self):
         key = "AAAAA-BBBBB-CCCCC-DDDDD-EEEEE"

@@ -42,11 +42,10 @@ def xml_text(value: str) -> str:
 
 def product_key_block(key: object) -> str:
     stripped = key.strip() if isinstance(key, str) else ""
-    if not stripped:
-        return ""
-    return (
-        f"<ProductKey><Key>{xml_text(stripped)}</Key><WillShowUI>OnError</WillShowUI></ProductKey>"
-    )
+    # Without the element Setup stops at its product key page; an empty <Key /> with OnError is the
+    # form M0b proved, which installs without a key and asks only if Setup truly needs one.
+    key_element = f"<Key>{xml_text(stripped)}</Key>" if stripped else "<Key />"
+    return f"<ProductKey>{key_element}<WillShowUI>OnError</WillShowUI></ProductKey>"
 
 
 def _lookup(record: Mapping[str, Any], path: str) -> Any:

@@ -110,7 +110,7 @@ run_step() {
         TT_GUEST_DIR="$SB/guestdir" TT_GUEST_JSON="$SB/ctx/guest.json" TT_PROFILE_DIR="$PROFILE" \
         TT_STATE_FILE="$SB/state.json" TT_BUILD_DIR="$SB/build" TT_CONTEXT_JSON="$SB/ctx/context.json" \
         TT_STEP="$step" TT_BUILD_ID=b1 TT_LOG="$SB/log" \
-        TT_AGENT_SCRIPT="$SB/agent.py" INSTALL_GUARD_SECONDS=30 INSTALL_POLL_SECONDS=0.05 INSTALL_KEY_PRESSES=3 INSTALL_KEY_INTERVAL=0.02 "$@" \
+        TT_AGENT_SCRIPT="$SB/agent.py" INSTALL_GUARD_SECONDS=30 INSTALL_POLL_SECONDS=0.05 INSTALL_KEY_PRESSES=3 INSTALL_KEY_INTERVAL=0.02 INSTALL_START_BYTES=0 INSTALL_START_CHECK=1 INSTALL_START_ATTEMPTS=3 "$@" \
         bash "$PROFILE/steps/$step" 2>&1 </dev/null)"
     STATUS=$?
 }
@@ -223,6 +223,27 @@ test_install_dismisses_press_any_key_with_enter_for_the_configured_seconds() {
     run_step install
     assert_status 0 || return 1
     [[ $(calls | grep -c 'virsh send-key .* KEY_ENTER') -eq 3 ]] || { echo "  expected 3 Enter presses"; calls; return 1; }
+}
+
+# Setup has started once it writes to the blank disk; the firmware's "press any key" window is
+# short and its timing varies, so a boot that never reached Setup is reset and tried again.
+test_install_without_setup_writing_to_the_disk_resets_the_guest_and_presses_enter_again() {
+    new_sandbox
+    appears_after 2
+    run_step install INSTALL_START_BYTES=100000
+    assert_status 1 || return 1
+    assert_contains "has not started" || return 1
+    [[ $(calls | grep -c '^virsh reset') -eq 2 ]] || { echo "  expected 2 resets (3 attempts)"; calls; return 1; }
+    [[ $(calls | grep -c 'virsh send-key .* KEY_ENTER') -eq 9 ]] || { echo "  expected 9 Enter presses"; calls; return 1; }
+}
+
+test_install_that_reaches_setup_on_the_first_attempt_resets_nothing() {
+    new_sandbox
+    appears_after 2
+    head -c 200000 /dev/urandom >"$SB/lv/images/$(json_get "$SB/ctx/guest.json" name).qcow2"
+    run_step install INSTALL_START_BYTES=100000
+    assert_status 0 || return 1
+    assert_not_called '^virsh reset'
 }
 
 test_install_starts_the_domain_after_defining_it_with_the_answer_disc() {
