@@ -110,10 +110,14 @@ else is built.
    desktop), readable only by the control service and the backend; it is still in plain text in the guest
    for autologon, as M0b noted.
 4. **Reading installation media without extracting 7 GB** (the Windows inspector; decision 17 makes this one
-   of several). The spec says extract `install.wim` once to scratch. S0a
-   first tries a loop mount of the UDF image (the container is privileged) and `wiminfo` on the mounted
-   file, which reads only the XML metadata; fallback is the spec's extraction by 7-Zip. Results are cached
-   by (name, size, mtime), and the scan is shown with progress. Needs `wimtools` in the image.
+   of several). The spec says extract `install.wim` once to scratch; **S0a showed that is unnecessary.** The
+   ISO is mounted read-only on a loop device and `wiminfo` reads the mounted `install.wim` (about 4.6 MiB read,
+   a few hundredths of a second); the 7 GB extraction (6.4 s, 7.0 GiB of scratch) stays only as the documented
+   fallback. Needs the `wimtools` package in the image. **No cache:** a scan is faster than a cache lookup is
+   worth. The container has only `/dev/loop-control`, so the scan creates the next free `/dev/loopN` node
+   itself, detaches in a `finally`, and cleans `/run/scan/*` mounts when the control service starts (a
+   killed service leaves one behind). Errors map as in S0a's table (not an ISO, truncated image, bad
+   `install.wim`, no `install.wim`).
 5. **Several guests: a registry, distinct addresses, one registration.** This lifts CAPE's
    one-registration-at-a-time limit from M0b.
    - **Registry.** Each guest has its own directory on the `guest-images` volume (`guests/<name>/`: `guest.json`
@@ -144,9 +148,10 @@ else is built.
    `analysis.options` with the other options (no migration) and passed to CAPE as the task's `machine`, replacing
    the single configured `GUEST_LABEL`. `409` with the reason when that guest is not ready or does not exist.
    The analysis page header, the Dashboard row and the report show the guest's name and Defender state; for a
-   guest deleted since, the stored name is shown plainly. `finish-run` takes the guest's address with
-   each request instead of its fixed default (the backend knows which guest the analysis used; the
-   control service validates the address lies in `GUEST_SUBNET`). The v1 rule "one analysis at a time"
+   guest deleted since, the stored name is shown plainly. `finish-run` takes the **guest's name** with
+   each request instead of its fixed address (the control service looks up that guest's address, agent port
+   and finish folder in its `guest.json` and profile; the backend never supplies an address, so there is
+   nothing to validate and no path to inject). The v1 rule "one analysis at a time"
    stays, enforced by the backend's queue as today, so two guests never run together. **Confirm.**
 7. **Builds, deletes and analyses exclude each other.** Registering or deleting a guest restarts `cape`, and
    `cuckoo.py` powers off a running registered machine when it starts (M0b), which would kill an analysis. So
@@ -261,7 +266,7 @@ else is built.
     drawing it where the variation is known and checking it against a second profile, below).
     - **A profile is a directory** `guest/profiles/<id>/` with:
       - `profile.json`, validated against one JSON schema: `id`, display name, family (`windows`, `linux`),
-        CAPE `platform` and `tags`, `arch`, firmware (`uefi-secureboot-tpm` or `bios`), default resources and
+        CAPE `platform` and `tags`, `arch`, the `hardware` block (amendment 1), default resources and
         minimum disk, the **media inspector** it uses, the **options** it offers (each: key, label, type,
         default, help text, optional `requires_user_step`; Windows: `defender`, `decoys`, `sysmon`, `key`,
         `keyboard`), the **name rules** (username and computer-name patterns, reserved names, the giveaway
@@ -277,6 +282,47 @@ else is built.
       the code for "waiting for the user", in which case it first writes the instructions to show. The
       Tamper Protection pause (decision 11) is the Windows profile's use of that generic pause; a Linux
       profile could use it for anything else. A step is idempotent, so resume can re-run it.
+    - **Amendments from S0e** ([findings](m6-spikes/S0e-findings.md); CAPE itself says "Linux guests don't
+      have official CAPE support", so a Linux profile is experimental on CAPE's side). Adopted now, because they
+      change the interfaces C2 fixes:
+      1. **`hardware` block instead of one `firmware` value:** machine, boot, secure boot, TPM, disk bus, NIC
+         model and clock; the domain is built from fragments the block selects, with **one shared SMBIOS persona**
+         (vendor strings, OUI, serial formats) instead of a Dell block per profile. Generic steps read the
+         disk target, nvram and TPM from the domain XML: `take_clean_snapshot` hard-codes `sda` today (so does
+         `domain.xml.tpl`), and that moves into the Windows hardware block.
+      2. **Typed media and a pipeline per media kind:** media is an `installer` (an ISO to install from) or a
+         `disk_image` (an already-installed cloud image), each with its own pipeline, so `install` may be absent;
+         `define` creates a disk or copies and resizes one accordingly. Inspectors for non-Windows media are
+         read-only userspace tools (no loop mount), may return `language: null`, and recognise unknown images
+         by sha256 against the profile's manifest.
+      3. **Software acquisition is the profile's, through the generic `fetch` step:** a manifest per profile
+         (`manifest.sha256`, as Windows has today), downloaded at build time by the `cape` container, which
+         has internet. Anything more (an apt snapshot mirror on `192.168.150.1` for a Linux guest that has no
+         other way to get `strace` on the isolated network) is that profile's own fetch step.
+      4. **`agent` block extended and `finish` by guest name:** path style, the "ready" marker, the finish
+         folder (`C:\Windows\Temp` on Windows, `/tmp` on Linux; `finish-run` loses its Windows constants),
+         shutdown mode (ACPI or an agent command), a pre-snapshot step (a `sync` on Linux), and
+         `interactive_options` (Windows `interactive=1,nohuman=yes`; Linux ignores `interactive` and needs
+         `enforce_timeout` to run past the sample's exit). The backend's `INTERACTIVE_OPTIONS` constant comes
+         from the guest's profile.
+      5. **`identity` instead of username/computer-name slots:** an object (`account`, `machine`, `password`),
+         each with a pattern, reserved names and a generator. The giveaway match is **by token, not by
+         substring, for short words**: `cape`, `test`, `admin`, `analy` match only as whole words or path
+         components (`cape` is inside `landscape` and `escape` on any Linux filesystem and inside real names),
+         while `tartarus`, `sandbox`, `malware`, `virus` and `cuckoo` are refused as substrings. This replaces
+         decision 3's single list and applies to Windows too.
+      6. **Self-test signals come from a catalog with a `source`** (`events`, `report`, `storage`); the sample
+         is a source file plus its build command; `guest.json` has a `media` object instead of `edition`, plus
+         the work folder and `capabilities`. Decision 9's verdict function reads the catalog.
+      7. **The pause may come from any step;** a pipeline entry carries `desktop: true` (replacing B4's
+         availability by step names), `timeout_s` and an optional progress weight; `continue` re-runs the step
+         that paused. `family` is a label only (nothing may branch on it), `schema_version` is added, and the
+         agent, idle and shutdown timeouts become per-profile values in place of the bash constants.
+      **Deferred to the first non-Windows profile, recorded in S0e's findings and the "adding an OS" guide:**
+      per-package runtime requirements and hiding CAPE's broken Linux packages, host-global CAPE switches a
+      profile needs (`web.conf [linux]`, `[strace]`), profile `extends` (a shared apt/systemd base for two
+      distros), and showing CAPE's unofficial status on the profile card. The schema is versioned so they can be
+      added without a rewrite.
     - **What becomes generic** (changes to earlier decisions): `guest.json` keeps `os` (the profile id) and an
       `options` object instead of a `defender` field; the cards and the Submit dialog show **badges the
       profile derives from the options** ("DEFENDER ON" for Windows), not a Defender flag; the wizard's
@@ -322,13 +368,28 @@ needing libvirt or a guest is a named `verify-*` script check.
 | **S0d** | Clone by hand | Sonnet, **care** | Without the product code: `qemu-img convert` the existing guest's base disk, copy its nvram, define a domain with a new UUID, MAC, serials and a fresh swtpm; does Windows cold-boot cleanly (no recovery or repair screen, no activation or Secure Boot complaint), does the agent answer, can the IP and computer name be changed through the agent and survive a reboot (and does the computer name the analyst chose, not the generated one, end up in `hostname`, the registry and the DHCP/NetBIOS view), is `provision.ps1`'s adapter lookup enough for a new MAC; time and disk of the copy; after a snapshot and registration, does an analysis on the clone behave like the source's. Also: does enabling Defender through the agent take on a guest whose Tamper Protection is off (needs S0c's state, so it runs after it). Nothing is committed |
 | **S0e** | Linux profile on paper | Sonnet, **care** | Read CAPE's Linux support at the pinned `CAPE_REF` (guest requirements, agent, `platform = linux` registration, packages, the strace-based monitor and its output) and write the Linux profile as a filled-in `profile.json` plus a list of its step files, in this plan; for every field and step say whether the schema and step contract of decision 17 express it. Anything they do not is a change to decision 17 now, before C2. Also: how a Linux guest would be installed unattended (Ubuntu autoinstall or Debian preseed through a second ISO or cloud-init) and whether the same external-snapshot, static-IP and clone approach holds. Nothing is built, nothing is run in a guest |
 
+**Wave 1 results so far**
+
+- **S0a done (2026-10-15)**, [findings](m6-spikes/S0a-findings.md). Loop mount plus `wiminfo` works and needs no
+  extraction; the planner re-ran it on the user's ISO and got the same ten editions (index 5 is Pro,
+  `Professional`), build 26200, `pl-PL`, `x86_64`. Applied to decision 4 and C3. Not tested: a real Microsoft ESD,
+  a Windows 10 or non-Polish ISO, a host without the `udf` module.
+- **S0e done (2026-10-15)**, [findings](m6-spikes/S0e-findings.md). The seam is right in shape and wrong in
+  detail; seven amendments are adopted into decision 17 (listed there), four are deferred to the first
+  non-Windows profile. Quotes checked by the planner: `sda` is hard-coded in `build-guest.sh` and
+  `domain.xml.tpl`; the CAPE source lines it cites exist. Everything about Ubuntu autoinstall, cloud-init and
+  preseed is from memory (its fetches of Canonical's pages failed) and must be verified when a Linux profile is
+  built, not before.
+- **S0d** (clone by hand), **S0b** (two machines in CAPE) and **S0c** (Tamper Protection, with the user) are
+  pending; S0d runs first and leaves a cloned `win2` for S0b.
+
 ### Wave 2 (parallel, disjoint files)
 
 | ID | Task | Model | Deliverables | Tests first |
 |---|---|---|---|---|
-| **C1** | Control service | Sonnet, **care** | `cape/bin/guest-control` and the HTTP boilerplate it shares with `finish-run` (one module, `finish-run` moved onto it, and made to take the guest address per request, within `GUEST_SUBNET`); token auth; the `tartarus-control` network, compose and `.env.example` (`GUEST_CONTROL_TOKEN`); `verify-cape` checks (token, refusal, isolation from other containers, libvirt TCP still off) | Handler tests with a fake runner: auth, validation errors (decision 3), unknown routes, `finish-run` tests still green with the per-request address; the new `verify-cape` checks fail before the service exists |
-| **C2** | Build engine, registry and profiles | Sonnet, **care** | The profile schema and loader (decision 17), validation of every profile in the repo, the step contract and the generic pause; the fake profile for tests; `build-guest.sh` split into generic steps under `guest/steps/` and the Windows ones under `guest/profiles/windows/steps/`, installed in the image; the sequencer and per-guest `state.json` (resume from the last completed step, restart from scratch, a failed step keeps its log); the registry (`guest.json`), address allocation, the single-registration renderer and the adoption of the M0b `win` guest (decisions 2 and 5); delete guest; `make build-guest` as a wrapper | Bash tests (`scripts/tests/`) for every pure helper as today; registry tests: allocation skips taken addresses and deleted ones, the registration lists exactly the `testing` and `ready` guests, adoption writes the right `guest.json` from fixture XML; sequencer tests with fake steps: order, failure, resume, restart, interruption mid-step, pause and continue; the fake profile end to end (build and clone, no Windows file touched); a profile with a missing step file or a bad schema is rejected at load; the full real build is Wave 5 |
-| **C3** | Media scan | Sonnet | `GET /media` in the control service: the inspector interface (media file in, `[{profile, variant, version, language, arch}]` out) and the Windows inspector per S0a: metadata parser (pure), cache keyed by name, size and mtime, error cases (unreadable, not Windows, no `install.wim` or `.esd`) | Parser tests on `wiminfo` output fixtures including a multi-language and an ESD sample; cache invalidation |
+| **C1** | Control service | Sonnet, **care** | `cape/bin/guest-control` and the HTTP boilerplate it shares with `finish-run` (one module, `finish-run` moved onto it, and made to take the guest name per request and resolve its address, agent port and finish folder from `guest.json` and the profile; no Windows path left in it); token auth; the `tartarus-control` network, compose and `.env.example` (`GUEST_CONTROL_TOKEN`); `verify-cape` checks (token, refusal, isolation from other containers, libvirt TCP still off) | Handler tests with a fake runner: auth, validation errors (decision 3), unknown routes, `finish-run` tests still green with the guest name (an unknown name is a `404`, nothing is looked up from the request); the new `verify-cape` checks fail before the service exists |
+| **C2** | Build engine, registry and profiles | Sonnet, **care** | The profile schema and loader (decision 17 with the S0e amendments: `hardware` block, typed media, `agent` block, `identity`, signal catalog, pause from any step, `schema_version`), validation of every profile in the repo, the step contract and the generic pause; the fake profile for tests; `build-guest.sh` split into generic steps under `guest/steps/` and the Windows ones under `guest/profiles/windows/steps/`, installed in the image; the sequencer and per-guest `state.json` (resume from the last completed step, restart from scratch, a failed step keeps its log); the registry (`guest.json`), address allocation, the single-registration renderer and the adoption of the M0b `win` guest (decisions 2 and 5); delete guest; `make build-guest` as a wrapper | Bash tests (`scripts/tests/`) for every pure helper as today; registry tests: allocation skips taken addresses and deleted ones, the registration lists exactly the `testing` and `ready` guests, adoption writes the right `guest.json` from fixture XML; sequencer tests with fake steps: order, failure, resume, restart, interruption mid-step, pause and continue; the fake profile end to end (build and clone, no Windows file touched); a profile with a missing step file or a bad schema is rejected at load; the full real build is Wave 5 |
+| **C3** | Media scan | Sonnet | `GET /media` in the control service: the inspector interface (media file in, `[{profile, variant, version, language, arch}]` out) and the Windows inspector per S0a: metadata parser (pure), loop-device handling and cleanup (create the node, detach in a `finally`, clean stale mounts at start), the error table of S0a (unreadable, not an ISO, truncated, not Windows, no `install.wim` or `.esd`); no cache | Parser tests on `wiminfo` output fixtures including a multi-language and an ESD sample; mount cleanup after a failed `wiminfo` and at start-up |
 | **C4** | Clone pipeline | Sonnet, **care** | The copy and reconfigure steps of decision 15 as step files in the same engine as C2 (so C4 follows C2's step interface, and runs in parallel with it against an agreed one): disk and nvram copy, new identity, fresh TPM, the agent-driven reconfigure (`guest/clone/reconfigure.ps1`, safe to run twice), clone parameters and their validation (decision 3: source must be `ready`, name unique, Defender and decoys flags, resources) | The pure parts: parameter validation, the identity differs from the source's in every field, the reconfigure script renders with hostile names escaped, a computer name equal to the source's or on the giveaway list is refused, the step list for a clone is exactly the one in decision 15; sequencer tests with fake steps for a clone failing at each step and leaving the source untouched. The real copy and boot are Wave 5 |
 | **G1** | Windows profile | Sonnet | `autounattend.xml.tpl` with optional product key, keyboard layout, the edition index and the computer name; `profile.json` for Windows with its options, name rules, pipeline and self-test signals; the neutral names of decision 16 in every script, template and step (working folder, firewall rule, scheduled task, CD label and marker) from one table; the name generators and the giveaway list (one module, used by the build, the clone and the form's hint); extended `guest-facts.ps1`; `provision.ps1` parameters for IP, Defender, decoys and Sysmon; `decoys.ps1`; `defender-settings.ps1` (safe to run twice); the Sysmon pin in the manifest; the keyboard-layout table (one table: layout name to `InputLocale`) | Render tests (well-formed XML, escaping, optional elements absent when unset: the silent-failure case of M0b); PowerShell parsed with `pwsh` syntax check where available; the scan of decision 16 (no `tartarus`, `cape` or `sandbox` in anything rendered, outside the allow-list), which fails on today's `provision.ps1`; the giveaway list refuses each listed word as a whole name and as a part, and accepts ordinary names; name generators always produce valid Windows names |
 
@@ -342,7 +403,7 @@ C1 first in time within the wave (C2 and C3 plug into it); they run in parallel 
 | **B2** | Build job | Sonnet, **care** | `guest_build` handler, `POST /guests/build` (validated against the scanned ISO list and unique name), `POST /guests/{name}/clone` (decision 15; same job, same handler, the clone's step list), `POST /guests/build/{job_id}/resume\|restart\|continue`; progress, log tail and paused state on the `job` messages; reattach after a backend restart; the `409` rules of decision 7; one build at a time | Handler tests with a scripted fake control: success, step failure then resume, restart, pause then continue, still-on-after-continue, backend restart mid-build, concurrent start refused, duplicate name refused; a clone of a guest that is not `ready`, of a missing one, and during an analysis is refused; a failed clone leaves the source `ready` |
 | **B3** | Self-test | Sonnet, **care** | The self-test step per decision 9, the EICAR check of decision 10 and the "no giveaways" facts check of decision 16 in the handler; the bundled sample served by the control service; the `self-test` tag; the verdict stored in the guest's record | Verdict function (pure) against fixture event sets: each missing signal fails with its own message; EICAR rules for on and off |
 | **B4** | Build desktop | Sonnet | `WS /ws/guests/{name}/desktop`: the existing tunnel with a target resolver for the build domain's display (rule 3: no second proxy); available only during install, provision and the pause | Admission and tunnel tests, extending `test_ws_desktop` for the new resolver; `4408` outside those states |
-| **B5** | Choosing a guest | Sonnet | The `guest` option on `POST /analyses` (validated against ready guests, `409` otherwise), the default-guest setting in `GET/PUT /settings`, the machine passed to CAPE from the option, the accepted `package` values taken from the chosen guest's profile, the guest name and Defender state in the analysis, Dashboard row and report summary, the guest address passed to `finish` | Option validation (unknown, not ready, default, omitted); the CAPE call carries the right machine; the setting round trip; the report summary shows the guest; `finish` uses the guest's address |
+| **B5** | Choosing a guest | Sonnet | The `guest` option on `POST /analyses` (validated against ready guests, `409` otherwise), the default-guest setting in `GET/PUT /settings`, the machine passed to CAPE from the option, the accepted `package` values taken from the chosen guest's profile, the guest name and Defender state in the analysis, Dashboard row and report summary, the guest name passed to `finish` | Option validation (unknown, not ready, default, omitted); the CAPE call carries the right machine; the setting round trip; the report summary shows the guest; `finish` is asked for the guest the analysis used |
 
 B1 first; B2 to B5 are disjoint files and run in parallel after it. The planner regenerates the API client after B1, B2 and B5.
 
