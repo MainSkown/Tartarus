@@ -459,9 +459,9 @@ def render_autounattend(names: dict[str, str], keyboards: dict[str, str], **over
         "CD_MARKER_FILE": names["cd_marker_file"],
         "WORK_DIR": "C:\\ProgramData\\qwertyui",
         "GUEST_IP": "192.168.150.100",
-        "DEFENDER": "$true",
-        "DECOYS": "$false",
-        "SYSMON": "$true",
+        "DEFENDER": "1",
+        "DECOYS": "0",
+        "SYSMON": "1",
         "FIREWALL_RULE_NAME": names["firewall_rule"],
         "TASK_NAME": names["scheduled_task"],
         "LOG_FILE": names["log_file"],
@@ -622,10 +622,11 @@ class TestProvisionScript:
         declared = tuple(re.findall(r"\[[^\[\]]+\]\s*\$([A-Za-z]+)", block))
         assert declared == self.PARAMETERS
 
-    def test_the_switches_are_booleans(self):
+    def test_the_switches_are_integers_because_file_cannot_bind_a_bool(self):
         block = param_block(script_text("provision.ps1"))
         for name in ("Defender", "Decoys", "Sysmon"):
-            assert re.search(rf"\[bool\]\s*\${name}\b", block), name
+            assert re.search(rf"\[int\]\s*\${name}\b", block), name
+        assert "[bool]" not in block
 
     def test_defender_policy_keys_are_written_only_when_defender_is_off(self):
         text = script_text("provision.ps1")

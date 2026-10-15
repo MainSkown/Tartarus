@@ -27,7 +27,9 @@ QUOTE_ENTITIES = {'"': "&quot;", "'": "&apos;"}
 XML_FORBIDDEN = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
 OWNER_ONLY = 0o600
 ARGUMENT_COUNT = 2  # the program name and the output file
-POWERSHELL_BOOLEANS = {True: "$true", False: "$false"}
+# powershell.exe -File passes every argument as a string and cannot bind one to a [bool], so the
+# switches of provision.ps1 are integers.
+POWERSHELL_SWITCHES = {True: "1", False: "0"}
 
 
 class RenderError(ValueError):
@@ -68,7 +70,7 @@ def _required_bool(record: Mapping[str, Any], path: str) -> str:
     value = _lookup(record, path)
     if not isinstance(value, bool):
         raise RenderError(f"the guest record's {path} must be true or false")
-    return POWERSHELL_BOOLEANS[value]
+    return POWERSHELL_SWITCHES[value]
 
 
 def _input_locale(record: Mapping[str, Any], keyboards: Mapping[str, str]) -> str:

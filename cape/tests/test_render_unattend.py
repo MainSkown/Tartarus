@@ -96,9 +96,9 @@ class TestTheParametersLandInTheDocument:
         assert '-WorkDir "C:\\ProgramData\\qwertyui"' in text
         assert "-GuestIp 192.168.150.11" in text
 
-    def test_options_become_powershell_booleans(self):
+    def test_options_become_zero_or_one_because_file_cannot_bind_a_bool(self):
         text = rendered(options={"defender": False, "decoys": True, "sysmon": False})
-        assert "-Defender $false -Decoys $true -Sysmon $false" in text
+        assert "-Defender 0 -Decoys 1 -Sysmon 0" in text
 
     def test_nothing_is_left_unsubstituted(self):
         assert "${" not in rendered()
