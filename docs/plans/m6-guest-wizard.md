@@ -19,7 +19,37 @@ several guests (decisions 5 to 7), cloning a guest (15), analyst-chosen names an
 what the specs say; the specs are updated as the tasks land, not before.
 
 **Wave 1 (spikes) done 2026-10-15. Wave 2 done 2026-10-15** (C1, C2a, C2b-1, C2b-2a, C2b-2b, C3, C4, G1;
-commits 54353d8 to 6785331). Waves 3 to 5 (backend API, frontend, proof) are not started.
+commits 54353d8 to 6785331). **Wave 3 done 2026-10-16** (B1 to B5, C2b-3 and C5; commits 4166eb3 to 481eb52).
+Waves 4 and 5 (frontend, proof) are not started.
+
+What wave 3 proved on the real stack, through the public API only:
+
+- A clone of `lab1` into `lab3` (Defender off) went from `POST /api/guests/lab1/clone` to `ready` in 6.5 minutes
+  with no manual step: copy, own identity, scripted Tamper Protection off, registration, then the backend's
+  self-test: the benign sample as an ordinary analysis on the new guest (tag `self-test`), its process, file,
+  registry and DNS signals read from Tartarus's own data, the guest-side facts, a zero-giveaway scan and the
+  Defender proof (EICAR kept on the Defender-off guest, removed on a Defender-on one), then the verdict.
+  A second clone, `lab4` (Defender on, decoys on), passed the same way.
+- `POST /api/analyses` with a chosen `guest` ran on that guest and the read model carries its name and Defender
+  badge; an unknown guest is a 409, a package the guest does not accept a readable 422.
+- While a guest is being built: analyses get "A guest is being built", a second clone a 409, and the header
+  health reads `degraded: lab4 is building`.
+- The self-test, the build desktop route and the finish-through-the-control-service path are covered by tests;
+  only the self-test and the gates were run for real.
+
+Open after wave 3:
+
+- **DNS answers are intermittent.** The self-test analysis of `lab3` recorded the answer for
+  `tartarus-selftest.example`, that of `lab4` recorded the lookup with no answer. Either INetSim or the DNS
+  normaliser is not stable; the verdict accepts an unanswered lookup for now and says so. Needs a look at the
+  PCAP of the two runs before M6 is closed.
+- **Deleting another guest during a build is allowed** (the engine only refuses the guest being built); it
+  restarts `cape` under the build's registration step. Decide whether to refuse it (decision 7 only names analyses).
+- **Not run for real:** the build desktop WebSocket against a live build (Guacamole through the tunnel),
+  `defender-on.ps1`, a failing self-test (the guest must end `failed` and unregistered), resume and restart
+  of a failed build, a build while the backend restarts (reattach), and `make build-guest`'s wrapper.
+- **`win`, `lab1`, `lab3`, `lab4` and `win2` are on the host** (about 22 GB each); `lab2` was deleted by a test.
+- Specs and the README are not updated (wave 5). The slug pattern for a guest name is written in three places.
 
 What wave 2 proved on the real stack (not only in unit tests):
 
