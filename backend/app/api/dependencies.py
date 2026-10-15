@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analyses.ports import RunnerControl
 from app.cape.client import CapeClient
-from app.cape.control import CapeControl
 from app.config import Settings, get_settings
 from app.db.analysis_repository import get_analysis, has_analysis_needing_a_guest
 from app.db.models import Analysis
@@ -19,10 +18,6 @@ from app.search.index import EventIndex
 
 def get_cape(request: Request) -> CapeClient:
     return cast(CapeClient, request.app.state.cape)
-
-
-def get_cape_control(request: Request) -> CapeControl:
-    return cast(CapeControl, request.app.state.cape_control)
 
 
 def get_guest_control(request: Request) -> GuestControl:

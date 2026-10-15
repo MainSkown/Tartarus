@@ -160,7 +160,11 @@ def test_health_message_appears_in_the_openapi_schema() -> None:
 
 
 def job_message(
-    job_id: int = 1, status: JobStatus = JobStatus.RUNNING, progress: int = 0, step: str = ""
+    job_id: int = 1,
+    status: JobStatus = JobStatus.RUNNING,
+    progress: int = 0,
+    step: str = "",
+    result: dict[str, Any] | None = None,
 ) -> JobMessage:
     return JobMessage(
         job=JobProgress(
@@ -170,7 +174,7 @@ def job_message(
             status=status,
             step=step,
             progress=progress,
-            result=None,
+            result=result,
         )
     )
 
@@ -237,6 +241,37 @@ def test_a_job_message_carries_the_job_under_a_job_key(ws_app: FastAPI, client: 
             "result": None,
         },
     }
+
+
+def test_a_paused_job_message_carries_the_pause_instructions_in_its_result(
+    ws_app: FastAPI, client: TestClient
+) -> None:
+    feed = JobFeed()
+    ws_app.dependency_overrides[get_job_feed] = lambda: feed
+    use_checks(ws_app, healthy_checks())
+    pause = {"pause": {"instructions": "Switch Tamper Protection off"}}
+
+    with client.websocket_connect("/ws/system") as websocket:
+        websocket.receive_json()
+        publish(client, feed, job_message(status=JobStatus.PAUSED, progress=62, result=pause))
+        received = receive_job(websocket)
+
+    assert (received.job.status, received.job.result) == (JobStatus.PAUSED, pause)
+
+
+def test_a_client_connecting_while_a_job_is_paused_is_told_about_it(
+    ws_app: FastAPI, client: TestClient
+) -> None:
+    feed = JobFeed()
+    feed.publish(job_message(job_id=4, status=JobStatus.PAUSED, progress=62))
+    use_checks(ws_app, healthy_checks())
+    ws_app.dependency_overrides[get_job_feed] = lambda: feed
+
+    with client.websocket_connect("/ws/system") as websocket:
+        websocket.receive_json()
+        initial = receive_job(websocket)
+
+    assert (initial.job.id, initial.job.status) == (4, JobStatus.PAUSED)
 
 
 def test_a_client_connecting_mid_job_is_told_about_the_active_jobs(

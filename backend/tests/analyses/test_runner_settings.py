@@ -27,13 +27,11 @@ def test_the_runner_timings_and_paths_come_from_the_environment(
     monkeypatch.setenv("RUNNER_POLL_INTERVAL_SECONDS", "0.5")
     monkeypatch.setenv("RUNNER_UNREACHABLE_GRACE_SECONDS", "30")
     monkeypatch.setenv("CAPE_STORAGE_PATH", "/mnt/cape")
-    monkeypatch.setenv("GUEST_LABEL", "win11")
 
     config = RunnerConfig.from_settings(Settings())
 
     assert config == RunnerConfig(
         cape_storage_path=Path("/mnt/cape"),
-        guest_label="win11",
         poll_interval=0.5,
         unreachable_grace=30.0,
     )

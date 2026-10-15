@@ -35,7 +35,8 @@ async def test_the_oldest_queued_analysis_is_uploaded_with_its_options(
             "route": "none",
             "timeout": 300,
             "package": "exe",
-            "interactive": False,
+            "options": "",
+            "task_fields": {},
         }
     ]
     assert samples.opened == [SHA_B]
@@ -54,27 +55,6 @@ async def test_the_package_defaults_to_auto(
     await runner.run_once()
 
     assert cape.created[0]["package"] == "auto"
-
-
-async def test_an_interactive_analysis_is_submitted_interactive(
-    runner: Runner, session_factory: Factory, cape: FakeCape
-) -> None:
-    options = {"route": "inetsim", "timeout": 120, "interactive": True}
-    await enqueue(session_factory, options=options)
-
-    await runner.run_once()
-
-    assert cape.created[0]["interactive"] is True
-
-
-async def test_an_analysis_without_the_interactive_option_is_not_interactive(
-    runner: Runner, session_factory: Factory, cape: FakeCape
-) -> None:
-    await enqueue(session_factory, options={"route": "inetsim", "timeout": 120})
-
-    await runner.run_once()
-
-    assert cape.created[0]["interactive"] is False
 
 
 async def test_two_queued_analyses_run_one_after_the_other_in_order(
@@ -142,7 +122,7 @@ async def test_cape_being_unreachable_at_submit_puts_the_analysis_back_in_the_qu
     assert (await load(session_factory, analysis_id)).cape_task_id == 100
 
 
-async def test_a_sample_cape_rejects_fails_the_analysis_with_cape_s_message(
+async def test_a_task_cape_refuses_fails_the_analysis_with_cape_s_message(
     runner: Runner, session_factory: Factory, cape: FakeCape
 ) -> None:
     cape.create_errors = [CapeRejected("tasks/create/file", "File type not supported")]
@@ -152,7 +132,7 @@ async def test_a_sample_cape_rejects_fails_the_analysis_with_cape_s_message(
 
     failed = await load(session_factory, analysis_id)
     assert failed.status is AnalysisStatus.FAILED
-    assert failed.error == "CAPE rejected the sample: File type not supported"
+    assert failed.error == "CAPE refused the task: File type not supported"
     assert failed.finished_at is not None
 
 

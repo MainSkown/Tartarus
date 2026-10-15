@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from app.db.models.analysis import Severity
+from app.guest.schemas import Guest, GuestProfile
 
 
 class SampleSource(Protocol):
@@ -54,6 +55,15 @@ class EventIngester(Protocol):
 
     async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
         """Raises `IngestFailedError`, leaving no index behind, when the events cannot be stored."""
+
+
+class GuestSource(Protocol):
+    """What the runner asks the guest control service, to know where and how to run a task."""
+
+    async def guest(self, name: str) -> Guest:
+        """Raises `GuestControlRejected` with status 404 when no guest has that name."""
+
+    async def profiles(self) -> list[GuestProfile]: ...
 
 
 class RunnerControl(Protocol):

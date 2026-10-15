@@ -31,6 +31,14 @@ class AnalysisRead(ApiModel):
     tags: list[str] = Field(
         default_factory=list, description="The analyst's tags on the analysis itself, by name."
     )
+    guest: str | None = Field(
+        default=None, description="The guest the analysis runs on; the stored name even if deleted."
+    )
+    guest_badges: list[str] = Field(
+        default_factory=list,
+        description='The guest\'s badges ("DEFENDER ON"); empty when the guest is gone or the '
+        "guest control service cannot be asked.",
+    )
     queue_position: int | None = Field(
         default=None, description="1 for the analysis served next; null unless `queued`."
     )

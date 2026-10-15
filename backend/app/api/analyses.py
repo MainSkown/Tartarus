@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, cast
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
@@ -11,57 +11,52 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
-    Request,
     Response,
     UploadFile,
 )
 from fastapi.exceptions import RequestValidationError
 from opensearchpy.exceptions import OpenSearchException
 from pydantic import ValidationError
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analyses.guest_badges import badges_by_guest
+from app.analyses.guest_choice import GuestRefusedError, PackageNotAcceptedError, recorded_guest
 from app.analyses.ports import RunnerControl
+from app.analyses.submission import AnalysisSubmitter, discard_unreferenced_sample
 from app.api.dependencies import (
     get_cape,
-    get_cape_control,
     get_cape_storage_path,
     get_event_index,
     get_exports_path,
+    get_guest_control,
     get_runner,
     get_sample_store,
     require_analysis,
 )
 from app.cape.client import CapeClient
-from app.cape.control import CapeControl
 from app.cape.errors import CapeError, CapeTaskNotFound
 from app.db.analysis_repository import (
     REINGESTABLE_STATUSES,
     AnalysisFilter,
-    add_sample_if_new,
     begin_reingest,
     cancel_if_queued,
     count_analyses,
-    create_analysis,
     delete_analysis,
-    delete_sample_if_unreferenced,
-    get_sample,
     list_analyses,
     queue_positions,
 )
 from app.db.annotation_repository import analysis_level_tags
 from app.db.job_repository import has_active_job
-from app.db.models import Analysis, Sample
+from app.db.models import Analysis
 from app.db.models.analysis import ACTIVE_STATUSES, AnalysisStatus
 from app.db.session import get_session
-from app.health import HealthCheck, HealthStatus, evaluate
+from app.guest.client import GuestControl
+from app.guest.errors import GuestControlError
 from app.jobs.exports import remove_analysis_exports
 from app.samples.store import (
     EmptySampleError,
     SampleStore,
     SampleTooLargeError,
-    StoredSample,
-    safe_file_name,
 )
 from app.schemas.analysis import AnalysisRead
 from app.schemas.analysis_requests import AnalysisOptions, AnalysisPage
@@ -75,17 +70,14 @@ MAX_PAGE_SIZE = 200
 DEFAULT_OPTIONS_JSON = "{}"
 
 
-def get_guest_check(request: Request) -> HealthCheck:
-    return cast(HealthCheck, request.app.state.health_checks["guest"])
-
-
 def parse_options(
     options: Annotated[
         str,
         Form(
             description=(
-                "JSON object: `route`, `timeout` (60 to 1200 seconds), `package` and "
-                "`interactive` (a desktop to drive; the run then lasts the whole timeout)."
+                "JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's "
+                "profile lists), `interactive` (a desktop to drive; the run then lasts the whole "
+                "timeout) and `guest` (a ready guest; the default guest when omitted)."
             )
         ),
     ] = DEFAULT_OPTIONS_JSON,
@@ -106,28 +98,38 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
     file: Annotated[UploadFile, File(description="The sample to detonate.")],
     options: Annotated[AnalysisOptions, Depends(parse_options)],
     *,
-    guest: Annotated[HealthCheck, Depends(get_guest_check)],
     store: Annotated[SampleStore, Depends(get_sample_store)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
     runner: Annotated[RunnerControl, Depends(get_runner)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AnalysisRead:
-    """Stores the sample and queues an analysis. `409` while the analysis guest is not ready."""
-    await _require_ready_guest(guest)
-    filename = safe_file_name(file.filename or "")
-    stored = await _store_upload(store, file, filename)
+    """Stores the sample and queues an analysis on the chosen guest, or on the default guest.
+
+    `409` when the guest does not exist or is not ready, when no guest has been built or is ready,
+    and while any guest is being built or tested; `422` for a package the guest does not accept;
+    `502` when the guest control service cannot be asked.
+    """
     try:
-        analysis = await _queue_analysis(session, stored, filename, options)
-    except Exception:
-        await session.rollback()
-        await _discard_unreferenced_sample(session, store, stored.sha256)
-        raise
-    runner.nudge()
-    return await _read_one(session, analysis)
+        analysis = await AnalysisSubmitter(store, guests, runner).submit(
+            session, file, file.filename or "", options
+        )
+    except GuestRefusedError as refused:
+        raise HTTPException(409, str(refused)) from None
+    except PackageNotAcceptedError as refused:
+        raise RequestValidationError(
+            [{"loc": ("body", "options", "package"), "msg": str(refused), "type": "value_error"}]
+        ) from None
+    except EmptySampleError:
+        raise _rejected_file("The uploaded file is empty", "value_error.empty") from None
+    except SampleTooLargeError as too_large:
+        raise HTTPException(413, f"The file is larger than {too_large.max_bytes} bytes") from None
+    return await _read_one(session, guests, analysis)
 
 
 @router.get("", name="list")
 async def list_all(  # noqa: PLR0913 - one parameter per filter
     session: Annotated[AsyncSession, Depends(get_session)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
     *,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -141,28 +143,32 @@ async def list_all(  # noqa: PLR0913 - one parameter per filter
     filters = AnalysisFilter(q=q, status=status, tag=tag)
     items = await list_analyses(session, filters, limit=limit, offset=offset)
     return AnalysisPage(
-        items=await _read_all(session, items),
+        items=await _read_all(session, guests, items),
         total=await count_analyses(session, filters),
     )
 
 
 @router.get("/{analysis_id}")
 async def read(
-    analysis_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    analysis_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
 ) -> AnalysisRead:
-    return await _read_one(session, await require_analysis(session, analysis_id))
+    return await _read_one(session, guests, await require_analysis(session, analysis_id))
 
 
 @router.post("/{analysis_id}/cancel")
 async def cancel(
-    analysis_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    analysis_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
 ) -> AnalysisRead:
     """Only a queued analysis can be cancelled; once it has started, `409`."""
     analysis = await require_analysis(session, analysis_id)
     if not await cancel_if_queued(session, analysis_id):
         raise HTTPException(409, f"Analysis {analysis_id} is no longer queued")
     await session.refresh(analysis)
-    return await _read_one(session, analysis)
+    return await _read_one(session, guests, analysis)
 
 
 @router.post("/{analysis_id}/reingest")
@@ -170,6 +176,7 @@ async def reingest(
     analysis_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
     runner: Annotated[RunnerControl, Depends(get_runner)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
 ) -> AnalysisRead:
     """Indexes a finished analysis's report again. `409` unless it is `done` or `report_failed`,
     or while another analysis is active.
@@ -180,14 +187,14 @@ async def reingest(
     if not started:
         raise HTTPException(409, _reason_not_reingestible(analysis))
     runner.nudge()
-    return await _read_one(session, analysis)
+    return await _read_one(session, guests, analysis)
 
 
 @router.post("/{analysis_id}/finish")
 async def finish(
     analysis_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
-    control: Annotated[CapeControl, Depends(get_cape_control)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
     storage: Annotated[Path, Depends(get_cape_storage_path)],
 ) -> AnalysisRead:
     """Ends a running analysis early, the way an interactive run is ended.
@@ -195,8 +202,8 @@ async def finish(
     The guest stops within about a second and the analysis then moves on to processing by itself,
     so the status answered is still `running`. Asking again is harmless. `409` unless the analysis
     is `running` and its monitor has started in the guest (CAPE says `running` about 25 s earlier,
-    and ending the run in that gap leaves the guest agent dead); `502` when the helper in the CAPE
-    container cannot reach the guest.
+    and ending the run in that gap leaves the guest agent dead, or the analysis records no guest);
+    `502` when the guest control service cannot reach the guest agent.
     """
     analysis = await require_analysis(session, analysis_id)
     if analysis.status is not AnalysisStatus.RUNNING:
@@ -208,11 +215,14 @@ async def finish(
             409,
             f"Analysis {analysis_id} has not started in the guest yet: wait a few seconds",
         )
+    guest = recorded_guest(analysis.options)
+    if guest is None:
+        raise HTTPException(409, f"Analysis {analysis_id} records no guest to end its run on")
     try:
-        await control.finish_task(analysis.cape_task_id)
-    except CapeError as error:
+        await guests.finish_task(analysis.cape_task_id, guest)
+    except GuestControlError as error:
         raise HTTPException(502, f"The run could not be ended: {error}") from None
-    return await _read_one(session, analysis)
+    return await _read_one(session, guests, analysis)
 
 
 @router.delete("/{analysis_id}", status_code=204)
@@ -238,7 +248,7 @@ async def delete(  # noqa: PLR0913 - one argument per resource the analysis owns
     await _drop_event_index(index, analysis_id)
     await _remove_exports(exports, analysis_id)
     await delete_analysis(session, analysis_id)
-    await _discard_unreferenced_sample(session, store, analysis.sample_sha256)
+    await discard_unreferenced_sample(session, store, analysis.sample_sha256)
     return Response(status_code=204)
 
 
@@ -266,72 +276,35 @@ def _reason_not_finishable(analysis: Analysis) -> str:
     return f"Analysis {analysis.id} is {status.value}: its run is already over"
 
 
-async def _read_all(session: AsyncSession, analyses: Sequence[Analysis]) -> list[AnalysisRead]:
+async def _read_all(
+    session: AsyncSession, guests: GuestControl, analyses: Sequence[Analysis]
+) -> list[AnalysisRead]:
     ids = [analysis.id for analysis in analyses]
     positions = await queue_positions(session, ids)
     tags = await analysis_level_tags(session, ids)
+    named = {analysis.id: recorded_guest(analysis.options) for analysis in analyses}
+    badges = await badges_by_guest(guests, named.values())
     return [
         AnalysisRead.model_validate(analysis).model_copy(
-            update={"queue_position": positions.get(analysis.id), "tags": tags.get(analysis.id, [])}
+            update={
+                "queue_position": positions.get(analysis.id),
+                "tags": tags.get(analysis.id, []),
+                "guest": named[analysis.id],
+                "guest_badges": badges.get(named[analysis.id] or "", []),
+            }
         )
         for analysis in analyses
     ]
 
 
-async def _read_one(session: AsyncSession, analysis: Analysis) -> AnalysisRead:
-    return (await _read_all(session, [analysis]))[0]
-
-
-async def _require_ready_guest(guest: HealthCheck) -> None:
-    health = await evaluate(guest)
-    if health.status is not HealthStatus.OK:
-        reason = f": {health.message}" if health.message else ""
-        raise HTTPException(409, f"The analysis guest is not ready ({health.status.value}{reason})")
-
-
-async def _store_upload(store: SampleStore, file: UploadFile, filename: str) -> StoredSample:
-    try:
-        return await store.save(file, filename)
-    except EmptySampleError:
-        raise _rejected_file("The uploaded file is empty", "value_error.empty") from None
-    except SampleTooLargeError as too_large:
-        raise HTTPException(413, f"The file is larger than {too_large.max_bytes} bytes") from None
+async def _read_one(
+    session: AsyncSession, guests: GuestControl, analysis: Analysis
+) -> AnalysisRead:
+    return (await _read_all(session, guests, [analysis]))[0]
 
 
 def _rejected_file(message: str, error_type: str) -> RequestValidationError:
     return RequestValidationError([{"loc": ("body", "file"), "msg": message, "type": error_type}])
-
-
-async def _queue_analysis(
-    session: AsyncSession, stored: StoredSample, filename: str, options: AnalysisOptions
-) -> Analysis:
-    sample = Sample(
-        sha256=stored.sha256,
-        sha1=stored.sha1,
-        md5=stored.md5,
-        size=stored.size,
-        original_name=filename,
-        stored_path=str(stored.path),
-    )
-    try:
-        await add_sample_if_new(session, sample)
-    except IntegrityError:
-        # `add_sample_if_new` is get-then-insert: another upload of the same file won the insert.
-        await session.rollback()
-    return await create_analysis(
-        session,
-        sample_sha256=stored.sha256,
-        filename=filename,
-        options=options.model_dump(),
-    )
-
-
-async def _discard_unreferenced_sample(
-    session: AsyncSession, store: SampleStore, sha256: str
-) -> None:
-    row_removed = await delete_sample_if_unreferenced(session, sha256)
-    if row_removed or await get_sample(session, sha256) is None:
-        await store.delete(sha256)
 
 
 async def _delete_cape_task(cape: CapeClient, task_id: int) -> None:

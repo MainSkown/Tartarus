@@ -32,12 +32,13 @@ class JobType(StrEnum):
 class JobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
+    PAUSED = "paused"
     DONE = "done"
     FAILED = "failed"
     INTERRUPTED = "interrupted"
 
 
-ACTIVE_JOB_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING)
+ACTIVE_JOB_STATUSES = (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.PAUSED)
 
 
 class Job(Base):

@@ -18,6 +18,7 @@ from tests.analyses.fakes import (
     FakeReports,
     FakeSamples,
 )
+from tests.analyses.guest_fakes import ScriptedGuestControl
 from tests.analyses.helpers import adopt_by_cape, as_utc, load
 
 type Factory = async_sessionmaker[AsyncSession]
@@ -40,6 +41,7 @@ def make_live_runner(  # noqa: PLR0913, PLR0917 - a fixture assembling every fak
     samples: FakeSamples,
     reports: FakeReports,
     ingester: FakeIngester,
+    guests: ScriptedGuestControl,
     clock: FakeClock,
     config: RunnerConfig,
     live: FakeLive,
@@ -48,7 +50,15 @@ def make_live_runner(  # noqa: PLR0913, PLR0917 - a fixture assembling every fak
 
     def build() -> Runner:
         return Runner(
-            session_factory, cape, samples, reports, ingester, patient, clock=clock, live=live
+            session_factory,
+            cape,
+            samples,
+            reports,
+            ingester,
+            guests,
+            patient,
+            clock=clock,
+            live=live,
         )
 
     return build

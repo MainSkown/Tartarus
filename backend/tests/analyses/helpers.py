@@ -18,7 +18,10 @@ async def enqueue(
     async with session_factory() as session:
         await repository.add_sample_if_new(session, make_sample(sha256))
         created = await repository.create_analysis(
-            session, sample_sha256=sha256, filename=filename, options=options or OPTIONS
+            session,
+            sample_sha256=sha256,
+            filename=filename,
+            options={"guest": "win", **(options or OPTIONS)},
         )
         return created.id
 

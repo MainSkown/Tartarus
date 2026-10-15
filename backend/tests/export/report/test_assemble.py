@@ -63,6 +63,16 @@ def test_the_header_names_the_sample_and_the_run() -> None:
     assert header.generated_at == at(3600)
 
 
+def test_the_header_names_the_guest_the_analysis_ran_on() -> None:
+    assert build().header.guest == "lab1"
+
+
+def test_an_analysis_that_records_no_guest_has_none_in_its_header() -> None:
+    options = {"route": "inetsim", "package": "auto", "timeout": 180}
+
+    assert build(analysis=make_analysis(options=options)).header.guest is None
+
+
 def test_a_sample_the_database_lost_leaves_the_md5_and_sha1_out() -> None:
     header = build(sample=None).header
 

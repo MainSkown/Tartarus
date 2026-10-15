@@ -12,16 +12,17 @@ from app.api import api_router
 from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
 from app.cape.client import CapeClient
-from app.cape.control import CapeControl
 from app.cape.health import CapeCheck, CapeProbe
 from app.config import Settings, get_settings
 from app.db.models.job import JobType
 from app.db.session import create_engine, create_session_factory
 from app.errors import ErrorEnvelope, install_error_handlers
 from app.export.report.job import export_report_handler
+from app.guest.build_job import BuildTracking, guest_build_handler, reattach_guest_builds
 from app.guest.client import GuestControl, HttpGuestControl
 from app.guest.health import GuestCheck
 from app.guest.http_errors import install_guest_control_error_handler
+from app.guest.selftest import NoSelfTest
 from app.health import HealthCheck, OpenSearchCheck, PostgresCheck
 from app.ingest.ingester import ReportIngester
 from app.jobs.runner import JobRunner
@@ -62,7 +63,6 @@ def _build_lifespan(
         engine = create_engine(resolved.database_url)
         opensearch = create_opensearch_client(resolved.opensearch_url)
         cape = CapeClient.from_settings(resolved)
-        cape_control = CapeControl.from_settings(resolved)
         guest_control = HttpGuestControl.from_settings(resolved)
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
@@ -70,7 +70,6 @@ def _build_lifespan(
         event_index = EventIndex(opensearch)
         app.state.event_index = event_index
         app.state.cape = cape
-        app.state.cape_control = cape_control
         app.state.guest_control = guest_control
         sample_store = SampleStore.from_settings(resolved)
         app.state.sample_store = sample_store
@@ -94,6 +93,7 @@ def _build_lifespan(
             sample_store,
             read_report,
             ReportIngester(event_index, rules=rule_registry.active_rules),
+            guest_control,
             resolved,
             live_collection,
         )
@@ -109,8 +109,14 @@ def _build_lifespan(
                 load_attack_table(),
             ),
         )
+        build_tracking = BuildTracking(job_runner)
+        job_runner.register(
+            JobType.GUEST_BUILD, guest_build_handler(guest_control, build_tracking, NoSelfTest())
+        )
         app.state.job_runner = job_runner
+        app.state.build_tracking = build_tracking
         await job_runner.start()
+        await reattach_guest_builds(guest_control, build_tracking)
         logger.info("Backend started (%s)", resolved.environment)
         try:
             yield
@@ -120,7 +126,6 @@ def _build_lifespan(
             await rule_registry.stop()
             await live_collection.aclose()
             await cape.aclose()
-            await cape_control.aclose()
             await guest_control.aclose()
             await opensearch.close()
             await engine.dispose()

@@ -14,7 +14,14 @@ from app.analyses.ports import IngestFailedError
 from app.analyses.runner import Runner, RunnerConfig
 from app.analyses.summary import read_report
 from app.api.analyses import router as analyses_router
-from app.api.dependencies import get_cape, get_event_index, get_runner, get_sample_store
+from app.api.dependencies import (
+    get_cape,
+    get_event_index,
+    get_exports_path,
+    get_guest_control,
+    get_runner,
+    get_sample_store,
+)
 from app.api.operation_ids import generate_operation_id
 from app.db import analysis_repository as repository
 from app.db.models import Analysis
@@ -27,6 +34,7 @@ from app.samples.store import SampleStore
 from app.search.client import create_opensearch_client
 from app.search.index import EventIndex, index_name
 from tests.analyses.fakes import FakeCape, FakeSamples
+from tests.analyses.guest_fakes import ScriptedGuestControl
 from tests.ingest.conftest import FULL_REPORT
 from tests.rules.support import TARTARUS_RULESET
 from tests.test_analysis_repository import OPTIONS, SHA_A, make_sample
@@ -116,9 +124,9 @@ async def stack(
         FakeSamples(plain),
         read_report,
         ReportIngester(index),
+        ScriptedGuestControl(),
         RunnerConfig(
             cape_storage_path=tmp_path / "storage",
-            guest_label="win",
             poll_interval=3600.0,
             unreachable_grace=120.0,
         ),
@@ -126,7 +134,10 @@ async def stack(
     async with session_factory() as session:
         await repository.add_sample_if_new(session, make_sample())
         created = await repository.create_analysis(
-            session, sample_sha256=SHA_A, filename="benign.exe", options=OPTIONS
+            session,
+            sample_sha256=SHA_A,
+            filename="benign.exe",
+            options={**OPTIONS, "guest": "win"},
         )
 
     app = FastAPI(generate_unique_id_function=generate_operation_id)
@@ -135,7 +146,10 @@ async def stack(
     app.include_router(analyses_router, prefix="/api")
     app.dependency_overrides[get_cape] = lambda: cape
     app.dependency_overrides[get_event_index] = lambda: index
+    guests = ScriptedGuestControl()
+    app.dependency_overrides[get_guest_control] = lambda: guests
     app.dependency_overrides[get_runner] = IdleRunner
+    app.dependency_overrides[get_exports_path] = lambda: tmp_path / "exports"
     app.dependency_overrides[get_sample_store] = lambda: SampleStore(tmp_path / "samples")
     async with make_client(app) as client:
         yield Stack(runner, client, session_factory, opensearch, index, created.id)

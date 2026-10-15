@@ -25,13 +25,26 @@ type ProgressReporter = Callable[[str, int], None]
 type JobResult = dict[str, Any]
 
 
+def _ignore(*_: object) -> None:
+    pass
+
+
 @dataclass(frozen=True)
 class JobContext:
+    """What a handler is given. The reporting callables may be called from a handler's thread.
+
+    `pause` and `resume` are for a job that waits for a person: the instructions travel in the
+    job's `result` while it is `paused`.
+    """
+
     job_id: int
     analysis_id: int | None
     params: Mapping[str, Any]
     exports_dir: Path
     report_progress: ProgressReporter
+    append_log: Callable[[str], None] = _ignore
+    pause: Callable[[str], None] = _ignore
+    resume: Callable[[], None] = _ignore
 
     def analysis_dir(self) -> Path:
         """The analysis's own exports directory, created if needed."""
@@ -55,39 +68,66 @@ class _Submission:
     params: Mapping[str, Any]
 
 
-class _ProgressRelay:
-    """Carries `report_progress` calls, which may come from a handler's thread, to the event
-    loop, where one task persists them in the order they were made."""
+@dataclass(frozen=True)
+class _Progress:
+    step: str
+    percent: int
+
+
+@dataclass(frozen=True)
+class _LogText:
+    text: str
+
+
+@dataclass(frozen=True)
+class _Pause:
+    instructions: str
+
+
+@dataclass(frozen=True)
+class _Resume:
+    pass
+
+
+type _Update = _Progress | _LogText | _Pause | _Resume
+
+
+class _UpdateRelay:
+    """Carries a handler's reports, which may come from its thread, to the event loop, where
+    one task persists them in the order they were made."""
 
     def __init__(
         self,
         loop: asyncio.AbstractEventLoop,
-        persist: Callable[[str, int], Awaitable[None]],
+        persist: Callable[[_Update], Awaitable[None]],
     ) -> None:
         self._loop = loop
         self._persist = persist
-        self._updates: asyncio.Queue[tuple[str, int] | None] = asyncio.Queue()
+        self._updates: asyncio.Queue[_Update | None] = asyncio.Queue()
         self._closed = False
 
-    def report(self, step: str, percent: int) -> None:
+    def report_progress(self, step: str, percent: int) -> None:
+        self.send(_Progress(step, max(0, min(100, percent))))
+
+    def send(self, update: _Update) -> None:
         if not self._closed:
-            self._enqueue((step, max(0, min(100, percent))))
+            self._enqueue(update)
 
     def close(self) -> None:
-        # Through the same scheduling as `report`, so the end marker cannot overtake an update.
+        # Through the same scheduling as `send`, so the end marker cannot overtake an update.
         self._closed = True
         self._enqueue(None)
 
-    def _enqueue(self, update: tuple[str, int] | None) -> None:
+    def _enqueue(self, update: _Update | None) -> None:
         with contextlib.suppress(RuntimeError):  # the loop is gone: the process is shutting down
             self._loop.call_soon_threadsafe(self._updates.put_nowait, update)
 
     async def run(self) -> None:
         while (update := await self._updates.get()) is not None:
             try:
-                await self._persist(*update)
+                await self._persist(update)
             except Exception:
-                logger.exception("Persisting a job's progress failed")
+                logger.exception("Persisting a job's report failed")
 
 
 class JobRunner:
@@ -168,16 +208,13 @@ class JobRunner:
 
     async def _run(self, submission: _Submission) -> None:
         job_id = submission.job_id
-        relay = _ProgressRelay(
-            asyncio.get_running_loop(),
-            lambda step, percent: self._persist(
-                lambda db: repository.record_progress(db, job_id, step, percent)
-            ),
+        relay = _UpdateRelay(
+            asyncio.get_running_loop(), lambda update: self._persist_update(job_id, update)
         )
         relay_task = asyncio.create_task(relay.run())
         try:
             await self._persist(lambda db: repository.mark_running(db, job_id))
-            result = await self._execute(submission, relay.report)
+            result = await self._execute(submission, relay)
             relay.close()
             await relay_task
             await self._end(job_id, JobStatus.DONE, result)
@@ -192,9 +229,20 @@ class JobRunner:
             reason = str(error) or type(error).__name__
             await self._end(job_id, JobStatus.FAILED, {"error": reason}, reason)
 
-    async def _execute(
-        self, submission: _Submission, report_progress: ProgressReporter
-    ) -> JobResult:
+    async def _persist_update(self, job_id: int, update: _Update) -> None:
+        match update:
+            case _Progress(step, percent):
+                await self._persist(
+                    lambda db: repository.record_progress(db, job_id, step, percent)
+                )
+            case _LogText(text):
+                await self._persist(lambda db: repository.record_log(db, job_id, text))
+            case _Pause(instructions):
+                await self._persist(lambda db: repository.mark_paused(db, job_id, instructions))
+            case _Resume():
+                await self._persist(lambda db: repository.mark_running(db, job_id))
+
+    async def _execute(self, submission: _Submission, relay: _UpdateRelay) -> JobResult:
         handler = self._handlers.get(submission.job_type)
         if handler is None:
             raise LookupError(f"No handler is registered for {submission.job_type} jobs")
@@ -203,7 +251,10 @@ class JobRunner:
             analysis_id=submission.analysis_id,
             params=submission.params,
             exports_dir=self._exports_dir,
-            report_progress=report_progress,
+            report_progress=relay.report_progress,
+            append_log=lambda text: relay.send(_LogText(text)),
+            pause=lambda instructions: relay.send(_Pause(instructions)),
+            resume=lambda: relay.send(_Resume()),
         )
         if inspect.iscoroutinefunction(handler):
             return await cast(AsyncJobHandler, handler)(context)

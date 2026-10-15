@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.analyses.runner import Runner, RunnerConfig
 from app.db.base import Base
 from tests.analyses.fakes import FakeCape, FakeClock, FakeIngester, FakeReports, FakeSamples
+from tests.analyses.guest_fakes import ScriptedGuestControl
 
 CAPE_STORAGE = Path("/cape-storage")
 GRACE_SECONDS = 120.0
@@ -24,6 +25,11 @@ async def session_factory(tmp_path: Path) -> AsyncIterator[async_sessionmaker[As
 @pytest.fixture
 def cape() -> FakeCape:
     return FakeCape()
+
+
+@pytest.fixture
+def guests() -> ScriptedGuestControl:
+    return ScriptedGuestControl()
 
 
 @pytest.fixture
@@ -52,7 +58,6 @@ def clock() -> FakeClock:
 def config() -> RunnerConfig:
     return RunnerConfig(
         cape_storage_path=CAPE_STORAGE,
-        guest_label="win",
         poll_interval=3600.0,
         unreachable_grace=GRACE_SECONDS,
     )
@@ -65,11 +70,14 @@ def make_runner(  # noqa: PLR0913, PLR0917 - a fixture assembling every fake
     samples: FakeSamples,
     reports: FakeReports,
     ingester: FakeIngester,
+    guests: ScriptedGuestControl,
     clock: FakeClock,
     config: RunnerConfig,
 ) -> Callable[[], Runner]:
     def build() -> Runner:
-        return Runner(session_factory, cape, samples, reports, ingester, config, clock=clock)
+        return Runner(
+            session_factory, cape, samples, reports, ingester, guests, config, clock=clock
+        )
 
     return build
 

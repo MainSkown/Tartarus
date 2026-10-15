@@ -35,6 +35,7 @@ class ReportHeader(ReportModelBase):
     sha1: str | None
     status: AnalysisStatus
     route: str | None
+    guest: str | None
     submitted_at: datetime
     started_at: datetime | None
     finished_at: datetime | None

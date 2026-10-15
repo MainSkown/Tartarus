@@ -15,13 +15,11 @@ class Settings(BaseSettings):
     environment: Environment = "production"
     log_level: LogLevel = "info"
     cape_api_url: str = "http://cape:8000"
-    cape_control_url: str = "http://cape:8001"
     cape_api_token: SecretStr | None = None
     cape_storage_path: Path = Path("/cape-storage")
     sample_store_path: Path = Path("/data/samples")
     exports_path: Path = Path("/data/exports")
     rules_path: Path = Path("/rules/sigma")
-    guest_label: str = "win"
     guest_control_url: str = "http://cape-control:8002"
     guest_control_token: SecretStr | None = None
     guacd_host: str = "cape"

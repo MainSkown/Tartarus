@@ -11,6 +11,7 @@ from tests.export.conftest import make_ioc
 from tests.export.report.fixtures import (
     SAMPLE_NAME,
     SAMPLE_SHA256,
+    make_analysis,
     make_inputs,
     make_network,
     process,
@@ -75,6 +76,16 @@ def test_the_header_and_every_section_carry_their_content() -> None:
         "13178",
     ]:
         assert expected in text, expected
+
+
+def test_the_header_says_which_guest_the_sample_was_analysed_on() -> None:
+    assert "Analysed on lab1" in Page(html_of()).text
+
+
+def test_a_report_of_an_analysis_that_records_no_guest_has_no_such_line() -> None:
+    options = {"route": "inetsim", "package": "auto", "timeout": 180}
+
+    assert "Analysed on" not in Page(html_of(analysis=make_analysis(options=options))).text
 
 
 def test_a_severity_is_a_text_label_with_a_class_for_its_colour() -> None:

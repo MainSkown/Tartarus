@@ -91,7 +91,7 @@ async def test_a_job_round_trips_its_result_and_progress_on_postgres(
 
 @pytest.mark.parametrize(
     ("column", "value"),
-    [("type", "make_coffee"), ("status", "paused"), ("progress", "101"), ("progress", "-1")],
+    [("type", "make_coffee"), ("status", "exploded"), ("progress", "101"), ("progress", "-1")],
 )
 async def test_the_database_refuses_a_job_it_does_not_describe(
     migrated_engine: AsyncEngine, column: str, value: str
@@ -115,3 +115,37 @@ async def test_a_job_cannot_point_at_an_analysis_that_does_not_exist(
         await analysis_repository.add_sample_if_new(session, make_sample(SHA_A))
         with pytest.raises(IntegrityError):
             await repository.create_job(session, JobType.EXPORT_REPORT, 424242)
+
+
+async def test_a_paused_job_is_stored_on_postgres(migrated_engine: AsyncEngine) -> None:
+    factory = async_sessionmaker(migrated_engine, expire_on_commit=False)
+    async with factory() as session:
+        job = await repository.create_job(session, JobType.GUEST_BUILD, None)
+        await repository.mark_paused(session, job.id, "Switch it off")
+
+    async with factory() as session:
+        stored = await repository.get_job(session, job.id)
+
+    assert stored is not None
+    assert (stored.status, stored.result) == (
+        JobStatus.PAUSED,
+        {"pause": {"instructions": "Switch it off"}},
+    )
+
+
+async def test_downgrading_past_the_paused_status_ends_the_paused_jobs(
+    migrated_engine: AsyncEngine,
+) -> None:
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    factory = async_sessionmaker(migrated_engine, expire_on_commit=False)
+    async with factory() as session:
+        job = await repository.create_job(session, JobType.GUEST_BUILD, None)
+        await repository.mark_paused(session, job.id, "Switch it off")
+
+    await asyncio.to_thread(command.downgrade, config, "0005")
+
+    async with factory() as session:
+        stored = await repository.get_job(session, job.id)
+    assert stored is not None
+    assert stored.status is JobStatus.INTERRUPTED
+    await asyncio.to_thread(command.upgrade, config, "head")

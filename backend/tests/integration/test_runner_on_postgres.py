@@ -8,6 +8,7 @@ from app.analyses.runner import Runner, RunnerConfig
 from app.db import analysis_repository as repository
 from app.db.models.analysis import AnalysisPhase, AnalysisStatus, Severity
 from tests.analyses.fakes import CAPE_STARTED_ON, FakeCape, FakeIngester, FakeReports, FakeSamples
+from tests.analyses.guest_fakes import ScriptedGuestControl
 from tests.test_analysis_repository import OPTIONS, SHA_A, make_sample
 
 pytestmark = pytest.mark.integration
@@ -35,9 +36,9 @@ async def test_an_analysis_goes_from_queued_to_done_on_postgres(
         FakeSamples(plain),
         reports,
         FakeIngester(),
+        ScriptedGuestControl(),
         RunnerConfig(
             cape_storage_path=tmp_path,
-            guest_label="win",
             poll_interval=3600.0,
             unreachable_grace=120.0,
         ),
@@ -45,7 +46,10 @@ async def test_an_analysis_goes_from_queued_to_done_on_postgres(
     async with session_factory() as session:
         await repository.add_sample_if_new(session, make_sample())
         created = await repository.create_analysis(
-            session, sample_sha256=SHA_A, filename="benign.exe", options=OPTIONS
+            session,
+            sample_sha256=SHA_A,
+            filename="benign.exe",
+            options={**OPTIONS, "guest": "win"},
         )
 
     for _ in range(5):

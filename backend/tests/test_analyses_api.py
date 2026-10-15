@@ -13,31 +13,34 @@ from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.analyses import submission as submission_module
 from app.annotations.validation import Target
 from app.api import analyses as analyses_api
 from app.api.analyses import router as analyses_router
 from app.api.dependencies import (
     get_cape,
-    get_cape_control,
     get_cape_storage_path,
     get_event_index,
     get_exports_path,
+    get_guest_control,
     get_runner,
     get_sample_store,
 )
 from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
-from app.cape.errors import CapeBadResponse, CapeRejected, CapeTaskNotFound, CapeUnreachable
+from app.cape.errors import CapeRejected, CapeTaskNotFound, CapeUnreachable
 from app.db import analysis_repository as repository
 from app.db import annotation_repository, job_repository
 from app.db.base import Base
-from app.db.models import Analysis, Sample
+from app.db.models import Analysis, Sample, Setting
 from app.db.models.analysis import AnalysisStatus
 from app.db.models.annotation import TargetType
 from app.db.models.job import JobStatus, JobType
 from app.errors import install_error_handlers
-from app.health import ComponentHealth, HealthStatus
+from app.guest.errors import GuestControlBadResponse, GuestControlRejected, GuestControlUnreachable
+from app.guest.http_errors import install_guest_control_error_handler
 from app.samples.store import SampleStore
+from tests.analyses.guest_fakes import ScriptedGuestControl, guest_named
 
 CONTENT = b"MZ\x90\x00 a pretend executable"
 OTHER_CONTENT = b"MZ\x90\x00 another pretend executable"
@@ -46,15 +49,8 @@ OPTIONS: dict[str, Any] = {
     "timeout": 180,
     "package": "auto",
     "interactive": False,
+    "guest": "win",
 }
-
-
-@dataclass
-class FakeGuest:
-    health: ComponentHealth = field(default_factory=lambda: ComponentHealth(status=HealthStatus.OK))
-
-    async def check(self) -> ComponentHealth:
-        return self.health
 
 
 @dataclass
@@ -86,17 +82,6 @@ class FakeCape:
 
 
 @dataclass
-class FakeControl:
-    error: Exception | None = None
-    finished: list[int] = field(default_factory=list)
-
-    async def finish_task(self, task_id: int) -> None:
-        if self.error:
-            raise self.error
-        self.finished.append(task_id)
-
-
-@dataclass
 class FakeEventIndex:
     dropped: list[int] = field(default_factory=list)
     drop_error: Exception | None = None
@@ -115,9 +100,8 @@ class Harness:
     store: SampleStore
     runner: FakeRunner
     cape: FakeCape
-    guest: FakeGuest
+    guests: ScriptedGuestControl
     index: FakeEventIndex
-    control: FakeControl
     storage: Path
     exports: Path
 
@@ -177,21 +161,21 @@ async def harness(
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     store = SampleStore(tmp_path / "samples")
-    runner, cape, guest, index = FakeRunner(), FakeCape(), FakeGuest(), FakeEventIndex()
-    control = FakeControl()
+    runner, cape, index = FakeRunner(), FakeCape(), FakeEventIndex()
+    guests = ScriptedGuestControl([guest_named("win"), guest_named("lab1")])
 
     app = FastAPI(generate_unique_id_function=generate_operation_id)
     install_error_handlers(app)
+    install_guest_control_error_handler(app)
     app.state.session_factory = factory
     app.include_router(analyses_router, prefix="/api")
     app.dependency_overrides[get_sample_store] = lambda: store
     app.dependency_overrides[get_runner] = lambda: runner
     app.dependency_overrides[get_cape] = lambda: cape
     app.dependency_overrides[get_event_index] = lambda: index
-    app.dependency_overrides[get_cape_control] = lambda: control
+    app.dependency_overrides[get_guest_control] = lambda: guests
     app.dependency_overrides[get_cape_storage_path] = lambda: tmp_path / "cape-storage"
     app.dependency_overrides[get_exports_path] = lambda: tmp_path / "exports"
-    app.dependency_overrides[analyses_api.get_guest_check] = lambda: guest
 
     async with make_client(app) as client:
         yield Harness(
@@ -201,9 +185,8 @@ async def harness(
             store,
             runner,
             cape,
-            guest,
+            guests,
             index,
-            control,
             tmp_path / "cape-storage",
             tmp_path / "exports",
         )
@@ -240,7 +223,13 @@ async def test_a_submission_stores_the_sample_and_wakes_the_runner(harness: Harn
 
 
 async def test_submitted_options_are_kept(harness: Harness) -> None:
-    options = {"route": "none", "timeout": 600, "package": "dll", "interactive": True}
+    options = {
+        "route": "none",
+        "timeout": 600,
+        "package": "dll",
+        "interactive": True,
+        "guest": "lab1",
+    }
 
     body = (await harness.upload(options=options)).json()
 
@@ -306,42 +295,140 @@ async def test_a_file_over_the_size_limit_is_rejected_with_413_and_stores_nothin
     assert harness.stored_files() == []
 
 
-@pytest.mark.parametrize("status", [HealthStatus.DOWN, HealthStatus.DEGRADED])
-async def test_a_submission_is_refused_with_409_while_the_guest_is_not_ready(
-    harness: Harness, status: HealthStatus
-) -> None:
-    harness.guest.health = ComponentHealth(status=status, message="guest win is not listed")
-
-    response = await harness.upload()
-
-    assert response.status_code == 409
-    assert "guest" in response.json()["error"]["message"].lower()
+async def assert_nothing_was_submitted(harness: Harness) -> None:
     assert await harness.rows(Sample) == []
     assert await harness.rows(Analysis) == []
     assert harness.stored_files() == []
     assert harness.runner.nudges == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="B5: the gate refuses `degraded`, but with several guests that means one is not ready "
-    "while another is; only `down` should refuse (replaces the degraded case above)",
-)
+def message_of(response: httpx.Response) -> str:
+    return str(response.json()["error"]["message"])
+
+
+async def test_a_guest_that_is_not_ready_is_refused_naming_it_and_its_state(
+    harness: Harness,
+) -> None:
+    harness.guests.guests_listed = [guest_named("win"), guest_named("lab2", "failed")]
+
+    response = await harness.upload(options={"guest": "lab2"})
+
+    assert response.status_code == 409
+    assert message_of(response).startswith("lab2 is failed: it cannot run an analysis")
+    await assert_nothing_was_submitted(harness)
+
+
+async def test_a_guest_that_does_not_exist_is_refused_with_409(harness: Harness) -> None:
+    response = await harness.upload(options={"guest": "lab9"})
+
+    assert response.status_code == 409
+    assert "lab9" in message_of(response)
+    await assert_nothing_was_submitted(harness)
+
+
+async def test_no_guest_built_is_refused_with_409(harness: Harness) -> None:
+    harness.guests.guests_listed = []
+
+    response = await harness.upload()
+
+    assert response.status_code == 409
+    assert "No guest has been built" in message_of(response)
+    await assert_nothing_was_submitted(harness)
+
+
+async def test_no_guest_ready_is_refused_with_409_listing_the_states(harness: Harness) -> None:
+    harness.guests.guests_listed = [guest_named("win", "failed")]
+
+    response = await harness.upload()
+
+    assert response.status_code == 409
+    assert "win is failed" in message_of(response)
+    await assert_nothing_was_submitted(harness)
+
+
+@pytest.mark.parametrize(("state", "words"), [("building", "built"), ("testing", "tested")])
+async def test_a_guest_in_the_making_blocks_every_submission_even_to_a_ready_guest(
+    harness: Harness, state: str, words: str
+) -> None:
+    harness.guests.guests_listed = [guest_named("win"), guest_named("lab2", state)]  # type: ignore[arg-type]
+
+    response = await harness.upload(options={"guest": "win"})
+
+    assert response.status_code == 409
+    assert f"A guest is being {words}" in message_of(response)
+    await assert_nothing_was_submitted(harness)
+
+
 async def test_a_submission_is_allowed_while_some_guest_is_ready_and_another_is_not(
     harness: Harness,
 ) -> None:
-    harness.guest.health = ComponentHealth(status=HealthStatus.DEGRADED, message="lab2 is failed")
+    # The old gate refused this: the aggregate guest health is `degraded` when one guest is down.
+    harness.guests.guests_listed = [guest_named("win"), guest_named("lab2", "failed")]
 
     assert (await harness.upload()).status_code == 201
 
 
-async def test_a_guest_check_that_crashes_counts_as_not_ready(harness: Harness) -> None:
-    async def explode() -> ComponentHealth:
-        raise RuntimeError("boom")
+async def test_a_control_service_that_cannot_be_asked_is_a_502(harness: Harness) -> None:
+    harness.guests.error = GuestControlUnreachable("guests", "ConnectError")
 
-    harness.guest.check = explode  # type: ignore[method-assign]
+    response = await harness.upload()
 
-    assert (await harness.upload()).status_code == 409
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "bad_gateway"
+    await assert_nothing_was_submitted(harness)
+
+
+async def test_an_omitted_guest_is_stored_as_the_first_ready_one(harness: Harness) -> None:
+    harness.guests.guests_listed = [guest_named("win", "failed"), guest_named("lab1")]
+
+    body = (await harness.upload()).json()
+
+    assert body["options"]["guest"] == "lab1"
+    assert body["guest"] == "lab1"
+
+
+async def test_the_default_guest_setting_is_used_when_the_options_name_none(
+    harness: Harness,
+) -> None:
+    async with harness.factory() as session:
+        session.add(Setting(key="default_guest", value="lab1"))
+        await session.commit()
+
+    assert (await harness.upload()).json()["options"]["guest"] == "lab1"
+
+
+@pytest.mark.parametrize("guest", ["Lab1", "1lab", "x", "a_b", "x" * 33])
+async def test_a_guest_option_that_is_not_a_guest_name_is_rejected_naming_it(
+    harness: Harness, guest: str
+) -> None:
+    response = await harness.upload(options={"guest": guest})
+
+    assert ["body", "options", "guest"] in error_locations(response)
+    await assert_nothing_was_submitted(harness)
+
+
+async def test_a_package_the_chosen_guest_does_not_accept_is_a_422_naming_the_allowed_ones(
+    harness: Harness,
+) -> None:
+    response = await harness.upload(options={"package": "elf"})
+
+    assert ["body", "options", "package"] in error_locations(response)
+    field = response.json()["error"]["details"]["fields"][0]
+    assert "auto, exe, dll" in field["message"]
+    await assert_nothing_was_submitted(harness)
+
+
+async def test_a_package_of_the_chosen_guests_profile_is_accepted(harness: Harness) -> None:
+    response = await harness.upload(options={"package": "ps1", "guest": "lab1"})
+
+    assert response.status_code == 201
+
+
+async def test_a_guest_check_that_crashes_is_a_500_and_stores_nothing(harness: Harness) -> None:
+    harness.guests.error = RuntimeError("boom")
+
+    assert (await harness.upload()).status_code == 500
+    await assert_nothing_was_submitted(harness)
 
 
 async def test_the_same_file_submitted_twice_makes_two_analyses_of_one_sample(
@@ -375,7 +462,7 @@ async def test_a_duplicate_upload_race_reads_the_row_the_other_request_inserted(
             await other.commit()
         raise IntegrityError("INSERT INTO sample", {}, Exception("duplicate key"))
 
-    monkeypatch.setattr(analyses_api, "add_sample_if_new", other_request_wins)
+    monkeypatch.setattr(submission_module, "add_sample_if_new", other_request_wins)
 
     response = await harness.upload()
 
@@ -392,7 +479,7 @@ async def test_a_failed_first_submission_leaves_no_file_and_no_row(
     async def broken(*_: object, **__: object) -> None:
         raise RuntimeError("database went away")
 
-    monkeypatch.setattr(analyses_api, "create_analysis", broken)
+    monkeypatch.setattr(submission_module, "create_analysis", broken)
 
     response = await harness.upload()
 
@@ -410,7 +497,7 @@ async def test_a_failed_repeat_submission_keeps_the_sample_other_analyses_use(
     async def broken(*_: object, **__: object) -> None:
         raise RuntimeError("database went away")
 
-    monkeypatch.setattr(analyses_api, "create_analysis", broken)
+    monkeypatch.setattr(submission_module, "create_analysis", broken)
     assert (await harness.upload()).status_code == 500
 
     assert len(await harness.rows(Sample)) == 1
@@ -663,7 +750,7 @@ async def test_an_analysis_whose_monitor_has_not_started_cannot_be_finished_yet(
 
     assert response.status_code == 409
     assert "not started" in response.json()["error"]["message"]
-    assert harness.control.finished == []
+    assert harness.guests.finished == []
 
 
 async def test_finishing_works_once_the_monitor_has_started(harness: Harness) -> None:
@@ -674,7 +761,7 @@ async def test_finishing_works_once_the_monitor_has_started(harness: Harness) ->
     accepted = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
 
     assert (refused.status_code, accepted.status_code) == (409, 200)
-    assert harness.control.finished == [7]
+    assert harness.guests.finished == [(7, "win")]
 
 
 async def test_a_running_analysis_is_finished_by_asking_cape_to_end_its_task(
@@ -685,7 +772,7 @@ async def test_a_running_analysis_is_finished_by_asking_cape_to_end_its_task(
     response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
 
     assert response.status_code == 200
-    assert harness.control.finished == [7]
+    assert harness.guests.finished == [(7, "win")]
     body = response.json()
     assert (body["id"], body["cape_task_id"]) == (analysis_id, 7)
 
@@ -706,7 +793,7 @@ async def test_finishing_twice_is_fine(harness: Harness) -> None:
     second = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
 
     assert (first.status_code, second.status_code) == (200, 200)
-    assert harness.control.finished == [7, 7]
+    assert harness.guests.finished == [(7, "win"), (7, "win")]
 
 
 @pytest.mark.parametrize(
@@ -734,7 +821,7 @@ async def test_an_analysis_that_is_not_running_cannot_be_finished_and_the_reason
     message = response.json()["error"]["message"]
     assert words in message
     assert status.value in message
-    assert harness.control.finished == []
+    assert harness.guests.finished == []
 
 
 async def test_a_running_analysis_without_a_cape_task_cannot_be_finished(
@@ -746,30 +833,30 @@ async def test_a_running_analysis_without_a_cape_task_cannot_be_finished(
 
     assert response.status_code == 409
     assert "no CAPE task" in response.json()["error"]["message"]
-    assert harness.control.finished == []
+    assert harness.guests.finished == []
 
 
 async def test_finishing_an_unknown_analysis_is_a_404(harness: Harness) -> None:
     response = await harness.client.post("/api/analyses/999/finish")
 
     assert response.status_code == 404
-    assert harness.control.finished == []
+    assert harness.guests.finished == []
 
 
 @pytest.mark.parametrize(
     "failure",
     [
-        CapeUnreachable("finish", "ConnectError"),
-        CapeRejected("finish", "the guest agent is unreachable (URLError)"),
-        CapeBadResponse("finish", "HTTP 404"),
+        GuestControlUnreachable("finish_task", "ConnectError"),
+        GuestControlRejected("finish_task", 502, "the guest agent is unreachable (URLError)"),
+        GuestControlBadResponse("finish_task", "not a finish"),
     ],
     ids=["unreachable", "rejected", "bad-response"],
 )
-async def test_a_helper_that_cannot_end_the_run_is_a_502_in_the_error_envelope(
+async def test_a_control_service_that_cannot_end_the_run_is_a_502_in_the_error_envelope(
     harness: Harness, failure: Exception
 ) -> None:
     analysis_id = await running_analysis(harness)
-    harness.control.error = failure
+    harness.guests.finish_error = failure
 
     response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
 
@@ -778,6 +865,31 @@ async def test_a_helper_that_cannot_end_the_run_is_a_502_in_the_error_envelope(
     assert error["code"] == "bad_gateway"
     assert str(failure) in error["message"]
     assert (await harness.analysis(analysis_id)).status is AnalysisStatus.RUNNING
+
+
+async def test_finishing_asks_for_the_guest_the_analysis_ran_on(harness: Harness) -> None:
+    analysis_id = (await harness.upload(options={"guest": "lab1"})).json()["id"]
+    await harness.set_state(analysis_id, status=AnalysisStatus.RUNNING, cape_task_id=7)
+    harness.start_monitor(7)
+
+    await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert harness.guests.finished == [(7, "lab1")]
+
+
+async def test_an_analysis_that_records_no_guest_cannot_be_finished(harness: Harness) -> None:
+    analysis_id = await running_analysis(harness)
+    async with harness.factory() as session:
+        analysis = await session.get(Analysis, analysis_id)
+        assert analysis is not None
+        analysis.options = {"route": "inetsim", "timeout": 180}
+        await session.commit()
+
+    response = await harness.client.post(f"/api/analyses/{analysis_id}/finish")
+
+    assert response.status_code == 409
+    assert "guest" in message_of(response)
+    assert harness.guests.finished == []
 
 
 async def test_deleting_an_analysis_removes_its_row_its_sample_row_and_its_file(
@@ -1132,3 +1244,93 @@ def test_the_openapi_schema_always_lists_the_queue_position_of_an_analysis() -> 
     read = app.openapi()["components"]["schemas"]["AnalysisRead"]
 
     assert "queue_position" in read["required"]
+
+
+def guest_calls(harness: Harness) -> int:
+    return sum(1 for call, _ in harness.guests.calls if call == "guests")
+
+
+async def test_a_read_analysis_names_its_guest_and_carries_the_guests_badges(
+    harness: Harness,
+) -> None:
+    harness.guests.guests_listed = [
+        guest_named("win", badges=("DEFENDER ON",)),
+        guest_named("lab1", badges=("DEFENDER OFF", "SYSMON")),
+    ]
+    analysis_id = (await harness.upload(options={"guest": "lab1"})).json()["id"]
+
+    body = (await harness.client.get(f"/api/analyses/{analysis_id}")).json()
+
+    assert body["guest"] == "lab1"
+    assert body["guest_badges"] == ["DEFENDER OFF", "SYSMON"]
+
+
+async def test_a_list_page_asks_the_control_service_once_for_all_its_guests(
+    harness: Harness,
+) -> None:
+    harness.guests.guests_listed = [
+        guest_named("win", badges=("DEFENDER ON",)),
+        guest_named("lab1", badges=("DEFENDER OFF",)),
+    ]
+    await harness.upload(options={"guest": "win"})
+    await harness.upload(options={"guest": "lab1"})
+    await harness.upload(options={"guest": "win"})
+    harness.guests.calls.clear()
+
+    items = (await harness.client.get("/api/analyses")).json()["items"]
+
+    assert guest_calls(harness) == 1
+    assert sorted((item["guest"], tuple(item["guest_badges"])) for item in items) == [
+        ("lab1", ("DEFENDER OFF",)),
+        ("win", ("DEFENDER ON",)),
+        ("win", ("DEFENDER ON",)),
+    ]
+
+
+async def test_reading_an_analysis_never_fails_because_the_control_service_is_down(
+    harness: Harness,
+) -> None:
+    analysis_id = (await harness.upload()).json()["id"]
+    harness.guests.error = GuestControlUnreachable("guests", "ConnectError")
+
+    response = await harness.client.get(f"/api/analyses/{analysis_id}")
+
+    assert response.status_code == 200
+    assert (response.json()["guest"], response.json()["guest_badges"]) == ("win", [])
+
+
+async def test_an_analysis_of_a_guest_deleted_since_keeps_the_name_and_has_no_badges(
+    harness: Harness,
+) -> None:
+    analysis_id = (await harness.upload(options={"guest": "lab1"})).json()["id"]
+    harness.guests.guests_listed = [guest_named("win", badges=("DEFENDER ON",))]
+
+    body = (await harness.client.get(f"/api/analyses/{analysis_id}")).json()
+
+    assert (body["guest"], body["guest_badges"]) == ("lab1", [])
+
+
+async def test_an_analysis_that_records_no_guest_reads_without_asking_the_control_service(
+    harness: Harness,
+) -> None:
+    analysis_id = (await harness.upload()).json()["id"]
+    async with harness.factory() as session:
+        analysis = await session.get(Analysis, analysis_id)
+        assert analysis is not None
+        analysis.options = {"route": "inetsim", "timeout": 180}
+        await session.commit()
+    harness.guests.calls.clear()
+
+    body = (await harness.client.get(f"/api/analyses/{analysis_id}")).json()
+
+    assert (body["guest"], body["guest_badges"]) == (None, [])
+    assert guest_calls(harness) == 0
+
+
+def test_the_openapi_schema_always_lists_the_guest_fields_of_an_analysis() -> None:
+    app = FastAPI(generate_unique_id_function=generate_operation_id)
+    app.include_router(analyses_router, prefix="/api")
+
+    read = app.openapi()["components"]["schemas"]["AnalysisRead"]
+
+    assert {"guest", "guest_badges"} <= set(read["required"])

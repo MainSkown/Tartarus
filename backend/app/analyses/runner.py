@@ -2,15 +2,18 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
 from typing import Protocol, Self, Unpack
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.analyses.guest_choice import recorded_guest
 from app.analyses.ports import (
     EventIngester,
+    GuestSource,
     IngestFailedError,
     IngestResult,
     LiveCollection,
@@ -41,10 +44,18 @@ from app.db.analysis_repository import (
 from app.db.base import utc_now
 from app.db.models import Analysis
 from app.db.models.analysis import ACTIVE_STATUSES, AnalysisPhase, AnalysisStatus
+from app.guest.errors import (
+    GuestControlError,
+    GuestControlNotConfigured,
+    GuestControlRejected,
+    GuestControlUnreachable,
+)
+from app.guest.schemas import Guest, InteractiveOptions
 
 logger = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_ERRORS = 3
+NOT_INTERACTIVE = InteractiveOptions(options="")
 
 
 class CapeTaskApi(Protocol):
@@ -59,7 +70,8 @@ class CapeTaskApi(Protocol):
         route: str,
         timeout: int,  # noqa: ASYNC109 - CAPE's analysis timeout, not an asyncio one
         package: str = "auto",
-        interactive: bool = False,
+        options: str = "",
+        task_fields: Mapping[str, bool | int | str] | None = None,
     ) -> int: ...
 
     async def task_status(self, task_id: int) -> str: ...
@@ -70,7 +82,6 @@ class CapeTaskApi(Protocol):
 @dataclass(frozen=True)
 class RunnerConfig:
     cape_storage_path: Path
-    guest_label: str
     poll_interval: float
     unreachable_grace: float
     shutdown_patience: float = 10.0
@@ -80,10 +91,13 @@ class RunnerConfig:
     def from_settings(cls, settings: Settings) -> Self:
         return cls(
             cape_storage_path=settings.cape_storage_path,
-            guest_label=settings.guest_label,
             poll_interval=settings.runner_poll_interval_seconds,
             unreachable_grace=settings.runner_unreachable_grace_seconds,
         )
+
+
+class GuestUnavailableError(Exception):
+    """The analysis cannot be sent to CAPE because of its guest; the message says why."""
 
 
 class Runner:
@@ -99,6 +113,7 @@ class Runner:
         samples: SampleSource,
         read_report: ReportReader,
         ingester: EventIngester,
+        guests: GuestSource,
         config: RunnerConfig,
         *,
         clock: Callable[[], float] = time.monotonic,
@@ -109,6 +124,7 @@ class Runner:
         self._samples = samples
         self._read_report = read_report
         self._ingester = ingester
+        self._guests = guests
         self._config = config
         self._clock = clock
         self._live = live or NoLiveCollection()
@@ -189,9 +205,18 @@ class Runner:
     async def _submit(self, session: AsyncSession, claimed: Analysis) -> None:
         try:
             task_id = await self._upload(claimed)
-        except CapeUnreachable as unreachable:
+        except (CapeUnreachable, GuestControlUnreachable) as unreachable:
+            if isinstance(unreachable, GuestControlNotConfigured):
+                await self._finish(
+                    session, claimed.id, status=AnalysisStatus.FAILED, error=str(unreachable)
+                )
+                return
             logger.warning("Analysis %s goes back to the queue: %s", claimed.id, unreachable)
             await update_analysis(session, claimed.id, status=AnalysisStatus.QUEUED)
+        except (GuestUnavailableError, GuestControlError) as unavailable:
+            await self._finish(
+                session, claimed.id, status=AnalysisStatus.FAILED, error=str(unavailable)
+            )
         except FileNotFoundError:
             await self._finish(
                 session,
@@ -204,7 +229,7 @@ class Runner:
                 session,
                 claimed.id,
                 status=AnalysisStatus.FAILED,
-                error=f"CAPE rejected the sample: {rejected.message}",
+                error=f"CAPE refused the task: {rejected.message}",
             )
         except CapeError as error:
             # Auth, configuration or an unreadable answer: CAPE may or may not hold a task, so
@@ -215,16 +240,46 @@ class Runner:
 
     async def _upload(self, analysis: Analysis) -> int:
         options = analysis.options
+        guest = await self._guest_of(analysis)
+        interactive = (
+            await self._interactive_options(guest)
+            if options.get("interactive") is True
+            else NOT_INTERACTIVE
+        )
         async with self._samples.open_plain(analysis.sample_sha256) as path:
             return await self._cape.create_file_task(
                 path,
                 analysis.filename,
-                machine=self._config.guest_label,
+                machine=guest.name,
                 route=options["route"],
                 timeout=options["timeout"],
                 package=options.get("package", "auto"),
-                interactive=options.get("interactive") is True,
+                options=interactive.options,
+                task_fields=interactive.task_fields,
             )
+
+    async def _guest_of(self, analysis: Analysis) -> Guest:
+        name = recorded_guest(analysis.options)
+        if name is None:
+            raise GuestUnavailableError(
+                "The analysis records no guest, so CAPE cannot be told which machine to use"
+            )
+        try:
+            return await self._guests.guest(name)
+        except GuestControlRejected as refused:
+            if refused.status == HTTPStatus.NOT_FOUND:
+                raise GuestUnavailableError(f"Guest {name} no longer exists") from None
+            raise
+
+    async def _interactive_options(self, guest: Guest) -> InteractiveOptions:
+        profiles = await self._guests.profiles()
+        profile = next((profile for profile in profiles if profile.id == guest.profile), None)
+        if profile is None:
+            raise GuestUnavailableError(
+                f"The profile {guest.profile} of guest {guest.name} is not known, "
+                "so its interactive options cannot be read"
+            )
+        return profile.agent.interactive
 
     async def _track_guarded(self, session: AsyncSession, analysis: Analysis) -> None:
         try:
@@ -445,6 +500,7 @@ def build_runner(  # noqa: PLR0913, PLR0917 - the runner's ports plus the settin
     samples: SampleSource,
     read_report: ReportReader,
     ingester: EventIngester,
+    guests: GuestSource,
     settings: Settings,
     live: LiveCollection | None = None,
 ) -> Runner:
@@ -454,6 +510,7 @@ def build_runner(  # noqa: PLR0913, PLR0917 - the runner's ports plus the settin
         samples,
         read_report,
         ingester,
+        guests,
         RunnerConfig.from_settings(settings),
         live=live,
     )

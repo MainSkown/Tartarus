@@ -10,7 +10,9 @@ from app.analyses.runner import Runner, RunnerConfig, build_runner
 from app.config import Settings
 from app.db.models.analysis import AnalysisStatus
 from tests.analyses.fakes import FakeCape, FakeIngester, FakeReports, FakeSamples
+from tests.analyses.guest_fakes import ScriptedGuestControl
 from tests.analyses.helpers import adopt_by_cape, enqueue, load
+from tests.test_analysis_repository import OPTIONS
 
 type Factory = async_sessionmaker[AsyncSession]
 
@@ -153,6 +155,7 @@ async def test_stop_gives_up_on_a_tick_that_does_not_finish(  # noqa: PLR0913, P
     samples: FakeSamples,
     reports: FakeReports,
     ingester: FakeIngester,
+    guests: ScriptedGuestControl,
     config: RunnerConfig,
 ) -> None:
     impatient = Runner(
@@ -161,6 +164,7 @@ async def test_stop_gives_up_on_a_tick_that_does_not_finish(  # noqa: PLR0913, P
         samples,
         reports,
         ingester,
+        guests,
         replace(config, shutdown_patience=0.01),
     )
     cape.create_gate = asyncio.Event()
@@ -180,24 +184,18 @@ async def test_starting_a_running_runner_again_is_an_error(runner: Runner) -> No
         await runner.stop()
 
 
-async def test_the_builder_wires_the_settings_into_a_runner(  # noqa: PLR0913, PLR0917
+async def test_the_builder_wires_the_ports_and_the_settings_into_a_runner(  # noqa: PLR0913, PLR0917
     settings: Settings,
     session_factory: Factory,
     cape: FakeCape,
     samples: FakeSamples,
     reports: FakeReports,
     ingester: FakeIngester,
+    guests: ScriptedGuestControl,
 ) -> None:
-    built = build_runner(
-        session_factory,
-        cape,
-        samples,
-        reports,
-        ingester,
-        settings.model_copy(update={"guest_label": "lab-win"}),
-    )
-    await enqueue(session_factory)
+    built = build_runner(session_factory, cape, samples, reports, ingester, guests, settings)
+    await enqueue(session_factory, options={**OPTIONS, "guest": "lab1"})
 
     await built.run_once()
 
-    assert cape.created[0]["machine"] == "lab-win"
+    assert cape.created[0]["machine"] == "lab1"

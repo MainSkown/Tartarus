@@ -218,6 +218,27 @@ class BuildStatus(ControlModel):
     updated: str | None = None
 
 
+class BuildView(BuildStatus):
+    """A build as the GUI shows it: its status and the last lines of its log."""
+
+    log: list[str]
+
+
+class BuildStarted(BaseModel):
+    """What starting, resuming, restarting or continuing a build answers: the job that follows
+    the build, which may be one already following it."""
+
+    job_id: int
+    build_id: str
+    guest: str
+
+
+class ActiveBuild(BaseModel):
+    build_id: str
+    guest: str
+    job_id: int
+
+
 class GuestDisplay(ControlModel):
     """Where the guest's screen can be reached inside the control service's container."""
 

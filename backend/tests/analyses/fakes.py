@@ -1,6 +1,6 @@
 import asyncio
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,7 +37,8 @@ class FakeCape:
         route: str,
         timeout: int,  # noqa: ASYNC109
         package: str = "auto",
-        interactive: bool = False,
+        options: str = "",
+        task_fields: Mapping[str, bool | int | str] | None = None,
     ) -> int:
         self.calls.append(("create", filename))
         if self.create_gate is not None:
@@ -56,7 +57,8 @@ class FakeCape:
                 "route": route,
                 "timeout": timeout,
                 "package": package,
-                "interactive": interactive,
+                "options": options,
+                "task_fields": dict(task_fields or {}),
             }
         )
         return task_id

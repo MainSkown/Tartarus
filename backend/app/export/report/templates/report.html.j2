@@ -29,6 +29,9 @@
 <header>
 <p class="eyebrow">Tartarus &middot; analysis #{{ model.header.analysis_id }}</p>
 <h1>{{ model.header.sample_name }}</h1>
+{%- if model.header.guest %}
+<p class="meta">Analysed on {{ model.header.guest }}</p>
+{%- endif %}
 <dl class="facts">
 <dt>sha256</dt><dd class="mono">{{ model.header.sha256 }}</dd>
 {%- if model.header.md5 %}<dt>md5</dt><dd class="mono">{{ model.header.md5 }}</dd>{% endif %}

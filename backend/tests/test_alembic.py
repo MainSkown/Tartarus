@@ -42,3 +42,25 @@ def test_env_needs_the_database_url_from_settings(
 
     with pytest.raises(ValidationError):
         command.upgrade(alembic_config, "head", sql=True)
+
+
+def test_the_paused_job_status_is_added_by_replacing_the_status_check_constraint(
+    alembic_config: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    command.upgrade(alembic_config, "0005:0006", sql=True)
+
+    sql = capsys.readouterr().out
+    assert "DROP CONSTRAINT ck_job_job_status" in sql
+    assert "ADD CONSTRAINT ck_job_job_status CHECK" in sql
+    assert "'paused'" in sql
+
+
+def test_downgrading_ends_the_paused_jobs_before_the_constraint_forbids_them(
+    alembic_config: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    command.downgrade(alembic_config, "0006:0005", sql=True)
+
+    sql = capsys.readouterr().out
+    assert sql.index("UPDATE job SET status='interrupted'") < sql.index("ADD CONSTRAINT")
+    assert "'paused'" in sql.split("ADD CONSTRAINT")[0]
+    assert "'paused'" not in sql.split("ADD CONSTRAINT")[1]

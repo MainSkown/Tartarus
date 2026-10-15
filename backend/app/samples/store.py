@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import io
 import os
 import re
 import shutil
@@ -28,6 +29,16 @@ class ByteSource(Protocol):
     """An upload stream; FastAPI's `UploadFile` is one."""
 
     async def read(self, size: int, /) -> bytes: ...
+
+
+class BytesSource:
+    """A `ByteSource` over a sample the backend already holds in memory."""
+
+    def __init__(self, content: bytes) -> None:
+        self._stream = io.BytesIO(content)
+
+    async def read(self, size: int, /) -> bytes:
+        return self._stream.read(size)
 
 
 class EmptySampleError(Exception):

@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.analyses.runner import Runner
 from app.cape.client import CapeClient
-from app.cape.control import CapeControl
 from app.cape.health import CapeCheck
 from app.db.models.job import JobType
 from app.db.session import get_session
-from app.guest.client import HttpGuestControl
+from app.guest.build_job import BuildTracking
+from app.guest.client import GuestControl, HttpGuestControl
 from app.guest.health import GuestCheck
 from app.health import ComponentHealth, HealthStatus, PostgresCheck, evaluate
 from app.jobs.runner import JobHandler, JobRunner
@@ -27,7 +27,7 @@ async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAP
         assert isinstance(app.state.session_factory, async_sessionmaker)
         assert isinstance(app.state.opensearch, AsyncOpenSearch)
         assert isinstance(app.state.cape, CapeClient)
-        assert isinstance(app.state.cape_control, CapeControl)
+        assert not hasattr(app.state, "cape_control")
         assert isinstance(app.state.guest_control, HttpGuestControl)
         assert isinstance(app.state.sample_store, SampleStore)
         assert isinstance(app.state.event_index, EventIndex)
@@ -81,15 +81,11 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
     async def record_job_runner_stop(self: JobRunner) -> None:
         released.append("job_runner")
 
-    async def record_control_close(self: CapeControl) -> None:
-        released.append("cape_control")
-
     monkeypatch.setattr(CapeClient, "aclose", record_cape_close)
 
     async def record_guest_control_close(self: HttpGuestControl) -> None:
         released.append("guest_control")
 
-    monkeypatch.setattr(CapeControl, "aclose", record_control_close)
     monkeypatch.setattr(HttpGuestControl, "aclose", record_guest_control_close)
 
     stop_registry = RuleRegistry.stop
@@ -107,7 +103,6 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
 
     assert sorted(released) == [
         "cape",
-        "cape_control",
         "engine",
         "guest_control",
         "job_runner",
@@ -148,7 +143,7 @@ async def test_the_ingester_and_the_live_collection_run_the_registrys_active_rul
         assert app.state.live_collection._rules == active_rules
 
 
-async def test_lifespan_registers_the_report_export_with_the_job_runner(
+async def test_lifespan_registers_the_report_export_and_the_guest_build_with_the_job_runner(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registered: list[JobType] = []
@@ -163,4 +158,24 @@ async def test_lifespan_registers_the_report_export_with_the_job_runner(
     async with app.router.lifespan_context(app):
         pass
 
-    assert registered == [JobType.EXPORT_REPORT]
+    assert registered == [JobType.EXPORT_REPORT, JobType.GUEST_BUILD]
+
+
+async def test_lifespan_follows_the_running_guest_builds_again_once_the_job_runner_is_up(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reattached: list[tuple[GuestControl, BuildTracking, bool]] = []
+
+    async def record_reattach(control: GuestControl, tracking: BuildTracking) -> None:
+        reattached.append((control, tracking, bool(app.state.job_runner._workers)))
+
+    monkeypatch.setattr("app.main.reattach_guest_builds", record_reattach)
+
+    async with app.router.lifespan_context(app):
+        assert isinstance(app.state.build_tracking, BuildTracking)
+        assert reattached == [(app.state.guest_control, app.state.build_tracking, True)]
+
+
+async def test_lifespan_starts_although_the_guest_builds_cannot_be_looked_up(app: FastAPI) -> None:
+    async with app.router.lifespan_context(app):
+        assert app.state.build_tracking.active() is None

@@ -9,6 +9,7 @@ from ipaddress import ip_address, ip_network
 
 from pydantic import BaseModel
 
+from app.analyses.guest_choice import recorded_guest
 from app.analyses.summary import ReportSummary
 from app.db.models import Analysis, Sample
 from app.export.inputs import ExportAnnotations, TargetType
@@ -135,6 +136,7 @@ def _header(inputs: ReportInputs, summary: ReportSummary) -> ReportHeader:
         sha1=sample.sha1 if sample else None,
         status=analysis.status,
         route=analysis.options.get("route"),
+        guest=recorded_guest(analysis.options),
         submitted_at=analysis.submitted_at,
         started_at=analysis.started_at,
         finished_at=analysis.finished_at,

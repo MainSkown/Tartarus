@@ -68,6 +68,7 @@ def test_the_pdf_text_has_the_sample_the_note_and_the_findings(default_pdf: byte
         "evil.example",
         "explorer.exe (100)",
         "phishing",
+        "Analysed on lab1",
     ]:
         assert expected in text, expected
 

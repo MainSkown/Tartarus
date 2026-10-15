@@ -72,7 +72,7 @@ def make_analysis(**changes: Any) -> Analysis:
         "cape_task_id": 3,
         "status": AnalysisStatus.DONE,
         "phase": AnalysisPhase.FINAL,
-        "options": {"route": "inetsim", "package": "auto", "timeout": 180},
+        "options": {"route": "inetsim", "package": "auto", "timeout": 180, "guest": "lab1"},
         "score": 7.5,
         "max_severity": Severity.HIGH,
         "detected_families": ["emotet"],

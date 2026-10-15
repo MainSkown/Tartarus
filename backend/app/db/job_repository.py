@@ -19,8 +19,18 @@ async def get_job(session: AsyncSession, job_id: int) -> Job | None:
 
 
 async def mark_running(session: AsyncSession, job_id: int) -> Job:
+    """Starts the job, or ends its pause; the pause instructions are not kept."""
     job = await _require(session, job_id)
     job.status = JobStatus.RUNNING
+    job.result = None
+    await session.commit()
+    return job
+
+
+async def mark_paused(session: AsyncSession, job_id: int, instructions: str) -> Job:
+    job = await _require(session, job_id)
+    job.status = JobStatus.PAUSED
+    job.result = {"pause": {"instructions": instructions}}
     await session.commit()
     return job
 
@@ -30,6 +40,13 @@ async def record_progress(session: AsyncSession, job_id: int, step: str, progres
     job.step = step
     job.progress = progress
     job.log = append_to_log(job.log, f"{progress}% {step}")
+    await session.commit()
+    return job
+
+
+async def record_log(session: AsyncSession, job_id: int, text: str) -> Job:
+    job = await _require(session, job_id)
+    job.log = append_to_log(job.log, text)
     await session.commit()
     return job
 

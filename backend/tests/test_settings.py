@@ -17,6 +17,7 @@ DEFAULTS = {
     "default_route": "inetsim",
     "default_timeout": 180,
     "default_interactive": True,
+    "default_guest": None,
     "disk_warn_gb": 50,
     "disk_block_gb": 20,
 }
@@ -25,6 +26,7 @@ VALID_BODY: dict[str, Any] = {
     "default_route": "tor",
     "default_timeout": 600,
     "default_interactive": False,
+    "default_guest": "lab2",
     "disk_warn_gb": 100,
     "disk_block_gb": 10,
 }
@@ -134,6 +136,37 @@ async def test_put_with_an_unknown_route_is_rejected_naming_default_route(
     )
 
     assert ["body", "default_route"] in rejected_locations(response)
+
+
+@pytest.mark.parametrize("name", ["Lab2", "2lab", "a", "lab_2", "x" * 33, "", "../win"])
+async def test_put_with_a_default_guest_that_is_not_a_guest_name_is_rejected_naming_it(
+    settings_client: httpx.AsyncClient, name: str
+) -> None:
+    response = await settings_client.put(
+        "/api/settings", json={**VALID_BODY, "default_guest": name}
+    )
+
+    assert ["body", "default_guest"] in rejected_locations(response)
+
+
+async def test_a_default_guest_can_be_cleared_again(settings_client: httpx.AsyncClient) -> None:
+    await settings_client.put("/api/settings", json=VALID_BODY)
+    await settings_client.put("/api/settings", json={**VALID_BODY, "default_guest": None})
+
+    response = await settings_client.get("/api/settings")
+
+    assert response.json()["default_guest"] is None
+
+
+async def test_a_default_guest_is_stored_without_asking_whether_it_exists(
+    settings_client: httpx.AsyncClient,
+) -> None:
+    response = await settings_client.put(
+        "/api/settings", json={**VALID_BODY, "default_guest": "deleted-since"}
+    )
+
+    assert response.status_code == 200
+    assert (await settings_client.get("/api/settings")).json()["default_guest"] == "deleted-since"
 
 
 @pytest.mark.parametrize("out_of_range", [59, 1201])

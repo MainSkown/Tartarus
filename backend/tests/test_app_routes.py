@@ -46,6 +46,22 @@ def test_the_guest_endpoints_are_served_under_api_and_documented(app: FastAPI) -
     assert {"/api/guests/media", "/api/guests/profiles"} <= set(paths)
 
 
+def test_the_guest_build_endpoints_are_served_under_api_and_answer_202_to_a_start(
+    app: FastAPI,
+) -> None:
+    paths = app.openapi()["paths"]
+
+    starts = ["/api/guests/build", "/api/guests/{name}/clone"]
+    starts += [
+        f"/api/guests/builds/{{build_id}}/{action}" for action in ("resume", "restart", "continue")
+    ]
+    for path in starts:
+        assert set(paths[path]) == {"post"}
+        assert "202" in paths[path]["post"]["responses"]
+    assert set(paths["/api/guests/builds/active"]) == {"get"}
+    assert set(paths["/api/guests/builds/{build_id}"]) == {"get"}
+
+
 async def test_a_guest_control_failure_is_answered_by_the_real_app_as_a_502(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:

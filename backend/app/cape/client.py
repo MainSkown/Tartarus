@@ -20,9 +20,6 @@ from app.config import Settings
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 API_PREFIX = "/apiv2"
 AUTO_PACKAGE = "auto"
-# `nohuman` as well, as CAPE's own submission page does: without it CAPE's mouse mover and
-# dialog closer fight the analyst.
-INTERACTIVE_OPTIONS = "interactive=1,nohuman=yes"
 # CAPE answers a missing task differently on `tasks/status` and on `tasks/view`.
 MISSING_TASK_MESSAGES = frozenset({"Task does not exist", "Task not found in database"})
 # `tasks/delete` reports its failures under these keys instead of `error_value`.
@@ -80,15 +77,26 @@ class CapeClient:
         route: str,
         timeout: int,  # noqa: ASYNC109 - CAPE's analysis timeout, not an asyncio one
         package: str = AUTO_PACKAGE,
-        interactive: bool = False,
+        options: str = "",
+        task_fields: Mapping[str, bool | int | str] | None = None,
     ) -> int:
-        """Submit a file to CAPE and return the id of the task it created."""
+        """Submit a file to CAPE and return the id of the task it created.
+
+        `options` is CAPE's task options string and `task_fields` its further form fields (a
+        guest profile supplies both for an interactive run). Raises `CapeRejected` when CAPE
+        answers `error: true`, which it does with HTTP 200 for a machine it does not know.
+        """
         call = "tasks/create/file"
-        fields = {"machine": machine, "route": route, "timeout": str(timeout)}
+        fields = {
+            **_form_fields(task_fields or {}),
+            "machine": machine,
+            "route": route,
+            "timeout": str(timeout),
+        }
         if package != AUTO_PACKAGE:
             fields["package"] = package
-        if interactive:
-            fields["options"] = INTERACTIVE_OPTIONS
+        if options:
+            fields["options"] = options
         if isinstance(source, Path):
             with source.open("rb") as stream:
                 body = await self._send(call, "POST", f"{call}/", fields, (filename, stream))
@@ -174,6 +182,15 @@ def _read(call: str, response: httpx.Response) -> dict[str, Any]:
     if response.is_error:
         raise CapeBadResponse(call, f"HTTP {response.status_code}")
     return body
+
+
+def _form_fields(task_fields: Mapping[str, bool | int | str]) -> dict[str, str]:
+    # CAPE reads a flag as present or absent, so a false one is left out.
+    return {
+        name: "1" if value is True else str(value)
+        for name, value in task_fields.items()
+        if value is not False
+    }
 
 
 def _error_message(body: dict[str, Any]) -> str:

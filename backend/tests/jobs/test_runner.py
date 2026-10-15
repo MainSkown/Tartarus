@@ -199,6 +199,81 @@ async def test_a_percentage_outside_the_range_is_clamped(
     assert midway.progress == stored_percent
 
 
+async def test_a_handler_can_append_to_the_log_and_pause_and_resume_its_job(
+    runner: JobRunner, session_factory: SessionFactory
+) -> None:
+    release = asyncio.Event()
+
+    async def handler(context: JobContext) -> dict[str, Any]:
+        context.report_progress("Installing", 30)
+        context.append_log("STEP install\nSTEP provision")
+        context.pause("Switch it off by hand")
+        await release.wait()
+        context.resume()
+        context.report_progress("Provisioning", 60)
+        await release.wait()
+        return {"state": "testing"}
+
+    runner.register(JOB_TYPE, handler)
+    with runner.feed.subscribe() as subscription:
+        job = await runner.submit(JOB_TYPE, None, {})
+        paused = await wait_until(
+            session_factory, job.id, lambda row: row.status is JobStatus.PAUSED
+        )
+        release.set()
+        done = await wait_for(session_factory, job.id)
+        seen = [subscription.inbox.get_nowait() for _ in range(subscription.inbox.qsize())]
+
+    assert paused.result == {"pause": {"instructions": "Switch it off by hand"}}
+    assert paused.log.splitlines() == ["30% Installing", "STEP install", "STEP provision"]
+    assert [(m.job.status, m.job.progress, m.job.result) for m in seen][-4:] == [
+        (JobStatus.PAUSED, 30, {"pause": {"instructions": "Switch it off by hand"}}),
+        (JobStatus.RUNNING, 30, None),
+        (JobStatus.RUNNING, 60, None),
+        (JobStatus.DONE, 100, {"state": "testing"}),
+    ]
+    assert done.result == {"state": "testing"}
+
+
+async def test_a_paused_job_is_active_for_a_client_that_connects_mid_pause(
+    runner: JobRunner, session_factory: SessionFactory
+) -> None:
+    release = asyncio.Event()
+
+    async def handler(context: JobContext) -> dict[str, Any]:
+        context.pause("Wait for it")
+        await release.wait()
+        return {}
+
+    runner.register(JOB_TYPE, handler)
+    job = await runner.submit(JOB_TYPE, None, {})
+    await wait_until(session_factory, job.id, lambda row: row.status is JobStatus.PAUSED)
+
+    with runner.feed.subscribe() as subscription:
+        release.set()
+        await wait_for(session_factory, job.id)
+
+    assert [(m.job.id, m.job.status) for m in subscription.snapshot] == [(job.id, JobStatus.PAUSED)]
+
+
+async def test_a_sync_handler_pauses_and_logs_from_its_thread_in_order(
+    runner: JobRunner, session_factory: SessionFactory
+) -> None:
+    def handler(context: JobContext) -> dict[str, Any]:
+        context.append_log("first")
+        context.pause("hold on")
+        context.resume()
+        context.append_log("second")
+        return {}
+
+    runner.register(JOB_TYPE, handler)
+
+    job = await runner.submit(JOB_TYPE, None, {})
+    done = await wait_for(session_factory, job.id)
+
+    assert done.log.splitlines() == ["first", "second"]
+
+
 async def test_a_failing_handler_fails_its_job_and_the_runner_carries_on(
     runner: JobRunner, session_factory: SessionFactory
 ) -> None:
@@ -268,6 +343,8 @@ async def test_jobs_left_unfinished_by_a_previous_process_are_interrupted_not_re
         pending = await repository.create_job(session, JOB_TYPE, None)
         running = await repository.create_job(session, JOB_TYPE, None)
         await repository.mark_running(session, running.id)
+        paused = await repository.create_job(session, JOB_TYPE, None)
+        await repository.mark_paused(session, paused.id, "Do the thing")
     calls: list[JobContext] = []
 
     async def handler(context: JobContext) -> dict[str, Any]:
@@ -280,7 +357,7 @@ async def test_jobs_left_unfinished_by_a_previous_process_are_interrupted_not_re
     await asyncio.sleep(0.05)
     await fresh.stop()
 
-    for job_id in (pending.id, running.id):
+    for job_id in (pending.id, running.id, paused.id):
         assert (await stored(session_factory, job_id)).status is JobStatus.INTERRUPTED
     assert calls == []
 

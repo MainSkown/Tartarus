@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import analysis_repository
 from app.db import job_repository as repository
 from app.db.models import Job
-from app.db.models.job import LOG_TAIL_LIMIT, JobStatus, JobType
+from app.db.models.job import ACTIVE_JOB_STATUSES, LOG_TAIL_LIMIT, JobStatus, JobType
 from tests.test_analysis_repository import seeded_analysis
 
 
@@ -145,3 +145,54 @@ async def test_deleting_an_analysis_deletes_its_jobs(session: AsyncSession) -> N
     await analysis_repository.delete_analysis(session, analysis.id)
 
     assert [job.id for job in await session.scalars(select(Job))] == [unrelated.id]
+
+
+async def test_a_paused_job_keeps_the_instructions_in_its_result_until_it_runs_again(
+    session: AsyncSession,
+) -> None:
+    job = await repository.create_job(session, JobType.GUEST_BUILD, None)
+    await repository.mark_running(session, job.id)
+
+    paused = await repository.mark_paused(session, job.id, "Switch Tamper Protection off")
+    assert (paused.status, paused.result) == (
+        JobStatus.PAUSED,
+        {"pause": {"instructions": "Switch Tamper Protection off"}},
+    )
+
+    resumed = await repository.mark_running(session, job.id)
+    assert (resumed.status, resumed.result) == (JobStatus.RUNNING, None)
+
+
+async def test_progress_reported_while_paused_does_not_end_the_pause(
+    session: AsyncSession,
+) -> None:
+    job = await repository.create_job(session, JobType.GUEST_BUILD, None)
+    await repository.mark_paused(session, job.id, "Do the thing")
+
+    stored = await repository.record_progress(session, job.id, "Waiting", 40)
+
+    assert (stored.status, stored.progress) == (JobStatus.PAUSED, 40)
+
+
+async def test_log_text_is_appended_to_the_log_and_cut_to_its_tail(session: AsyncSession) -> None:
+    job = await repository.create_job(session, JobType.GUEST_BUILD, None)
+
+    await repository.record_progress(session, job.id, "Installing", 10)
+    stored = await repository.record_log(session, job.id, "STEP one\nSTEP two")
+
+    assert stored.log.splitlines() == ["10% Installing", "STEP one", "STEP two"]
+    for number in range(LOG_TAIL_LIMIT):
+        stored = await repository.record_log(session, job.id, f"line {number}")
+    assert len(stored.log) <= LOG_TAIL_LIMIT
+
+
+async def test_a_paused_job_is_active_and_a_dead_process_leaves_it_interrupted(
+    session: AsyncSession,
+) -> None:
+    job = await repository.create_job(session, JobType.GUEST_BUILD, None)
+    await repository.mark_paused(session, job.id, "Do the thing")
+
+    interrupted = await repository.interrupt_unfinished(session)
+
+    assert JobStatus.PAUSED in ACTIVE_JOB_STATUSES
+    assert [(row.id, row.status) for row in interrupted] == [(job.id, JobStatus.INTERRUPTED)]

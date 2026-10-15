@@ -402,7 +402,7 @@ async def test_create_file_task_omits_package_when_it_is_auto(cape_client: Clien
     assert "package" not in parse_multipart(cape.requests[0])
 
 
-async def test_create_file_task_asks_capes_interactive_desktop_with_the_human_module_off(
+async def test_create_file_task_sends_the_task_options_it_is_given(
     cape_client: ClientFactory,
 ) -> None:
     cape = RecordingCape({"/apiv2/tasks/create/file/": json_response(SUBMITTED)})
@@ -413,13 +413,13 @@ async def test_create_file_task_asks_capes_interactive_desktop_with_the_human_mo
         machine="win",
         route="none",
         timeout=60,
-        interactive=True,
+        options="interactive=1,nohuman=yes",
     )
 
     assert parse_multipart(cape.requests[0])["options"] == b"interactive=1,nohuman=yes"
 
 
-async def test_create_file_task_sends_no_options_unless_interactive(
+async def test_create_file_task_sends_no_options_unless_given_some(
     cape_client: ClientFactory,
 ) -> None:
     cape = RecordingCape({"/apiv2/tasks/create/file/": json_response(SUBMITTED)})
@@ -429,6 +429,59 @@ async def test_create_file_task_sends_no_options_unless_interactive(
     )
 
     assert "options" not in parse_multipart(cape.requests[0])
+
+
+async def test_create_file_task_sends_the_extra_task_fields_as_capes_form_fields(
+    cape_client: ClientFactory,
+) -> None:
+    cape = RecordingCape({"/apiv2/tasks/create/file/": json_response(SUBMITTED)})
+
+    await cape_client(cape, TOKEN).create_file_task(
+        io.BytesIO(b"x"),
+        "a.bin",
+        machine="lin1",
+        route="none",
+        timeout=60,
+        task_fields={"enforce_timeout": True, "priority": 3, "free": False, "tlp": "red"},
+    )
+
+    fields = parse_multipart(cape.requests[0])
+    assert fields["enforce_timeout"] == b"1"
+    assert fields["priority"] == b"3"
+    assert fields["tlp"] == b"red"
+    assert "free" not in fields
+
+
+async def test_a_task_field_cannot_replace_the_machine_the_backend_chose(
+    cape_client: ClientFactory,
+) -> None:
+    cape = RecordingCape({"/apiv2/tasks/create/file/": json_response(SUBMITTED)})
+
+    await cape_client(cape, TOKEN).create_file_task(
+        io.BytesIO(b"x"),
+        "a.bin",
+        machine="lab1",
+        route="none",
+        timeout=60,
+        task_fields={"machine": "win"},
+    )
+
+    assert parse_multipart(cape.requests[0])["machine"] == b"lab1"
+
+
+async def test_an_unknown_machine_is_a_rejection_although_cape_answers_http_200(
+    cape_client: ClientFactory,
+) -> None:
+    # Captured by S0b: no task is created and the status code gives nothing away.
+    unknown = json_response(
+        {"error": True, "error_value": "Machine 'nosuch' does not exist. Available: win, win2"}
+    )
+    cape = RecordingCape({"/apiv2/tasks/create/file/": unknown})
+
+    with pytest.raises(CapeRejected, match="Machine 'nosuch' does not exist"):
+        await cape_client(cape, TOKEN).create_file_task(
+            io.BytesIO(b"x"), "a.bin", machine="nosuch", route="none", timeout=60
+        )
 
 
 async def test_create_file_task_reads_a_file_from_a_path(
