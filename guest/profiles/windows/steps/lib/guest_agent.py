@@ -9,6 +9,9 @@ scripts to upload):
     guest_agent.py retrieve NAME LOCAL_FILE     copy NAME from the work folder
     guest_agent.py run SCRIPT [--with FILE]... [--arg NAME=VALUE]... [--async]
 
+SCRIPT is a file name in the profile folder, or a path inside it (`selftest/guest-facts.ps1`): the
+guest always gets it by its plain name, and --with files are looked for next to it.
+
 TT_AGENT_HOST, when set, is the address to talk to instead of the guest's recorded one: a copy that
 has just been cloned answers on the address DHCP gave it, not on the one it will be given.
 
@@ -264,17 +267,23 @@ def _arguments_from(pairs: Sequence[str]) -> dict[str, str]:
     return dict(pair.partition("=")[::2] for pair in pairs)
 
 
+def _script_location(script: str) -> tuple[Path, str]:
+    """The folder to read `script` from and the plain name it is stored under in the guest."""
+    path = Path(script)
+    if path.is_absolute() or ".." in path.parts:
+        raise AgentError(f"'{script}' must be a path inside the profile folder")
+    return Path(os.environ["TT_PROFILE_DIR"]) / path.parent, path.name
+
+
 def _run(agent: GuestAgent, options: argparse.Namespace) -> int:
-    local_dir = Path(os.environ["TT_PROFILE_DIR"])
+    local_dir, script = _script_location(options.script)
     arguments = _arguments_from(options.arg)
     if options.asynchronous:
-        agent.start_script(
-            local_dir, options.script, with_files=options.with_files, arguments=arguments
-        )
+        agent.start_script(local_dir, script, with_files=options.with_files, arguments=arguments)
         return 0
     result = agent.run_script(
         local_dir,
-        options.script,
+        script,
         with_files=options.with_files,
         arguments=arguments,
         timeout=options.timeout,
@@ -282,7 +291,7 @@ def _run(agent: GuestAgent, options: argparse.Namespace) -> int:
     for line in result.lines:
         sys.stdout.write(f"LOG {line}\n")
     if result.exit_code is None:
-        sys.stderr.write(f"{options.script} printed no exit code; stderr: {result.stderr}\n")
+        sys.stderr.write(f"{script} printed no exit code; stderr: {result.stderr}\n")
         return NO_EXIT_CODE
     return result.exit_code
 

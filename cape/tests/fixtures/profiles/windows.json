@@ -205,8 +205,12 @@
       "source": "selftest/benign.c",
       "build": [
         "x86_64-w64-mingw32-gcc",
-        "-O1"
-      ]
+        "-O1",
+        "{source}",
+        "-o",
+        "{output}"
+      ],
+      "output": "benign.exe"
     },
     "signals": [
       {
@@ -230,7 +234,8 @@
     },
     "extras": [
       "pafish"
-    ]
+    ],
+    "check_step": "selftest-checks"
   },
   "packages": [
     "exe",

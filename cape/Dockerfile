@@ -146,6 +146,11 @@ RUN python3 /tmp/skip-packaged-apps.py /opt/CAPEv2/analyzer/windows/analyzer.py 
 RUN apt-get update && apt-get install -y --no-install-recommends wimtools \
     && rm -rf /var/lib/apt/lists/*
 
+# Builds the guest self-test's benign sample on request (the profile names the compiler); a layer of
+# its own for the same reason as wimtools.
+RUN apt-get update && apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY cape/libvirt/qemu.conf /etc/libvirt/qemu.conf
 COPY cape/supervisord.conf /etc/supervisor/conf.d/cape.conf
 COPY cape/templates/ /usr/local/lib/tartarus/templates/

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from guest_engine.config import EngineConfig
+from guest_engine.config import DEFAULT_CHECK_TIMEOUT_S, EngineConfig
 from guest_engine.media import run_command
 
 
@@ -66,3 +66,8 @@ def test_every_collaborator_can_be_replaced():
 
     assert (config.runner, config.machines_probe, config.agent_check) == (marker,) * 3
     assert (config.clock, config.rng, config.sleep) == (marker,) * 3
+
+
+def test_the_selftest_check_timeout_covers_the_checks_own_worst_case():
+    # selftest-checks waits up to 180 s for the agent and runs two scripts of up to 120 s each.
+    assert DEFAULT_CHECK_TIMEOUT_S >= 180 + 2 * 120 + 60

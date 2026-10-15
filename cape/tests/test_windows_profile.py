@@ -1,6 +1,7 @@
 """The Windows guest profile under guest/profiles/windows/: its schema, names and scripts."""
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -238,6 +239,15 @@ class TestProfileFile:
         desktop = {entry.step for entry in every_entry if entry.desktop}
         assert desktop == {"install", "provision", "tamper-off", "defender-on", "reconfigure"}
 
+    def test_the_sample_is_linked_against_winsock_after_its_source(self, profile):
+        build = profile.selftest.sample.build
+        assert build.index("{source}") < build.index("-lws2_32")
+        assert build[build.index("-o") + 1] == "{output}"
+
+    def test_the_self_test_checks_run_the_profiles_own_step(self, profile):
+        assert profile.selftest.check_step == "selftest-checks"
+        assert os.access(PROFILE_DIR / "steps" / "selftest-checks", os.X_OK)
+
     def test_install_keeps_todays_timeout(self, profile):
         install = next(e for e in profile.build_pipeline("installer", {}) if e.step == "install")
         assert install.timeout_s == 5400
@@ -257,6 +267,7 @@ class TestProfileFile:
     def test_selftest_uses_the_moved_sample_and_facts_script(self, profile):
         assert profile.selftest.sample.source == "selftest/benign.c"
         assert profile.selftest.sample.build[0] == "x86_64-w64-mingw32-gcc"
+        assert profile.selftest.sample.output == "benign.exe"
         assert profile.selftest.facts.script == "selftest/guest-facts.ps1"
         assert (PROFILE_DIR / "selftest" / "benign.c").is_file()
         assert (PROFILE_DIR / "selftest" / "guest-facts.ps1").is_file()
@@ -373,6 +384,7 @@ LINE_ALLOWED = {
     "profile.json": ('"password": "Tartarus1!"', '"work_dir": "C:\\\\tartarus"'),
     "tamper-off.ps1": ("$eicarSecondHalf = ",),
     "defender-on.ps1": ("$eicarSecondHalf = ",),
+    "defender-proof.ps1": ("$eicarSecondHalf = ",),
 }
 
 
@@ -818,6 +830,43 @@ class TestDefenderScripts:
         assert len(re.findall(r"\bexit 0\b", text)) >= 2
 
 
+class TestDefenderProofScript:
+    """What real-time protection does with the test string; the host step judges it."""
+
+    def test_the_test_string_is_assembled_at_run_time_from_two_halves(self):
+        text = script_text("defender-proof.ps1")
+        assert "$eicarFirstHalf + $eicarSecondHalf" in text
+        assert re.search(r"\$eicarFirstHalf = '[^']*ANTI'", text)
+        assert re.search(r"\$eicarSecondHalf = 'VIRUS[^']*'", text)
+
+    def test_the_file_is_written_to_the_public_folder_under_a_neutral_name(self):
+        text = script_text("defender-proof.ps1")
+        assert "'C:\\Users\\Public'" in text
+        assert "'sample-check.bin'" in text
+
+    def test_it_waits_and_then_reports_whether_the_file_is_still_there(self):
+        text = script_text("defender-proof.ps1")
+        assert re.search(r"\[int\] \$WaitSeconds = 15\b", param_block(text))
+        order = [
+            "Set-Content",
+            "Start-Sleep -Seconds $WaitSeconds",
+            "Result 'eicar_present' (Test-Path",
+        ]
+        positions = [text.index(marker) for marker in order]
+        assert positions == sorted(positions)
+
+    def test_the_file_is_deleted_whatever_happened(self):
+        text = script_text("defender-proof.ps1")
+        assert re.search(r"finally \{\s*Remove-Item -Path \$testFile -Force", text)
+
+    def test_a_write_that_the_scanner_blocks_is_a_result_not_a_crash(self):
+        text = script_text("defender-proof.ps1")
+        assert re.search(r"catch \{[^}]*Result 'write' 'blocked'", text)
+
+    def test_it_ends_with_exit_code_zero_so_the_drivers_code_is_the_scripts(self):
+        assert re.search(r"\bexit 0\s*$", script_text("defender-proof.ps1"))
+
+
 class TestSysmon:
     def test_config_is_well_formed_and_small(self):
         path = PROFILE_DIR / "sysmon-config.xml"
@@ -920,5 +969,6 @@ class TestPowerShellSyntax:
             "defender-settings.ps1",
             "tamper-off.ps1",
             "defender-on.ps1",
+            "defender-proof.ps1",
             "guest-facts.ps1",
         }

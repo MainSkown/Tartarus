@@ -5,7 +5,8 @@ libvirt's TCP endpoint stays off and the Docker socket is never mounted, so the 
 service, which runs in the cape container and listens only on the `tartarus-control` network that
 `cape` and `backend` share. It translates HTTP to the `GuestEngine` protocol
 (guest_engine/protocol.py) and the engine's exceptions to status codes: `GuestNotFound` 404,
-`InvalidParameters` 422, `Conflict` 409, anything else a generic 500 whose detail stays in the log.
+`InvalidParameters` 422, `Conflict` 409, a sample that cannot be built 500 with its message,
+checks that cannot run 502 with theirs, anything else a generic 500 whose detail stays in the log.
 
 Every route but GET /healthz needs `Authorization: Bearer <GUEST_CONTROL_TOKEN>`.
 
@@ -21,6 +22,7 @@ import sys
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 # `python3 -I` does not put the script's directory on the path. The image lays guest_engine/ next
@@ -34,8 +36,11 @@ from finish_logic import finish_response  # noqa: E402
 
 from guest_engine.errors import Conflict, GuestNotFound, InvalidParameters  # noqa: E402
 from guest_engine.protocol import GuestEngine  # noqa: E402
+from guest_engine.selftest import ChecksFailed, SampleBuildFailed  # noqa: E402
 
 SERVICE = "guest-control"
+SAMPLE_CONTENT_TYPE = "application/octet-stream"
+SAMPLE_NAME_HEADER = "X-Filename"
 DEFAULT_PORT = 8002
 DEFAULT_AGENT_TIMEOUT_SECONDS = 5.0
 MIN_TOKEN_LENGTH = 32
@@ -59,6 +64,7 @@ class NotReadyEngine:
     profiles = media = guests = guest = guest_address = delete_guest = _refuse
     start_build = start_clone = build = build_log = resume = restart = _refuse
     continue_after_pause = complete_build = check = display = _refuse
+    selftest_sample = selftest_checks = _refuse
 
     def shutdown(self) -> None:
         """Nothing runs in a stand-in, so there is nothing to stop."""
@@ -151,6 +157,8 @@ class Routes:
             self._route("POST", f"{guest}/check", self.check),
             self._route("POST", f"{guest}/clone", self.clone),
             self._route("GET", f"{guest}/display", self.display),
+            self._route("GET", f"{guest}/selftest/sample", self.selftest_sample),
+            self._route("POST", f"{guest}/selftest/checks", self.selftest_checks),
             self._route("POST", "/builds", self.start_build),
             self._route("GET", build, self.build),
             self._route("GET", f"{build}/log", self.build_log),
@@ -191,6 +199,22 @@ class Routes:
         if display is None:
             raise HttpError(404, {"error": "the guest has no display (it is not running)"})
         return 200, display
+
+    def selftest_sample(self, request: Request) -> control_http.Answer:
+        """The profile's benign test sample for this guest, as the file's bytes."""
+        sample = self.engine.selftest_sample(guest_name(request))
+        try:
+            data = Path(sample["path"]).read_bytes()
+        except OSError as unreadable:
+            raise HttpError(
+                500, {"error": f"the built sample {sample['filename']} cannot be read"}
+            ) from unreadable
+        headers = {SAMPLE_NAME_HEADER: sample["filename"]}
+        return 200, control_http.Binary(data, SAMPLE_CONTENT_TYPE, headers)
+
+    def selftest_checks(self, request: Request) -> control_http.Answer:
+        """Run the guest-side self-test checks; takes up to a few minutes."""
+        return 200, self.engine.selftest_checks(guest_name(request))
 
     def start_build(self, request: Request) -> control_http.Answer:
         return 202, {"id": self.engine.start_build(request.body)}
@@ -254,6 +278,10 @@ def _translating_engine_errors(
             raise HttpError(409, {"error": str(refused)}) from refused
         except InvalidParameters as rejected:
             raise unprocessable(rejected) from rejected
+        except SampleBuildFailed as failed:
+            raise HttpError(500, {"error": str(failed)}) from failed
+        except ChecksFailed as failed:
+            raise HttpError(502, {"error": str(failed)}) from failed
 
     return translated
 
@@ -266,7 +294,7 @@ def make_handler(
 
 
 def stop_service(engine: GuestEngine, server: control_http.ThreadingHTTPServer) -> None:
-    """The engine first, while the server still answers: the build it fails can be read meanwhile."""
+    """The engine first, while the server still answers: the build it fails can be read."""
     engine.shutdown()
     server.shutdown()
 

@@ -41,7 +41,11 @@ def load_script(name: str):
 class Reply:
     status: int
     headers: dict[str, str]
-    text: str
+    raw: bytes
+
+    @property
+    def text(self) -> str:
+        return self.raw.decode()
 
     @property
     def json(self):
@@ -65,7 +69,7 @@ class Client:
             return Reply(
                 answer.status,
                 {k.lower(): v for k, v in answer.getheaders()},
-                answer.read().decode(),
+                answer.read(),
             )
         finally:
             connection.close()
@@ -115,6 +119,21 @@ def unserialisable(request):
     return 200, {"value": object()}
 
 
+BINARY = bytes(range(256))
+
+
+def download(request):
+    return 200, control_http.Binary(BINARY, "application/octet-stream", {"X-Filename": "a b.exe"})
+
+
+def empty_download(request):
+    return 200, control_http.Binary(b"", "application/octet-stream")
+
+
+def failing_download(request):
+    raise control_http.HttpError(409, {"error": "no sample"})
+
+
 ROUTES = [
     control_http.Route("GET", "/health", health, public=True),
     control_http.Route("GET", r"/things/(?P<name>[^/]*)", echo),
@@ -123,6 +142,9 @@ ROUTES = [
     control_http.Route("GET", "/boom", boom),
     control_http.Route("GET", "/refuse", refuse),
     control_http.Route("GET", "/unserialisable", unserialisable),
+    control_http.Route("GET", "/download", download),
+    control_http.Route("GET", "/empty-download", empty_download),
+    control_http.Route("GET", "/failing-download", failing_download),
 ]
 
 
@@ -162,10 +184,42 @@ def test_answers_are_json(client):
     assert int(reply.headers["content-length"]) == len(reply.text.encode())
 
 
+def test_a_handler_may_answer_with_bytes_a_content_type_and_extra_headers(client):
+    reply = client.request("GET", "/download", headers=AUTH)
+
+    assert reply.status == 200
+    assert reply.raw == BINARY
+    assert reply.headers["content-type"] == "application/octet-stream"
+    assert reply.headers["content-length"] == "256"
+    assert reply.headers["x-filename"] == "a b.exe"
+
+
+def test_an_empty_binary_answer_still_carries_its_content_type(client):
+    reply = client.request("GET", "/empty-download", headers=AUTH)
+
+    assert (reply.status, reply.raw) == (200, b"")
+    assert reply.headers["content-type"] == "application/octet-stream"
+    assert reply.headers["content-length"] == "0"
+
+
+def test_a_binary_route_still_answers_errors_as_json(client):
+    reply = client.request("GET", "/failing-download", headers=AUTH)
+
+    assert (reply.status, reply.json) == (409, {"error": "no sample"})
+    assert reply.headers["content-type"] == "application/json"
+
+
+def test_a_binary_route_needs_the_token_like_any_other(client):
+    reply = client.request("GET", "/download")
+
+    assert (reply.status, reply.json) == (401, {"error": "unauthorized"})
+
+
 def test_a_none_body_answers_with_no_content(client):
     reply = client.request("DELETE", "/things/a", headers=AUTH)
 
     assert (reply.status, reply.text) == (204, "")
+    assert "content-type" not in reply.headers
 
 
 def test_an_unknown_path_is_404(client):

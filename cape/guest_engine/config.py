@@ -24,6 +24,7 @@ DEFAULT_SUBNET = "192.168.150.0/24"
 DEFAULT_CAPE_API_URL = "http://127.0.0.1:8000"
 REGISTRATION_TIMEOUT_S = 180.0
 REGISTRATION_POLL_S = 3.0
+DEFAULT_CHECK_TIMEOUT_S = 480
 
 type MachinesProbe = Callable[[], Sequence[str]]
 type AgentCheck = Callable[["Guest", "Profile"], tuple[bool, str]]
@@ -56,6 +57,7 @@ class EngineConfig:
     cape_api_token: str = ""
     registration_timeout_s: float = REGISTRATION_TIMEOUT_S
     registration_poll_s: float = REGISTRATION_POLL_S
+    selftest_check_timeout_s: int = DEFAULT_CHECK_TIMEOUT_S
     inherited_environment: Mapping[str, str] = field(default_factory=dict)
     runner: Runner = run_command
     machines_probe: MachinesProbe | None = None

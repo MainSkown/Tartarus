@@ -1,9 +1,9 @@
 """The HTTP plumbing of the services in this directory (`guest-control`, `finish-run`).
 
 A service declares a route table of `Route`s whose handlers take a `Request` and return
-`(status, json_body)`; this module does the rest: matching, bearer-token authentication, the body
-size limit, JSON in and out, the generic 500, and a log line per request that never holds a
-secret (no headers, no body).
+`(status, json_body)`, or `(status, Binary(...))` for a file; this module does the rest: matching,
+bearer-token authentication, the body size limit, JSON in and out, the generic 500, and a log line
+per request that never holds a secret (no headers, no body).
 """
 
 import hmac
@@ -11,7 +11,7 @@ import json
 import re
 import sys
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, ClassVar
@@ -27,6 +27,15 @@ UNAUTHORIZED = {"error": "unauthorized"}
 NUMBER = re.compile(r"[0-9]{1,18}")
 
 type Answer = tuple[int, Any]
+
+
+@dataclass(frozen=True)
+class Binary:
+    """A handler's answer that is a file, not JSON: its bytes, content type and extra headers."""
+
+    data: bytes
+    content_type: str
+    headers: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -167,15 +176,20 @@ class ControlHandler(BaseHTTPRequestHandler):
                 return
             remaining -= len(chunk)
 
-    def _answer(self, status: int, body: Any, headers: dict[str, str] | None = None) -> None:
-        try:
-            payload = b"" if body is None else json.dumps(body).encode()
-        except (TypeError, ValueError):
-            log(self.service, f"{self.command} {self.path} produced a body that is not JSON")
-            status, body, payload = 500, INTERNAL_ERROR, json.dumps(INTERNAL_ERROR).encode()
+    def _answer(self, status: int, body: Any, headers: Mapping[str, str] | None = None) -> None:
+        if isinstance(body, Binary):
+            payload, content_type = body.data, body.content_type
+            headers = {**body.headers, **(headers or {})}
+        else:
+            try:
+                payload = b"" if body is None else json.dumps(body).encode()
+            except (TypeError, ValueError):
+                log(self.service, f"{self.command} {self.path} produced a body that is not JSON")
+                status, body, payload = 500, INTERNAL_ERROR, json.dumps(INTERNAL_ERROR).encode()
+            content_type = "application/json" if payload else ""
         self.send_response(status)
-        if payload:
-            self.send_header("Content-Type", "application/json")
+        if content_type:
+            self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
         for name, value in (headers or {}).items():
             self.send_header(name, value)

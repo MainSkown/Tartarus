@@ -67,3 +67,56 @@ def test_the_engines_refusals_are_the_statuses_the_service_promises(service):
     assert call(client, "POST", f"/builds/{first}/restart").status == 409
     assert call(client, "POST", "/guests/ghost/clone", {"name": "x"}).status == 404
     assert call(client, "GET", "/builds/bnothing").status == 404
+
+
+def build_alpha(client):
+    build_id = call(client, "POST", "/builds", params("alpha")).json["id"]
+    wait_for(client, build_id, "succeeded")
+
+
+def test_the_sample_and_the_checks_of_a_guest_come_through_http(service):
+    lab, client = service
+    build_alpha(client)
+    (lab.dir() / "checks-output").write_text("FACT os.build=1\nPROOF defender=ok\n")
+
+    sample = call(client, "GET", "/guests/alpha/selftest/sample")
+    checks = call(client, "POST", "/guests/alpha/selftest/checks")
+
+    assert sample.status == 200
+    assert sample.raw.startswith(b"built from: ")
+    assert sample.headers["x-filename"] == "benign"
+    assert sample.headers["content-type"] == "application/octet-stream"
+    assert checks.status == 200
+    assert checks.json == {
+        "facts": {"os.build": "1"},
+        "giveaways": [],
+        "proofs": {"defender": {"ok": True, "message": ""}},
+        "log": [],
+    }
+
+
+def test_a_failed_sample_build_and_failed_checks_are_500_and_502_with_their_messages(service):
+    lab, client = service
+    build_alpha(client)
+    lab.host.compiler_error = "benign.c:1: error: nothing"
+    (lab.dir() / "checks-output").write_text("LOG the agent never answered\n")
+    (lab.dir() / "checks-exit").write_text("1")
+
+    sample = call(client, "GET", "/guests/alpha/selftest/sample")
+    checks = call(client, "POST", "/guests/alpha/selftest/checks")
+
+    assert sample.status == 500
+    assert "error: nothing" in sample.json["error"]
+    assert checks.status == 502
+    assert "the agent never answered" in checks.json["error"]
+
+
+def test_the_self_test_routes_refuse_an_unknown_guest_and_a_busy_service(service):
+    _lab, client = service
+    assert call(client, "GET", "/guests/ghost/selftest/sample").status == 404
+    assert call(client, "POST", "/guests/ghost/selftest/checks").status == 404
+    build_alpha(client)
+    started = call(client, "POST", "/builds", params("bravo", options={"pause": True})).json["id"]
+    wait_for(client, started, "paused")
+
+    assert call(client, "POST", "/guests/alpha/selftest/checks").status == 409

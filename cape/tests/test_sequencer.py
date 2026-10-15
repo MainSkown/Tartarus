@@ -19,7 +19,7 @@ from guest_engine.sequencer import (
     BuildJob,
     Sequencer,
 )
-from guest_engine.steps import PAUSE_EXIT_CODE, is_step_process
+from guest_engine.steps import PAUSE_EXIT_CODE, is_step_process, run_step
 
 NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 SECRET = "Sup3r-secret-pw"  # noqa: S105 - a fixture value
@@ -864,3 +864,92 @@ def test_a_step_that_would_start_once_the_shutdown_began_is_not_started(shop):
     assert (build.status, build.message) == ("failed", SHUTDOWN_MESSAGE)
     assert statuses_of(build) == ["pending"]
     assert not (shop.root / "alpha" / "runs").exists()
+
+
+# --- the slot taken by something that is not a build --------------------------------------
+
+
+def test_something_that_is_not_a_build_can_hold_the_one_slot_and_a_build_is_refused_meanwhile(shop):
+    shop.step("one", "true")
+
+    with shop.sequencer.occupy("the self-test checks of alpha"):
+        with pytest.raises(Conflict, match="self-test checks of alpha"):
+            shop.new("one")
+        with pytest.raises(Conflict, match="self-test checks of alpha"):
+            shop.sequencer.require_free_slot()
+
+    assert shop.finish(shop.new("one").id).status == "succeeded"
+
+
+def test_a_shutdown_after_the_slot_was_released_stops_nothing(shop):
+    with shop.sequencer.occupy("checks") as control:
+        pass
+
+    shop.sequencer.shutdown()
+
+    assert not control.stop_requested
+
+
+def test_the_slot_is_released_when_the_work_under_it_raises(shop):
+    with pytest.raises(RuntimeError, match="boom"), shop.sequencer.occupy("checks"):
+        raise RuntimeError("boom")
+
+    shop.sequencer.require_free_slot()
+
+
+def occupy_and_fail_if_let_in(shop, description):
+    with shop.sequencer.occupy(description):
+        pytest.fail(f"{description} was let in")
+
+
+def test_the_slot_cannot_be_taken_twice(shop):
+    with shop.sequencer.occupy("the first"), pytest.raises(Conflict, match="the first"):
+        occupy_and_fail_if_let_in(shop, "the second")
+
+
+def test_the_slot_cannot_be_taken_while_a_build_is_active(shop):
+    shop.step("hang", "while :; do sleep 0.05; done")
+    build = shop.new("hang")
+    wait_for(lambda: shop.store.load(build.id).step_pid is not None)
+
+    with (
+        pytest.raises(Conflict, match="build of alpha is running"),
+        shop.sequencer.occupy("checks"),
+    ):
+        pytest.fail("the slot was given to someone else")
+
+
+def test_the_slot_cannot_be_taken_once_the_sequencer_was_shut_down(shop):
+    shop.sequencer.shutdown()
+
+    with pytest.raises(Conflict, match="stopping"), shop.sequencer.occupy("checks"):
+        pytest.fail("the slot was given after the shutdown")
+
+
+def test_shutdown_stops_the_step_running_under_the_slot(shop):
+    shop.step("long", "sleep 300")
+    results: list = []
+    started = threading.Event()
+
+    def run_under_the_slot():
+        with shop.sequencer.occupy("checks") as control:
+            started.set()
+            outcome = run_step(
+                [str(shop.steps / "long")],
+                {"PATH": "/usr/bin:/bin"},
+                timeout_s=60,
+                on_line=lambda _line: None,
+                control=control,
+            )
+            results.append((outcome, control.stop_requested))
+
+    worker = threading.Thread(target=run_under_the_slot)
+    worker.start()
+    assert started.wait(10)
+
+    shop.sequencer.shutdown()
+    worker.join(20)
+
+    [(outcome, stop_requested)] = results
+    assert stop_requested
+    assert outcome.exit_code != 0

@@ -231,8 +231,12 @@
       "build": [
         "gcc",
         "-static",
-        "-O1"
-      ]
+        "-O1",
+        "{source}",
+        "-o",
+        "{output}"
+      ],
+      "output": "benign"
     },
     "signals": [
       {
@@ -252,7 +256,8 @@
     "facts": {
       "script": "selftest/facts.sh"
     },
-    "extras": []
+    "extras": [],
+    "check_step": null
   },
   "packages": [
     "generic",

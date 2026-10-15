@@ -1,0 +1,8 @@
+#!/bin/sh
+# Prints what the test put in checks-output and ends with the code in checks-exit (default 0).
+# While checks-hold exists it waits for release, so a test can act while the checks run.
+echo "$TT_STEP" >> "$TT_GUEST_DIR/ran-checks"
+env | grep '^TT_' | sort > "$TT_GUEST_DIR/checks-env"
+while [ -e "$TT_GUEST_DIR/checks-hold" ] && [ ! -e "$TT_GUEST_DIR/release" ]; do sleep 0.05; done
+[ -e "$TT_GUEST_DIR/checks-output" ] && cat "$TT_GUEST_DIR/checks-output"
+exit "$(cat "$TT_GUEST_DIR/checks-exit" 2>/dev/null || echo 0)"

@@ -25,6 +25,9 @@ TASK_FIELD = re.compile(r"[a-z][a-z0-9_]{0,63}")
 MODULE_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")
 PACKAGE_NAME = re.compile(r"[A-Za-z0-9_]{1,64}")
 CAPE_TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,31}")
+SAMPLE_FILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+SOURCE_PLACEHOLDER = "{source}"
+OUTPUT_PLACEHOLDER = "{output}"
 
 PLATFORMS = ("windows", "linux", "darwin")
 ARCHS = ("x64", "x86")
@@ -187,8 +190,12 @@ class Agent:
 
 @dataclass(frozen=True)
 class Sample:
+    """The benign test sample: built from `source` by the argument list `build`, which says where
+    the source and the output go with the `{source}` and `{output}` arguments."""
+
     source: str
     build: list[str]
+    output: str
 
 
 @dataclass(frozen=True)
@@ -205,10 +212,11 @@ class Facts:
 
 @dataclass(frozen=True)
 class Selftest:
-    sample: Sample
+    sample: Sample | None
     signals: list[Signal]
     facts: Facts | None
     extras: list[str]
+    check_step: str | None = None
 
 
 @dataclass(frozen=True)
@@ -324,11 +332,15 @@ class Profile:
         references = [(f"{path}.step", entry.step) for path, entry in self.pipeline_entries()]
         if self.agent.pre_snapshot:
             references.append(("agent.pre_snapshot", self.agent.pre_snapshot))
+        if self.selftest.check_step:
+            references.append(("selftest.check_step", self.selftest.check_step))
         return references
 
     def own_file_references(self) -> list[tuple[str, str]]:
         """Every (field path, relative path) of a file the profile ships in its own directory."""
-        references = [("selftest.sample.source", self.selftest.sample.source)]
+        references = []
+        if self.selftest.sample:
+            references.append(("selftest.sample.source", self.selftest.sample.source))
         if self.selftest.facts:
             references.append(("selftest.facts.script", self.selftest.facts.script))
         return references
@@ -721,12 +733,22 @@ def _signal(reader: _Reader) -> Signal:
     return Signal(signal_id, expected_source, path)
 
 
-def _selftest(reader: _Reader) -> Selftest:
-    sample_reader = reader.object("sample")
+def _sample(reader: _Reader) -> Sample:
     sample = Sample(
-        sample_reader.string("source"), sample_reader.string_list("build", non_empty=True)
+        reader.string("source"),
+        reader.string_list("build", non_empty=True),
+        reader.string("output", rule=SAMPLE_FILE_NAME),
     )
-    sample_reader.done()
+    for placeholder in (SOURCE_PLACEHOLDER, OUTPUT_PLACEHOLDER):
+        if sample.build.count(placeholder) != 1:
+            reader.fail("build", f"must hold the argument {placeholder} exactly once")
+    reader.done()
+    return sample
+
+
+def _selftest(reader: _Reader) -> Selftest:
+    sample_reader = reader.optional_object("sample")
+    sample = _sample(sample_reader) if sample_reader else None
     signal_readers = reader.objects("signals", non_empty=True)
     signals = [_signal(signal) for signal in signal_readers]
     for index, signal in enumerate(signals):
@@ -736,7 +758,13 @@ def _selftest(reader: _Reader) -> Selftest:
     facts = Facts(facts_reader.string("script")) if facts_reader else None
     if facts_reader:
         facts_reader.done()
-    selftest = Selftest(sample, signals, facts, reader.string_list("extras", default=[]))
+    selftest = Selftest(
+        sample,
+        signals,
+        facts,
+        reader.string_list("extras", default=[]),
+        reader.optional_string("check_step", rule=STEP_NAME),
+    )
     reader.done()
     return selftest
 

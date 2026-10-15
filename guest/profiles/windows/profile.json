@@ -241,8 +241,13 @@
       "build": [
         "x86_64-w64-mingw32-gcc",
         "-O2",
-        "-s"
-      ]
+        "-s",
+        "{source}",
+        "-o",
+        "{output}",
+        "-lws2_32"
+      ],
+      "output": "benign.exe"
     },
     "signals": [
       {
@@ -264,7 +269,8 @@
     "facts": {
       "script": "selftest/guest-facts.ps1"
     },
-    "extras": []
+    "extras": [],
+    "check_step": "selftest-checks"
   },
   "packages": [
     "exe",

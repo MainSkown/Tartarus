@@ -438,6 +438,14 @@ CASES = [
     ("windows", "selftest.sample.source", "", None),
     ("windows", "selftest.sample.build", [], None),
     ("windows", "selftest.sample.build", "gcc", None),
+    ("windows", "selftest.sample.output", "", None),
+    ("windows", "selftest.sample.output", "../x.exe", None),
+    ("windows", "selftest.sample.output", GONE, None),
+    ("windows", "selftest.sample.build", ["gcc", "-o", "{output}"], None),
+    ("windows", "selftest.sample.build", ["gcc", "{source}"], None),
+    ("windows", "selftest.sample.build", ["gcc", "{source}", "{source}", "-o", "{output}"], None),
+    ("windows", "selftest.check_step", 5, None),
+    ("windows", "selftest.check_step", "Bad Name", None),
     ("windows", "selftest.signals", [], None),
     ("windows", "selftest.signals.0.id", "events.nope", None),
     ("windows", "selftest.signals.0.path", "logs/x", None),
@@ -615,6 +623,41 @@ def test_a_profile_without_a_facts_script_needs_no_such_file(profiles_dir, gener
     (directory / "selftest" / "guest-facts.ps1").unlink()
 
     assert load_profile(directory, generic_steps).selftest.facts is None
+
+
+def test_the_self_test_check_step_must_exist_too(profiles_dir, generic_steps):
+    directory = install_profile(
+        profiles_dir, profile_data("windows"), skip_steps=frozenset({"selftest-checks"})
+    )
+
+    with pytest.raises(ProfileError, match=r"selftest\.check_step.*selftest-checks"):
+        load_profile(directory, generic_steps)
+
+
+def test_a_profile_may_name_the_step_that_runs_the_guest_side_self_test_checks():
+    assert sample_profile("windows").selftest.check_step == "selftest-checks"
+    assert sample_profile("ubuntu").selftest.check_step is None
+
+
+def test_a_profile_without_a_check_step_field_has_none():
+    data = without(profile_data("ubuntu"), "selftest.check_step")
+
+    assert parse_profile(data).selftest.check_step is None
+
+
+def test_a_profile_may_define_no_self_test_sample(profiles_dir, generic_steps):
+    data = without(profile_data("windows"), "selftest.sample")
+    directory = install_profile(profiles_dir, data)
+    (directory / "selftest" / "benign.c").unlink()
+
+    assert load_profile(directory, generic_steps).selftest.sample is None
+
+
+def test_the_sample_build_names_where_the_source_and_the_output_go():
+    sample = sample_profile("windows").selftest.sample
+
+    assert sample.build.count("{source}") == sample.build.count("{output}") == 1
+    assert sample.output == "benign.exe"
 
 
 def test_the_pre_snapshot_step_must_exist_too(profiles_dir, generic_steps):

@@ -13,12 +13,13 @@ import logging
 import threading
 import traceback
 from collections import deque
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from guest_engine.builds import BuildRecord, BuildStore, StepState, timestamp
+from guest_engine.builds import BuildRecord, BuildStore, timestamp
 from guest_engine.errors import Conflict
 from guest_engine.profile import PipelineStep
 from guest_engine.registry import GUEST_FILE
@@ -29,9 +30,9 @@ from guest_engine.steps import (
     Progress,
     Redactor,
     StepControl,
-    StepOutcome,
     StepPaths,
     StepTitle,
+    failure_message,
     is_step_process,
     parse_line,
     run_step,
@@ -45,6 +46,7 @@ INTERRUPTED_MESSAGE = "the control service restarted while this step was running
 SHUTDOWN_MESSAGE = "the control service was stopped while this step was running; resume it"
 STOP_GRACE_S = 5.0
 CONCLUDE_WAIT_S = 10.0
+OCCUPANT_CONTROL = "occupant"
 DEFAULT_PAUSE_INSTRUCTIONS = (
     "This step is waiting for you. Follow what the page shows, then continue."
 )
@@ -93,6 +95,7 @@ class Sequencer:
         self._controls: dict[str, StepControl] = {}
         self._controls_lock = threading.Lock()
         self._closed = False
+        self._occupant: str | None = None
 
     def begin(
         self,
@@ -161,9 +164,36 @@ class Sequencer:
             thread.join(self._stop_grace_s + CONCLUDE_WAIT_S)
 
     def require_free_slot(self) -> None:
-        """Raise `Conflict` naming the build or clone that is active, if one is."""
+        """Raise `Conflict` naming the build, clone or other work that holds the slot, if any."""
         self._require_open()
         self._require_free_slot(excluding=None)
+
+    def require_unoccupied(self) -> None:
+        """Raise `Conflict` naming the work that holds the slot outside any build, if any does."""
+        with self._lock:
+            if self._occupant is not None:
+                raise Conflict(f"{self._occupant} is running; only one thing can run at a time")
+
+    @contextmanager
+    def occupy(self, description: str) -> Iterator[StepControl]:
+        """Hold the one slot for work that is not a build, so nothing else runs meanwhile.
+
+        Yields the control of the step that work runs, which `shutdown` stops like a build's step.
+        """
+        with self._lock:
+            self._require_free_slot(excluding=None)
+            control = StepControl()
+            with self._controls_lock:
+                self._require_open()
+                self._controls[OCCUPANT_CONTROL] = control
+            self._occupant = description
+        try:
+            yield control
+        finally:
+            with self._lock:
+                self._occupant = None
+                with self._controls_lock:
+                    self._controls.pop(OCCUPANT_CONTROL, None)
 
     def wait(self, build_id: str, timeout: float | None = None) -> bool:
         """Block until the build's thread ends; False if it still runs after `timeout` seconds."""
@@ -188,6 +218,7 @@ class Sequencer:
         return thread is not None and thread.is_alive()
 
     def _require_free_slot(self, excluding: str | None) -> None:
+        self.require_unoccupied()
         active = self._store.active()
         if active is not None and active.id != excluding:
             raise Conflict(
@@ -323,7 +354,9 @@ class Sequencer:
             return False
         step.status = "failed"
         reason = (
-            SHUTDOWN_MESSAGE if control.stop_requested else _failure_message(step, outcome, recent)
+            SHUTDOWN_MESSAGE
+            if control.stop_requested
+            else failure_message(step.name, step.timeout_s, outcome, recent)
         )
         self._conclude(build, job, "failed", reason)
         return False
@@ -373,17 +406,3 @@ class Sequencer:
             job.on_status(build)
         except Exception:
             log.exception("the status hook failed for build %s (%s)", build.id, build.status)
-
-
-def _failure_message(step: StepState, outcome: StepOutcome, recent: deque[str]) -> str:
-    if outcome.timed_out:
-        return f"step '{step.name}' timed out after {step.timeout_s} s and was stopped"
-    if outcome.start_error:
-        return f"step '{step.name}' could not be started: {outcome.start_error}"
-    code = outcome.exit_code
-    if code is not None and code < 0:
-        reason = f"was killed by signal {-code}"
-    else:
-        reason = f"failed with exit code {code}"
-    tail = "\n".join(line for line in recent if line)
-    return f"step '{step.name}' {reason}" + (f":\n{tail}" if tail else "")

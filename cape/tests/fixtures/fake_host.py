@@ -13,6 +13,7 @@ from guest_engine.media import CommandResult
 DEFINED = "defined"
 SNAPSHOTTED = "snapshotted"
 SNAPSHOT = "tartarus-clean"
+COMPILER = "fake-cc"
 
 
 def ok(stdout: str = "") -> CommandResult:
@@ -37,6 +38,7 @@ class FakeHost:
         self.undefined: list[str] = []
         self.listed_when_undefined: dict[str, list[str]] = {}
         self.extra_domains: dict[str, str] = {}
+        self.compiler_error: str | None = None
         self.outside_file = libvirt_dir.parent / "outside" / "iso-of-the-user.iso"
 
     def define_elsewhere(self, name: str, xml: str) -> None:
@@ -53,6 +55,8 @@ class FakeHost:
             return self._virsh(argv[3], argv[4:])
         if argv[:2] == ["supervisorctl", "restart"]:
             return self._restart_cape()
+        if argv[:1] == [COMPILER]:
+            return self._compile(argv)
         if argv[:1] == ["pkill"]:
             self.events.append("pkill tcpdump")
             return CommandResult(1, "", "")
@@ -143,6 +147,13 @@ class FakeHost:
         if name not in self.running:
             return failure("error: domain is not running")
         return ok("vnc://127.0.0.1:1\n")
+
+    def _compile(self, argv: list[str]) -> CommandResult:
+        """The sample build: `fake-cc <source> -o <output>` copies the source to the output."""
+        if self.compiler_error:
+            return failure(self.compiler_error)
+        Path(argv[argv.index("-o") + 1]).write_bytes(b"built from: " + Path(argv[1]).read_bytes())
+        return ok()
 
     def _restart_cape(self) -> CommandResult:
         self.cape_restarts += 1

@@ -304,6 +304,29 @@ class TestTheCommandLine:
         (execute,) = [r for r in guest.requests() if r["path"] == "/execute"]
         assert "-Mode 'Off'" in execute["driver"]
 
+    def test_run_takes_a_script_from_a_folder_of_the_profile_and_stores_it_by_its_plain_name(
+        self, environment, guest
+    ):
+        folder = Path(environment["TT_PROFILE_DIR"]) / "selftest"
+        folder.mkdir()
+        (folder / "facts.ps1").write_text("facts script")
+        (folder / "helper.ps1").write_text("helper")
+        guest.behave(scripts={"facts.ps1": {"stdout": "FACT a=1\r\nEXITCODE 0\r\n"}})
+
+        result = self.call(environment, "run", "selftest/facts.ps1", "--with", "helper.ps1")
+
+        assert (result.returncode, result.stdout.splitlines()) == (0, ["LOG FACT a=1"])
+        assert guest.on_disk("facts.ps1").read_text() == "facts script"
+        assert guest.on_disk("helper.ps1").read_text() == "helper"
+
+    @pytest.mark.parametrize("script", ["../outside.ps1", "/etc/passwd", "selftest/../../x.ps1"])
+    def test_run_refuses_a_script_outside_the_profile_folder(self, environment, guest, script):
+        result = self.call(environment, "run", script)
+
+        assert result.returncode == guest_agent.AGENT_FAILED
+        assert "profile" in result.stderr
+        assert guest.requests() == []
+
     def test_an_unreachable_agent_exits_70_with_a_message(self, environment):
         environment_copy = dict(environment)
         context = json.loads(Path(environment["TT_CONTEXT_JSON"]).read_text())

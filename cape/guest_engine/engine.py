@@ -16,10 +16,18 @@ import os
 import sys
 import threading
 from collections.abc import Mapping
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
-from guest_engine.builds import CONTEXT_FILE, BuildRecord, BuildStore
+from guest_engine.builds import (
+    BUILD_FILE,
+    CONTEXT_FILE,
+    LOG_FILE,
+    BuildRecord,
+    BuildStore,
+    timestamp,
+)
 from guest_engine.config import EngineConfig
 from guest_engine.errors import Conflict, GuestNotFound
 from guest_engine.health import CapeMachinesProbe, SnapshotAgentCheck, run_checks
@@ -29,13 +37,32 @@ from guest_engine.media import MediaProblem, cleanup_stale_mounts, scan_media
 from guest_engine.profile import PipelineStep, Profile, derive_badges, load_profiles
 from guest_engine.registrar import Registrar, RegistrationFailed
 from guest_engine.registration import REGISTRATION_FILE
-from guest_engine.registry import Guest, GuestSpec, Registry, new_guest, write_atomically
+from guest_engine.registry import (
+    GUEST_FILE,
+    Guest,
+    GuestSpec,
+    Registry,
+    new_guest,
+    write_atomically,
+)
+from guest_engine.selftest import (
+    ChecksCollector,
+    ChecksFailed,
+    PreparedChecks,
+    SampleBuilder,
+    run_check_step,
+)
 from guest_engine.sequencer import BuildFailed, BuildJob, Sequencer
+from guest_engine.steps import Redactor, StepPaths, step_environment
 from guest_engine.validation import ValidationContext, validate_build, validate_clone
 
 log = logging.getLogger(__name__)
 
 HIDDEN_VALUE = "***"
+CHECKS_DIR = "checks"
+CHECKS_KIND = "checks"
+TESTABLE_STATES = ("testing", "ready")
+SELFTEST_CACHE = Path("tartarus") / "cache" / "selftest"
 type Json = dict[str, Any]
 
 
@@ -71,6 +98,7 @@ class Engine:
         )
         self._agent_check = config.agent_check or SnapshotAgentCheck(self._host, sleep=config.sleep)
         self._registrar = Registrar(config, self._registry, self._profiles, self._host, self._probe)
+        self._samples = SampleBuilder(config.libvirt_dir / SELFTEST_CACHE, config.runner)
         self._start()
 
     # --- reading ---------------------------------------------------------------------
@@ -109,6 +137,12 @@ class Engine:
     def display(self, name: str) -> Json | None:
         self._registry.get(name)
         return self._host.display(name)
+
+    def selftest_sample(self, name: str) -> Json:
+        guest = self._registry.get(name)
+        profile = self._profile_of(guest)
+        built = self._samples.sample(profile, self._profile_dir(profile))
+        return {"path": str(built.path), "filename": built.filename}
 
     def build(self, build_id: str) -> Json:
         return _build_view(self._builds.load(build_id))
@@ -174,6 +208,7 @@ class Engine:
 
     def check(self, name: str) -> Json:
         with self._lock:
+            self._sequencer.require_unoccupied()
             guest = self._registry.get(name)
             profile = self._profile_of(guest)
             active = self._builds.active()
@@ -184,8 +219,33 @@ class Engine:
                 )
             return run_checks(guest, profile, self._host, self._probe, self._agent_check)
 
+    def selftest_checks(self, name: str) -> Json:
+        with ExitStack() as holding:
+            with self._lock:
+                guest = self._registry.get(name)
+                profile = self._profile_of(guest)
+                if guest.state not in TESTABLE_STATES:
+                    raise Conflict(
+                        f"{name} is {guest.state}; the self-test checks need it testing or ready"
+                    )
+                control = holding.enter_context(
+                    self._sequencer.occupy(f"the self-test checks of {name}")
+                )
+                if profile.selftest.check_step is None:
+                    return ChecksCollector().report()
+                checks = self._prepare_checks(guest, profile, profile.selftest.check_step)
+            try:
+                return run_check_step(
+                    checks, redact=Redactor(_secrets_of(guest, profile)), control=control
+                )
+            except ChecksFailed:
+                # A step killed at its limit cannot run its own clean-up.
+                self._host.destroy(name)
+                raise
+
     def delete_guest(self, name: str) -> None:
         with self._lock:
+            self._sequencer.require_unoccupied()
             guest = self._registry.get(name)
             self._refuse_while_in_use(guest)
             try:
@@ -241,10 +301,13 @@ class Engine:
             raise
         return build.id
 
+    def _profile_dir(self, profile: Profile) -> Path:
+        return profile.directory or self._config.profiles_dir / profile.id
+
     def _job(self, guest: Guest, profile: Profile) -> BuildJob:
         return BuildJob(
             find_step=profile.step_path,
-            profile_dir=profile.directory or self._config.profiles_dir / profile.id,
+            profile_dir=self._profile_dir(profile),
             secrets=_secrets_of(guest, profile),
             on_status=self._on_build_status,
             prepare=self._write_context,
@@ -319,20 +382,52 @@ class Engine:
 
     def _write_context(self, build: BuildRecord) -> None:
         guest = self._registry.get(build.guest)
-        profile = self._profile_of(guest)
+        self._store_context(
+            self._builds.directory(build),
+            guest,
+            {"id": build.id, "kind": build.kind, "steps": [s.name for s in build.steps]},
+        )
+
+    def _store_context(self, directory: Path, guest: Guest, build: Json) -> None:
         source = self._source_of(guest)
         context = {
             "guest": guest.to_dict(),
-            "profile": _profile_view(profile),
+            "profile": _profile_view(self._profile_of(guest)),
             "source": source.to_dict() if source else None,
-            "build": {"id": build.id, "kind": build.kind, "steps": [s.name for s in build.steps]},
+            "build": build,
             "host": self._host_view(),
         }
-        write_atomically(
-            self._builds.directory(build) / CONTEXT_FILE,
-            json.dumps(context, indent=2) + "\n",
-            0o600,
+        write_atomically(directory / CONTEXT_FILE, json.dumps(context, indent=2) + "\n", 0o600)
+
+    def _prepare_checks(self, guest: Guest, profile: Profile, step_name: str) -> PreparedChecks:
+        step = profile.step_path(step_name)
+        if step is None:
+            raise ChecksFailed(f"the check step '{step_name}' was not found or is not executable")
+        started = timestamp(self._config.clock())
+        guest_dir = self._config.registry_root / guest.name
+        directory = guest_dir / CHECKS_DIR / started
+        directory.mkdir(parents=True, exist_ok=True)
+        check_id = f"{CHECKS_KIND}-{started}"
+        self._store_context(
+            directory, guest, {"id": check_id, "kind": CHECKS_KIND, "steps": [step_name]}
         )
+        paths = StepPaths(
+            guest_dir=guest_dir,
+            guest_json=guest_dir / GUEST_FILE,
+            profile_dir=self._profile_dir(profile),
+            # No build record exists for checks; the variable still names where one would be.
+            state_file=directory / BUILD_FILE,
+            build_dir=directory,
+            log=directory / LOG_FILE,
+            context_json=directory / CONTEXT_FILE,
+        )
+        environment = step_environment(
+            paths,
+            step=step_name,
+            build_id=check_id,
+            inherited=self._config.inherited_environment,
+        )
+        return PreparedChecks(step, environment, self._config.selftest_check_timeout_s, paths.log)
 
     def _source_of(self, guest: Guest) -> Guest | None:
         if guest.cloned_from is None:

@@ -222,6 +222,23 @@ def run_step(
     return StepOutcome(exit_code, timed_out.is_set())
 
 
+def failure_message(
+    name: str, timeout_s: float, outcome: StepOutcome, recent: Iterable[str]
+) -> str:
+    """Why step `name` did not succeed, with the last lines it wrote."""
+    if outcome.timed_out:
+        return f"step '{name}' timed out after {timeout_s} s and was stopped"
+    if outcome.start_error:
+        return f"step '{name}' could not be started: {outcome.start_error}"
+    code = outcome.exit_code
+    if code is not None and code < 0:
+        reason = f"was killed by signal {-code}"
+    else:
+        reason = f"failed with exit code {code}"
+    tail = "\n".join(line for line in recent if line)
+    return f"step '{name}' {reason}" + (f":\n{tail}" if tail else "")
+
+
 def terminate_group(pgid: int, grace_s: float) -> None:
     """SIGTERM every process of the group, SIGKILL what is still running when `grace_s` is up."""
     if not _signal_group(pgid, signal.SIGTERM):

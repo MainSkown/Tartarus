@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# The guest-side checks of the self-test, run by the control service outside any build. Restores the
+# guest's clean snapshot, reads its facts and giveaways, and proves what Defender does with a test
+# file; the domain is destroyed on the way out whatever happened. It prints, for the service to read:
+#   FACT key=value                          from the facts script, unchanged
+#   GIVEAWAY text                           from the giveaway scan, unchanged
+#   PROOF defender=ok | PROOF defender=failed <what was expected and what was seen>
+# Everything else the guest says reaches the output behind "LOG ", so only the lines passed on below
+# can be taken for protocol lines. Exit 0 when the checks ran (a failed proof is a result), 1 when
+# the guest could not be restored, reached or read.
+set -uo pipefail
+# shellcheck source=lib/windows.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
+
+AGENT_WAIT_S=${SELFTEST_AGENT_WAIT_SECONDS:-180}
+AGENT_PROBE_S=${SELFTEST_PROBE_SECONDS:-5}
+PROOF_WAIT_S=${SELFTEST_PROOF_WAIT_SECONDS:-15}
+SCRIPT_TIMEOUT_S=${SELFTEST_SCRIPT_TIMEOUT_SECONDS:-120}
+# The driver's code for a script that threw, and the agent client's for an unusable agent or a
+# script that printed no code. Any other code of the facts script is whatever its last native
+# command left behind.
+SCRIPT_THREW=40
+AGENT_FAILED=70
+NO_EXIT_CODE=71
+PROOF_SCRIPT=defender-proof.ps1
+context_var DEFENDER_ON guest.options.defender true
+context_var FACTS_SCRIPT profile.selftest.facts.script ""
+
+trap 'vsh destroy "$GUEST_NAME" >/dev/null 2>&1' EXIT
+
+# run_in_guest <script> [options of guest_agent run]: sets GUEST_OUTPUT and GUEST_CODE. What the agent
+# client says on stderr can hold text the guest wrote, so it is logged line by line behind a prefix.
+run_in_guest() {
+    local errors
+    errors=$(mktemp "$TT_BUILD_DIR/agent-errors.XXXXXX")
+    GUEST_OUTPUT=$(guest_agent run "$@" 2>"$errors")
+    GUEST_CODE=$?
+    log_guest_file "$errors"
+    rm -f "$errors"
+}
+
+# The facts script's output: a fact or a giveaway as the protocol line itself, the rest as it came.
+pass_on_facts() {
+    sed -E 's/^LOG (FACT [A-Za-z0-9_.-]+=)/\1/; s/^LOG (GIVEAWAY [^[:space:]])/\1/' <<<"$1"
+}
+
+restore_clean_snapshot() {
+    vsh snapshot-revert "$GUEST_NAME" "$SNAPSHOT_NAME" --running >/dev/null ||
+        fail "could not restore the snapshot $SNAPSHOT_NAME of $GUEST_NAME"
+}
+
+read_guest_facts() {
+    local passed_on
+    run_in_guest "$FACTS_SCRIPT" --timeout "$SCRIPT_TIMEOUT_S"
+    passed_on=$(pass_on_facts "$GUEST_OUTPUT")
+    [[ -z $passed_on ]] || printf '%s\n' "$passed_on"
+    case $GUEST_CODE in
+        "$SCRIPT_THREW" | "$AGENT_FAILED" | "$NO_EXIT_CODE")
+            fail "$(basename "$FACTS_SCRIPT") ended with exit code $GUEST_CODE: $(result_summary "$GUEST_OUTPUT")" ;;
+    esac
+    grep -q '^FACT ' <<<"$passed_on" || fail "$(basename "$FACTS_SCRIPT") printed no facts"
+}
+
+proof_ok() { printf 'PROOF defender=ok\n'; }
+proof_failed() { printf 'PROOF defender=failed %s\n' "$*"; }
+
+# judge_defender_proof <True|False|empty>: whether the test file was still there after the wait.
+judge_defender_proof() {
+    local present=${1,,} expected_present explanation
+    case $present in
+        true | false) ;;
+        *) proof_failed "$PROOF_SCRIPT reported no result for the test file"; return ;;
+    esac
+    if [[ $DEFENDER_ON == true ]]; then
+        expected_present=false
+        explanation="Defender is on, so it should have removed the test file, but the file was still there after $PROOF_WAIT_S s"
+    else
+        expected_present=true
+        explanation="Defender is off, so the test file should have been kept, but it was removed"
+    fi
+    if [[ $present == "$expected_present" ]]; then proof_ok; else proof_failed "$explanation"; fi
+}
+
+prove_what_defender_does() {
+    run_in_guest "$PROOF_SCRIPT" --arg "WaitSeconds=$PROOF_WAIT_S" --timeout "$SCRIPT_TIMEOUT_S"
+    printf '%s\n' "$GUEST_OUTPUT"
+    case $GUEST_CODE in
+        0) judge_defender_proof "$(result_field "$GUEST_OUTPUT" eicar_present)" ;;
+        "$AGENT_FAILED") fail "the guest agent could not be used to run $PROOF_SCRIPT" ;;
+        *) proof_failed "$PROOF_SCRIPT ended with exit code $GUEST_CODE: $(result_summary "$GUEST_OUTPUT")" ;;
+    esac
+}
+
+step "Restoring the guest's clean snapshot"
+restore_clean_snapshot
+wait_for "$AGENT_WAIT_S" "$AGENT_PROBE_S" agent_answers || fail "the guest agent did not answer within ${AGENT_WAIT_S}s"
+if [[ -n $FACTS_SCRIPT ]]; then
+    step "Reading the guest's facts"
+    read_guest_facts
+fi
+step "Proving what Defender does with a test file"
+prove_what_defender_does

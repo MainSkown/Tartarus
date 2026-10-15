@@ -1,9 +1,10 @@
 """What the control service (`bin/guest-control`) needs from the guest engine.
 
 The control service only translates HTTP to these calls and the engine's exceptions to status
-codes (`GuestNotFound` 404, `InvalidParameters` 422, `Conflict` 409). Every value crossing this
-boundary is JSON-serialisable (dicts, lists, strings, numbers, booleans, None), so the service
-does no conversion.
+codes (`GuestNotFound` 404, `InvalidParameters` 422, `Conflict` 409; the self-test's
+`SampleBuildFailed` and `ChecksFailed`, in `guest_engine.selftest`, 500 and 502). Every value
+crossing this boundary is JSON-serialisable (dicts, lists, strings, numbers, booleans, None), so
+the service does no conversion.
 """
 
 from typing import Any, Protocol
@@ -58,6 +59,14 @@ class GuestEngine(Protocol):
 
     def check(self, name: str) -> Json:
         """Run the guest's health checks now: `{name, checks: [{id, ok, message}]}`."""
+        ...
+
+    def selftest_sample(self, name: str) -> Json:
+        """`{path, filename}`: the built benign sample of the guest's profile, ready to serve."""
+        ...
+
+    def selftest_checks(self, name: str) -> Json:
+        """Run the guest-side self-test checks: `{facts, giveaways, proofs, log}`. Takes minutes."""
         ...
 
     def display(self, name: str) -> Json | None:

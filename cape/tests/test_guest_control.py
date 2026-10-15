@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from test_control_http import AUTH, BIN, TOKEN, Client, load_script, served
@@ -20,6 +21,7 @@ from test_guest_control_finish import MD5_OF_TASK_7, fake_agent
 
 from guest_engine.errors import Conflict, GuestNotFound, InvalidParameters
 from guest_engine.protocol import GuestEngine
+from guest_engine.selftest import ChecksFailed, SampleBuildFailed
 
 guest_control = load_script("guest-control")
 
@@ -41,6 +43,13 @@ class FakeEngine:
         self.failures: dict[str, Exception] = {}
         self.address = {"ip": "127.0.0.1", "agent_port": 0, "finish_dir": WINDOWS_FINISH_DIR}
         self.display_answer: dict | None = {"host": "127.0.0.1", "port": 5900}
+        self.sample_path: Path | None = None
+        self.checks_answer = {
+            "facts": {"os.build": "26200"},
+            "giveaways": [],
+            "proofs": {},
+            "log": [],
+        }
 
     def _called(self, method: str, *arguments):
         self.calls.append((method, *arguments))
@@ -105,6 +114,14 @@ class FakeEngine:
     def display(self, name):
         self._called("display", name)
         return self.display_answer
+
+    def selftest_sample(self, name):
+        self._called("selftest_sample", name)
+        return {"path": str(self.sample_path), "filename": "benign.exe"}
+
+    def selftest_checks(self, name):
+        self._called("selftest_checks", name)
+        return self.checks_answer
 
     def shutdown(self):
         self._called("shutdown")
@@ -250,6 +267,74 @@ def test_a_display_that_the_engine_does_not_have_is_404(client, engine):
     assert "error" in reply.json
 
 
+SAMPLE_BYTES = bytes(range(256)) * 4
+
+
+@pytest.fixture
+def sample(tmp_path, engine):
+    engine.sample_path = tmp_path / "benign.exe"
+    engine.sample_path.write_bytes(SAMPLE_BYTES)
+    return engine.sample_path
+
+
+def test_the_sample_route_answers_the_files_bytes_with_its_name(client, engine, sample):
+    reply = client.request("GET", "/guests/win/selftest/sample", headers=AUTH)
+
+    assert reply.status == 200
+    assert reply.raw == SAMPLE_BYTES
+    assert reply.headers["content-type"] == "application/octet-stream"
+    assert reply.headers["x-filename"] == "benign.exe"
+    assert engine.calls == [("selftest_sample", "win")]
+
+
+def test_a_sample_that_cannot_be_built_is_500_with_the_message(client, engine, sample):
+    engine.failures["selftest_sample"] = SampleBuildFailed("building failed:\nerror: no gcc")
+
+    reply = client.request("GET", "/guests/win/selftest/sample", headers=AUTH)
+
+    assert (reply.status, reply.json) == (500, {"error": "building failed:\nerror: no gcc"})
+
+
+def test_a_cached_sample_that_has_vanished_is_500_not_a_hang_up(client, engine, sample):
+    sample.unlink()
+
+    reply = client.request("GET", "/guests/win/selftest/sample", headers=AUTH)
+
+    assert reply.status == 500
+    assert "benign.exe" in reply.json["error"]
+
+
+def test_an_unknown_guest_has_no_sample(client, engine, sample):
+    engine.failures["selftest_sample"] = GuestNotFound("no guest called win")
+
+    reply = client.request("GET", "/guests/win/selftest/sample", headers=AUTH)
+
+    assert (reply.status, reply.json) == (404, {"error": "no guest called win"})
+
+
+def test_the_checks_route_answers_the_engines_report(client, engine):
+    reply = client.request("POST", "/guests/win/selftest/checks", headers=AUTH)
+
+    assert (reply.status, reply.json) == (200, engine.checks_answer)
+    assert engine.calls == [("selftest_checks", "win")]
+
+
+def test_checks_that_could_not_run_are_502_with_the_message(client, engine):
+    engine.failures["selftest_checks"] = ChecksFailed("the guest agent never answered")
+
+    reply = client.request("POST", "/guests/win/selftest/checks", headers=AUTH)
+
+    assert (reply.status, reply.json) == (502, {"error": "the guest agent never answered"})
+
+
+def test_the_checks_of_an_unknown_guest_are_404(client, engine):
+    engine.failures["selftest_checks"] = GuestNotFound("no guest called win")
+
+    reply = client.request("POST", "/guests/win/selftest/checks", headers=AUTH)
+
+    assert reply.status == 404
+
+
 @pytest.mark.parametrize(
     ("query", "tail"), [("", 200), ("?tail=5", 5), ("?tail=2000", 2000), ("?tail=1", 1)]
 )
@@ -311,6 +396,8 @@ def test_the_engines_exceptions_become_status_codes(client, engine, failure, sta
         ("POST", "/builds/b1/continue", "continue_after_pause"),
         ("POST", "/builds/b1/complete", "complete_build"),
         ("GET", "/guests/win/display", "display"),
+        ("GET", "/guests/win/selftest/sample", "selftest_sample"),
+        ("POST", "/guests/win/selftest/checks", "selftest_checks"),
     ],
 )
 def test_every_route_maps_an_engine_conflict_to_409(client, engine, method, path, failing_call):
@@ -343,6 +430,8 @@ ALL_ROUTES = [
     ("POST", "/guests/win/check"),
     ("POST", "/guests/win/clone"),
     ("GET", "/guests/win/display"),
+    ("GET", "/guests/win/selftest/sample"),
+    ("POST", "/guests/win/selftest/checks"),
     ("POST", "/builds"),
     ("GET", "/builds/b1"),
     ("GET", "/builds/b1/log"),
@@ -427,6 +516,8 @@ def test_a_guest_name_that_is_not_a_slug_is_400_before_it_reaches_the_engine(cli
         ("POST", "/check"),
         ("POST", "/clone"),
         ("GET", "/display"),
+        ("GET", "/selftest/sample"),
+        ("POST", "/selftest/checks"),
     ]:
         reply = client.request(method, f"/guests/{name}{suffix}", headers=AUTH)
         assert reply.status == 400, (method, suffix)

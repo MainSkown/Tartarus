@@ -186,8 +186,12 @@
     "sample": {
       "source": "selftest/benign.c",
       "build": [
-        "cc"
-      ]
+        "fake-cc",
+        "{source}",
+        "-o",
+        "{output}"
+      ],
+      "output": "benign"
     },
     "signals": [
       {
@@ -197,7 +201,8 @@
     "facts": {
       "script": "selftest/facts.sh"
     },
-    "extras": []
+    "extras": [],
+    "check_step": "selftest-checks"
   },
   "packages": [
     "generic"
