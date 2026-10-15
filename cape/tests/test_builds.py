@@ -236,3 +236,35 @@ def test_a_conditional_pipeline_is_frozen_as_resolved_for_the_options_asked(stor
 
     assert "tamper-off" in [s.name for s in new_build(store, "alpha", off).steps]
     assert "tamper-off" not in [s.name for s in new_build(store, "bravo", on).steps]
+
+
+# --- the step's process -------------------------------------------------------------------
+
+
+def test_a_new_build_has_no_step_process(store):
+    build = new_build(store)
+
+    assert (build.step_pid, build.step_path) == (None, None)
+
+
+def test_the_step_process_round_trips_through_the_disk(store):
+    build = new_build(store)
+    build.step_pid, build.step_path = 4242, "/steps/define"
+    store.save(build, now=NOW)
+
+    loaded = store.load(build.id)
+
+    assert (loaded.step_pid, loaded.step_path) == (4242, "/steps/define")
+    assert json.loads((store.directory(build) / "build.json").read_text())["step_pid"] == 4242
+
+
+def test_a_record_written_before_the_step_process_was_kept_still_loads(store):
+    build = new_build(store)
+    file = store.directory(build) / "build.json"
+    data = json.loads(file.read_text())
+    del data["step_pid"], data["step_path"]
+    file.write_text(json.dumps(data))
+
+    loaded = store.load(build.id)
+
+    assert (loaded.step_pid, loaded.step_path) == (None, None)

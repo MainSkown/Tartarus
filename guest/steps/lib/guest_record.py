@@ -5,7 +5,6 @@ touch the guest's identity or credentials nor leave a half-written record.
 """
 
 import argparse
-import dataclasses
 import json
 import os
 import sys
@@ -19,7 +18,7 @@ for directory in ENGINE_DIRECTORIES:
         sys.path.insert(0, str(directory))
         break
 
-from guest_engine.registry import Guest, Registry  # noqa: E402
+from guest_engine.registry import Registry  # noqa: E402
 
 REFUSED = 2
 
@@ -40,8 +39,6 @@ def parse_value(field: str, text: str) -> Any:
     if field not in ALLOWED_FIELDS:
         allowed = ", ".join(ALLOWED_FIELDS)
         raise RefusedError(f"{field} may not be recorded by a step (allowed: {allowed})")
-    if field not in {declared.name for declared in dataclasses.fields(Guest)}:
-        raise RefusedError(f"the guest record has no {field} field yet")
     try:
         value = json.loads(text)
     except json.JSONDecodeError:

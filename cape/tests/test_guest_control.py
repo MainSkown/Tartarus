@@ -7,9 +7,11 @@ the engine call, the engine's exceptions to status codes, and who may ask at all
 import inspect
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -103,6 +105,9 @@ class FakeEngine:
     def display(self, name):
         self._called("display", name)
         return self.display_answer
+
+    def shutdown(self):
+        self._called("shutdown")
 
 
 @pytest.fixture
@@ -495,9 +500,11 @@ def test_not_ready_still_enforces_the_token_and_serves_healthz(not_ready_client)
     assert not_ready_client.request("GET", "/healthz").json == {"ok": True}
 
 
-def test_every_protocol_method_of_the_not_ready_engine_refuses():
+def test_every_protocol_method_of_the_not_ready_engine_refuses_but_stopping_it():
     engine = guest_control.NotReadyEngine()
     for name in PROTOCOL_METHODS:
+        if name == "shutdown":
+            continue
         arguments = [None] * len(signature_of(getattr(GuestEngine, name)))
         with pytest.raises(Conflict):
             getattr(engine, name)(*arguments)
@@ -655,7 +662,8 @@ def free_port() -> int:
         return probe.getsockname()[1]
 
 
-def test_the_script_runs_as_the_image_runs_it_and_answers_not_ready_without_an_engine(tmp_path):
+def launch_script_without_engine(tmp_path) -> tuple[subprocess.Popen, Client]:
+    """The script as the image runs it, once it listens."""
     # The image lays the scripts, their modules and guest_engine/ side by side; the engine
     # module is left out, as it is until the engine is installed.
     shutil.copytree(
@@ -680,7 +688,15 @@ def test_the_script_runs_as_the_image_runs_it_and_answers_not_ready_without_an_e
         text=True,
     )
     try:
-        client = wait_until_listening(port, service)
+        return service, wait_until_listening(port, service)
+    except BaseException:
+        service.kill()
+        raise
+
+
+def test_the_script_runs_as_the_image_runs_it_and_answers_not_ready_without_an_engine(tmp_path):
+    service, client = launch_script_without_engine(tmp_path)
+    try:
         assert client.request("GET", "/healthz").json == {"ok": True}
         assert client.request("GET", "/guests").status == 401
         assert client.request("GET", "/guests", headers=AUTH).status == 409
@@ -689,6 +705,50 @@ def test_the_script_runs_as_the_image_runs_it_and_answers_not_ready_without_an_e
         output = service.communicate(timeout=10)[0]
     assert TOKEN not in output
     assert "not installed" in output
+
+
+@pytest.mark.parametrize("stop", [signal.SIGTERM, signal.SIGINT])
+def test_the_script_stops_cleanly_when_told_to(tmp_path, stop):
+    service, _ = launch_script_without_engine(tmp_path)
+
+    service.send_signal(stop)
+
+    output = service.communicate(timeout=10)[0]
+    assert service.returncode == 0
+    assert "stopped" in output
+
+
+class FakeServer:
+    def __init__(self, calls: list) -> None:
+        self.calls = calls
+
+    def shutdown(self) -> None:
+        self.calls.append(("server stopped",))
+
+
+def test_stopping_the_service_stops_the_engines_step_before_the_server(engine):
+    guest_control.stop_service(engine, FakeServer(engine.calls))
+
+    assert engine.calls == [("shutdown",), ("server stopped",)]
+
+
+@pytest.mark.parametrize("stop", [signal.SIGTERM, signal.SIGINT])
+def test_a_stop_signal_stops_the_service_from_a_thread_of_its_own(engine, stop):
+    # server.shutdown() waits for serve_forever() to return, and that loop is what the signal
+    # interrupted, so the handler must not call it on the thread that runs the loop.
+    stopped = threading.Event()
+    server = FakeServer(engine.calls)
+    server.shutdown = stopped.set
+    previous = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        guest_control.stop_when_told(engine, server)
+        signal.raise_signal(stop)
+        assert stopped.wait(5)
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+
+    assert engine.calls == [("shutdown",)]
 
 
 def wait_until_listening(port: int, service: subprocess.Popen):

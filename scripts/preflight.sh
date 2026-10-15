@@ -4,12 +4,14 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROC_DIR="${PREFLIGHT_PROC_DIR:-/proc}"
 DEV_DIR="${PREFLIGHT_DEV_DIR:-/dev}"
+ENV_FILE="${PREFLIGHT_ENV_FILE:-$REPO_DIR/.env}"
 
 MIN_COMPOSE_VERSION="2.24.4"
 MIN_MAX_MAP_COUNT=262144
 MIN_RAM_KB=$((15 * 1024 * 1024))
 MIN_FREE_DISK_KB=$((200 * 1024 * 1024))
 MIN_NODE_MAJOR=24
+MIN_CONTROL_TOKEN_LENGTH=32
 
 FAILED=0
 
@@ -120,6 +122,28 @@ check_node() {
     fi
 }
 
+control_token() {
+    local token=${GUEST_CONTROL_TOKEN:-}
+    if [ -z "$token" ] && [ -r "$ENV_FILE" ]; then
+        token=$(sed -n 's/^GUEST_CONTROL_TOKEN=//p' "$ENV_FILE" | tail -n 1)
+        token=${token#[\"\']}
+        token=${token%[\"\']}
+    fi
+    printf '%s' "$token"
+}
+
+check_control_token() {
+    local length
+    length=$(control_token | wc -c)
+    if (( length == 0 )); then
+        fail "GUEST_CONTROL_TOKEN is not set in $ENV_FILE (compose refuses to start without it; openssl rand -hex 32 makes one)"
+    elif (( length < MIN_CONTROL_TOKEN_LENGTH )); then
+        fail "GUEST_CONTROL_TOKEN is $length characters, the control service needs >= $MIN_CONTROL_TOKEN_LENGTH (openssl rand -hex 32 makes one)"
+    else
+        ok "GUEST_CONTROL_TOKEN set ($length characters)"
+    fi
+}
+
 main() {
     check_docker_daemon
     check_compose
@@ -130,6 +154,7 @@ main() {
     check_disk
     check_uv
     check_node
+    check_control_token
     exit "$FAILED"
 }
 

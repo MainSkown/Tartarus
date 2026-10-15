@@ -50,7 +50,10 @@ class ValidationContext:
 @dataclass(frozen=True)
 class ValidatedBuild:
     spec: GuestSpec
-    media_kind: str
+
+    @property
+    def media_kind(self) -> str:
+        return str(self.spec.media_kind)
 
 
 def variant_id(variant: Mapping[str, Any]) -> str:
@@ -143,11 +146,21 @@ def _resolve_media(
         _fail(problems, "media.file", f"is not media for the {profile.id} profile")
         return nothing
     entry = recognised[0]
+    kind = entry.get("kind")
+    if kind not in profile.pipelines.build:
+        buildable = " or ".join(profile.pipelines.build)
+        found = f"the scan found '{kind}'" if kind else "the scan did not name one"
+        _fail(
+            problems,
+            "media.file",
+            f"has no usable kind: {found}; {profile.id} builds from {buildable}",
+        )
+        return nothing
     variant = _resolve_variant(entry, raw.get("variant"), problems)
     media = MediaRef(
         str(file), variant, entry.get("version"), entry.get("language"), entry.get("arch")
     )
-    return media, str(entry.get("kind", ""))
+    return media, str(kind)
 
 
 def _resolve_options(
@@ -310,8 +323,10 @@ def validate_build(
     )
     if problems:
         raise InvalidParameters(problems)
-    spec = GuestSpec(name, profile.id, "build", None, media, options, identity, resources)
-    return ValidatedBuild(spec, media_kind)
+    spec = GuestSpec(
+        name, profile.id, "build", None, media, options, identity, resources, media_kind=media_kind
+    )
+    return ValidatedBuild(spec)
 
 
 def _ready_source(name: str, context: ValidationContext) -> Guest:
@@ -364,4 +379,5 @@ def validate_clone(
         identity,
         resources,
         source.work_dir,
+        source.media_kind,
     )

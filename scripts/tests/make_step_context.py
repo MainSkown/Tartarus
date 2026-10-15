@@ -37,6 +37,7 @@ def main(output: Path, agent_port: int, libvirt_dir: Path, media_dir: Path) -> N
     guest = dataclasses.replace(
         make_guest("alpha", ip="127.0.0.1"),
         work_dir=WORK_DIR,
+        media_kind="installer",
         options=OPTIONS,
         identity=dataclasses.replace(make_guest("alpha").identity, password=PASSWORD),
     ).to_dict()

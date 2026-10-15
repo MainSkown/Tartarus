@@ -1,5 +1,7 @@
 import json
+import os
 import stat
+import subprocess
 import threading
 import time
 from datetime import UTC, datetime
@@ -12,11 +14,12 @@ from guest_engine.errors import Conflict, GuestNotFound
 from guest_engine.profile import PipelineStep
 from guest_engine.sequencer import (
     INTERRUPTED_MESSAGE,
+    SHUTDOWN_MESSAGE,
     BuildFailed,
     BuildJob,
     Sequencer,
 )
-from guest_engine.steps import PAUSE_EXIT_CODE
+from guest_engine.steps import PAUSE_EXIT_CODE, is_step_process
 
 NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 SECRET = "Sup3r-secret-pw"  # noqa: S105 - a fixture value
@@ -33,8 +36,14 @@ class Workshop:
         self.profile_dir.mkdir()
         self.store = BuildStore(self.root)
         self.lock = threading.RLock()
-        self.sequencer = Sequencer(self.store, self.lock, {"PATH": "/usr/bin:/bin"})
+        self.sequencer = self.service(self.lock)
         self.statuses: list[str] = []
+
+    def service(self, lock=None, **options) -> Sequencer:
+        """A sequencer over this workshop's builds, as a freshly started control service has."""
+        return Sequencer(
+            self.store, lock or threading.RLock(), {"PATH": "/usr/bin:/bin"}, **options
+        )
 
     def step(self, name: str, body: str) -> None:
         path = self.steps / name
@@ -624,3 +633,234 @@ def test_the_step_itself_still_receives_the_real_environment(shop):
     shop.step("check", '[ -n "$TT_GUEST_JSON" ]')
 
     assert shop.finish(shop.new("check").id).status == "succeeded"
+
+
+# --- the process of the running step -----------------------------------------------------
+
+
+def wait_for(condition, seconds=10):
+    deadline = time.monotonic() + seconds
+    while not condition():
+        assert time.monotonic() < deadline, "timed out waiting"
+        time.sleep(0.02)
+
+
+def step_pid_of(shop, build_id) -> int:
+    wait_for(lambda: shop.store.load(build_id).step_pid is not None)
+    return shop.store.load(build_id).step_pid
+
+
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
+
+
+def test_the_steps_process_group_is_recorded_while_it_runs_and_cleared_when_it_ends(shop):
+    gate = blocking_step(shop)
+    running = shop.new("block")
+
+    pid = step_pid_of(shop, running.id)
+
+    recorded = shop.store.load(running.id)
+    assert os.getpgid(pid) == pid
+    assert recorded.step_path == str(shop.steps / "block")
+    wait_for(lambda: is_step_process(pid, shop.steps / "block"))
+    gate.write_text("go")
+    finished = shop.finish(running.id)
+    assert (finished.step_pid, finished.step_path) == (None, None)
+
+
+@pytest.mark.parametrize(("body", "status"), [("exit 1", "failed"), ("exit 75", "paused")])
+def test_a_step_that_fails_or_pauses_leaves_no_process_recorded(shop, body, status):
+    shop.step("ends", body)
+
+    build = shop.finish(shop.new("ends").id)
+
+    assert build.status == status
+    assert (build.step_pid, build.step_path) == (None, None)
+
+
+# --- a step a dead service left running --------------------------------------------------
+
+
+@pytest.fixture
+def unrelated_process():
+    process = subprocess.Popen(["sleep", "300"], start_new_session=True)  # noqa: S607
+    yield process
+    process.kill()
+    process.wait(5)
+
+
+def stale_build(shop, **step_process):
+    """A finished build edited to look as a killed service left it: running, a step recorded."""
+    shop.step("long", "true")
+    build = shop.finish(shop.new("long").id)
+    build.status = "running"
+    build.steps[0].status = "running"
+    for field, value in step_process.items():
+        setattr(build, field, value)
+    shop.store.save(build, now=NOW)
+    return build
+
+
+def test_a_step_left_running_by_a_dead_service_is_stopped_and_the_build_says_so(shop):
+    shop.step("long", "sleep 300")
+    build = shop.new("long")
+    pid = step_pid_of(shop, build.id)
+    successor = shop.service()
+
+    with shop.lock:  # the dead service's thread must not write while the successor recovers
+        recovered = successor.recover_interrupted()
+        wait_for(lambda: not alive(pid))
+        after = shop.store.load(build.id)
+
+    assert [b.id for b in recovered] == [build.id]
+    note = "the previous control service left step 'long' running; stopped it"
+    assert (after.status, after.message) == ("failed", f"{note}; resume it")
+    assert after.steps[0].status == "failed"
+    assert (after.step_pid, after.step_path) == (None, None)
+    assert f"== {note}" in shop.log(build.id)
+    shop.finish(build.id)
+
+
+def test_a_step_that_ignores_sigterm_is_killed_when_the_recovery_runs_out_of_patience(shop):
+    shop.step("stubborn", "trap '' TERM\nwhile :; do sleep 0.05; done")
+    build = shop.new("stubborn")
+    pid = step_pid_of(shop, build.id)
+    time.sleep(0.3)  # the trap must be set before the signal arrives
+    successor = shop.service(stop_grace_s=0.5)
+
+    with shop.lock:
+        successor.recover_interrupted()
+        wait_for(lambda: not alive(pid))
+
+    shop.finish(build.id)
+
+
+def test_a_pid_now_used_by_an_unrelated_process_is_never_killed(shop, unrelated_process):
+    build = stale_build(shop, step_pid=unrelated_process.pid, step_path=str(shop.steps / "long"))
+
+    shop.service().recover_interrupted()
+
+    assert alive(unrelated_process.pid)
+    after = shop.store.load(build.id)
+    assert (after.status, after.message) == ("failed", INTERRUPTED_MESSAGE)
+    assert (after.step_pid, after.step_path) == (None, None)
+    assert not any("stopped it" in line for line in shop.log(build.id))
+
+
+def test_a_recorded_pid_that_no_longer_exists_only_fails_the_build(shop):
+    gone = subprocess.Popen(["true"])  # noqa: S607
+    gone.wait(5)
+    build = stale_build(shop, step_pid=gone.pid, step_path=str(shop.steps / "long"))
+
+    shop.service().recover_interrupted()
+
+    assert shop.store.load(build.id).message == INTERRUPTED_MESSAGE
+
+
+def test_a_build_with_no_recorded_step_process_is_recovered_as_before(shop):
+    build = stale_build(shop)
+
+    shop.service().recover_interrupted()
+
+    assert shop.store.load(build.id).message == INTERRUPTED_MESSAGE
+
+
+# --- stopping the sequencer --------------------------------------------------------------
+
+
+def test_shutdown_stops_the_running_step_and_leaves_the_build_failed_and_resumable(shop):
+    shop.step("long", "sleep 300")
+    shop.step("after", "echo after >> $TT_GUEST_DIR/runs")
+    build = shop.new("long", "after")
+    pid = step_pid_of(shop, build.id)
+
+    shop.sequencer.shutdown()
+
+    after = shop.store.load(build.id)
+    assert not alive(pid)
+    assert (after.status, after.message) == ("failed", SHUTDOWN_MESSAGE)
+    assert SHUTDOWN_MESSAGE == (
+        "the control service was stopped while this step was running; resume it"
+    )
+    assert statuses_of(after) == ["failed", "pending"]
+    assert (after.step_pid, after.step_path) == (None, None)
+    assert shop.statuses[-1] == "failed"
+    assert not (shop.root / "alpha" / "runs").exists()
+    shop.step("long", "true")
+    successor = shop.service()
+    successor.resume(build.id, shop.job())
+    assert successor.wait(build.id, timeout=20)
+    assert shop.store.load(build.id).status == "succeeded"
+
+
+def test_shutdown_kills_a_step_that_ignores_sigterm_after_the_grace(shop):
+    shop.sequencer = shop.service(stop_grace_s=0.5)
+    shop.step("stubborn", "trap '' TERM\nwhile :; do sleep 0.05; done")
+    build = shop.new("stubborn")
+    pid = step_pid_of(shop, build.id)
+    time.sleep(0.3)
+
+    shop.sequencer.shutdown()
+
+    assert not alive(pid)
+    assert shop.store.load(build.id).message == SHUTDOWN_MESSAGE
+
+
+def test_shutdown_is_safe_when_idle_and_when_repeated(shop):
+    shop.sequencer.shutdown()
+    shop.sequencer.shutdown()
+
+
+def test_shutdown_after_a_build_ended_changes_nothing(shop):
+    shop.step("one", "true")
+    build = shop.finish(shop.new("one").id)
+
+    shop.sequencer.shutdown()
+
+    assert shop.store.load(build.id).status == "succeeded"
+
+
+def test_shutdown_leaves_a_paused_build_paused(shop):
+    pausing_step(shop)
+    paused = shop.finish(shop.new("ask", "after").id)
+
+    shop.sequencer.shutdown()
+
+    assert shop.store.load(paused.id).status == "paused"
+
+
+def test_nothing_is_started_once_the_sequencer_was_shut_down(shop):
+    shop.step("one", "true")
+    shop.sequencer.shutdown()
+
+    with pytest.raises(Conflict, match="stopping"):
+        shop.new("one")
+
+
+def is_stopping(sequencer) -> bool:
+    try:
+        sequencer.require_free_slot()
+    except Conflict as refused:
+        return "stopping" in str(refused)
+    return False
+
+
+def test_a_step_that_would_start_once_the_shutdown_began_is_not_started(shop):
+    shop.step("one", "echo ran >> $TT_GUEST_DIR/runs")
+    stopper = threading.Thread(target=shop.sequencer.shutdown)
+
+    def stop_while_preparing(_build):
+        stopper.start()
+        wait_for(lambda: is_stopping(shop.sequencer))
+
+    build = shop.finish(shop.new("one", prepare=stop_while_preparing).id)
+
+    stopper.join(20)
+    assert (build.status, build.message) == ("failed", SHUTDOWN_MESSAGE)
+    assert statuses_of(build) == ["pending"]
+    assert not (shop.root / "alpha" / "runs").exists()

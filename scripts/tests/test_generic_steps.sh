@@ -229,13 +229,22 @@ test_guest_record_refuses_a_value_of_the_wrong_type() {
     assert_status 2 && assert_contains "disk_path"
 }
 
-# The Guest record has no nvram_path yet: writing it would make the whole record unreadable
-# (the registry would list the guest as broken), so it is refused instead.
-test_guest_record_refuses_an_allowed_field_the_guest_record_cannot_hold() {
+test_guest_record_records_the_nvram_path_the_tpm_dir_and_the_display() {
+    new_world
+    record set nvram_path '"/var/lib/libvirt/nvram/alpha_VARS.fd"' &&
+        record set tpm_dir '"/var/lib/libvirt/swtpm/alpha"' &&
+        record set display '{"host": "127.0.0.1", "port": 5901}'
+    assert_status 0 &&
+        [[ $(guest_json_field nvram_path) == '"/var/lib/libvirt/nvram/alpha_VARS.fd"' ]] &&
+        [[ $(guest_json_field tpm_dir) == '"/var/lib/libvirt/swtpm/alpha"' ]] &&
+        [[ $(guest_json_field display) == '{"host": "127.0.0.1", "port": 5901}' ]]
+}
+
+test_guest_record_refuses_the_wrong_type_for_the_new_fields() {
     new_world
     local before; before=$(cat "$WORLD/registry/alpha/guest.json")
-    record set nvram_path '"/x"'
-    assert_status 2 && assert_contains "nvram_path" && [[ $(cat "$WORLD/registry/alpha/guest.json") == "$before" ]]
+    record set display '"vnc://x"'
+    assert_status 2 && assert_contains "display" && [[ $(cat "$WORLD/registry/alpha/guest.json") == "$before" ]]
 }
 
 test_guest_record_leaves_no_temporary_file_behind() {
@@ -495,6 +504,7 @@ define_world() {
     # The Linux fixture names a persona that is not installed; the default is the one that is.
     ctx_set profile.hardware.persona '"default"'
     ctx_set guest.media.file "\"${2:-Win11.iso}\""
+    ctx_set guest.media_kind "\"$([[ ${2:-Win11.iso} == *.iso ]] && echo installer || echo disk_image)\""
 }
 
 domain_has() { DOMAIN_XML | grep -qF -- "$1" || { echo "  domain XML lacks: $1"; return 1; }; }
@@ -515,6 +525,25 @@ test_define_records_the_disk_in_the_guest_record() {
     define_world
     run_step define
     assert_status 0 && [[ $(guest_json_field disk_path) == "\"$WORLD/libvirt/images/alpha.qcow2\"" ]]
+}
+
+test_define_records_the_nvram_of_a_domain_that_has_one() {
+    define_world
+    run_step define
+    assert_status 0 && domain_has "<nvram" &&
+        [[ $(guest_json_field nvram_path) == "\"$WORLD/libvirt/nvram/alpha_VARS.fd\"" ]] &&
+        [[ $(guest_json_field tpm_dir) == null ]]
+}
+
+test_define_records_no_nvram_for_a_bios_domain() {
+    define_world ubuntu Ubuntu.iso
+    ctx_set profile.hardware.boot '"bios"'
+    ctx_set profile.hardware.secure_boot false
+    ctx_set profile.hardware.tpm false
+    ctx_set profile.hardware.disk_bus '"virtio"'
+    ctx_set profile.hardware.nic_model '"virtio"'
+    run_step define
+    assert_status 0 && domain_lacks "<nvram" && [[ $(guest_json_field nvram_path) == null ]]
 }
 
 test_define_replaces_a_disk_and_nvram_left_by_an_earlier_attempt() {
@@ -576,6 +605,21 @@ test_define_converts_and_resizes_a_disk_image() {
         assert_logged "qemu-img convert -O qcow2 $WORLD/media/cloud.img $WORLD/libvirt/images/alpha.qcow2" &&
         assert_logged_before "qemu-img convert" "qemu-img resize $WORLD/libvirt/images/alpha.qcow2 80G" &&
         domain_has "<boot dev='hd'/>" && domain_lacks "<boot dev='cdrom'/>"
+}
+
+test_define_takes_the_media_kind_from_the_context_even_when_the_extension_says_otherwise() {
+    define_world ubuntu cloud.img
+    ctx_set guest.media_kind '"installer"'
+    run_step define
+    assert_status 0 && assert_logged "qemu-img create -f qcow2" && assert_not_logged "qemu-img convert" &&
+        domain_has "<boot dev='cdrom'/>"
+}
+
+test_define_falls_back_to_the_extension_when_the_context_names_no_media_kind() {
+    define_world ubuntu cloud.img
+    ctx_set guest.media_kind null
+    run_step define
+    assert_status 0 && assert_logged "qemu-img convert -O qcow2" && assert_not_logged "qemu-img create"
 }
 
 test_define_for_a_clone_keeps_the_copied_disk_and_boots_from_it() {

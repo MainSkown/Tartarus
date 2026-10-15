@@ -1,5 +1,8 @@
 import os
+import signal
 import stat
+import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -12,11 +15,14 @@ from guest_engine.steps import (
     PauseRequest,
     Progress,
     Redactor,
+    StepControl,
     StepPaths,
     StepTitle,
+    is_step_process,
     parse_line,
     run_step,
     step_environment,
+    terminate_group,
 )
 
 
@@ -207,6 +213,174 @@ def _alive(pid: int) -> bool:
         return False
     stat_file = Path(f"/proc/{pid}/stat")
     return not (stat_file.exists() and stat_file.read_text().split()[2] == "Z")
+
+
+# --- stopping a step from outside --------------------------------------------------------
+
+
+def run_in_background(path: Path, control: StepControl):
+    outcomes = []
+    thread = threading.Thread(
+        target=lambda: outcomes.append(
+            run_step([str(path)], {}, timeout_s=30, on_line=lambda _line: None, control=control)
+        ),
+        daemon=True,
+    )
+    thread.start()
+    return thread, outcomes
+
+
+def wait_for(condition, seconds=10):
+    deadline = time.monotonic() + seconds
+    while not condition():
+        assert time.monotonic() < deadline, "timed out waiting"
+        time.sleep(0.02)
+
+
+def test_the_group_leaders_pid_is_reported_as_soon_as_the_step_starts(tmp_path):
+    started = []
+    control = StepControl(on_start=started.append)
+    path = script(tmp_path, "while :; do sleep 0.05; done")
+    thread, _ = run_in_background(path, control)
+
+    wait_for(lambda: started)
+
+    pid = started[0]
+    assert os.getpgid(pid) == pid
+    assert _alive(pid)
+    control.stop(grace_s=5)
+    thread.join(10)
+
+
+def test_the_pid_is_reported_before_the_first_output_line_is_delivered(tmp_path):
+    events = []
+    control = StepControl(on_start=lambda _pid: events.append("start"))
+    path = script(tmp_path, "echo first")
+
+    run_step([str(path)], {}, timeout_s=30, on_line=events.append, control=control)
+
+    assert events == ["start", "first"]
+
+
+def test_stopping_a_running_step_ends_it_with_sigterm_and_marks_the_control(tmp_path):
+    control = StepControl()
+    path = script(tmp_path, "while :; do sleep 0.05; done")
+    thread, outcomes = run_in_background(path, control)
+    wait_for(lambda: control.running)
+
+    assert control.stop(grace_s=5) is True
+
+    thread.join(10)
+    assert outcomes[0].exit_code == -signal.SIGTERM
+    assert control.stop_requested
+
+
+def test_a_step_that_ignores_sigterm_is_killed_when_the_grace_runs_out(tmp_path):
+    control = StepControl()
+    path = script(tmp_path, "trap '' TERM\nwhile :; do sleep 0.05; done")
+    thread, outcomes = run_in_background(path, control)
+    wait_for(lambda: control.running)
+    time.sleep(0.3)  # the trap must be set before the signal arrives
+
+    control.stop(grace_s=0.5)
+
+    thread.join(10)
+    assert outcomes[0].exit_code == -signal.SIGKILL
+
+
+def test_stopping_a_control_with_no_step_running_reports_nothing_to_stop():
+    control = StepControl()
+
+    assert control.stop(grace_s=1) is False
+    assert control.stop_requested
+
+
+def test_a_step_started_after_the_stop_is_killed_at_once(tmp_path):
+    control = StepControl()
+    control.stop(grace_s=1)
+    path = script(tmp_path, "while :; do sleep 0.05; done")
+    started = time.monotonic()
+
+    outcome = run_step([str(path)], {}, timeout_s=30, on_line=lambda _line: None, control=control)
+
+    assert time.monotonic() - started < 5
+    assert outcome.exit_code == -signal.SIGKILL
+
+
+# --- a group nobody waits for: the one a dead service left behind -------------------------
+
+
+def start_orphan(tmp_path, body="while :; do sleep 0.05; done"):
+    path = script(tmp_path, body)
+    process = subprocess.Popen(  # noqa: S603 - a script this test wrote
+        [str(path)], start_new_session=True, stdout=subprocess.DEVNULL
+    )
+    return path, process
+
+
+def test_a_group_that_exits_on_sigterm_is_stopped_without_waiting_out_the_grace(tmp_path):
+    _, process = start_orphan(tmp_path)
+    started = time.monotonic()
+
+    terminate_group(process.pid, grace_s=5)
+
+    assert time.monotonic() - started < 3
+    assert process.wait(5) == -signal.SIGTERM
+
+
+def test_a_group_that_ignores_sigterm_is_killed_after_the_grace(tmp_path):
+    _, process = start_orphan(tmp_path, "trap '' TERM\nwhile :; do sleep 0.05; done")
+    time.sleep(0.3)
+
+    terminate_group(process.pid, grace_s=0.5)
+
+    assert process.wait(5) == -signal.SIGKILL
+
+
+def test_a_helper_of_the_leader_dies_with_the_group(tmp_path):
+    child_pid_file = tmp_path / "child.pid"
+    _, process = start_orphan(tmp_path, f"sleep 60 &\necho $! > {child_pid_file}\nwait")
+    wait_for(child_pid_file.exists)
+    time.sleep(0.1)
+
+    terminate_group(process.pid, grace_s=2)
+
+    process.wait(5)
+    wait_for(lambda: not _alive(int(child_pid_file.read_text())))
+
+
+def test_a_group_that_is_already_gone_is_not_an_error(tmp_path):
+    _, process = start_orphan(tmp_path, "true")
+    process.wait(5)
+
+    terminate_group(process.pid, grace_s=1)
+
+
+def test_a_process_is_the_step_when_its_command_line_names_the_step_file(tmp_path):
+    path, process = start_orphan(tmp_path)
+    try:
+        wait_for(lambda: is_step_process(process.pid, path))  # the command line appears at exec
+        assert not is_step_process(process.pid, tmp_path / "another-step")
+    finally:
+        terminate_group(process.pid, grace_s=2)
+        process.wait(5)
+
+
+def test_a_pid_that_does_not_exist_is_not_the_step(tmp_path):
+    _, process = start_orphan(tmp_path, "true")
+    process.wait(5)
+
+    assert not is_step_process(process.pid, tmp_path / "step")
+
+
+def test_a_process_that_is_not_a_group_leader_is_not_the_step(tmp_path):
+    path = script(tmp_path, "while :; do sleep 0.05; done")
+    process = subprocess.Popen([str(path)], stdout=subprocess.DEVNULL)  # noqa: S603
+    try:
+        assert not is_step_process(process.pid, path)
+    finally:
+        process.kill()
+        process.wait(5)
 
 
 # --- the environment ---------------------------------------------------------------------

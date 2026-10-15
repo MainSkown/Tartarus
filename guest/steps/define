@@ -32,6 +32,12 @@ prepare_disk() {
     fi
 }
 
+# Only a UEFI domain has an nvram file; a BIOS one leaves the field empty.
+record_nvram_if_defined() {
+    grep -q '<nvram' "$TT_BUILD_DIR/domain-$1.xml" || return 0
+    guest_record set nvram_path "$(json_string "$NVRAM_PATH")" || fail "could not record the nvram in the guest record"
+}
+
 step "Defining the virtual machine"
 mkdir -p "$IMAGES_DIR" "$NVRAM_DIR" "$TT_BUILD_DIR"
 progress 10
@@ -49,5 +55,6 @@ prepare_disk
 progress 70
 define_rendered "$mode"
 guest_record set disk_path "$(json_string "$DISK_PATH")" || fail "could not record the disk in the guest record"
+record_nvram_if_defined "$mode"
 progress 100
 log "defined $GUEST_NAME ($mode mode)"

@@ -10,6 +10,8 @@ STUB_BIN="$WORK/bin"
 PROC="$WORK/proc"
 DEV="$WORK/dev"
 EMPTY_DEV="$WORK/empty-dev"
+ENV_FILE="$WORK/env"
+GOOD_TOKEN=0123456789abcdef0123456789abcdef
 FAILURES=0
 
 write_stub() {
@@ -51,7 +53,8 @@ run_case() {
     local name=$1 expected_exit=$2 expected_text=$3
     shift 3
     local output actual_exit=0
-    output=$(env PATH="$STUB_BIN:/usr/bin:/bin" PREFLIGHT_PROC_DIR="$PROC" PREFLIGHT_DEV_DIR="$DEV" "$@" "$PREFLIGHT" 2>&1) || actual_exit=$?
+    output=$(env PATH="$STUB_BIN:/usr/bin:/bin" PREFLIGHT_PROC_DIR="$PROC" PREFLIGHT_DEV_DIR="$DEV" \
+        PREFLIGHT_ENV_FILE="$ENV_FILE" GUEST_CONTROL_TOKEN="$GOOD_TOKEN" "$@" "$PREFLIGHT" 2>&1) || actual_exit=$?
 
     if [ "$actual_exit" -eq "$expected_exit" ] && grep -qF -- "$expected_text" <<< "$output"; then
         echo "PASS $name"
@@ -76,6 +79,18 @@ main() {
     run_case "missing kvm warns and exits 0" 0 "[WARN] $EMPTY_DEV/kvm missing" PREFLIGHT_DEV_DIR="$EMPTY_DEV"
     run_case "missing kvm says the default stack needs it" 0 "make up" PREFLIGHT_DEV_DIR="$EMPTY_DEV"
     run_case "node 22 warns and exits 0" 0 "[WARN] node v22.11.0" FAKE_NODE_VERSION=v22.11.0
+    run_case "a 32 character control token passes" 0 "[ OK ] GUEST_CONTROL_TOKEN"
+    run_case "a missing control token fails" 1 "[FAIL] GUEST_CONTROL_TOKEN is not set" GUEST_CONTROL_TOKEN=
+    run_case "a missing control token says how to make one" 1 "openssl rand -hex 32" GUEST_CONTROL_TOKEN=
+    run_case "a 31 character control token fails" 1 "[FAIL] GUEST_CONTROL_TOKEN is 31 characters" GUEST_CONTROL_TOKEN="${GOOD_TOKEN%?}"
+    run_case "a short control token is reported by its length" 1 "GUEST_CONTROL_TOKEN is 5 characters" GUEST_CONTROL_TOKEN=s3cr3
+    printf '# the settings\nGUEST_CONTROL_TOKEN=%s\n' "$GOOD_TOKEN" > "$ENV_FILE"
+    run_case "the token is read from .env when the shell has none" 0 "[ OK ] GUEST_CONTROL_TOKEN" GUEST_CONTROL_TOKEN=
+    printf 'GUEST_CONTROL_TOKEN="%s"\n' "$GOOD_TOKEN" > "$ENV_FILE"
+    run_case "a quoted token in .env counts without its quotes" 0 "[ OK ] GUEST_CONTROL_TOKEN" GUEST_CONTROL_TOKEN=
+    printf 'GUEST_CONTROL_TOKEN=\n' > "$ENV_FILE"
+    run_case "an empty token in .env fails" 1 "[FAIL] GUEST_CONTROL_TOKEN is not set" GUEST_CONTROL_TOKEN=
+    rm -f "$ENV_FILE"
 
     if [ "$FAILURES" -gt 0 ]; then
         echo "$FAILURES case(s) failed"

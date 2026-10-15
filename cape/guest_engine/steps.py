@@ -18,6 +18,7 @@ import os
 import signal
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,8 @@ MAX_LINE_LENGTH = 4000
 MAX_PROGRESS = 100
 MASK = "***"
 INHERITED_VARIABLES = ("PATH", "LANG", "LC_ALL", "TZ", "HOME")
+GROUP_POLL_S = 0.05
+ZOMBIE_OR_DEAD = ("Z", "X")
 DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
@@ -116,6 +119,48 @@ def step_environment(
     return environment
 
 
+class StepControl:
+    """What other threads may do with the step `run_step` is running: learn its pid, stop it.
+
+    A control stays stopped for good, so a step that starts after `stop()` is killed at once and
+    the sequencer cannot slip a next step in behind a shutdown.
+    """
+
+    def __init__(self, on_start: Callable[[int], None] | None = None) -> None:
+        self._on_start = on_start
+        self._lock = threading.Lock()
+        self._pid: int | None = None
+        self.stop_requested = False
+
+    @property
+    def running(self) -> bool:
+        return self._pid is not None
+
+    def attach(self, pid: int) -> bool:
+        """Called by `run_step` once the process exists; False when the step must not run."""
+        with self._lock:
+            self._pid = pid
+            allowed = not self.stop_requested
+        if self._on_start is not None:
+            self._on_start(pid)
+        return allowed
+
+    def detach(self) -> None:
+        with self._lock:
+            self._pid = None
+
+    def stop(self, grace_s: float) -> bool:
+        """Stop the running step's group (see `terminate_group`); False when none was running."""
+        with self._lock:
+            self.stop_requested = True
+            if self._pid is None:
+                return False
+            # Under the lock so `detach` cannot let the leader be reaped, and its pid reused,
+            # between reading the pid and signalling the group.
+            terminate_group(self._pid, grace_s)
+            return True
+
+
 @dataclass(frozen=True)
 class StepOutcome:
     exit_code: int | None
@@ -129,6 +174,7 @@ def run_step(
     *,
     timeout_s: float,
     on_line: Callable[[str], None],
+    control: StepControl | None = None,
 ) -> StepOutcome:
     """Run `command` (an argument list, never a shell string), giving each output line to `on_line`.
 
@@ -148,6 +194,9 @@ def run_step(
         )
     except OSError as error:
         return StepOutcome(None, False, start_error=f"{command[0]}: {error.strerror}")
+    # Before the reader starts, so the pid is saved before any output line is: the two callbacks
+    # would otherwise write the build's record from two threads at once.
+    stopped_early = control is not None and not control.attach(process.pid)
     reader = threading.Thread(target=_deliver, args=(process, on_line), daemon=True)
     reader.start()
     timed_out = threading.Event()
@@ -158,15 +207,67 @@ def run_step(
 
     timer = threading.Timer(timeout_s, stop_on_timeout)
     timer.start()
+    if stopped_early:
+        _kill_group(process)
     try:
         # WNOWAIT leaves the leader unreaped, so its group id cannot be reused before the kill.
         os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOWAIT)
     finally:
         timer.cancel()
+        if control is not None:
+            control.detach()
         _kill_group(process)
     exit_code = process.wait()
     reader.join()
     return StepOutcome(exit_code, timed_out.is_set())
+
+
+def terminate_group(pgid: int, grace_s: float) -> None:
+    """SIGTERM every process of the group, SIGKILL what is still running when `grace_s` is up."""
+    if not _signal_group(pgid, signal.SIGTERM):
+        return
+    deadline = time.monotonic() + grace_s
+    while _running_members(pgid) and time.monotonic() < deadline:
+        time.sleep(GROUP_POLL_S)
+    if _running_members(pgid):
+        _signal_group(pgid, signal.SIGKILL)
+
+
+def is_step_process(pid: int, step_path: Path) -> bool:
+    """Whether `pid` is the leader of a group running the step file `step_path`.
+
+    The pid of a step a dead service recorded may belong to something else by now, and that
+    must never be killed. A script runs as `<interpreter> <script>`, so the file is looked for
+    among the arguments rather than only in `argv[0]`.
+    """
+    try:
+        arguments = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+        leads_its_group = os.getpgid(pid) == pid
+    except (OSError, ProcessLookupError):
+        return False
+    return leads_its_group and os.fsencode(step_path) in arguments
+
+
+def _signal_group(pgid: int, number: signal.Signals) -> bool:
+    try:
+        os.killpg(pgid, number)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _running_members(pgid: int) -> list[int]:
+    """Pids of the group's processes still running (a zombie only waits to be reaped)."""
+    members = []
+    for stat_file in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            # After the command name, which may itself contain spaces and parentheses.
+            state, _parent, group = stat_file.read_text().rpartition(")")[2].split()[:3]
+        except (OSError, ValueError):
+            continue
+        if int(group) == pgid and state not in ZOMBIE_OR_DEAD:
+            members.append(int(stat_file.parent.name))
+    return members
 
 
 def _kill_group(process: subprocess.Popen[str]) -> None:

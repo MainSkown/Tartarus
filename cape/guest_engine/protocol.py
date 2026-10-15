@@ -63,3 +63,8 @@ class GuestEngine(Protocol):
     def display(self, name: str) -> Json | None:
         """`{host, port}` of the guest's VNC display inside the container while it runs, or None."""
         ...
+
+    def shutdown(self) -> None:
+        """Stop the step a build is running and leave that build failed, to be resumed after a
+        restart. Called once when the service is told to stop; safe when idle and when repeated."""
+        ...

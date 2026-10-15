@@ -106,9 +106,11 @@ define_domain() {
 
 json_string() { python3 -I -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$1"; }
 
-# Nothing records what kind of medium a guest was built from, so it is told by the file: an ISO is
-# installed from, anything else is an installed disk image.
+# What kind of medium the guest is built from: the engine records it (installer | disk_image) from
+# the media scan. A context that predates the field is told by the file: an ISO is installed from,
+# anything else is an installed disk image.
 media_kind() {
+    context_get guest.media_kind && return
     case ${MEDIA_FILE,,} in
         *.iso) echo installer ;;
         *) echo disk_image ;;

@@ -73,10 +73,13 @@ sys.path[:0] = [str(repo / "cape"), str(repo / "cape" / "tests")]
 from fixtures.guest_samples import make_guest
 from fixtures.profile_samples import sample_profile
 
-source = replace(make_guest("beta", ip="192.168.150.10"), state="ready", work_dir="C:\\ProgramData\\abcdefgh")
+source = replace(
+    make_guest("beta", ip="192.168.150.10"),
+    state="ready", work_dir="C:\\ProgramData\\abcdefgh", media_kind="installer",
+)
 clone = replace(
     make_guest("alpha", ip="192.168.150.11", kind="clone", cloned_from="beta"),
-    work_dir=source.work_dir,
+    work_dir=source.work_dir, media_kind=source.media_kind,
 )
 view = sample_profile("windows").to_dict()
 view.pop("adoption", None)

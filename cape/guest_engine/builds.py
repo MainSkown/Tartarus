@@ -59,6 +59,13 @@ class BuildRecord:
     updated: str
     message: str = ""
     pause: dict[str, str] | None = field(default=None)
+    # Where a step runs outside this service's memory: if the service dies, the next one reads
+    # these to find the orphan (its group leader's pid and the file it executes).
+    step_pid: int | None = None
+    step_path: str | None = None
+
+    def forget_step_process(self) -> None:
+        self.step_pid = self.step_path = None
 
     @property
     def percent(self) -> int:

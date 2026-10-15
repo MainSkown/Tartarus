@@ -97,6 +97,7 @@ def test_a_complete_request_becomes_a_resolved_spec():
         None,
     )
     assert built.media_kind == "installer"
+    assert spec.media_kind == "installer"
     assert (spec.media.file, spec.media.variant, spec.media.version) == (
         "disc.iso",
         "5",
@@ -495,3 +496,27 @@ def test_a_source_whose_profile_is_gone_cannot_be_cloned():
 
     with pytest.raises(Conflict, match="removed"):
         validate_clone("win", {"name": "win-two"}, context([source]), seeded(1))
+
+
+# --- the kind of the medium ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("kind", [None, "", "floppy"])
+def test_a_medium_whose_kind_the_scan_could_not_name_is_refused_instead_of_guessed(kind):
+    entry = {**MEDIA[0], "kind": kind}
+    if kind is None:
+        del entry["kind"]
+
+    with pytest.raises(InvalidParameters) as raised:
+        validate_build(GOOD_BUILD, context(media=[entry]), seeded(1))
+
+    assert "kind" in raised.value.fields["media.file"]
+    assert "installer" in raised.value.fields["media.file"]
+
+
+def test_a_clone_carries_the_media_kind_of_its_source():
+    source = replace(source_guest(), media_kind="disk_image")
+
+    spec = validate_clone("win", {"name": "win-two"}, context([source]), seeded(1))
+
+    assert spec.media_kind == "disk_image"

@@ -74,6 +74,7 @@ class GuestSpec:
     identity: GuestIdentity
     resources: GuestResources
     work_dir: str | None = None
+    media_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,10 @@ class Guest:
     selftest: dict[str, Any] | None = None
     adopted: bool = False
     giveaways: tuple[str, ...] = ()
+    media_kind: str | None = None
+    nvram_path: str | None = None
+    display: dict[str, Any] | None = None
+    tpm_dir: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -169,6 +174,7 @@ def new_guest(
         machine=generate_machine_identity(rng),
         work_dir=spec.work_dir or new_work_dir(profile, rng),
         snapshot=SNAPSHOT_NAME,
+        media_kind=spec.media_kind,
     )
 
 
@@ -422,6 +428,7 @@ def adopt(
         snapshot=section["snapshot"],
         disk_path=_base_disk_path(domain),
         adopted=True,
+        nvram_path=(domain.findtext("os/nvram") or "").strip() or None,
     )
     return replace(guest, giveaways=_carried_giveaways(guest))
 

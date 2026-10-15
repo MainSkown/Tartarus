@@ -1,3 +1,5 @@
+import dataclasses
+import importlib.util
 import json
 import re
 import stat
@@ -462,3 +464,76 @@ def test_a_platform_the_profile_does_not_serve_is_refused():
 
     with pytest.raises(ValueError, match="platform"):
         registry.adopt(DOMAIN_XML, wrong, sample_profile("windows"), now=NOW)
+
+
+# --- what a step records about the guest, and the kind of its medium ------------------------
+
+
+def test_a_new_guest_has_recorded_nothing_a_step_would_record_later():
+    guest = make_guest()
+
+    assert (guest.nvram_path, guest.display, guest.tpm_dir) == (None, None, None)
+
+
+def test_a_new_guest_takes_the_media_kind_of_its_spec():
+    guest = new_guest(
+        make_spec(media_kind="installer"), sample_profile("windows"), "192.168.150.10"
+    )
+
+    assert guest.media_kind == "installer"
+    assert make_guest().media_kind is None
+
+
+def test_the_recorded_paths_and_display_survive_the_dictionary_and_an_update(guests):
+    guests.create(make_guest())
+
+    guests.update(
+        "alpha",
+        nvram_path="/var/lib/libvirt/nvram/alpha_VARS.fd",
+        tpm_dir="/var/lib/libvirt/swtpm/alpha",
+        display={"host": "127.0.0.1", "port": 5901},
+        media_kind="installer",
+    )
+
+    stored = guests.get("alpha")
+    assert stored.nvram_path == "/var/lib/libvirt/nvram/alpha_VARS.fd"
+    assert stored.tpm_dir == "/var/lib/libvirt/swtpm/alpha"
+    assert stored.display == {"host": "127.0.0.1", "port": 5901}
+    assert Guest.from_dict(json.loads(json.dumps(stored.to_dict()))) == stored
+
+
+def test_a_record_written_before_these_fields_existed_still_loads(guests):
+    data = make_guest().to_dict()
+    for field in ("nvram_path", "display", "tpm_dir", "media_kind"):
+        del data[field]
+    (guests.root / "alpha").mkdir(parents=True)
+    (guests.root / "alpha" / "guest.json").write_text(json.dumps(data))
+
+    guest = guests.get("alpha")
+
+    assert (guest.nvram_path, guest.display, guest.tpm_dir, guest.media_kind) == (None,) * 4
+
+
+def test_the_adopted_guest_records_the_nvram_its_domain_names_and_no_tpm_dir():
+    guest = adopted()
+
+    assert guest.nvram_path == "/var/lib/libvirt/nvram/win_VARS.fd"
+    assert guest.tpm_dir is None
+
+
+def test_a_domain_without_nvram_is_adopted_with_none():
+    without_nvram = re.sub(r"<nvram[^>]*>.*?</nvram>", "", DOMAIN_XML)
+    assert "<nvram" not in without_nvram
+
+    guest = registry.adopt(without_nvram, REGISTRATION, sample_profile("windows"), now=NOW)
+
+    assert guest.nvram_path is None
+
+
+def test_every_field_a_step_may_record_exists_on_the_guest_record():
+    path = FIXTURE_DIR.parents[2] / "guest" / "steps" / "lib" / "guest_record.py"
+    spec = importlib.util.spec_from_file_location("guest_record", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert set(module.ALLOWED_FIELDS) <= {field.name for field in dataclasses.fields(Guest)}

@@ -16,7 +16,9 @@ GUEST_CONTROL_PORT (8002), GUEST_CONTROL_AGENT_TIMEOUT in seconds (5).
 import importlib
 import os
 import re
+import signal
 import sys
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -57,6 +59,9 @@ class NotReadyEngine:
     profiles = media = guests = guest = guest_address = delete_guest = _refuse
     start_build = start_clone = build = build_log = resume = restart = _refuse
     continue_after_pause = complete_build = check = display = _refuse
+
+    def shutdown(self) -> None:
+        """Nothing runs in a stand-in, so there is nothing to stop."""
 
 
 @dataclass(frozen=True)
@@ -260,14 +265,33 @@ def make_handler(
     return control_http.make_handler(routes, service=SERVICE, token=token)
 
 
+def stop_service(engine: GuestEngine, server: control_http.ThreadingHTTPServer) -> None:
+    """The engine first, while the server still answers: the build it fails can be read meanwhile."""
+    engine.shutdown()
+    server.shutdown()
+
+
+def stop_when_told(engine: GuestEngine, server: control_http.ThreadingHTTPServer) -> None:
+    """Stop the service on SIGTERM (supervisord, docker stop) and SIGINT."""
+
+    def on_signal(_number: int, _frame: object) -> None:
+        # server.shutdown() waits for serve_forever() to return, and that loop is on the thread
+        # this handler interrupted.
+        threading.Thread(target=stop_service, args=(engine, server), daemon=True).start()
+
+    for number in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(number, on_signal)
+
+
 def main() -> None:
     settings = settings_from(os.environ)
-    handler = make_handler(
-        load_engine(), token=settings.token, agent_timeout=settings.agent_timeout
-    )
+    engine = load_engine()
+    handler = make_handler(engine, token=settings.token, agent_timeout=settings.agent_timeout)
     server = control_http.make_server(settings.address, settings.port, handler)
+    stop_when_told(engine, server)
     control_http.log(SERVICE, f"listening on {settings.address}:{settings.port}")
     server.serve_forever()
+    control_http.log(SERVICE, "stopped")
 
 
 if __name__ == "__main__":

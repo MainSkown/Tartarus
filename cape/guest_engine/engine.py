@@ -166,6 +166,10 @@ class Engine:
                     "self-test cannot change that"
                 )
 
+    def shutdown(self) -> None:
+        """Stop the running step and fail its build so a restarted service can resume it."""
+        self._sequencer.shutdown()
+
     # --- health and deletion -------------------------------------------------------------
 
     def check(self, name: str) -> Json:

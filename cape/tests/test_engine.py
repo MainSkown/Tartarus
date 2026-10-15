@@ -160,6 +160,7 @@ def test_the_context_file_hands_a_step_the_whole_guest_and_profile(lab):
     context = json.loads((lab.dir() / "builds" / build_id / "context.json").read_text())
 
     assert context["guest"]["name"] == "alpha"
+    assert context["guest"]["media_kind"] == "installer"
     assert context["guest"]["identity"]["password"] == PASSWORD
     assert context["profile"]["id"] == "fake"
     assert "adoption" not in context["profile"]
@@ -173,6 +174,18 @@ def test_the_context_file_hands_a_step_the_whole_guest_and_profile(lab):
     assert context["host"]["gateway"] == "192.168.150.1"
     assert context["host"]["libvirt_dir"] == str(lab.libvirt_dir)
     assert (lab.dir() / "builds" / build_id / "context.json").stat().st_mode & 0o077 == 0
+
+
+def test_a_build_of_a_medium_the_scan_cannot_type_does_not_start(lab, monkeypatch):
+    scanned = lab.engine.media()
+    untyped = [{key: value for key, value in entry.items() if key != "kind"} for entry in scanned]
+    monkeypatch.setattr(lab.engine, "media", lambda: untyped)
+
+    with pytest.raises(InvalidParameters) as refused:
+        lab.engine.start_build(params())
+
+    assert "kind" in refused.value.fields["media.file"]
+    assert lab.engine.guests() == []
 
 
 def test_a_request_that_is_wrong_is_refused_and_nothing_is_created(lab):
@@ -430,6 +443,44 @@ def test_a_paused_build_survives_the_restart_and_can_be_continued(lab):
     assert engine.build(build_id)["status"] == "paused"
     engine.continue_after_pause(build_id)
     assert lab.settle(build_id)["status"] == "succeeded"
+
+
+# --- the service is stopped ----------------------------------------------------------------
+
+
+def test_stopping_the_engine_stops_the_running_step_and_leaves_the_build_resumable(lab):
+    started = lab.engine.start_build(params(options={"slow": True}))
+    wait_until(lambda: (lab.dir() / "defined").exists() and _running(lab, started, "hang"))
+
+    lab.engine.shutdown()
+
+    build = lab.engine.build(started)
+    assert build["status"] == "failed"
+    assert build["message"] == (
+        "the control service was stopped while this step was running; resume it"
+    )
+    assert lab.engine.guest("alpha")["state"] == "failed"
+    (lab.dir() / "release").write_text("")
+    revived = lab.restarted()
+    revived.resume(started)
+    assert lab.settle(started)["status"] == "succeeded"
+
+
+def test_stopping_an_idle_engine_is_safe_and_can_be_repeated(lab):
+    lab.build()
+
+    lab.engine.shutdown()
+    lab.engine.shutdown()
+
+    assert lab.engine.build(lab.engine.guest("alpha")["build_id"])["status"] == "succeeded"
+
+
+def test_a_stopped_engine_starts_no_build(lab):
+    lab.engine.shutdown()
+
+    with pytest.raises(Conflict, match="stopping"):
+        lab.engine.start_build(params())
+    assert lab.engine.guests() == []
 
 
 # --- the self-test verdict ---------------------------------------------------------------
@@ -774,6 +825,7 @@ def test_a_clone_step_is_given_the_source_in_its_context(lab):
 
     assert context["source"]["name"] == "alpha"
     assert context["guest"]["cloned_from"] == "alpha"
+    assert context["guest"]["media_kind"] == "installer"
     assert (lab.dir("bravo") / "context-seen").read_text().strip() == '"cloned_from": "alpha"'
 
 

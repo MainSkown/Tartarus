@@ -28,17 +28,23 @@ from guest_engine.steps import (
     PauseRequest,
     Progress,
     Redactor,
+    StepControl,
     StepOutcome,
     StepPaths,
     StepTitle,
+    is_step_process,
     parse_line,
     run_step,
     step_environment,
+    terminate_group,
 )
 
 log = logging.getLogger(__name__)
 
 INTERRUPTED_MESSAGE = "the control service restarted while this step was running; resume it"
+SHUTDOWN_MESSAGE = "the control service was stopped while this step was running; resume it"
+STOP_GRACE_S = 5.0
+CONCLUDE_WAIT_S = 10.0
 DEFAULT_PAUSE_INSTRUCTIONS = (
     "This step is waiting for you. Follow what the page shows, then continue."
 )
@@ -77,11 +83,16 @@ class Sequencer:
         store: BuildStore,
         lock: threading.RLock,
         inherited_environment: Mapping[str, str],
+        stop_grace_s: float = STOP_GRACE_S,
     ) -> None:
         self._store = store
         self._lock = lock
         self._inherited = inherited_environment
+        self._stop_grace_s = stop_grace_s
         self._threads: dict[str, threading.Thread] = {}
+        self._controls: dict[str, StepControl] = {}
+        self._controls_lock = threading.Lock()
+        self._closed = False
 
     def begin(
         self,
@@ -92,6 +103,7 @@ class Sequencer:
         now: datetime | None = None,
     ) -> BuildRecord:
         with self._lock:
+            self._require_open()
             self._require_free_slot(excluding=None)
             build = self._store.create(guest, kind, pipeline, now)
             self._launch(build, job)
@@ -127,14 +139,30 @@ class Sequencer:
                         step.status = "failed"
                         step.finished = timestamp()
                 build.status = "failed"
-                build.message = INTERRUPTED_MESSAGE
-                self._store.append_log(build, f"== {INTERRUPTED_MESSAGE}")
+                note = self._stop_orphaned_step(build)
+                build.message = f"{note}; resume it" if note else INTERRUPTED_MESSAGE
+                build.forget_step_process()
+                self._store.append_log(build, f"== {note or INTERRUPTED_MESSAGE}")
                 self._store.save(build)
                 recovered.append(build)
         return recovered
 
+    def shutdown(self) -> None:
+        """Stop the running step and fail its build so it can be resumed; start nothing afterwards.
+
+        Safe to call again and when nothing runs. A paused build has no process, so it stays paused.
+        """
+        with self._controls_lock:
+            self._closed = True
+            controls = list(self._controls.values())
+        for control in controls:
+            control.stop(self._stop_grace_s)
+        for thread in list(self._threads.values()):
+            thread.join(self._stop_grace_s + CONCLUDE_WAIT_S)
+
     def require_free_slot(self) -> None:
         """Raise `Conflict` naming the build or clone that is active, if one is."""
+        self._require_open()
         self._require_free_slot(excluding=None)
 
     def wait(self, build_id: str, timeout: float | None = None) -> bool:
@@ -144,6 +172,16 @@ class Sequencer:
             thread.join(timeout)
             return not thread.is_alive()
         return True
+
+    def _stop_orphaned_step(self, build: BuildRecord) -> str | None:
+        """Stop the step a dead service left running; the build's note, or None if none ran."""
+        if build.step_pid is None or build.step_path is None:
+            return None
+        step_file = Path(build.step_path)
+        if not is_step_process(build.step_pid, step_file):
+            return None
+        terminate_group(build.step_pid, self._stop_grace_s)
+        return f"the previous control service left step '{step_file.name}' running; stopped it"
 
     def _is_alive(self, build_id: str) -> bool:
         thread = self._threads.get(build_id)
@@ -157,7 +195,12 @@ class Sequencer:
                 "only one build or clone can be active at a time"
             )
 
+    def _require_open(self) -> None:
+        if self._closed:
+            raise Conflict("the control service is stopping; nothing new is started")
+
     def _stopped_build(self, build_id: str, allowed: tuple[str, ...]) -> BuildRecord:
+        self._require_open()
         build = self._store.load(build_id)
         if build.status not in allowed:
             wanted = " or ".join(allowed)
@@ -201,6 +244,9 @@ class Sequencer:
             for line in traceback.format_exc().splitlines():
                 self._store.append_log(build, line)
             self._conclude(build, job, "failed", f"internal error: {error!r}")
+        finally:
+            with self._controls_lock:
+                self._controls.pop(build_id, None)
 
     def _execute(self, build: BuildRecord, job: BuildJob) -> None:
         job.prepare(build)
@@ -222,8 +268,13 @@ class Sequencer:
                 build, job, "failed", f"step '{step.name}' was not found or is not executable"
             )
             return False
+        control = self._new_control(build)
+        if control is None:
+            self._conclude(build, job, "failed", SHUTDOWN_MESSAGE)
+            return False
         step.status, step.started, step.progress = "running", timestamp(), 0
         build.message = step.name
+        build.step_path = str(path)
         self._store.save(build)
         self._store.append_log(build, f"== step {step.name}")
         recent: deque[str] = deque(maxlen=FAILURE_LOG_LINES)
@@ -255,7 +306,9 @@ class Sequencer:
             ),
             timeout_s=step.timeout_s,
             on_line=on_line,
+            control=control,
         )
+        build.forget_step_process()
         step.finished, step.exit_code = timestamp(), outcome.exit_code
         if outcome.exit_code == 0:
             step.status, step.progress = "succeeded", FULL
@@ -269,8 +322,24 @@ class Sequencer:
             )
             return False
         step.status = "failed"
-        self._conclude(build, job, "failed", _failure_message(step, outcome, recent))
+        reason = (
+            SHUTDOWN_MESSAGE if control.stop_requested else _failure_message(step, outcome, recent)
+        )
+        self._conclude(build, job, "failed", reason)
         return False
+
+    def _new_control(self, build: BuildRecord) -> StepControl | None:
+        """The handle on the next step of `build`, or None when the sequencer was shut down."""
+        with self._controls_lock:
+            if self._closed:
+                return None
+            control = StepControl(on_start=lambda pid: self._record_step_process(build, pid))
+            self._controls[build.id] = control
+            return control
+
+    def _record_step_process(self, build: BuildRecord, pid: int) -> None:
+        build.step_pid = pid
+        self._store.save(build)
 
     def _paths(self, build: BuildRecord, job: BuildJob) -> StepPaths:
         guest_dir = self._store.root / build.guest
