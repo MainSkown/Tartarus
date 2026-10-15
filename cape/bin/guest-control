@@ -1,0 +1,274 @@
+#!/usr/bin/python3
+"""The control service: the backend's narrow, authenticated way to build, check and delete guests.
+
+libvirt's TCP endpoint stays off and the Docker socket is never mounted, so the backend asks this
+service, which runs in the cape container and listens only on the `tartarus-control` network that
+`cape` and `backend` share. It translates HTTP to the `GuestEngine` protocol
+(guest_engine/protocol.py) and the engine's exceptions to status codes: `GuestNotFound` 404,
+`InvalidParameters` 422, `Conflict` 409, anything else a generic 500 whose detail stays in the log.
+
+Every route but GET /healthz needs `Authorization: Bearer <GUEST_CONTROL_TOKEN>`.
+
+Environment: CAPE_CONTROL_IP (required), GUEST_CONTROL_TOKEN (required, 32+ characters),
+GUEST_CONTROL_PORT (8002), GUEST_CONTROL_AGENT_TIMEOUT in seconds (5).
+"""
+
+import importlib
+import os
+import re
+import sys
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from typing import Any
+
+# `python3 -I` does not put the script's directory on the path. The image lays guest_engine/ next
+# to the scripts; in the repository it sits one level up, beside bin/.
+SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+sys.path[:0] = [SCRIPT_DIRECTORY, os.path.dirname(SCRIPT_DIRECTORY)]
+
+import control_http  # noqa: E402
+from control_http import HttpError, Request, Route  # noqa: E402
+from finish_logic import finish_response  # noqa: E402
+
+from guest_engine.errors import Conflict, GuestNotFound, InvalidParameters  # noqa: E402
+from guest_engine.protocol import GuestEngine  # noqa: E402
+
+SERVICE = "guest-control"
+DEFAULT_PORT = 8002
+DEFAULT_AGENT_TIMEOUT_SECONDS = 5.0
+MIN_TOKEN_LENGTH = 32
+# The same patterns the engine validates names with (decision 3 of the M6 plan), checked here
+# first so that nothing odd in a path ever reaches it.
+GUEST_NAME = re.compile(r"[a-z][a-z0-9-]{1,31}")
+BUILD_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+DEFAULT_LOG_TAIL = 200
+MAX_LOG_TAIL = 2000
+ENGINE_MODULE = "guest_engine.engine"
+NOT_READY_MESSAGE = "the guest engine is not installed in this image yet"
+
+
+class NotReadyEngine:
+    """Stands in until `guest_engine.engine` is installed, so the service starts and the token,
+    isolation and routing already work."""
+
+    def _refuse(self, *_arguments: object) -> Any:
+        raise Conflict(NOT_READY_MESSAGE)
+
+    profiles = media = guests = guest = guest_address = delete_guest = _refuse
+    start_build = start_clone = build = build_log = resume = restart = _refuse
+    continue_after_pause = complete_build = check = display = _refuse
+
+
+@dataclass(frozen=True)
+class Settings:
+    address: str
+    port: int
+    token: str
+    agent_timeout: float
+
+
+def settings_from(environ: Mapping[str, str]) -> Settings:
+    address = environ.get("CAPE_CONTROL_IP")
+    if not address:
+        sys.exit(f"{SERVICE}: CAPE_CONTROL_IP must be set")
+    token = environ.get("GUEST_CONTROL_TOKEN", "")
+    if len(token) < MIN_TOKEN_LENGTH:
+        sys.exit(
+            f"{SERVICE}: GUEST_CONTROL_TOKEN must be set to at least {MIN_TOKEN_LENGTH} characters"
+            " (openssl rand -hex 32 makes one)"
+        )
+    return Settings(
+        address=address,
+        port=int(environ.get("GUEST_CONTROL_PORT", DEFAULT_PORT)),
+        token=token,
+        agent_timeout=float(
+            environ.get("GUEST_CONTROL_AGENT_TIMEOUT", DEFAULT_AGENT_TIMEOUT_SECONDS)
+        ),
+    )
+
+
+def load_engine(import_module: Callable[[str], Any] = importlib.import_module) -> GuestEngine:
+    try:
+        module = import_module(ENGINE_MODULE)
+    except ModuleNotFoundError as missing:
+        # Only the engine itself may be absent; a dependency it lacks stops the service.
+        if missing.name not in ("guest_engine", ENGINE_MODULE):
+            raise
+        control_http.log(SERVICE, f"{NOT_READY_MESSAGE}; every engine call answers 409")
+        return NotReadyEngine()
+    return module.create_engine()
+
+
+def guest_name(request: Request, argument: str = "name") -> str:
+    return _valid(request.arguments[argument], GUEST_NAME, "guest name")
+
+
+def build_id(request: Request) -> str:
+    return _valid(request.arguments["build_id"], BUILD_ID, "build id")
+
+
+def _valid(raw: str, pattern: re.Pattern[str], what: str) -> str:
+    if not pattern.fullmatch(raw):
+        raise HttpError(400, {"error": f"invalid {what}"})
+    return raw
+
+
+def unprocessable(error: InvalidParameters) -> HttpError:
+    return HttpError(422, {"error": str(error), "fields": error.fields})
+
+
+def invalid(**fields: str) -> HttpError:
+    return unprocessable(InvalidParameters(fields))
+
+
+def log_tail(request: Request) -> int:
+    raw = request.query.get("tail", str(DEFAULT_LOG_TAIL))
+    if not re.fullmatch(r"[0-9]{1,6}", raw) or not 1 <= int(raw) <= MAX_LOG_TAIL:
+        raise invalid(tail=f"must be a whole number from 1 to {MAX_LOG_TAIL}")
+    return int(raw)
+
+
+class Routes:
+    def __init__(self, engine: GuestEngine, agent_timeout: float) -> None:
+        self.engine = engine
+        self.agent_timeout = agent_timeout
+
+    def table(self) -> list[Route]:
+        guest = r"/guests/(?P<name>[^/]*)"
+        build = r"/builds/(?P<build_id>[^/]*)"
+        return [
+            Route("GET", "/healthz", lambda _request: (200, {"ok": True}), public=True),
+            self._route("GET", "/profiles", self.profiles),
+            self._route("GET", "/media", self.media),
+            self._route("GET", "/guests", self.guests),
+            self._route("GET", guest, self.guest),
+            self._route("DELETE", guest, self.delete_guest),
+            self._route("POST", f"{guest}/check", self.check),
+            self._route("POST", f"{guest}/clone", self.clone),
+            self._route("GET", f"{guest}/display", self.display),
+            self._route("POST", "/builds", self.start_build),
+            self._route("GET", build, self.build),
+            self._route("GET", f"{build}/log", self.build_log),
+            self._route("POST", f"{build}/resume", self.resume),
+            self._route("POST", f"{build}/restart", self.restart),
+            self._route("POST", f"{build}/continue", self.continue_after_pause),
+            self._route("POST", f"{build}/complete", self.complete_build),
+            self._route("POST", r"/tasks/(?P<task_id>[^/]*)/finish", self.finish_task),
+        ]
+
+    def _route(self, method: str, pattern: str, handler: Callable[[Request], Any]) -> Route:
+        return Route(method, pattern, _translating_engine_errors(handler))
+
+    def profiles(self, _request: Request) -> control_http.Answer:
+        return 200, self.engine.profiles()
+
+    def media(self, _request: Request) -> control_http.Answer:
+        return 200, self.engine.media()
+
+    def guests(self, _request: Request) -> control_http.Answer:
+        return 200, self.engine.guests()
+
+    def guest(self, request: Request) -> control_http.Answer:
+        return 200, self.engine.guest(guest_name(request))
+
+    def delete_guest(self, request: Request) -> control_http.Answer:
+        self.engine.delete_guest(guest_name(request))
+        return 204, None
+
+    def check(self, request: Request) -> control_http.Answer:
+        return 200, self.engine.check(guest_name(request))
+
+    def clone(self, request: Request) -> control_http.Answer:
+        return 202, {"id": self.engine.start_clone(guest_name(request), request.body)}
+
+    def display(self, request: Request) -> control_http.Answer:
+        display = self.engine.display(guest_name(request))
+        if display is None:
+            raise HttpError(404, {"error": "the guest has no display (it is not running)"})
+        return 200, display
+
+    def start_build(self, request: Request) -> control_http.Answer:
+        return 202, {"id": self.engine.start_build(request.body)}
+
+    def build(self, request: Request) -> control_http.Answer:
+        return 200, self.engine.build(build_id(request))
+
+    def build_log(self, request: Request) -> control_http.Answer:
+        return 200, self.engine.build_log(build_id(request), log_tail(request))
+
+    def resume(self, request: Request) -> control_http.Answer:
+        return self._accepted(request, self.engine.resume)
+
+    def restart(self, request: Request) -> control_http.Answer:
+        return self._accepted(request, self.engine.restart)
+
+    def continue_after_pause(self, request: Request) -> control_http.Answer:
+        return self._accepted(request, self.engine.continue_after_pause)
+
+    def _accepted(self, request: Request, action: Callable[[str], None]) -> control_http.Answer:
+        identifier = build_id(request)
+        action(identifier)
+        return 202, {"id": identifier}
+
+    def complete_build(self, request: Request) -> control_http.Answer:
+        identifier = build_id(request)
+        passed = request.body.get("passed")
+        selftest = request.body.get("selftest", {})
+        if not isinstance(passed, bool):
+            raise invalid(passed="must be true or false")
+        if not isinstance(selftest, dict):
+            raise invalid(selftest="must be an object")
+        self.engine.complete_build(identifier, passed, selftest)
+        return 204, None
+
+    def finish_task(self, request: Request) -> control_http.Answer:
+        guest = request.body.get("guest")
+        if not isinstance(guest, str) or not GUEST_NAME.fullmatch(guest):
+            raise invalid(guest="must be the name of a guest")
+        return finish_response(
+            request.arguments["task_id"], self._agent_of(guest), self.agent_timeout
+        )
+
+    def _agent_of(self, guest: str) -> Callable[[], tuple[str, str]]:
+        def destination() -> tuple[str, str]:
+            address = self.engine.guest_address(guest)
+            return f"http://{address['ip']}:{address['agent_port']}", address["finish_dir"]
+
+        return destination
+
+
+def _translating_engine_errors(
+    handler: Callable[[Request], control_http.Answer],
+) -> Callable[[Request], control_http.Answer]:
+    def translated(request: Request) -> control_http.Answer:
+        try:
+            return handler(request)
+        except GuestNotFound as missing:
+            raise HttpError(404, {"error": str(missing) or "not found"}) from missing
+        except Conflict as refused:
+            raise HttpError(409, {"error": str(refused)}) from refused
+        except InvalidParameters as rejected:
+            raise unprocessable(rejected) from rejected
+
+    return translated
+
+
+def make_handler(
+    engine: GuestEngine, *, token: str, agent_timeout: float = DEFAULT_AGENT_TIMEOUT_SECONDS
+):
+    routes = Routes(engine, agent_timeout).table()
+    return control_http.make_handler(routes, service=SERVICE, token=token)
+
+
+def main() -> None:
+    settings = settings_from(os.environ)
+    handler = make_handler(
+        load_engine(), token=settings.token, agent_timeout=settings.agent_timeout
+    )
+    server = control_http.make_server(settings.address, settings.port, handler)
+    control_http.log(SERVICE, f"listening on {settings.address}:{settings.port}")
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

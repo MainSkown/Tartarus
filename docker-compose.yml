@@ -68,6 +68,10 @@ services:
       OPENSEARCH_URL: http://opensearch:9200
       CAPE_API_URL: http://cape:8000
       CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
+      # The alias, not the name cape: cape also lives on tartarus-internal, where its API, guacd and
+      # finish-run listen, and the control service listens only on tartarus-control.
+      GUEST_CONTROL_URL: http://cape-control:8002
+      GUEST_CONTROL_TOKEN: ${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
       CAPE_STORAGE_PATH: /cape-storage
       SAMPLE_STORE_PATH: /data/samples
       EXPORTS_PATH: /data/exports
@@ -89,6 +93,7 @@ services:
         condition: service_healthy
     networks:
       - tartarus-internal
+      - tartarus-control
     healthcheck:
       # No curl in the slim image.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/system/health', timeout=3)"]
@@ -140,6 +145,7 @@ services:
       CAPE_DB_PASSWORD: ${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set in .env (copy .env.example)}
       CAPE_DB_NAME: ${CAPE_DB_NAME:-cape}
       CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
+      GUEST_CONTROL_TOKEN: ${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
       GUEST_SUBNET: ${GUEST_SUBNET:-192.168.150.0/24}
     sysctls:
       net.ipv4.ip_forward: "1"
@@ -153,13 +159,26 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # The aliases tell the entrypoint which interface is which network (it cannot go by eth0 and
+    # eth1): a container resolves its own alias to its address on that network only.
     networks:
-      - tartarus-internal
+      tartarus-internal:
+        aliases:
+          - cape-internal
+      tartarus-control:
+        aliases:
+          - cape-control
 
 networks:
   tartarus-internal:
     name: tartarus-internal
     driver: bridge
+  # Shared only by cape and backend: the control service builds and deletes guests, so no other
+  # container may even connect to it. Internal, so it also has no route out.
+  tartarus-control:
+    name: tartarus-control
+    driver: bridge
+    internal: true
 
 volumes:
   pg-data:

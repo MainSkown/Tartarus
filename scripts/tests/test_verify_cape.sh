@@ -37,6 +37,20 @@ case "$args" in
     *"--network tartarus-internal"*"Authorization: Token"*)
         if [[ ${CAPE_API_TOKEN:-} == "${EXPECTED_TOKEN:-test-token}" ]]; then show api-with-token; else printf '401\n{}\n'; fi ;;
     *"--network tartarus-internal"*"cuckoo/status"*) show api-without-token ;;
+    *"exec -T backend python"*"with-token") show control-with-token ;;
+    *"exec -T backend python"*"without-token") show control-without-token ;;
+    *"exec -T backend python"*"wrong-token") show control-wrong-token ;;
+    *"exec -T backend python"*"getaddrinfo"*) show backend-resolves-cape ;;
+    *"network inspect tartarus-control"*) show control-members ;;
+    *"inspect -f"*"tartarus-control"*) show control-ip ;;
+    *"inspect -f"*"tartarus-internal"*) show internal-ip ;;
+    *"exec -T cape ss -Hltn sport = :8002"*) show control-listeners ;;
+    *"exec -T frontend nc"* | *"exec -T "*"/dev/tcp/"*)
+        service=$(sed -E 's/.*exec -T ([a-z]+) .*/\1/' <<<"$args")
+        control_ip=$(show control-ip)
+        # No host to connect to (an empty argument leaves two spaces) is a failed connection, as in reality.
+        if [[ $args =~ \ \ [0-9]+$ ]]; then false
+        elif [[ -n $control_ip && $args == *"$control_ip"* ]]; then [[ -e $f/control-reachable.$service ]]; else [[ ! -e $f/no-tool.$service ]]; fi ;;
     *"exec -T postgres"*) show postgres-machines ;;
     *"exec -T -u cape"*"inetsim_enable"*) set_state route .route; show rooter ;;
     *"exec -T -u cape"*"inetsim_disable"*) set_state route ""; show rooter ;;
@@ -47,6 +61,7 @@ case "$args" in
     *"exec -T cape supervisorctl status guacd"*) show supervisor-guacd ;;
     *"exec -T cape supervisorctl status cape cape-processor cape-web"*) show supervisor-cape ;;
     *"exec -T cape virsh -c qemu:///system list --all"*) show virsh-list ;;
+    *"exec -T cape virsh -c qemu:///system net-dumpxml tt-guest"*) show tt-guest-net ;;
     *"exec -T cape virsh -c qemu:///system capabilities"*) show capabilities ;;
     *"exec -T cape virsh -c qemu:///system dumpxml tt-probe"*) show probe-xml ;;
     *"exec -T cape virsh -c qemu:///system domstate tt-probe"*) show probe-state ;;
@@ -104,11 +119,11 @@ healthy_fixtures() {
     fixture capabilities "<capabilities><guest><arch name='x86_64'><domain type='qemu'/><domain type='kvm'/></arch></guest></capabilities>"
     fixture probe-xml "<domain type='kvm' id='1'><name>tt-probe</name></domain>"
     fixture probe-state 'running'
-    fixture guest-report $'login: \nTT-PROBE ip=192.168.150.10/24 dns=192.168.150.1 disk=SAMSUNG MZ76E120 bios=AMIBios acpi=ALASKA AMI http=<html><title>INetSim default HTML page</title>'
+    fixture guest-report $'login: \nTT-PROBE ip=192.168.150.100/24 dns=192.168.150.1 disk=SAMSUNG MZ76E120 bios=AMIBios acpi=ALASKA AMI http=<html><title>INetSim default HTML page</title>'
     fixture tt-guest-addr 'tt-guest UP 192.168.150.1/24'
     fixture rooter '{"output": null, "exception": null}'
     fixture nat '-A PREROUTING -s 10.0.0.1/32 -j DNAT --to-destination 172.30.0.1'
-    fixture nat.route $'-A PREROUTING -s 192.168.150.10/32 -p udp -m udp --dport 53 -m comment --comment CAPE-rooter -j DNAT --to-destination 192.168.150.1:53'
+    fixture nat.route $'-A PREROUTING -s 192.168.150.100/32 -p udp -m udp --dport 53 -m comment --comment CAPE-rooter -j DNAT --to-destination 192.168.150.1:53'
     fixture supervisor-guacd 'guacd RUNNING pid 20, uptime 0:01:00'
     fixture guac 'ok: guacd drew the VNC display (size 720x400)'
     fixture supervisor-cape $'cape RUNNING pid 30, uptime 0:01:00\ncape-processor RUNNING pid 31, uptime 0:01:00\ncape-web RUNNING pid 32, uptime 0:01:00'
@@ -118,6 +133,15 @@ healthy_fixtures() {
     fixture cape-mongo-config 'mongodb=False web_reporting=False'
     fixture mongo-processes ''
     fixture container-token 'test-token'
+    fixture tt-guest-net "<network><name>tt-guest</name><ip address='192.168.150.1' netmask='255.255.255.0'><dhcp><range start='192.168.150.100' end='192.168.150.119'/></dhcp></ip></network>"
+    fixture control-with-token '409'
+    fixture control-without-token '401'
+    fixture control-wrong-token '401'
+    fixture backend-resolves-cape '172.30.0.5'
+    fixture internal-ip '172.30.0.5'
+    fixture control-ip '172.31.0.2'
+    fixture control-members 'tartarus-backend tartarus-cape'
+    fixture control-listeners 'LISTEN 0 5 172.31.0.2:8002 0.0.0.0:*'
     printf 'kvm 1 0 - Live 0x0\n' >"$STUB_DIR/modules"
     cp "$STUB_DIR/modules" "$STUB_DIR/modules.after"
 }
@@ -152,7 +176,7 @@ expect_fail_mentioning() {
 
 expect_ok_lines_for_every_check() {
     local number
-    for number in 1 2 3 4 5 6 7; do
+    for number in 1 2 3 4 5 6 7 8; do
         [[ $OUTPUT == *"[ OK ] $number "* ]] || { echo "  no [ OK ] line for check $number"; echo "$OUTPUT" | sed 's/^/    /'; return 1; }
     done
 }
@@ -223,7 +247,7 @@ test_check2_fails_when_the_guest_never_boots() {
 }
 
 test_check2_fails_when_the_guest_sees_qemu_strings() {
-    fixture guest-report 'TT-PROBE ip=192.168.150.10/24 dns=192.168.150.1 disk=QEMU HARDDISK bios=SeaBIOS acpi=BOCHS BXPC http=INetSim'
+    fixture guest-report 'TT-PROBE ip=192.168.150.100/24 dns=192.168.150.1 disk=QEMU HARDDISK bios=SeaBIOS acpi=BOCHS BXPC http=INetSim'
     run_verify
     expect_fail_mentioning "2 kvm: the guest sees no QEMU/Bochs/SeaBIOS strings"
 }
@@ -264,7 +288,7 @@ test_check3_fails_when_the_bridge_is_on_the_host() {
 test_check3_fails_when_the_guest_has_no_address() {
     fixture guest-report 'TT-PROBE ip= dns= disk=SAMSUNG MZ76E120 bios=AMIBios acpi=ALASKA AMI http='
     run_verify
-    expect_fail_mentioning "3 bridge: the guest got 192.168.150.10"
+    expect_fail_mentioning "3 bridge: the guest got 192.168.150.100"
 }
 
 test_check4_fails_when_the_rooter_adds_no_rules() {
@@ -274,7 +298,7 @@ test_check4_fails_when_the_rooter_adds_no_rules() {
 }
 
 test_check4_fails_when_the_host_firewall_changes() {
-    fixture host-firewall.running.route 'table ip nat { chain PREROUTING { ip saddr 192.168.150.10 dnat to 192.168.150.1 } }'
+    fixture host-firewall.running.route 'table ip nat { chain PREROUTING { ip saddr 192.168.150.100 dnat to 192.168.150.1 } }'
     run_verify
     expect_fail_mentioning "4 rooter: the host's firewall rules are unchanged"
 }
@@ -293,13 +317,13 @@ test_check4_fails_when_disabling_leaves_rules() {
 }
 
 test_check5_fails_when_inetsim_does_not_answer_dns() {
-    fixture guest-report 'TT-PROBE ip=192.168.150.10/24 dns= disk=SAMSUNG MZ76E120 bios=AMIBios acpi=ALASKA AMI http=<title>INetSim default HTML page</title>'
+    fixture guest-report 'TT-PROBE ip=192.168.150.100/24 dns= disk=SAMSUNG MZ76E120 bios=AMIBios acpi=ALASKA AMI http=<title>INetSim default HTML page</title>'
     run_verify
     expect_fail_mentioning "5 inetsim: answers the guest's DNS query"
 }
 
 test_check5_fails_when_inetsim_does_not_answer_http() {
-    fixture guest-report 'TT-PROBE ip=192.168.150.10/24 dns=192.168.150.1 disk=SAMSUNG MZ76E120 bios=AMIBios acpi=ALASKA AMI http='
+    fixture guest-report 'TT-PROBE ip=192.168.150.100/24 dns=192.168.150.1 disk=SAMSUNG MZ76E120 bios=AMIBios acpi=ALASKA AMI http='
     run_verify
     expect_fail_mentioning "5 inetsim: answers the guest's HTTP request"
 }
@@ -386,6 +410,147 @@ test_reports_kernel_modules_loaded_while_cape_ran() {
     printf 'kvm 1 0 - Live 0x0\ntun 1 0 - Live 0x0\n' >"$STUB_DIR/modules.after"
     run_verify
     [[ $OUTPUT == *"[INFO]"*"tun"* ]] || { echo "  no [INFO] line naming tun"; echo "$OUTPUT" | sed 's/^/    /'; return 1; }
+}
+
+# The guest DHCP pool is apart from the static addresses of registered guests (.10 to .99).
+
+test_the_probe_gets_its_lease_from_the_dhcp_pool_before_it_boots() {
+    run_verify
+    local reserve start
+    reserve=$(grep -n "net-update tt-guest add ip-dhcp-host" "$STUB_DIR/calls" | head -n 1 | cut -d: -f1)
+    start=$(grep -n 'start tt-probe' "$STUB_DIR/calls" | head -n 1 | cut -d: -f1)
+    [[ -n $reserve && -n $start ]] && ((reserve < start)) || { echo "  reserve@$reserve start@$start"; return 1; }
+    grep "net-update tt-guest add ip-dhcp-host" "$STUB_DIR/calls" | grep -q "ip='192.168.150.100'" ||
+        { echo "  the reservation is not the pool's first address"; return 1; }
+}
+
+test_check3_fails_when_the_dhcp_pool_overlaps_the_static_addresses() {
+    fixture tt-guest-net "<network><ip address='192.168.150.1' netmask='255.255.255.0'><dhcp><range start='192.168.150.10' end='192.168.150.10'/></dhcp></ip></network>"
+    run_verify
+    expect_fail_mentioning "3 bridge: the DHCP pool lies above the static guest addresses"
+}
+
+# Check 8: the control service answers the backend and nobody else.
+
+test_check8_accepts_a_409_from_an_engine_that_is_not_ready_as_proof_of_routing_and_auth() {
+    fixture control-with-token '409'
+    run_verify
+    expect_pass
+}
+
+test_check8_accepts_a_200() {
+    fixture control-with-token '200'
+    run_verify
+    expect_pass
+}
+
+test_check8_fails_when_the_backend_cannot_reach_the_service() {
+    fixture control-with-token 'error: [Errno -2] Name or service not known'
+    run_verify
+    expect_fail_mentioning "8 control: the backend gets an answer from guest-control with the token"
+}
+
+test_check8_fails_when_the_service_rejects_the_right_token() {
+    fixture control-with-token '401'
+    run_verify
+    expect_fail_mentioning "8 control: the backend gets an answer from guest-control with the token"
+}
+
+test_check8_fails_when_the_service_answers_without_a_token() {
+    fixture control-without-token '200'
+    run_verify
+    expect_fail_mentioning "8 control: guest-control refuses a request without the token"
+}
+
+test_check8_fails_when_the_service_answers_a_wrong_token() {
+    fixture control-wrong-token '409'
+    run_verify
+    expect_fail_mentioning "8 control: guest-control refuses a request with a wrong token"
+}
+
+test_check8_does_not_count_an_unreachable_service_as_a_refusal() {
+    fixture control-without-token 'error: timed out'
+    run_verify
+    expect_fail_mentioning "8 control: guest-control refuses a request without the token"
+}
+
+test_check8_fails_when_another_container_is_on_the_control_network() {
+    fixture control-members 'tartarus-backend tartarus-cape tartarus-frontend'
+    run_verify
+    expect_fail_mentioning "8 control: only cape and backend are on tartarus-control"
+}
+
+test_check8_fails_when_cape_is_not_on_the_control_network() {
+    fixture control-members 'tartarus-backend'
+    run_verify
+    expect_fail_mentioning "8 control: only cape and backend are on tartarus-control"
+}
+
+test_check8_fails_when_a_service_outside_the_control_network_can_connect() {
+    local service
+    for service in frontend opensearch postgres; do
+        new_sandbox
+        touch "$STUB_DIR/f/control-reachable.$service"
+        run_verify
+        expect_fail_mentioning "8 control: $service cannot connect to guest-control" || return 1
+    done
+}
+
+test_check8_does_not_trust_a_failed_connection_from_a_broken_tool() {
+    local service
+    for service in frontend opensearch postgres; do
+        new_sandbox
+        touch "$STUB_DIR/f/no-tool.$service"
+        run_verify
+        expect_fail_mentioning "8 control: $service cannot connect to guest-control" || return 1
+    done
+}
+
+test_check8_does_not_count_a_failed_connection_when_cape_has_no_control_address() {
+    fixture control-ip ''
+    run_verify
+    expect_fail_mentioning "8 control: frontend cannot connect to guest-control"
+}
+
+test_check8_fails_when_guest_control_listens_beyond_the_control_address() {
+    fixture control-listeners $'LISTEN 0 5 172.31.0.2:8002 0.0.0.0:*\nLISTEN 0 5 172.30.0.5:8002 0.0.0.0:*'
+    run_verify
+    expect_fail_mentioning "8 control: guest-control listens on the control address only"
+}
+
+test_check8_fails_when_the_service_does_not_listen_at_all() {
+    fixture control-listeners ''
+    run_verify
+    expect_fail_mentioning "8 control: guest-control listens on the control address only"
+}
+
+test_check8_fails_when_the_name_cape_resolves_to_the_control_address_for_the_backend() {
+    fixture backend-resolves-cape '172.31.0.2'
+    run_verify
+    expect_fail_mentioning "8 control: the name cape still resolves to the tartarus-internal address for the backend"
+}
+
+test_check8_starts_the_services_it_probes_from() {
+    run_verify
+    grep -q "up -d --wait backend frontend opensearch" "$STUB_DIR/calls"
+}
+
+# `control` runs only the libvirt and control checks against the running stack, for a quick loop.
+
+test_the_control_argument_runs_only_the_libvirt_and_control_checks() {
+    echo running >"$STUB_DIR/state-cape"
+    run_verify control
+    expect_pass || return 1
+    [[ $OUTPUT == *"[ OK ] 1 libvirt"* && $OUTPUT == *"[ OK ] 8 control"* ]] || { echo "  missing checks"; echo "$OUTPUT" | sed 's/^/    /'; return 1; }
+    [[ $OUTPUT != *"[ OK ] 2 "* && $OUTPUT != *"probe image"* ]] || { echo "  ran the probe checks"; return 1; }
+    ! grep -qE "stop cape|define |inetsim_enable" "$STUB_DIR/calls" || { echo "  touched the probe or stopped cape"; return 1; }
+}
+
+test_the_control_argument_fails_when_a_control_check_fails() {
+    echo running >"$STUB_DIR/state-cape"
+    fixture control-without-token '200'
+    run_verify control
+    expect_fail_mentioning "8 control: guest-control refuses a request without the token"
 }
 
 test_unknown_argument_prints_usage_and_exits_2() {

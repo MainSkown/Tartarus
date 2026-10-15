@@ -5,8 +5,28 @@ TEMPLATES=/usr/local/lib/tartarus/templates
 
 : "${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set}"
 : "${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set}"
+: "${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set}"
 
-internal_network_address() { ip -4 -o addr show dev eth0 | awk '{split($4, address, "/"); print address[1]}'; }
+# The container is on two networks (docker-compose.yml) and Docker decides which one is eth0, so an
+# interface cannot be told by its name. Each network gives the service an alias, and a container
+# resolves its own alias to its address on exactly that network; the interface is then the one
+# carrying that address.
+INTERNAL_NETWORK_ALIAS=cape-internal
+CONTROL_NETWORK_ALIAS=cape-control
+
+address_on_network() {
+    local alias=$1 address
+    address=$(getent ahostsv4 "$alias" | awk 'NR == 1 {print $1}')
+    if [[ -z $address ]]; then
+        echo "the name $alias does not resolve: the cape service in docker-compose.yml must give each network an alias" >&2
+        exit 1
+    fi
+    echo "$address"
+}
+
+interface_with_address() {
+    ip -4 -o addr show | awk -v wanted="$1" '{split($4, address, "/"); if (address[1] == wanted) {print $2; exit}}'
+}
 
 derive_guest_addresses() {
     local subnet=${GUEST_SUBNET:-192.168.150.0/24}
@@ -14,7 +34,12 @@ derive_guest_addresses() {
         echo "GUEST_SUBNET must be a /24 such as 192.168.150.0/24, got '$subnet'" >&2
         exit 1
     fi
+    # Registered guests have static addresses from .10 to .99. The DHCP pool is apart from them so a
+    # guest that cold-boots on DHCP (every clone does) never competes with a registered guest's
+    # address. GUEST_IP, the first static address, remains only for finish-run's default agent URL
+    # (supervisord.conf), until the backend finishes runs through guest-control instead.
     export GUEST_GATEWAY_IP="${BASH_REMATCH[1]}.1" GUEST_IP="${BASH_REMATCH[1]}.10"
+    export GUEST_DHCP_START="${BASH_REMATCH[1]}.100" GUEST_DHCP_END="${BASH_REMATCH[1]}.119"
 }
 
 render() {
@@ -42,7 +67,8 @@ render_cape_guest_network_overrides() {
     local name
     for name in cuckoo routing; do
         mkdir -p "/opt/CAPEv2/custom/conf/$name.conf.d"
-        render "cape-conf.d/$name.conf" "/opt/CAPEv2/custom/conf/$name.conf.d/guest-network.conf" '${GUEST_GATEWAY_IP}'
+        render "cape-conf.d/$name.conf" "/opt/CAPEv2/custom/conf/$name.conf.d/guest-network.conf" \
+            '${GUEST_GATEWAY_IP} ${CAPE_INTERNAL_IFACE}'
     done
 }
 
@@ -58,8 +84,10 @@ create_cape_schema() {
         'from lib.cuckoo.core.database import init_database; init_database()')
 }
 
-export CAPE_INTERNAL_IP
-CAPE_INTERNAL_IP=$(internal_network_address)
+export CAPE_INTERNAL_IP CAPE_INTERNAL_IFACE CAPE_CONTROL_IP
+CAPE_INTERNAL_IP=$(address_on_network "$INTERNAL_NETWORK_ALIAS")
+CAPE_INTERNAL_IFACE=$(interface_with_address "$CAPE_INTERNAL_IP")
+CAPE_CONTROL_IP=$(address_on_network "$CONTROL_NETWORK_ALIAS")
 derive_guest_addresses
 install -m 0644 "$TEMPLATES/libvirtd.conf" /etc/libvirt/libvirtd.conf
 render_inetsim_config

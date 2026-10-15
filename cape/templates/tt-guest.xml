@@ -3,14 +3,16 @@
      own port 53 on the gateway. libvirt's own dhcp-option=3 hides the router on isolated
      networks; the dnsmasq options below re-advertise the gateway, so guest traffic reaches the
      rooter's DNAT rules instead of having no route at all. The lease outlives a typical run because
-     the rooter's inetsim route DNATs the guest's unicast DHCP renewals away from dnsmasq. -->
+     the rooter's inetsim route DNATs the guest's unicast DHCP renewals away from dnsmasq. The range is a
+     pool apart from the static addresses of registered guests (.10 to .99): a guest that cold-boots
+     on DHCP must never compete with one of them. -->
 <network xmlns:dnsmasq='http://libvirt.org/schemas/network/dnsmasq/1.0'>
   <name>tt-guest</name>
   <bridge name='tt-guest' stp='off' delay='0'/>
   <dns enable='no'/>
   <ip address='${GUEST_GATEWAY_IP}' netmask='255.255.255.0'>
     <dhcp>
-      <range start='${GUEST_IP}' end='${GUEST_IP}'>
+      <range start='${GUEST_DHCP_START}' end='${GUEST_DHCP_END}'>
         <lease expiry='10' unit='minutes'/>
       </range>
     </dhcp>

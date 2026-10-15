@@ -141,10 +141,17 @@ RUN python3 /tmp/skip-packaged-apps.py /opt/CAPEv2/analyzer/windows/analyzer.py 
     && grep -q 'skips_packaged_app(filepath, self.analyzer.package_name)' /opt/CAPEv2/analyzer/windows/analyzer.py \
     && rm /tmp/skip-packaged-apps.py
 
+# Reads the Windows installation media (wiminfo) for the guest wizard. A layer of its own, after the
+# slow ones, so adding it does not re-resolve the packages the proven libvirt and QEMU were installed with.
+RUN apt-get update && apt-get install -y --no-install-recommends wimtools \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY libvirt/qemu.conf /etc/libvirt/qemu.conf
 COPY supervisord.conf /etc/supervisor/conf.d/cape.conf
 COPY templates/ /usr/local/lib/tartarus/templates/
 COPY bin/ /usr/local/lib/tartarus/
+# Beside the scripts, which put their own directory on the import path.
+COPY guest_engine/ /usr/local/lib/tartarus/guest_engine/
 COPY entrypoint.sh /usr/local/bin/cape-entrypoint
 COPY --chown=cape:cape conf/ /opt/CAPEv2/custom/conf/
 

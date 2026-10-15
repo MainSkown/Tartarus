@@ -2,6 +2,10 @@
 # Proves the M0a acceptance checks of docs/plans/m0-cape-spike.md against the real cape container,
 # with a throwaway Cirros guest standing in for Windows. Starts postgres, (re)starts cape, and
 # leaves cape stopped: check 7 compares the host before cape started with the host after it stopped.
+# Check 8 (M6) proves the control service answers the backend and nobody else.
+#
+# `verify-cape.sh control` runs only the libvirt checks (1) and the control checks (8) against the
+# running stack: no probe guest, cape is not stopped. It is the quick loop for the control service.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -18,6 +22,11 @@ CIRROS_SHA256=${CIRROS_SHA256:-7d6355852aeb6dbcd191bcda7cd74f1536cfe5cbf8a10495a
 TIMEOUT=${VERIFY_TIMEOUT:-240}
 PROC_MODULES=${VERIFY_PROC_MODULES:-/proc/modules}
 HOST_PROCESS_PATTERN='qemu-system|libvirtd|virtlogd|inetsim|guacd|dnsmasq|suricata|supervisord|gunicorn'
+CONTROL_NETWORK=tartarus-control
+CONTROL_PORT=8002
+# The registered guests' static addresses run from .10 to .99 (decision 5 of the M6 plan); the
+# DHCP pool a cold-booting guest draws from starts above them.
+FIRST_DHCP_HOST_NUMBER=100
 # TEST-NET-3 and a public resolver: reaching INetSim through them proves the rooter's DNAT.
 OUTSIDE_HTTP=203.0.113.10
 OUTSIDE_DNS=8.8.8.8
@@ -127,7 +136,7 @@ machines = $PROBE
 [$PROBE]
 label = $PROBE
 platform = linux
-ip = $GUEST_IP
+ip = $PROBE_ADDRESS
 arch = x64
 interface = tt-guest
 EOF
@@ -141,9 +150,9 @@ define_probe() { virsh_in_cape define "$PROBE_DIR/domain.xml" >/dev/null; }
 
 # CAPE's scheduler only starts once every registered machine is defined, and on start it powers
 # off any registered machine that is running; so: define, register, let CAPE load it, then boot.
-# Every registration file sets [kvm] machines and the last one read wins, so only one guest can
-# be registered at a time: a real guest (the Windows one from M0b) is set aside on the volume
-# while the probe runs, and put back by cleanup_probe.
+# Every registration file sets [kvm] machines and the last one read wins, so the probe can be the
+# only registration: every other *.conf (a real guest's, or the control service's guests.conf) is
+# set aside on the volume while the probe runs, and put back by cleanup_probe.
 stash_other_registrations() {
     in_cape sh -c "mkdir -p '$REGISTRATION_STASH' &&
         find '$REGISTRATION_DIR' -maxdepth 1 -name '*.conf' ! -name '$PROBE.conf' -exec mv {} '$REGISTRATION_STASH/' \\;"
@@ -161,6 +170,13 @@ register_probe() {
         in_cape supervisorctl restart cape >/dev/null &&
         wait_until cape_database_lists_probe
 }
+
+# The probe has no static address, so it takes one from the DHCP pool; pinning its MAC to the
+# pool's first address makes that address known before it boots, which the registration needs.
+# Live only: tt-guest is a transient network.
+probe_reservation() { echo "<host mac='$PROBE_MAC' ip='$PROBE_ADDRESS'/>"; }
+reserve_probe_address() { virsh_in_cape net-update tt-guest add ip-dhcp-host "$(probe_reservation)" --live >/dev/null; }
+release_probe_address() { virsh_in_cape net-update tt-guest delete ip-dhcp-host "$(probe_reservation)" --live >/dev/null 2>&1; }
 
 boot_probe() { virsh_in_cape start "$PROBE" >/dev/null; }
 
@@ -187,7 +203,7 @@ except Exception as error:
     print(f"ssh: {error}")'
 
 latest_probe_report() {
-    as_cape_user .venv/bin/python -c "$SSH_CLIENT" "$GUEST_IP" "$GUEST_REPORT_COMMAND" | tr -d '\r' | grep 'TT-PROBE ' | tail -n 1
+    as_cape_user .venv/bin/python -c "$SSH_CLIENT" "$PROBE_ADDRESS" "$GUEST_REPORT_COMMAND" | tr -d '\r' | grep 'TT-PROBE ' | tail -n 1
 }
 
 capture_probe_report() {
@@ -207,11 +223,12 @@ from lib.cuckoo.core.rooter import rooter
 print(rooter(*sys.argv[1:]))'
 
 inetsim_route() {
-    as_cape_user .venv/bin/python -c "$ROOTER_CLIENT" "inetsim_$1" "$GUEST_IP" "$GUEST_GATEWAY_IP" 53 2042 "" >/dev/null
+    as_cape_user .venv/bin/python -c "$ROOTER_CLIENT" "inetsim_$1" "$PROBE_ADDRESS" "$GUEST_GATEWAY_IP" 53 2042 "" >/dev/null
 }
 
 cleanup_probe() {
     virsh_in_cape destroy "$PROBE" >/dev/null 2>&1
+    release_probe_address
     virsh_in_cape undefine "$PROBE" >/dev/null 2>&1
     in_cape rm -rf "$PROBE_DIR" "$REGISTRATION_DIR/$PROBE.conf"
     in_postgres sh -c "psql -U \"\$CAPE_DB_USER\" -d \"\$CAPE_DB_NAME\" -qc \"delete from machines where label = '$PROBE'\"" >/dev/null 2>&1
@@ -278,12 +295,19 @@ guest_sees_no_emulator_strings() {
 # Check 3: the guest bridge.
 
 bridge_has_gateway() { in_cape ip -4 -br addr show dev tt-guest | grep -qF " $GUEST_GATEWAY_IP/24"; }
+dhcp_pool_range() { virsh_in_cape net-dumpxml tt-guest | sed -n "s/.*<range start='\([0-9.]*\)' end='\([0-9.]*\)'.*/\1 \2/p"; }
+dhcp_pool_is_above_the_static_addresses() {
+    local start end
+    read -r start end <<<"$(dhcp_pool_range)"
+    [[ -n $start ]] || { echo "tt-guest has no DHCP range"; return 1; }
+    ((${start##*.} >= FIRST_DHCP_HOST_NUMBER)) || { echo "the pool starts at $start"; return 1; }
+}
 bridge_absent_on_host() { ! ip link show tt-guest >/dev/null 2>&1; }
-probe_has_guest_address() { [[ $PROBE_IP == "$GUEST_IP/24" ]] || { echo "guest reports '${PROBE_IP}'"; return 1; }; }
+probe_has_guest_address() { [[ $PROBE_IP == "$PROBE_ADDRESS/24" ]] || { echo "guest reports '${PROBE_IP}'"; return 1; }; }
 
 # Check 4: the rooter.
 
-route_rules_present() { in_cape iptables-save -t nat | grep CAPE-rooter | grep -qF -- "-s $GUEST_IP/32"; }
+route_rules_present() { in_cape iptables-save -t nat | grep CAPE-rooter | grep -qF -- "-s $PROBE_ADDRESS/32"; }
 route_rules_absent() { ! route_rules_present; }
 # Docker adds its own per-container rules when cape starts, so the rooter is judged against the
 # host as it was just before the route went up.
@@ -401,6 +425,97 @@ print(" ".join(n for n, s in json.load(sys.stdin)["services"].items() if "mongo"
     [[ -z $processes ]] || { echo "in cape: $processes"; return 1; }
 }
 
+# Check 8: the control service (guest-control) answers the backend and nobody else. An engine that
+# is not installed yet answers 409, which proves the routing and the token as well as a 200.
+
+CONTROL_CLIENT='import os, sys, urllib.error, urllib.request
+
+token = {"with-token": os.environ["GUEST_CONTROL_TOKEN"], "wrong-token": "wrong"}.get(sys.argv[1])
+request = urllib.request.Request(os.environ["GUEST_CONTROL_URL"] + "/guests")
+if token:
+    request.add_header("Authorization", "Bearer " + token)
+try:
+    print(urllib.request.urlopen(request, timeout=10).status)
+except urllib.error.HTTPError as refused:
+    print(refused.code)
+except OSError as error:
+    print(f"error: {error}")'
+
+RESOLVER='import socket
+print(" ".join(sorted({a[4][0] for a in socket.getaddrinfo("cape", None, socket.AF_INET)})))'
+
+control_status() { compose exec -T backend python -c "$CONTROL_CLIENT" "$1"; }
+
+backend_is_answered_with_the_token() {
+    local status
+    status=$(control_status with-token)
+    [[ $status == 200 || $status == 409 ]] || { echo "got '$status'"; return 1; }
+}
+
+# 401 and nothing else: an unreachable service is not a refusal.
+guest_control_refuses() {
+    local status
+    status=$(control_status "$1")
+    [[ $status == 401 ]] || { echo "got '$status'"; return 1; }
+}
+
+address_of_cape_on() {
+    docker inspect -f "{{(index .NetworkSettings.Networks \"$1\").IPAddress}}" "$(compose ps -q cape)"
+}
+
+only_cape_and_backend_are_on_the_control_network() {
+    local members
+    members=$(docker network inspect "$CONTROL_NETWORK" -f '{{range .Containers}}{{.Name}}{{"\n"}}{{end}}' | sort | xargs)
+    [[ $members == "tartarus-backend tartarus-cape" ]] || { echo "members: ${members:-none}"; return 1; }
+}
+
+guest_control_listens_on_the_control_address_only() {
+    local listening
+    listening=$(in_cape ss -Hltn sport = ":$CONTROL_PORT" | awk '{print $4}' | sort | xargs)
+    [[ $listening == "$(address_of_cape_on "$CONTROL_NETWORK"):$CONTROL_PORT" ]] || { echo "listening on: ${listening:-nothing}"; return 1; }
+}
+
+can_connect() { # service host port
+    if [[ $1 == frontend ]]; then
+        compose exec -T frontend nc -w 3 "$2" "$3" </dev/null >/dev/null 2>&1
+    else
+        compose exec -T "$1" timeout 3 bash -c 'exec 3<>/dev/tcp/$0/$1' "$2" "$3" </dev/null >/dev/null 2>&1
+    fi
+}
+
+# A failed connection proves nothing if the probe cannot connect at all, so the same probe must
+# first reach a port the service itself listens on.
+cannot_connect_to_guest_control_from() {
+    local service=$1 own_port=$2 control_address
+    control_address=$(address_of_cape_on "$CONTROL_NETWORK")
+    [[ -n $control_address ]] || { echo "cape has no address on $CONTROL_NETWORK"; return 1; }
+    can_connect "$service" 127.0.0.1 "$own_port" || { echo "the probe in $service cannot connect to its own port $own_port"; return 1; }
+    ! can_connect "$service" "$control_address" "$CONTROL_PORT" || { echo "$service reached $control_address:$CONTROL_PORT"; return 1; }
+}
+
+# The backend is on both networks; the name cape must keep meaning the internal address, where
+# CAPE's API, guacd and finish-run listen.
+cape_resolves_to_the_internal_address_for_the_backend() {
+    local resolved expected
+    resolved=$(compose exec -T backend python -c "$RESOLVER")
+    expected=$(address_of_cape_on tartarus-internal)
+    [[ $resolved == "$expected" ]] || { echo "resolves to '$resolved', the internal address is $expected"; return 1; }
+}
+
+check_control() {
+    check "8 control: the services probed from are running" compose up -d --wait backend frontend opensearch
+    check "8 control: the backend gets an answer from guest-control with the token" backend_is_answered_with_the_token
+    check "8 control: guest-control refuses a request without the token" guest_control_refuses without-token
+    check "8 control: guest-control refuses a request with a wrong token" guest_control_refuses wrong-token
+    check "8 control: only cape and backend are on $CONTROL_NETWORK" only_cape_and_backend_are_on_the_control_network
+    check "8 control: guest-control listens on the control address only" guest_control_listens_on_the_control_address_only
+    check "8 control: frontend cannot connect to guest-control" cannot_connect_to_guest_control_from frontend 80
+    check "8 control: opensearch cannot connect to guest-control" cannot_connect_to_guest_control_from opensearch 9200
+    check "8 control: postgres cannot connect to guest-control" cannot_connect_to_guest_control_from postgres 5432
+    check "8 control: the name cape still resolves to the tartarus-internal address for the backend" \
+        cape_resolves_to_the_internal_address_for_the_backend
+}
+
 # Check 7: teardown.
 
 no_new_host_processes() { same_as "$BASELINE_PROCESSES" "$(host_processes)"; }
@@ -420,11 +535,12 @@ report_new_modules() {
 # Lifecycle.
 
 guest_addresses() {
-    local subnet
+    local subnet pool_end
     subnet=$(in_cape printenv GUEST_SUBNET 2>/dev/null)
     subnet=${subnet:-192.168.150.0/24}
     GUEST_GATEWAY_IP=${subnet%.0/24}.1
-    GUEST_IP=${subnet%.0/24}.10
+    read -r PROBE_ADDRESS pool_end <<<"$(dhcp_pool_range)"
+    [[ -n $PROBE_ADDRESS ]] || PROBE_ADDRESS=${subnet%.0/24}.$FIRST_DHCP_HOST_NUMBER
 }
 
 abort() {
@@ -456,6 +572,7 @@ main() {
     copy_probe_into_cape || abort "setup: could not copy the probe guest into cape"
     define_probe || abort "setup: libvirt rejected the probe guest's domain XML"
     register_probe || info "cape had not registered the probe guest in its database after ${TIMEOUT}s"
+    reserve_probe_address || abort "setup: libvirt refused the probe guest's DHCP reservation"
     boot_probe || abort "setup: the probe guest did not start"
     wait_until capture_probe_report
     info "guest report before the route: $PROBE_REPORT"
@@ -466,7 +583,8 @@ main() {
 
     check "3 bridge: tt-guest has $GUEST_GATEWAY_IP/24 in the container" bridge_has_gateway
     check "3 bridge: tt-guest does not exist on the host" bridge_absent_on_host
-    check "3 bridge: the guest got $GUEST_IP on tt-guest" probe_has_guest_address
+    check "3 bridge: the guest got $PROBE_ADDRESS on tt-guest" probe_has_guest_address
+    check "3 bridge: the DHCP pool lies above the static guest addresses" dhcp_pool_is_above_the_static_addresses
 
     BEFORE_ROUTE_FIREWALL=$(host_firewall)
     inetsim_route enable
@@ -487,6 +605,8 @@ main() {
     check "6 cape: the cape Postgres database lists the registered guest" cape_database_lists_probe
     check "6 cape: no Mongo anywhere (compose, CAPE config, processes, connections)" no_mongo_anywhere
 
+    check_control
+
     inetsim_route disable
     check "4 rooter: disabling the route removes its rules" route_rules_absent
 
@@ -499,9 +619,17 @@ main() {
     report_new_modules
 }
 
+# The libvirt and control checks only, against the running stack.
+control_only() {
+    compose up -d --wait >/dev/null 2>&1 || { fail "setup: the stack did not become healthy (docker compose ps)"; exit 1; }
+    check_libvirt
+    check_control
+}
+
 case "${1:-}" in
     "") main ;;
-    *) echo "usage: verify-cape.sh   (no arguments; restarts the cape service and leaves it stopped)" >&2; exit 2 ;;
+    control) control_only ;;
+    *) echo "usage: verify-cape.sh [control]   (without an argument: restarts the cape service and leaves it stopped)" >&2; exit 2 ;;
 esac
 
 exit "$failed"
