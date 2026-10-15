@@ -1,0 +1,358 @@
+[
+  {
+    "schema_version": 1,
+    "id": "windows",
+    "display_name": "Windows 11",
+    "family": "windows",
+    "cape": {
+      "platform": "windows",
+      "tags": [
+        "windows",
+        "win11"
+      ]
+    },
+    "arch": "x64",
+    "hardware": {
+      "machine": "q35",
+      "boot": "uefi",
+      "secure_boot": true,
+      "tpm": true,
+      "disk_bus": "sata",
+      "nic_model": "e1000e",
+      "clock": "localtime",
+      "persona": "default"
+    },
+    "resources": {
+      "vcpus": 2,
+      "ram_mb": 4096,
+      "disk_gb": 80,
+      "min_disk_gb": 64,
+      "scratch_gb": 20
+    },
+    "media": {
+      "kinds": [
+        "installer"
+      ],
+      "inspector": "inspector"
+    },
+    "options": [
+      {
+        "key": "defender",
+        "label": "Microsoft Defender",
+        "type": "bool",
+        "default": true,
+        "help": "Your choice, on by default. Left on, a sample meets Defender the way it would on a real machine, and you see how it gets past it. Off suits samples that Defender would remove before they run, or that behave differently when it is running; the build then turns Tamper Protection off with a scripted step and checks it with a test file.",
+        "choices": [],
+        "requires_user_step": false,
+        "changeable_on_clone": true
+      },
+      {
+        "key": "decoys",
+        "label": "Make it look used",
+        "type": "bool",
+        "default": false,
+        "help": "Adds documents, downloads, pictures, shortcuts and a recent-files trail with dates spread over the past months, so the machine does not look freshly installed.",
+        "choices": [],
+        "requires_user_step": false,
+        "changeable_on_clone": true
+      },
+      {
+        "key": "sysmon",
+        "label": "Sysmon",
+        "type": "bool",
+        "default": true,
+        "help": "Installs Sysmon with the pinned, low-volume configuration and checks that its service runs and logs.",
+        "choices": [],
+        "requires_user_step": false,
+        "changeable_on_clone": false
+      },
+      {
+        "key": "key",
+        "label": "Product key",
+        "type": "secret",
+        "default": "",
+        "help": "Optional, XXXXX-XXXXX-XXXXX-XXXXX-XXXXX. Without one Windows installs unactivated.",
+        "choices": [],
+        "requires_user_step": false,
+        "changeable_on_clone": false
+      },
+      {
+        "key": "keyboard",
+        "label": "Keyboard layout",
+        "type": "choice",
+        "default": "Polish (Programmers)",
+        "help": "The layout Windows is installed with.",
+        "choices": [
+          "Polish (Programmers)",
+          "Polish (214)",
+          "US",
+          "UK",
+          "German",
+          "French",
+          "Spanish",
+          "Czech",
+          "Italian",
+          "Portuguese (Portugal)",
+          "Portuguese (Brazil ABNT)",
+          "Russian",
+          "Ukrainian"
+        ],
+        "requires_user_step": false,
+        "changeable_on_clone": false
+      }
+    ],
+    "identity": {
+      "account": {
+        "label": "Username",
+        "pattern": "[A-Za-z][A-Za-z0-9_-]{0,19}",
+        "reserved": [
+          "Administrator",
+          "Guest",
+          "DefaultAccount",
+          "SYSTEM",
+          "WDAGUtilityAccount"
+        ],
+        "generator": "first_name",
+        "optional": true
+      },
+      "machine": {
+        "label": "Computer name",
+        "pattern": "(?!\\d+$)[A-Za-z0-9]([A-Za-z0-9-]{0,13}[A-Za-z0-9])?",
+        "reserved": [
+          "localhost"
+        ],
+        "generator": "computer_name",
+        "optional": true
+      },
+      "password": {
+        "label": "Password",
+        "pattern": "[\\x20-\\x7e]{8,64}",
+        "reserved": [],
+        "generator": "password",
+        "optional": true
+      }
+    },
+    "clone": {
+      "computer_name_editable": true
+    },
+    "pipelines": {
+      "build": {
+        "installer": [
+          {
+            "step": "preflight",
+            "desktop": false,
+            "timeout_s": 600,
+            "weight": 1,
+            "when": null
+          },
+          {
+            "step": "fetch",
+            "desktop": false,
+            "timeout_s": 900,
+            "weight": 3,
+            "when": null
+          },
+          {
+            "step": "define",
+            "desktop": false,
+            "timeout_s": 600,
+            "weight": 1,
+            "when": null
+          },
+          {
+            "step": "install",
+            "desktop": true,
+            "timeout_s": 5400,
+            "weight": 60,
+            "when": null
+          },
+          {
+            "step": "provision",
+            "desktop": true,
+            "timeout_s": 900,
+            "weight": 20,
+            "when": null
+          },
+          {
+            "step": "tamper-off",
+            "desktop": true,
+            "timeout_s": 600,
+            "weight": 5,
+            "when": {
+              "option": "defender",
+              "value": false
+            }
+          },
+          {
+            "step": "snapshot",
+            "desktop": false,
+            "timeout_s": 600,
+            "weight": 5,
+            "when": null
+          },
+          {
+            "step": "register",
+            "desktop": false,
+            "timeout_s": 300,
+            "weight": 2,
+            "when": null
+          }
+        ]
+      },
+      "clone": [
+        {
+          "step": "preflight",
+          "desktop": false,
+          "timeout_s": 600,
+          "weight": 1,
+          "when": null
+        },
+        {
+          "step": "copy",
+          "desktop": false,
+          "timeout_s": 900,
+          "weight": 25,
+          "when": null
+        },
+        {
+          "step": "define",
+          "desktop": false,
+          "timeout_s": 600,
+          "weight": 1,
+          "when": null
+        },
+        {
+          "step": "reconfigure",
+          "desktop": true,
+          "timeout_s": 600,
+          "weight": 30,
+          "when": null
+        },
+        {
+          "step": "tamper-off",
+          "desktop": true,
+          "timeout_s": 600,
+          "weight": 10,
+          "when": {
+            "option": "defender",
+            "value": false
+          }
+        },
+        {
+          "step": "defender-on",
+          "desktop": true,
+          "timeout_s": 600,
+          "weight": 5,
+          "when": {
+            "option": "defender",
+            "value": true
+          }
+        },
+        {
+          "step": "snapshot",
+          "desktop": false,
+          "timeout_s": 600,
+          "weight": 15,
+          "when": null
+        },
+        {
+          "step": "register",
+          "desktop": false,
+          "timeout_s": 300,
+          "weight": 2,
+          "when": null
+        }
+      ]
+    },
+    "agent": {
+      "port": 8000,
+      "path_style": "windows",
+      "ready": {
+        "marker": "{work_dir}\\setup.state"
+      },
+      "finish_dir": "C:\\Windows\\Temp",
+      "work_root": "C:\\ProgramData",
+      "shutdown": "acpi",
+      "interactive": {
+        "options": "interactive=1,nohuman=yes",
+        "task_fields": {}
+      },
+      "pre_snapshot": null
+    },
+    "selftest": {
+      "sample": {
+        "source": "selftest/benign.c",
+        "build": [
+          "x86_64-w64-mingw32-gcc",
+          "-O2",
+          "-s"
+        ]
+      },
+      "signals": [
+        {
+          "id": "events.process",
+          "source": "events",
+          "path": null
+        },
+        {
+          "id": "events.file",
+          "source": "events",
+          "path": null
+        },
+        {
+          "id": "events.registry",
+          "source": "events",
+          "path": null
+        },
+        {
+          "id": "report.present",
+          "source": "report",
+          "path": null
+        },
+        {
+          "id": "report.dns_answer",
+          "source": "report",
+          "path": null
+        }
+      ],
+      "facts": {
+        "script": "selftest/guest-facts.ps1"
+      },
+      "extras": []
+    },
+    "packages": [
+      "exe",
+      "dll",
+      "doc",
+      "xls",
+      "ppt",
+      "ps1",
+      "js",
+      "vbs",
+      "jar",
+      "msi",
+      "zip",
+      "pdf",
+      "python",
+      "hta",
+      "lnk"
+    ],
+    "badges": [
+      {
+        "option": "defender",
+        "value": true,
+        "label": "DEFENDER ON"
+      },
+      {
+        "option": "defender",
+        "value": false,
+        "label": "DEFENDER OFF"
+      }
+    ],
+    "timeouts": {
+      "agent_s": 900,
+      "idle_s": 60,
+      "shutdown_s": 300
+    }
+  }
+]

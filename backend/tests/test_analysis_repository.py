@@ -620,3 +620,39 @@ async def test_an_analysis_is_not_reingested_while_another_one_is_active(
 
 async def test_reingesting_an_unknown_analysis_changes_nothing(session: AsyncSession) -> None:
     assert await repository.begin_reingest(session, 999) is False
+
+
+@pytest.mark.parametrize(
+    "status", [AnalysisStatus.QUEUED, AnalysisStatus.STARTING, AnalysisStatus.RUNNING]
+)
+async def test_an_analysis_that_is_waiting_for_or_using_the_guest_needs_it(
+    session: AsyncSession, status: AnalysisStatus
+) -> None:
+    created = await seeded_analysis(session)
+    await repository.update_analysis(session, created.id, status=status)
+
+    assert await repository.has_analysis_needing_a_guest(session) is True
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        AnalysisStatus.PROCESSING,
+        AnalysisStatus.INGESTING,
+        AnalysisStatus.DONE,
+        AnalysisStatus.FAILED,
+        AnalysisStatus.REPORT_FAILED,
+        AnalysisStatus.CANCELLED,
+    ],
+)
+async def test_an_analysis_the_guest_is_done_with_does_not_need_it(
+    session: AsyncSession, status: AnalysisStatus
+) -> None:
+    created = await seeded_analysis(session)
+    await repository.update_analysis(session, created.id, status=status)
+
+    assert await repository.has_analysis_needing_a_guest(session) is False
+
+
+async def test_no_analysis_at_all_needs_no_guest(session: AsyncSession) -> None:
+    assert await repository.has_analysis_needing_a_guest(session) is False

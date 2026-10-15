@@ -1,7 +1,8 @@
 import httpx
 from fastapi import FastAPI
 
-from app.api.dependencies import get_runner
+from app.api.dependencies import get_guest_control, get_runner
+from app.guest.errors import GuestControlUnreachable
 
 
 def test_the_analysis_endpoints_are_served_under_api_and_documented(app: FastAPI) -> None:
@@ -34,3 +35,27 @@ def test_the_report_summary_reaches_the_schema_so_the_client_gets_its_types(app:
     schemas = app.openapi()["components"]["schemas"]
 
     assert {"ReportSummary", "AnalysisRead", "AnalysisPage"} <= set(schemas)
+
+
+def test_the_guest_endpoints_are_served_under_api_and_documented(app: FastAPI) -> None:
+    paths = app.openapi()["paths"]
+
+    assert set(paths["/api/guests"]) == {"get"}
+    assert set(paths["/api/guests/{name}"]) == {"get", "delete"}
+    assert set(paths["/api/guests/{name}/check"]) == {"post"}
+    assert {"/api/guests/media", "/api/guests/profiles"} <= set(paths)
+
+
+async def test_a_guest_control_failure_is_answered_by_the_real_app_as_a_502(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    class Unreachable:
+        async def guests(self) -> list[object]:
+            raise GuestControlUnreachable("guests", "ConnectError")
+
+    app.dependency_overrides[get_guest_control] = Unreachable
+
+    response = await client.get("/api/guests")
+
+    assert response.status_code == 502
+    assert response.json()["error"]["message"] == "The guest control service is not reachable"

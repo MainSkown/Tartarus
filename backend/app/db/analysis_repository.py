@@ -16,6 +16,13 @@ from app.db.models.annotation import TargetType
 _QUEUE_ORDER = (Analysis.submitted_at, Analysis.id)
 
 REINGESTABLE_STATUSES = (AnalysisStatus.DONE, AnalysisStatus.REPORT_FAILED)
+# From submission until the guest has stopped; registering or deleting a guest restarts CAPE,
+# which fails a task in any of these states (M6 plan, decision 7).
+GUEST_NEEDING_STATUSES = (
+    AnalysisStatus.QUEUED,
+    AnalysisStatus.STARTING,
+    AnalysisStatus.RUNNING,
+)
 
 
 class AnalysisChanges(TypedDict, total=False):
@@ -168,6 +175,11 @@ async def get_active_analysis(session: AsyncSession) -> Analysis | None:
         .limit(1)
     )
     return await session.scalar(statement)
+
+
+async def has_analysis_needing_a_guest(session: AsyncSession) -> bool:
+    statement = select(Analysis.id).where(Analysis.status.in_(GUEST_NEEDING_STATUSES)).limit(1)
+    return await session.scalar(statement) is not None
 
 
 async def get_oldest_queued_analysis(session: AsyncSession) -> Analysis | None:

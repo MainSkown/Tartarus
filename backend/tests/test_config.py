@@ -20,6 +20,8 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "EXPORTS_PATH",
         "RULES_PATH",
         "GUEST_LABEL",
+        "GUEST_CONTROL_URL",
+        "GUEST_CONTROL_TOKEN",
         "GUACD_HOST",
         "GUACD_PORT",
     ):
@@ -152,3 +154,34 @@ def test_guacd_address_is_read_from_the_environment(monkeypatch: pytest.MonkeyPa
     settings = Settings()
 
     assert (settings.guacd_host, settings.guacd_port) == ("guacd.internal", 4999)
+
+
+@pytest.mark.usefixtures("required_urls")
+def test_guest_control_defaults_to_the_service_on_the_control_network() -> None:
+    settings = Settings()
+
+    assert settings.guest_control_url == "http://cape-control:8002"
+    assert settings.guest_control_token is None
+
+
+@pytest.mark.usefixtures("required_urls")
+def test_guest_control_settings_are_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GUEST_CONTROL_URL", "http://localhost:8002")
+    monkeypatch.setenv("GUEST_CONTROL_TOKEN", "c0ntrol-s3cret")
+
+    settings = Settings()
+
+    assert settings.guest_control_url == "http://localhost:8002"
+    assert settings.guest_control_token is not None
+    assert settings.guest_control_token.get_secret_value() == "c0ntrol-s3cret"
+
+
+@pytest.mark.usefixtures("required_urls")
+def test_guest_control_token_is_not_shown_in_the_settings_repr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GUEST_CONTROL_TOKEN", "c0ntrol-s3cret")
+
+    assert "c0ntrol-s3cret" not in repr(Settings())

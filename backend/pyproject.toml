@@ -57,6 +57,7 @@ max-complexity = 10
 "tests/**" = ["S101", "PLR2004", "ARG001", "ARG002"]
 "alembic/**" = ["INP001"]
 "app/cape/errors.py" = ["N818"]  # the CapeUnreachable / CapeRejected names are the public vocabulary
+"app/guest/errors.py" = ["N818"]  # same vocabulary as app/cape/errors.py
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

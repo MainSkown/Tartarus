@@ -1,0 +1,92 @@
+{
+  "id": "b2f48f9dcd08a",
+  "guest": "lab1",
+  "kind": "build",
+  "status": "succeeded",
+  "step": 6,
+  "steps": [
+    {
+      "name": "preflight",
+      "status": "succeeded",
+      "started": "2026-10-15T19:10:54Z",
+      "finished": "2026-10-15T19:10:54Z",
+      "exit_code": 0,
+      "weight": 1,
+      "timeout_s": 600,
+      "desktop": false,
+      "progress": 100
+    },
+    {
+      "name": "fetch",
+      "status": "succeeded",
+      "started": "2026-10-15T19:10:54Z",
+      "finished": "2026-10-15T19:10:54Z",
+      "exit_code": 0,
+      "weight": 3,
+      "timeout_s": 900,
+      "desktop": false,
+      "progress": 100
+    },
+    {
+      "name": "define",
+      "status": "succeeded",
+      "started": "2026-10-15T19:10:54Z",
+      "finished": "2026-10-15T19:10:54Z",
+      "exit_code": 0,
+      "weight": 1,
+      "timeout_s": 600,
+      "desktop": false,
+      "progress": 100
+    },
+    {
+      "name": "install",
+      "status": "succeeded",
+      "started": "2026-10-15T19:10:54Z",
+      "finished": "2026-10-15T19:20:49Z",
+      "exit_code": 0,
+      "weight": 60,
+      "timeout_s": 5400,
+      "desktop": true,
+      "progress": 100
+    },
+    {
+      "name": "provision",
+      "status": "succeeded",
+      "started": "2026-10-15T19:20:49Z",
+      "finished": "2026-10-15T19:20:55Z",
+      "exit_code": 0,
+      "weight": 20,
+      "timeout_s": 900,
+      "desktop": true,
+      "progress": 100
+    },
+    {
+      "name": "snapshot",
+      "status": "succeeded",
+      "started": "2026-10-15T19:20:55Z",
+      "finished": "2026-10-15T19:26:13Z",
+      "exit_code": 0,
+      "weight": 5,
+      "timeout_s": 600,
+      "desktop": false,
+      "progress": 100
+    },
+    {
+      "name": "register",
+      "status": "succeeded",
+      "started": "2026-10-15T19:26:13Z",
+      "finished": "2026-10-15T19:26:13Z",
+      "exit_code": 0,
+      "weight": 2,
+      "timeout_s": 300,
+      "desktop": false,
+      "progress": 100
+    }
+  ],
+  "created": "2026-10-15T19:10:54Z",
+  "updated": "2026-10-15T19:26:15Z",
+  "message": "",
+  "pause": null,
+  "percent": 100,
+  "desktop": false
+}

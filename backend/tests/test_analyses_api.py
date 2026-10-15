@@ -322,6 +322,19 @@ async def test_a_submission_is_refused_with_409_while_the_guest_is_not_ready(
     assert harness.runner.nudges == 0
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="B5: the gate refuses `degraded`, but with several guests that means one is not ready "
+    "while another is; only `down` should refuse (replaces the degraded case above)",
+)
+async def test_a_submission_is_allowed_while_some_guest_is_ready_and_another_is_not(
+    harness: Harness,
+) -> None:
+    harness.guest.health = ComponentHealth(status=HealthStatus.DEGRADED, message="lab2 is failed")
+
+    assert (await harness.upload()).status_code == 201
+
+
 async def test_a_guest_check_that_crashes_counts_as_not_ready(harness: Harness) -> None:
     async def explode() -> ComponentHealth:
         raise RuntimeError("boom")

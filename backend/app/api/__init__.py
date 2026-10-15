@@ -5,6 +5,7 @@ from app.api import (
     annotations,
     events,
     export,
+    guests,
     jobs,
     query,
     rules,
@@ -17,6 +18,7 @@ from app.api import (
 api_router = APIRouter(prefix="/api")
 api_router.include_router(system.router)
 api_router.include_router(settings.router)
+api_router.include_router(guests.router)
 api_router.include_router(analyses.router)
 api_router.include_router(views_events.router)
 api_router.include_router(views_findings.router)

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     exports_path: Path = Path("/data/exports")
     rules_path: Path = Path("/rules/sigma")
     guest_label: str = "win"
+    guest_control_url: str = "http://cape-control:8002"
+    guest_control_token: SecretStr | None = None
     guacd_host: str = "cape"
     guacd_port: int = 4822
     runner_poll_interval_seconds: float = 2.0

@@ -1,0 +1,25 @@
+{
+  "name": "lab1",
+  "checks": [
+    {
+      "id": "domain",
+      "ok": true,
+      "message": "the VM is defined"
+    },
+    {
+      "id": "snapshot",
+      "ok": true,
+      "message": "the snapshot tartarus-clean exists"
+    },
+    {
+      "id": "registration",
+      "ok": true,
+      "message": "CAPE lists lab1"
+    },
+    {
+      "id": "agent",
+      "ok": false,
+      "message": "the agent at http://192.168.150.11:8000 did not answer within 120 s"
+    }
+  ]
+}

@@ -1,0 +1,160 @@
+[
+  {
+    "name": "win",
+    "profile": "windows",
+    "kind": "build",
+    "cloned_from": null,
+    "state": "ready",
+    "created": "2026-10-15T18:04:19Z",
+    "media": {
+      "file": "Win11_25H2_Polish_x64_v2.iso",
+      "variant": "5",
+      "version": "10.0.26200",
+      "language": "pl-PL",
+      "arch": "amd64"
+    },
+    "options": {
+      "defender": true,
+      "decoys": false,
+      "sysmon": false,
+      "key": "",
+      "keyboard": "Polish (Programmers)"
+    },
+    "identity": {
+      "account": "Analyst",
+      "machine": "DESKTOP-7A3K2P9",
+      "password": "Tartarus1!"
+    },
+    "resources": {
+      "vcpus": 2,
+      "ram_mb": 4096,
+      "disk_gb": 80
+    },
+    "ip": "192.168.150.10",
+    "machine": {
+      "uuid": "03f22cad-8664-4dc2-ba2f-a93e3ba26471",
+      "mac": "00:14:22:c8:97:00",
+      "smbios_serial": "AGGI4Q1",
+      "board_serial": "/AGGI4Q1/CN4I3G1JW6OB6V/",
+      "disk_serial": "S4EWNX0X67M3L"
+    },
+    "work_dir": "C:\\tartarus",
+    "snapshot": "tartarus-clean",
+    "disk_path": "/var/lib/libvirt/images/win.qcow2",
+    "selftest": null,
+    "adopted": true,
+    "giveaways": [
+      "identity.account 'Analyst' contains 'analy'",
+      "identity.password 'Tartarus1!' contains 'tartarus'",
+      "work_dir 'C:\\tartarus' contains 'tartarus'"
+    ],
+    "badges": [
+      "DEFENDER ON"
+    ],
+    "build_id": null
+  },
+  {
+    "name": "lab1",
+    "profile": "windows",
+    "kind": "build",
+    "cloned_from": null,
+    "state": "ready",
+    "created": "2026-10-15T19:10:54Z",
+    "media": {
+      "file": "Win11_25H2_Polish_x64_v2.iso",
+      "variant": "5",
+      "version": "10.0.26200",
+      "language": "pl-PL",
+      "arch": "amd64"
+    },
+    "options": {
+      "defender": true,
+      "decoys": false,
+      "sysmon": true,
+      "key": "",
+      "keyboard": "Polish (Programmers)"
+    },
+    "identity": {
+      "account": "Alice",
+      "machine": "LAPTOP-LJZ4UEE",
+      "password": "fixture-pw-Xk3!"
+    },
+    "resources": {
+      "vcpus": 2,
+      "ram_mb": 4096,
+      "disk_gb": 80
+    },
+    "ip": "192.168.150.11",
+    "machine": {
+      "uuid": "6bac5354-a704-436e-abaf-d7931a813864",
+      "mac": "00:14:22:8d:44:27",
+      "smbios_serial": "XIJVWW2",
+      "board_serial": "/XIJVWW2/CNPO8MJ95VJMEO/",
+      "disk_serial": "S4EWNX0Z6HFLM"
+    },
+    "work_dir": "C:\\ProgramData\\wrchynkw",
+    "snapshot": "tartarus-clean",
+    "disk_path": "/var/lib/libvirt/images/lab1.qcow2",
+    "selftest": {
+      "by": "guest-build CLI, no analysis was run"
+    },
+    "adopted": false,
+    "giveaways": [],
+    "badges": [
+      "DEFENDER ON"
+    ],
+    "build_id": "b2f48f9dcd08a"
+  },
+  {
+    "name": "lab2",
+    "profile": "windows",
+    "kind": "clone",
+    "cloned_from": "lab1",
+    "state": "ready",
+    "created": "2026-10-15T19:36:00Z",
+    "media": {
+      "file": "Win11_25H2_Polish_x64_v2.iso",
+      "variant": "5",
+      "version": "10.0.26200",
+      "language": "pl-PL",
+      "arch": "amd64"
+    },
+    "options": {
+      "defender": false,
+      "decoys": false,
+      "sysmon": true,
+      "key": "",
+      "keyboard": "Polish (Programmers)"
+    },
+    "identity": {
+      "account": "Alice",
+      "machine": "DESKTOP-LI8LEJN",
+      "password": "fixture-pw-Xk3!"
+    },
+    "resources": {
+      "vcpus": 2,
+      "ram_mb": 4096,
+      "disk_gb": 80
+    },
+    "ip": "192.168.150.12",
+    "machine": {
+      "uuid": "bc89a97a-226d-4d9e-b4ad-01c23a32aff5",
+      "mac": "00:14:22:ad:91:37",
+      "smbios_serial": "SRJK04W",
+      "board_serial": "/SRJK04W/CNJ6BSG7VGB855/",
+      "disk_serial": "S4EWNX0JIRFSU"
+    },
+    "work_dir": "C:\\ProgramData\\wrchynkw",
+    "snapshot": "tartarus-clean",
+    "disk_path": "/var/lib/libvirt/images/lab2.qcow2",
+    "selftest": {
+      "by": "planner, manual checks"
+    },
+    "adopted": false,
+    "giveaways": [],
+    "badges": [
+      "DEFENDER OFF"
+    ],
+    "build_id": "b5a43df778214"
+  }
+]

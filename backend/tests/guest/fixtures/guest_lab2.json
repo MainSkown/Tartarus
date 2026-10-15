@@ -1,0 +1,52 @@
+{
+  "name": "lab2",
+  "profile": "windows",
+  "kind": "clone",
+  "cloned_from": "lab1",
+  "state": "ready",
+  "created": "2026-10-15T19:36:00Z",
+  "media": {
+    "file": "Win11_25H2_Polish_x64_v2.iso",
+    "variant": "5",
+    "version": "10.0.26200",
+    "language": "pl-PL",
+    "arch": "amd64"
+  },
+  "options": {
+    "defender": false,
+    "decoys": false,
+    "sysmon": true,
+    "key": "",
+    "keyboard": "Polish (Programmers)"
+  },
+  "identity": {
+    "account": "Alice",
+    "machine": "DESKTOP-LI8LEJN",
+    "password": "fixture-pw-Xk3!"
+  },
+  "resources": {
+    "vcpus": 2,
+    "ram_mb": 4096,
+    "disk_gb": 80
+  },
+  "ip": "192.168.150.12",
+  "machine": {
+    "uuid": "bc89a97a-226d-4d9e-b4ad-01c23a32aff5",
+    "mac": "00:14:22:ad:91:37",
+    "smbios_serial": "SRJK04W",
+    "board_serial": "/SRJK04W/CNJ6BSG7VGB855/",
+    "disk_serial": "S4EWNX0JIRFSU"
+  },
+  "work_dir": "C:\\ProgramData\\wrchynkw",
+  "snapshot": "tartarus-clean",
+  "disk_path": "/var/lib/libvirt/images/lab2.qcow2",
+  "selftest": {
+    "by": "planner, manual checks"
+  },
+  "adopted": false,
+  "giveaways": [],
+  "badges": [
+    "DEFENDER OFF"
+  ],
+  "build_id": "b5a43df778214"
+}

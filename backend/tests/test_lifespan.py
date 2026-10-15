@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.analyses.runner import Runner
 from app.cape.client import CapeClient
 from app.cape.control import CapeControl
-from app.cape.health import CapeCheck, GuestCheck
+from app.cape.health import CapeCheck
 from app.db.models.job import JobType
 from app.db.session import get_session
+from app.guest.client import HttpGuestControl
+from app.guest.health import GuestCheck
 from app.health import ComponentHealth, HealthStatus, PostgresCheck, evaluate
 from app.jobs.runner import JobHandler, JobRunner
 from app.rules.registry import RuleRegistry
@@ -26,6 +28,7 @@ async def test_lifespan_stores_engine_client_and_checks_on_app_state(app: FastAP
         assert isinstance(app.state.opensearch, AsyncOpenSearch)
         assert isinstance(app.state.cape, CapeClient)
         assert isinstance(app.state.cape_control, CapeControl)
+        assert isinstance(app.state.guest_control, HttpGuestControl)
         assert isinstance(app.state.sample_store, SampleStore)
         assert isinstance(app.state.event_index, EventIndex)
         assert isinstance(app.state.runner, Runner)
@@ -42,6 +45,17 @@ async def test_lifespan_starts_without_a_cape_token_and_reports_cape_down(app: F
         cape = await evaluate(app.state.health_checks["cape"], timeout_s=1)
 
     assert cape == ComponentHealth(status=HealthStatus.DOWN, message="CAPE_API_TOKEN is not set")
+
+
+async def test_lifespan_starts_without_a_guest_control_token_and_reports_the_guest_down(
+    app: FastAPI,
+) -> None:
+    async with app.router.lifespan_context(app):
+        guest = await evaluate(app.state.health_checks["guest"], timeout_s=1)
+
+    assert guest == ComponentHealth(
+        status=HealthStatus.DOWN, message="the guest control service is not reachable"
+    )
 
 
 async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
@@ -71,7 +85,12 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
         released.append("cape_control")
 
     monkeypatch.setattr(CapeClient, "aclose", record_cape_close)
+
+    async def record_guest_control_close(self: HttpGuestControl) -> None:
+        released.append("guest_control")
+
     monkeypatch.setattr(CapeControl, "aclose", record_control_close)
+    monkeypatch.setattr(HttpGuestControl, "aclose", record_guest_control_close)
 
     stop_registry = RuleRegistry.stop
 
@@ -90,6 +109,7 @@ async def test_lifespan_disposes_engine_and_closes_client_on_shutdown(
         "cape",
         "cape_control",
         "engine",
+        "guest_control",
         "job_runner",
         "opensearch",
         "rule_registry",
