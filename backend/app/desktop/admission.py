@@ -15,6 +15,7 @@ from app.desktop.vnc import vnc_port
 
 logger = logging.getLogger(__name__)
 
+CLOSE_SERVER_ERROR = 1011
 CLOSE_NOT_FOUND = 4404
 CLOSE_NOT_AVAILABLE_YET = 4408
 CLOSE_CONFLICT = 4409

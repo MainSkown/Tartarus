@@ -1,4 +1,6 @@
-"""`WS /ws/analyses/{id}/desktop`: a Guacamole tunnel from the browser to `guacd`.
+"""`WS /ws/analyses/{id}/desktop` and `WS /ws/guests/{name}/desktop`: a Guacamole tunnel from the
+browser to `guacd`. The two routes differ only in their resolver (`app.desktop.resolver`): who may
+open the desktop, and the VNC address `guacd` is sent to.
 
 There is no authentication: Tartarus has one local analyst and compose binds the whole backend
 to 127.0.0.1. What protects the guest instead is that nothing the browser sends decides where
@@ -21,17 +23,15 @@ from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, WebSocket
 from fastapi.websockets import WebSocketDisconnect
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
 from app.desktop.admission import (
+    CLOSE_SERVER_ERROR,
     AnalysisLookup,
     CloseRequest,
     DbAnalysisLookup,
     TaskViewer,
-    check_admission,
-    wait_for_vnc_port,
 )
 from app.desktop.guacamole import (
     INTERNAL_OPCODE,
@@ -40,6 +40,8 @@ from app.desktop.guacamole import (
     ProtocolError,
     encode,
 )
+from app.desktop.guest_build import BuildControl, GuestBuildResolver
+from app.desktop.resolver import AnalysisResolver, CheckUnavailableError, DesktopResolver, VncTarget
 from app.desktop.tunnel import (
     HANDSHAKE_TIMEOUT_S,
     GuacdTunnel,
@@ -54,7 +56,6 @@ PING = "ping"
 
 CLOSE_NORMAL = 1000
 CLOSE_PROTOCOL_ERROR = 1002
-CLOSE_SERVER_ERROR = 1011
 
 router = APIRouter()
 
@@ -79,6 +80,10 @@ def get_task_viewer(websocket: WebSocket) -> TaskViewer:
     return cast(TaskViewer, websocket.app.state.cape)
 
 
+def get_guest_build_control(websocket: WebSocket) -> BuildControl:
+    return cast(BuildControl, websocket.app.state.guest_control)
+
+
 def get_desktop_config() -> DesktopConfig:
     settings = get_settings()
     return DesktopConfig(guacd_host=settings.guacd_host, guacd_port=settings.guacd_port)
@@ -98,9 +103,32 @@ async def desktop_tunnel(
     submitted interactive, and `4408` when the guest's desktop does not come up in time. The
     socket is accepted first because a browser only sees a close code on an accepted socket.
     """
+    await _serve_socket(websocket, AnalysisResolver(lookup, viewer, analysis_id), config)
+
+
+@router.websocket("/ws/guests/{name}/desktop")
+async def guest_build_desktop_tunnel(
+    websocket: WebSocket,
+    name: str,
+    control: Annotated[BuildControl, Depends(get_guest_build_control)],
+    config: Annotated[DesktopConfig, Depends(get_desktop_config)],
+) -> None:
+    """Tunnels the screen of a guest while its build is at a step that shows a desktop (the
+    install, the provisioning, a pause for the analyst), as `desktop_tunnel` does for an analysis.
+
+    Closes with `4404` for an unknown guest or a name that is not a guest name, `4409` unless the
+    guest has a running or paused build whose current step shows a desktop, and `4408` when the
+    guest's screen does not come up in time. A ready guest's desktop is not served here.
+    """
+    await _serve_socket(websocket, GuestBuildResolver(control, name), config)
+
+
+async def _serve_socket(
+    websocket: WebSocket, resolver: DesktopResolver, config: DesktopConfig
+) -> None:
     offered = websocket.scope.get("subprotocols", [])
     await websocket.accept(subprotocol=SUBPROTOCOL if SUBPROTOCOL in offered else None)
-    outcome = await _DesktopSession(websocket, analysis_id, lookup, viewer, config).serve()
+    outcome = await _DesktopSession(websocket, resolver, config).serve()
     if outcome is not None:
         with contextlib.suppress(RuntimeError, WebSocketDisconnect):
             await websocket.close(code=outcome.code, reason=outcome.reason)
@@ -108,23 +136,20 @@ async def desktop_tunnel(
 
 class _DesktopSession:
     def __init__(
-        self,
-        websocket: WebSocket,
-        analysis_id: int,
-        lookup: AnalysisLookup,
-        viewer: TaskViewer,
-        config: DesktopConfig,
+        self, websocket: WebSocket, resolver: DesktopResolver, config: DesktopConfig
     ) -> None:
         self._websocket = websocket
-        self._analysis_id = analysis_id
-        self._lookup = lookup
-        self._viewer = viewer
+        self._resolver = resolver
         self._config = config
         self._browser = _BrowserInput(websocket)
 
     async def serve(self) -> CloseRequest | None:
         """What to close the socket with, or None when the browser is already gone."""
-        refusal = check_admission(await self._lookup.snapshot(self._analysis_id))
+        try:
+            refusal = await self._resolver.refusal()
+        except CheckUnavailableError as error:
+            logger.warning("%s: could not check the desktop", self._resolver.label, exc_info=True)
+            return CloseRequest(CLOSE_SERVER_ERROR, error.reason)
         if refusal is not None:
             return refusal
         try:
@@ -134,33 +159,34 @@ class _DesktopSession:
         return await _first_to_finish(self._browser.pump(), self._run_desktop())
 
     async def _run_desktop(self) -> CloseRequest | None:
-        port = await wait_for_vnc_port(
-            self._lookup,
-            self._viewer,
-            self._analysis_id,
+        target = await self._resolver.wait_for_target(
             poll_interval_s=self._config.port_poll_interval_s,
             patience_s=self._config.port_wait_timeout_s,
         )
-        if isinstance(port, CloseRequest):
-            return port
+        if isinstance(target, CloseRequest):
+            return target
         try:
-            tunnel = await GuacdTunnel.open(
-                self._config.guacd_host,
-                self._config.guacd_port,
-                vnc_port=port,
-                handshake_timeout_s=self._config.handshake_timeout_s,
-            )
+            tunnel = await self._open_tunnel(target)
         except TunnelError as error:
-            logger.warning("analysis %s: no desktop: %s", self._analysis_id, error)
+            logger.warning("%s: no desktop: %s", self._resolver.label, error)
             return CloseRequest(CLOSE_SERVER_ERROR, "desktop service unavailable")
         self._browser.tunnel = tunnel
         try:
             return await _first_to_finish(
-                self._relay_to_browser(tunnel), self._close_when_analysis_ends()
+                self._relay_to_browser(tunnel), self._close_when_refused()
             )
         finally:
             self._browser.tunnel = None
             await tunnel.close()
+
+    async def _open_tunnel(self, target: VncTarget) -> GuacdTunnel:
+        return await GuacdTunnel.open(
+            self._config.guacd_host,
+            self._config.guacd_port,
+            vnc_host=target.host,
+            vnc_port=target.port,
+            handshake_timeout_s=self._config.handshake_timeout_s,
+        )
 
     async def _relay_to_browser(self, tunnel: GuacdTunnel) -> CloseRequest | None:
         try:
@@ -168,9 +194,7 @@ class _DesktopSession:
                 await self._websocket.send_text(encode(instruction.opcode, *instruction.args))
                 if instruction.opcode == "error":
                     logger.info(
-                        "analysis %s: desktop not available: %s",
-                        self._analysis_id,
-                        instruction.args,
+                        "%s: desktop not available: %s", self._resolver.label, instruction.args
                     )
                     return CloseRequest(CLOSE_NORMAL, "desktop reported an error")
         except TunnelError:
@@ -179,18 +203,20 @@ class _DesktopSession:
             return None
         return CloseRequest(CLOSE_NORMAL, "desktop closed")
 
-    async def _close_when_analysis_ends(self) -> CloseRequest:
+    async def _close_when_refused(self) -> CloseRequest:
         while True:
             await asyncio.sleep(self._config.status_check_interval_s)
             try:
-                snapshot = await self._lookup.snapshot(self._analysis_id)
-            except SQLAlchemyError:
+                refusal = await self._resolver.refusal()
+            except CheckUnavailableError:
                 logger.warning(
-                    "analysis %s: could not check its status", self._analysis_id, exc_info=True
+                    "%s: could not check whether the desktop may stay open",
+                    self._resolver.label,
+                    exc_info=True,
                 )
                 continue
-            if check_admission(snapshot) is not None:
-                return CloseRequest(CLOSE_NORMAL, "analysis is no longer running")
+            if refusal is not None:
+                return CloseRequest(CLOSE_NORMAL, self._resolver.ended_reason)
 
 
 class _BrowserInput:

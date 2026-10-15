@@ -1,7 +1,7 @@
 """The connection from the backend to `guacd`, and the rules for what may pass through it.
 
-Nothing the browser sends decides where `guacd` connects: the host is a constant and the port
-is the VNC port CAPE recorded for the task (see `app.desktop.vnc`).
+Nothing the browser sends decides where `guacd` connects: the VNC host and port come from the
+desktop's resolver (`app.desktop.resolver`), which defaults the host to `VNC_HOST`.
 """
 
 import asyncio
@@ -39,9 +39,9 @@ def forwardable_from_browser(instruction: Instruction) -> bool:
     return instruction.opcode in BROWSER_OPCODES
 
 
-def connect_values(vnc_port: int) -> Mapping[str, str]:
+def connect_values(vnc_port: int, vnc_host: str = VNC_HOST) -> Mapping[str, str]:
     return {
-        "hostname": VNC_HOST,
+        "hostname": vnc_host,
         "port": str(vnc_port),
         "read-only": "false",
         "disable-copy": "true",
@@ -52,9 +52,11 @@ def connect_values(vnc_port: int) -> Mapping[str, str]:
     }
 
 
-def connect_instruction(arg_names: Sequence[str], *, vnc_port: int) -> Instruction:
+def connect_instruction(
+    arg_names: Sequence[str], *, vnc_port: int, vnc_host: str = VNC_HOST
+) -> Instruction:
     """One value per name `guacd` listed, in its order; names we have no value for stay empty."""
-    values = connect_values(vnc_port)
+    values = connect_values(vnc_port, vnc_host)
     return Instruction(
         "connect",
         tuple(
@@ -88,6 +90,7 @@ class GuacdTunnel:
         port: int,
         *,
         vnc_port: int,
+        vnc_host: str = VNC_HOST,
         handshake_timeout_s: float = HANDSHAKE_TIMEOUT_S,
     ) -> Self:
         try:
@@ -99,7 +102,7 @@ class GuacdTunnel:
         tunnel = cls(reader, writer, InstructionDecoder(), deque())
         try:
             async with asyncio.timeout(handshake_timeout_s):
-                await tunnel._handshake(vnc_port)
+                await tunnel._handshake(vnc_host, vnc_port)
         except TimeoutError:
             await tunnel.close()
             raise TunnelError("guacd handshake timed out") from None
@@ -130,7 +133,7 @@ class GuacdTunnel:
         with contextlib.suppress(ConnectionError):
             await self._writer.wait_closed()
 
-    async def _handshake(self, vnc_port: int) -> None:
+    async def _handshake(self, vnc_host: str, vnc_port: int) -> None:
         await self.send(Instruction("select", ("vnc",)))
         arguments = await self._expect("args")
         for preference in (
@@ -139,7 +142,7 @@ class GuacdTunnel:
             Instruction("video", ()),
             Instruction("image", IMAGE_MIMETYPES),
             Instruction("timezone", ("UTC",)),
-            connect_instruction(arguments.args, vnc_port=vnc_port),
+            connect_instruction(arguments.args, vnc_port=vnc_port, vnc_host=vnc_host),
         ):
             await self.send(preference)
         await self._expect("ready")

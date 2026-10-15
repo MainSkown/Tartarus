@@ -1,14 +1,10 @@
-import asyncio
-import re
-from collections.abc import Awaitable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
-from fastapi.websockets import WebSocketDisconnect
 from starlette.testclient import TestClient, WebSocketTestSession
-from starlette.types import Message
 
 from app.db.models.analysis import AnalysisStatus
 from app.desktop.admission import (
@@ -16,7 +12,7 @@ from app.desktop.admission import (
     CLOSE_NOT_AVAILABLE_YET,
     CLOSE_NOT_FOUND,
 )
-from app.desktop.guacamole import Instruction, InstructionDecoder, encode
+from app.desktop.guacamole import Instruction, encode
 from app.main import create_app
 from app.ws.desktop import (
     DesktopConfig,
@@ -26,6 +22,16 @@ from app.ws.desktop import (
     router,
 )
 from tests.desktop.fake_guacd import GUEST_OFF, FakeGuacd
+from tests.desktop.sockets import (
+    INTERNAL_FIRST,
+    SyncGuacd,
+    closed_with,
+    desktop_settings,
+    drain_until,
+    instruction_of,
+    next_instruction,
+    open_socket,
+)
 from tests.desktop.stubs import (
     TASK_ID,
     StubLookup,
@@ -36,55 +42,7 @@ from tests.desktop.stubs import (
 
 ANALYSIS_ID = 3
 URL = f"/ws/analyses/{ANALYSIS_ID}/desktop"
-INTERNAL_FIRST = re.compile(
-    r"^0\.,36\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12};$"
-)
 PORT_RECORDED = "interactive=1,nohuman=yes,vnc_port=5902"
-
-
-RECEIVE_TIMEOUT_S = 3.0
-
-
-async def _within(seconds: float, receiving: Awaitable[Message]) -> Message:
-    async with asyncio.timeout(seconds):
-        return await receiving
-
-
-def receive_within(websocket: WebSocketTestSession, seconds: float) -> Message:
-    """The test client's own `receive` blocks forever; a regression should fail, not hang."""
-    receiving = websocket._send_rx.receive()
-    return websocket.portal.call(_within, seconds, receiving)
-
-
-class SyncGuacd:
-    """`FakeGuacd` driven from the test thread; it lives on the loop the app runs on."""
-
-    def __init__(self, client: TestClient, guacd: FakeGuacd) -> None:
-        self._client = client
-        self._guacd = guacd
-
-    @property
-    def received(self) -> list[Instruction]:
-        return list(self._guacd.received)
-
-    @property
-    def opcodes(self) -> list[str]:
-        return self._guacd.opcodes
-
-    def push(self, *instructions: str) -> None:
-        self._client.portal.call(self._guacd.push, *instructions)
-
-    def hang_up(self) -> None:
-        self._client.portal.call(self._hang_up)
-
-    async def _hang_up(self) -> None:
-        self._guacd.hang_up()
-
-    def wait_for_opcode(self, opcode: str) -> Instruction:
-        return self._client.portal.call(self._guacd.wait_for_opcode, opcode)
-
-    def wait_for_disconnect(self) -> None:
-        self._client.portal.call(self._guacd.wait_for_disconnect)
 
 
 @dataclass
@@ -97,9 +55,7 @@ class Desk:
     config: dict[str, Any]
 
     def connect(self) -> WebSocketTestSession:
-        session = self.client.websocket_connect(URL, subprotocols=["guacamole"])
-        session.receive = lambda: receive_within(session, RECEIVE_TIMEOUT_S)
-        return session
+        return open_socket(self.client, URL)
 
 
 def make_desk(after_ready: tuple[str, ...] | None = None, **config: Any) -> Iterator[Desk]:
@@ -111,14 +67,7 @@ def make_desk(after_ready: tuple[str, ...] | None = None, **config: Any) -> Iter
     with TestClient(app) as client:
         fake = client.portal.wrap_async_context_manager(FakeGuacd(**guacd_args))
         with fake as guacd:
-            settings: dict[str, Any] = {
-                "guacd_host": "127.0.0.1",
-                "guacd_port": guacd.port,
-                "port_poll_interval_s": 0.01,
-                "port_wait_timeout_s": 5.0,
-                "status_check_interval_s": 0.02,
-                "handshake_timeout_s": 1.0,
-            } | config
+            settings = desktop_settings(**({"guacd_port": guacd.port} | config))
             app.dependency_overrides[get_analysis_lookup] = lambda: lookup
             app.dependency_overrides[get_task_viewer] = lambda: viewer
             app.dependency_overrides[get_desktop_config] = lambda: DesktopConfig(**settings)
@@ -138,32 +87,6 @@ def desk_with_guest_off() -> Iterator[Desk]:
 @pytest.fixture
 def desk_without_guacd() -> Iterator[Desk]:
     yield from make_desk(guacd_port=1)
-
-
-def receive_until_closed(websocket: WebSocketTestSession) -> None:
-    while True:
-        websocket.receive_text()
-
-
-def closed_with(websocket: WebSocketTestSession) -> WebSocketDisconnect:
-    with pytest.raises(WebSocketDisconnect) as closed:
-        receive_until_closed(websocket)
-    return closed.value
-
-
-def instruction_of(frame: str) -> Instruction:
-    (instruction,) = InstructionDecoder().feed(frame)
-    return instruction
-
-
-def next_instruction(websocket: WebSocketTestSession) -> Instruction:
-    return instruction_of(websocket.receive_text())
-
-
-def drain_until(websocket: WebSocketTestSession, opcode: str) -> Instruction:
-    while (instruction := next_instruction(websocket)).opcode != opcode:
-        pass
-    return instruction
 
 
 def test_the_server_accepts_the_guacamole_subprotocol_the_browser_asks_for(desk: Desk) -> None:

@@ -19,9 +19,9 @@ EXPECTED_CONNECT_VALUES = (
 )
 
 
-async def open_tunnel(guacd: FakeGuacd, *, vnc_port: int = 5900) -> GuacdTunnel:
+async def open_tunnel(guacd: FakeGuacd, *, vnc_port: int = 5900, **host: str) -> GuacdTunnel:
     return await GuacdTunnel.open(
-        "127.0.0.1", guacd.port, vnc_port=vnc_port, handshake_timeout_s=HANDSHAKE_TIMEOUT_S
+        "127.0.0.1", guacd.port, vnc_port=vnc_port, handshake_timeout_s=HANDSHAKE_TIMEOUT_S, **host
     )
 
 
@@ -56,6 +56,16 @@ async def test_the_connect_names_the_vnc_port_it_was_given() -> None:
     (connect,) = [i for i in guacd.received if i.opcode == "connect"]
     assert connect.args[OBSERVED_ARGS.index("hostname")] == "127.0.0.1"
     assert connect.args[OBSERVED_ARGS.index("port")] == "5903"
+
+
+async def test_the_connect_names_the_vnc_host_it_was_given() -> None:
+    async with FakeGuacd() as guacd:
+        tunnel = await open_tunnel(guacd, vnc_host="localhost", vnc_port=5931)
+        await tunnel.close()
+
+    (connect,) = [i for i in guacd.received if i.opcode == "connect"]
+    assert connect.args[OBSERVED_ARGS.index("hostname")] == "localhost"
+    assert connect.args[OBSERVED_ARGS.index("port")] == "5931"
 
 
 async def test_the_connect_follows_the_args_this_guacd_listed() -> None:

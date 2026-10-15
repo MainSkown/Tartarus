@@ -32,6 +32,14 @@ def test_the_connect_uses_the_port_it_is_given() -> None:
     assert instruction == Instruction("connect", ("VERSION_1_5_0", "127.0.0.1", "5917"))
 
 
+def test_the_connect_uses_the_host_it_is_given() -> None:
+    instruction = connect_instruction(
+        ("VERSION_1_5_0", "hostname", "port"), vnc_host="localhost", vnc_port=5931
+    )
+
+    assert instruction == Instruction("connect", ("VERSION_1_5_0", "localhost", "5931"))
+
+
 def test_the_connect_follows_the_order_guacd_listed_even_when_it_changes() -> None:
     names = ("VERSION_1_6_0", "disable-paste", "future-option", "port", "hostname")
 
