@@ -1,8 +1,8 @@
-# Guest provisioning downloads, pinned by sha256. build-guest.sh fetches each into a cache,
+# Guest provisioning downloads, pinned by sha256. the fetch step downloads each into a cache,
 # verifies it against this file, and refuses to build if a hash does not match.
 # Format: <sha256>␠␠<basename>␠<url>. Nothing here is committed to the repo.
 #
-# CAPE's guest agent needs 32-bit (x86) Python; 3.10 < version < 3.13 is preferred
+# The guest agent needs 32-bit (x86) Python; 3.10 < version < 3.13 is preferred
 # (https://capev2.readthedocs.io/en/latest/installation/guest/requirements.html).
 af19e5e2f03e715a822181f2cb7d4efef4eda13fa4a2db6da12e998e46f5cbf9  python-3.11.9.exe  https://www.python.org/ftp/python/3.11.9/python-3.11.9.exe
 7086cc1d5eebb91ad24ded9f58bec6c688e9f0ed7eb3dbbf1e4800280a896496  pillow-10.4.0-cp311-cp311-win32.whl  https://files.pythonhosted.org/packages/4d/d7/a44f193d4c26e58ee5d2d9db3d4854b2cfb5b5e08d360a5e03fe987c0086/pillow-10.4.0-cp311-cp311-win32.whl

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Turns Tamper Protection off in the guest, which lets the Defender policy keys written at
+# provisioning take effect, and proves it with a test file. Idempotent: run again after a pause.
+set -uo pipefail
+# shellcheck source=lib/windows.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
+
+step "Turning Tamper Protection off"
+progress 5
+run_defender_script tamper-off.ps1 \
+    "Windows Security could not be operated automatically. On the guest's desktop open Windows Security, go to the threat protection settings (Manage settings), switch Tamper Protection off, then press Continue."
+progress 100

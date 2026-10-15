@@ -1,0 +1,269 @@
+#!/usr/bin/python3
+"""Builds a guest from the command line, through the running control service.
+
+The same service the wizard uses (`guest-control`), reached from inside the cape container:
+
+    guest-build --profile windows --media Win11.iso --variant 5 --name win \\
+        [--option key=value]... [--username U] [--computer-name N] [--password P] \\
+        [--vcpus N] [--ram-mb N] [--disk-gb N] [--accept-without-selftest]
+
+It starts the build, prints each step as it begins and the build log as it grows, and ends with the
+build: exit 0 when it succeeded, 1 when it failed or the service could not be used, 2 when the
+request was refused as invalid (each problem is listed), 75 when it paused for the analyst (the
+instructions are printed). A succeeded guest is left in state `testing`, waiting for the self-test
+verdict; `--accept-without-selftest` sends the verdict "passed" at once, which makes the guest
+`ready` although no analysis was run.
+
+Environment: GUEST_CONTROL_TOKEN (required), CAPE_CONTROL_IP (default: the control network alias
+`cape-control`, which `docker compose exec` sessions need because the entrypoint exports the address
+to the services only), GUEST_CONTROL_PORT (8002). GUEST_PASSWORD and GUEST_PRODUCT_KEY stand in for
+`--password` and `--option key=...`, so a secret need not be on a command line.
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Mapping, Sequence
+from http import HTTPStatus
+from typing import Any
+
+CONTROL_ALIAS = "cape-control"
+DEFAULT_PORT = 8002
+LOG_TAIL = 2000
+POLL_SECONDS = 3.0
+REQUEST_TIMEOUT_SECONDS = 60
+EXIT_FAILED = 1
+EXIT_INVALID = 2
+EXIT_PAUSED = 75
+SELFTEST_NOTE = {"by": "guest-build CLI, no analysis was run"}
+BOOLEANS = {"true": True, "false": False}
+
+type Json = dict[str, Any]
+
+
+def say(text: str = "") -> None:
+    sys.stdout.write(f"{text}\n")
+    sys.stdout.flush()
+
+
+class CliError(Exception):
+    """Something the person at the terminal should read; `code` is the exit code."""
+
+    def __init__(self, message: str, code: int = EXIT_FAILED) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def control_address(environ: Mapping[str, str]) -> str:
+    return environ.get("CAPE_CONTROL_IP") or CONTROL_ALIAS
+
+
+def control_port(environ: Mapping[str, str]) -> int:
+    return int(environ.get("GUEST_CONTROL_PORT") or DEFAULT_PORT)
+
+
+def new_lines(shown: Sequence[str], tail: Sequence[str]) -> list[str]:
+    """What `tail` (the last lines of the log) adds to `shown`, the tail seen the poll before."""
+    for overlap in range(min(len(shown), len(tail)), 0, -1):
+        if list(shown[-overlap:]) == list(tail[:overlap]):
+            return list(tail[overlap:])
+    return list(tail)
+
+
+class Control:
+    """The control service's JSON API, as the CLI uses it."""
+
+    def __init__(self, environ: Mapping[str, str]) -> None:
+        token = environ.get("GUEST_CONTROL_TOKEN", "")
+        if not token:
+            raise CliError("GUEST_CONTROL_TOKEN is not set; run this inside the cape container")
+        self._base = f"http://{control_address(environ)}:{control_port(environ)}"
+        self._token = token
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def get(self, path: str) -> Any:
+        return self._call("GET", path, None)
+
+    def post(self, path: str, body: Json) -> Any:
+        return self._call("POST", path, body)
+
+    def _call(self, method: str, path: str, body: Json | None) -> Any:
+        request = urllib.request.Request(  # noqa: S310 - the control service's own address
+            f"{self._base}{path}",
+            data=None if body is None else json.dumps(body).encode(),
+            method=method,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with self._opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                text = response.read().decode()
+        except urllib.error.HTTPError as refusal:
+            raise _refusal(refusal) from None
+        except OSError as problem:
+            raise CliError(
+                f"the control service at {self._base} did not answer: {problem}"
+            ) from None
+        return json.loads(text) if text else None
+
+
+def _refusal(error: urllib.error.HTTPError) -> CliError:
+    try:
+        body = json.loads(error.read().decode())
+    except ValueError:
+        body = {}
+    message = body.get("error") or error.reason
+    if error.code == HTTPStatus.UNPROCESSABLE_ENTITY:
+        problems = [f"  {path}: {reason}" for path, reason in (body.get("fields") or {}).items()]
+        return CliError("\n".join([f"the request was refused: {message}", *problems]), EXIT_INVALID)
+    if error.code == HTTPStatus.UNAUTHORIZED:
+        return CliError("the control service refused the token (401); check GUEST_CONTROL_TOKEN")
+    return CliError(f"the control service answered {error.code}: {message}")
+
+
+def typed_options(pairs: Sequence[str], profile: Mapping[str, Any]) -> Json:
+    """`key=value` pairs as the option values the profile's schema types them."""
+    types = {option["key"]: option["type"] for option in profile.get("options", [])}
+    options: Json = {}
+    for pair in pairs:
+        key, separator, value = pair.partition("=")
+        if not separator or not key:
+            raise CliError(f"an option must be key=value, not '{pair}'", EXIT_INVALID)
+        if types.get(key) == "bool":
+            if value.lower() not in BOOLEANS:
+                raise CliError(f"option {key} must be true or false, not '{value}'", EXIT_INVALID)
+            options[key] = BOOLEANS[value.lower()]
+        else:
+            options[key] = value
+    return options
+
+
+def build_request(
+    arguments: argparse.Namespace, profile: Mapping[str, Any], environ: Mapping[str, str]
+) -> Json:
+    option_pairs = list(arguments.option)
+    if environ.get("GUEST_PRODUCT_KEY") and not any(p.startswith("key=") for p in option_pairs):
+        option_pairs.append(f"key={environ['GUEST_PRODUCT_KEY']}")
+    identity = {
+        "account": arguments.username,
+        "machine": arguments.computer_name,
+        "password": arguments.password or environ.get("GUEST_PASSWORD"),
+    }
+    resources = {
+        "vcpus": arguments.vcpus,
+        "ram_mb": arguments.ram_mb,
+        "disk_gb": arguments.disk_gb,
+    }
+    request: Json = {
+        "name": arguments.name,
+        "profile": arguments.profile,
+        "media": {"file": arguments.media, "variant": arguments.variant},
+        "options": typed_options(option_pairs, profile),
+        "identity": {key: value for key, value in identity.items() if value},
+        "resources": {key: value for key, value in resources.items() if value is not None},
+    }
+    return {key: value for key, value in request.items() if value or key in ("name", "profile")}
+
+
+def _profile_named(control: Control, profile_id: str) -> Json:
+    return next((p for p in control.get("/profiles") if p["id"] == profile_id), {})
+
+
+class Progress:
+    """Prints a build's step and percentage when they change, and its log lines once each."""
+
+    def __init__(self, control: Control, build_id: str) -> None:
+        self._control = control
+        self._build_id = build_id
+        self._shown_lines: list[str] = []
+        self._shown_state: tuple[str, int] | None = None
+
+    def show(self, build: Json) -> None:
+        self._print_log()
+        current = build["steps"][build["step"]]["name"] if build["steps"] else ""
+        state = (current, build["percent"])
+        if state != self._shown_state:
+            self._shown_state = state
+            say(f"==> [{build['percent']:3d}%] {current}")
+
+    def _print_log(self) -> None:
+        tail = self._control.get(f"/builds/{self._build_id}/log?tail={LOG_TAIL}")
+        for line in new_lines(self._shown_lines, tail):
+            say(f"    {line}")
+        self._shown_lines = tail
+
+
+def wait_for_end(control: Control, build_id: str, poll_seconds: float) -> Json:
+    progress = Progress(control, build_id)
+    while True:
+        build = control.get(f"/builds/{build_id}")
+        progress.show(build)
+        if build["status"] != "running":
+            return build
+        time.sleep(poll_seconds)
+
+
+def conclude(control: Control, build: Json, accept: bool) -> int:
+    if build["status"] == "paused":
+        say(f"\nBuild {build['id']} is waiting for you:\n")
+        say(build["pause"]["instructions"] if build.get("pause") else "(no instructions)")
+        say(f"\nWhen done, continue it: POST /builds/{build['id']}/continue (the wizard's button).")
+        return EXIT_PAUSED
+    if build["status"] != "succeeded":
+        sys.stderr.write(f"build {build['id']} {build['status']}: {build['message']}\n")
+        return EXIT_FAILED
+    if not accept:
+        say(
+            f"\nGuest {build['guest']} is built and in state 'testing': the self-test has not run, "
+            "so it is not ready for analyses."
+        )
+        return 0
+    control.post(f"/builds/{build['id']}/complete", {"passed": True, "selftest": SELFTEST_NOTE})
+    say(f"\nGuest {build['guest']} is ready (accepted with no self-test: no analysis was run).")
+    return 0
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="guest-build", description="Build a guest and wait.")
+    parser.add_argument("--profile", required=True)
+    parser.add_argument("--media", required=True, help="a file name in the media directory")
+    parser.add_argument("--variant", required=True, help="the image's index or name")
+    parser.add_argument("--name", required=True, help="the guest's name (a lower-case slug)")
+    parser.add_argument("--option", action="append", default=[], metavar="KEY=VALUE")
+    parser.add_argument("--username")
+    parser.add_argument("--computer-name")
+    parser.add_argument("--password")
+    parser.add_argument("--vcpus", type=int)
+    parser.add_argument("--ram-mb", type=int)
+    parser.add_argument("--disk-gb", type=int)
+    parser.add_argument("--accept-without-selftest", action="store_true")
+    parser.add_argument("--poll-seconds", type=float, default=POLL_SECONDS, help=argparse.SUPPRESS)
+    return parser
+
+
+def main(argv: Sequence[str], environ: Mapping[str, str]) -> int:
+    arguments = _parser().parse_args(argv)
+    try:
+        control = Control(environ)
+        profile = _profile_named(control, arguments.profile)
+        request = build_request(arguments, profile, environ)
+        build_id = control.post("/builds", request)["id"]
+        say(f"==> build {build_id} of guest {arguments.name} started")
+        build = wait_for_end(control, build_id, arguments.poll_seconds)
+        return conclude(control, build, arguments.accept_without_selftest)
+    except CliError as error:
+        sys.stderr.write(f"guest-build: {error}\n")
+        return error.code
+    except KeyboardInterrupt:
+        sys.stderr.write("guest-build: stopped waiting; the build carries on in the service\n")
+        return EXIT_FAILED
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:], os.environ))

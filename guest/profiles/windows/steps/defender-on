@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# The reverse of tamper-off for a clone of a Defender-off guest: removes the Defender policy keys,
+# switches Tamper Protection back on and proves real-time protection works with a test file.
+# Idempotent. Not yet run against a real guest.
+set -uo pipefail
+# shellcheck source=lib/windows.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
+
+step "Turning Tamper Protection on"
+progress 5
+run_defender_script defender-on.ps1 \
+    "Windows Security could not be operated automatically. On the guest's desktop open Windows Security, go to the threat protection settings (Manage settings), switch Tamper Protection on, then press Continue."
+progress 100

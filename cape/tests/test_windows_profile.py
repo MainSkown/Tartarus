@@ -17,7 +17,7 @@ from guest_engine.profile import ProfileError, derive_badges, parse_profile
 
 REPO = Path(__file__).parents[2]
 PROFILE_DIR = REPO / "guest" / "profiles" / "windows"
-MANIFEST = REPO / "guest" / "manifest.sha256"
+MANIFEST = PROFILE_DIR / "manifest.sha256"
 SKIPPED_DIRECTORIES = {"__pycache__"}
 
 HOSTILE = "a<b>&\"c'<!--]]></Value><Evil/>"
@@ -97,8 +97,7 @@ class TestProfileFile:
         assert profile.cape.platform == "windows"
         assert profile.cape.tags == ["windows", "win11"]
 
-    def test_hardware_is_what_the_domain_template_defines(self, profile):
-        domain = (REPO / "guest" / "domain.xml.tpl").read_text()
+    def test_hardware_block_matches_the_m0b_guest(self, profile):
         hardware = profile.hardware
         assert (hardware.machine, hardware.boot) == ("q35", "uefi")
         assert (hardware.secure_boot, hardware.tpm) == (True, True)
@@ -107,12 +106,6 @@ class TestProfileFile:
             "e1000e",
             "localtime",
         )
-        assert "machine='q35'" in domain
-        assert "secure='yes'" in domain
-        assert "<tpm model='tpm-crb'>" in domain
-        assert "bus='sata'" in domain
-        assert "<model type='e1000e'/>" in domain
-        assert "<clock offset='localtime'>" in domain
 
     def test_default_resources(self, profile):
         resources = profile.resources
@@ -243,7 +236,7 @@ class TestProfileFile:
     def test_steps_that_use_the_desktop(self, profile):
         every_entry = [entry for _, entry in profile.pipeline_entries()]
         desktop = {entry.step for entry in every_entry if entry.desktop}
-        assert desktop == {"install", "provision", "tamper-off", "reconfigure"}
+        assert desktop == {"install", "provision", "tamper-off", "defender-on", "reconfigure"}
 
     def test_install_keeps_todays_timeout(self, profile):
         install = next(e for e in profile.build_pipeline("installer", {}) if e.step == "install")
@@ -707,6 +700,19 @@ class TestCleanupScript:
         assert "$DoneMarker" in block
         assert "agent.py" in text
         assert "Remove-Item" in text
+
+    def test_removes_the_provisioning_log_once_the_host_has_it(self):
+        text = script_text("cleanup.ps1")
+        assert re.search(r"\$keep = @\(\$KeepAgent, \$DoneMarker\)", text)
+
+
+class TestDesktopOnPausableSteps:
+    def test_every_step_that_can_pause_shows_the_desktop(self):
+        profile = json.loads((PROFILE_DIR / "profile.json").read_text())
+        entries = profile["pipelines"]["clone"] + profile["pipelines"]["build"]["installer"]
+        pausable = {"tamper-off", "defender-on", "reconfigure", "install", "provision"}
+        missing = [e["step"] for e in entries if e["step"] in pausable and not e.get("desktop")]
+        assert missing == []
 
 
 class TestDecoysScript:

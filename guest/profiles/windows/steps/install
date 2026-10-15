@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Installs Windows unattended: stages the answer-file disc, boots the installer with it as the
+# second CD, and waits until the guest has provisioned itself at first logon (its agent answers and
+# its done marker exists). Idempotent: a guest that is already running is waited for, never wiped.
+set -uo pipefail
+# shellcheck source=lib/windows.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
+
+GUARD_S=${INSTALL_GUARD_SECONDS:-7200}
+POLL_S=${INSTALL_POLL_SECONDS:-15}
+KEY_PRESSES=${INSTALL_KEY_PRESSES:-20}
+KEY_INTERVAL_S=${INSTALL_KEY_INTERVAL:-1}
+TYPICAL_INSTALL_S=${INSTALL_TYPICAL_SECONDS:-900}
+AGENT_SCRIPT=${TT_AGENT_SCRIPT:-/opt/CAPEv2/agent/agent.py}
+STAGING=$TT_BUILD_DIR/answer-files
+ANSWER_ISO=$TT_BUILD_DIR/answer.iso
+PROVISION_FILES=(provision.ps1 defender-settings.ps1 decoys.ps1 sysmon-config.xml)
+WAIT_PROGRESS_FROM=10
+WAIT_PROGRESS_TO=95
+
+DONE_MARKER=$(profile_name done_marker)
+marker_present() { guest_agent exists "$DONE_MARKER"; }
+provisioned() { agent_answers && marker_present; }
+
+stage_payload() {
+    local entries entry name
+    mapfile -t entries < <(grep -vE '^[[:space:]]*(#|$)' "$TT_PROFILE_DIR/manifest.sha256")
+    for entry in "${entries[@]}"; do
+        read -r _ name _ <<<"$entry"
+        [[ -f $CACHE_DIR/$name ]] || fail "$name is not in the download cache; the fetch step has to run first"
+        cp "$CACHE_DIR/$name" "$STAGING/payload/$name" || fail "could not copy $name"
+    done
+    [[ -f $AGENT_SCRIPT ]] || fail "the guest agent script is missing: $AGENT_SCRIPT"
+    cp "$AGENT_SCRIPT" "$STAGING/payload/agent.py" || fail "could not copy agent.py"
+}
+
+stage_answer_files() {
+    local file
+    rm -rf "$STAGING"
+    install -d -m 700 "$STAGING" "$STAGING/provision" "$STAGING/payload"
+    python3 -I "$WINDOWS_STEPS_LIB/render_unattend.py" "$STAGING/autounattend.xml" \
+        || fail "could not render the answer file"
+    for file in "${PROVISION_FILES[@]}"; do
+        cp "$TT_PROFILE_DIR/$file" "$STAGING/provision/$file" || fail "could not copy $file"
+    done
+    stage_payload
+    : >"$STAGING/$(profile_name cd_marker_file)"
+}
+
+# The staging folder holds the answer file with the account password in it; the disc is all that stays.
+build_answer_iso() {
+    local label
+    label=$(profile_name cd_volume_label)
+    rm -f "$ANSWER_ISO"
+    if ! xorriso -as mkisofs -quiet -V "$label" -J -joliet-long -r -o "$ANSWER_ISO" "$STAGING"; then
+        rm -rf "$STAGING"
+        fail "could not build the answer-file ISO"
+    fi
+    rm -rf "$STAGING"
+}
+
+boot_installer() {
+    render_domain install --media "$MEDIA_PATH" --extra-media "$ANSWER_ISO"
+    define_rendered install
+    vsh start "$GUEST_NAME" >/dev/null || fail "the guest did not start"
+}
+
+# Microsoft's UEFI media shows "Press any key to boot from CD" for about five seconds, a second or
+# two after power-on; without a key the firmware falls through to the empty disk. Stop well before
+# Setup's window appears: its focused button is Cancel, and a stray Enter there opens an exit
+# dialog. Only the first boot is nudged; after Setup's own reboot the prompt times out and the
+# installed disk boots.
+dismiss_press_any_key() {
+    local press
+    for ((press = 0; press < KEY_PRESSES; press++)); do
+        vsh send-key "$GUEST_NAME" KEY_ENTER >/dev/null 2>&1
+        sleep "$KEY_INTERVAL_S"
+    done
+}
+
+WAIT_STARTED=$SECONDS
+WAIT_MINUTES_LOGGED=0
+WAIT_PERCENT_SHOWN=0
+
+report_wait() {
+    local elapsed=$((SECONDS - WAIT_STARTED)) percent
+    percent=$((WAIT_PROGRESS_FROM + (WAIT_PROGRESS_TO - WAIT_PROGRESS_FROM) * elapsed / TYPICAL_INSTALL_S))
+    percent=$((percent < WAIT_PROGRESS_TO ? percent : WAIT_PROGRESS_TO))
+    if ((percent > WAIT_PERCENT_SHOWN)); then
+        WAIT_PERCENT_SHOWN=$percent
+        progress "$percent"
+    fi
+    if ((elapsed / 60 > WAIT_MINUTES_LOGGED)); then
+        WAIT_MINUTES_LOGGED=$((elapsed / 60))
+        log "Windows is installing and provisioning itself ($WAIT_MINUTES_LOGGED min so far)"
+    fi
+}
+
+# provision.ps1 starts the agent before it writes its last log lines and the done marker, so the
+# agent alone does not mean provisioning finished.
+provisioning_poll() {
+    domain_running || fail "the guest stopped (it is $(domain_state)) before provisioning finished; look at its console"
+    provisioned && return 0
+    report_wait
+    return 1
+}
+
+wait_for_provisioning() {
+    WAIT_STARTED=$SECONDS
+    wait_for "$GUARD_S" "$POLL_S" provisioning_poll || fail "provisioning did not finish within ${GUARD_S}s"
+}
+
+step "Installing Windows"
+progress 1
+[[ -n $MEDIA_PATH ]] || fail "the guest record names no installation medium"
+if domain_running; then
+    if provisioned; then
+        progress 100
+        log "provisioning had already finished"
+        exit 0
+    fi
+    log "the guest is already running; waiting for it instead of starting the installation again"
+else
+    stage_answer_files
+    progress 5
+    build_answer_iso
+    progress 8
+    boot_installer
+    progress "$WAIT_PROGRESS_FROM"
+    dismiss_press_any_key
+fi
+wait_for_provisioning
+progress 100
+log "Windows is installed and has provisioned itself"

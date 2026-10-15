@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# After the guest has provisioned itself at first logon: copy its provisioning log off the guest
+# (cleanup removes the installers around it), show it in the build log, then run the cleanup.
+# Idempotent: the log copy is kept, so running again after the guest's own copy is gone still works.
+set -uo pipefail
+# shellcheck source=lib/windows.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
+
+AGENT_WAIT_S=${PROVISION_AGENT_WAIT_SECONDS:-300}
+AFTER_CLEANUP_WAIT_S=${PROVISION_AFTER_CLEANUP_WAIT_SECONDS:-60}
+AGENT_PROBE_INTERVAL_S=${PROVISION_PROBE_SECONDS:-5}
+LOG_COPY=$TT_BUILD_DIR/provision.log
+context_var WORK_DIR guest.work_dir
+LOG_NAME=$(profile_name log_file)
+DONE_MARKER=$(profile_name done_marker)
+
+wait_for_agent() { wait_for "$1" "$AGENT_PROBE_INTERVAL_S" agent_answers; }
+
+save_guest_log() {
+    local fetched
+    fetched=$(mktemp "$TT_BUILD_DIR/guest-log.XXXXXX")
+    if guest_agent retrieve "$LOG_NAME" "$fetched"; then
+        # The guest writes CR LF, and once left NUL bytes where the end of the file was still unflushed.
+        tr -d '\r\0' <"$fetched" >"$LOG_COPY"
+    elif [[ -s $LOG_COPY ]]; then
+        log "the guest's copy of the provisioning log is gone; using the log saved earlier"
+    else
+        rm -f "$fetched"
+        fail "could not fetch the provisioning log from the guest"
+    fi
+    rm -f "$fetched"
+}
+
+# Every line is a LOG line: a line of the guest's file must never be taken for a protocol line.
+show_guest_log() {
+    local line
+    while IFS= read -r line || [[ -n $line ]]; do
+        log "guest: $line"
+    done <"$LOG_COPY"
+    local failed
+    failed=$(grep -c 'FAILED' "$LOG_COPY")
+    ((failed == 0)) || log "$failed provisioning step(s) failed in the guest; the lines above say which"
+}
+
+clean_up_guest() {
+    local output code
+    output=$(guest_agent run cleanup.ps1 --arg "WorkDir=$WORK_DIR" --arg "LogName=$LOG_NAME" --arg "DoneMarker=$DONE_MARKER")
+    code=$?
+    [[ -z $output ]] || printf '%s\n' "$output"
+    ((code == 0)) || fail "the cleanup in the guest failed (exit code $code): $(result_summary "$output")"
+}
+
+step "Collecting the provisioning log"
+progress 5
+wait_for_agent "$AGENT_WAIT_S" || fail "the guest agent did not answer within ${AGENT_WAIT_S}s"
+save_guest_log
+show_guest_log
+progress 40
+step "Cleaning up the guest"
+clean_up_guest
+progress 80
+wait_for_agent "$AFTER_CLEANUP_WAIT_S" || fail "the guest agent stopped answering after the cleanup"
+progress 100
+log "the guest is provisioned and cleaned up"

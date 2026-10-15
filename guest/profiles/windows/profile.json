@@ -200,6 +200,7 @@
       },
       {
         "step": "defender-on",
+        "desktop": true,
         "timeout_s": 600,
         "weight": 5,
         "when": {

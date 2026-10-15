@@ -1,8 +1,8 @@
 #requires -version 5
 <#
-  Removes the installers and provisioning payload from WorkDir once the build has fetched the
-  provisioning log (so the log is gone only after it is safely off the guest), keeping the agent
-  so the scheduled task keeps working. Run by the host step through the agent, after provision.ps1.
+  Removes the installers, the provisioning payload and the provisioning log from WorkDir once the
+  build has fetched the log (so it is gone only after it is safely off the guest), keeping the
+  agent so the scheduled task keeps working. Run by the host step through the agent, after provision.ps1.
 #>
 [CmdletBinding()]
 param(
@@ -13,7 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$keep = @($KeepAgent, $LogName, $DoneMarker)
+$keep = @($KeepAgent, $DoneMarker)
 
 Get-ChildItem -Path $WorkDir -File -ErrorAction SilentlyContinue | Where-Object {
   $keep -notcontains $_.Name
