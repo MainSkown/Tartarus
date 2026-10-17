@@ -9,6 +9,7 @@ import { failed, succeeded } from './annotation-fixtures'
 
 const api = vi.hoisted(() => ({
   guestsList: vi.fn(),
+  guestsMedia: vi.fn(),
   guestsProfiles: vi.fn(),
   guestsReadBuild: vi.fn(),
   guestsActiveBuild: vi.fn(),
@@ -64,6 +65,7 @@ beforeEach(() => {
   Notify.create = vi.fn()
   api.systemHealth.mockResolvedValue({ data: undefined })
   api.guestsList.mockReset().mockResolvedValue(succeeded(READY))
+  api.guestsMedia.mockReset().mockResolvedValue(succeeded([]))
   api.guestsProfiles.mockReset().mockResolvedValue(succeeded([{ id: 'windows', display_name: 'Windows 11' }]))
   api.guestsReadBuild.mockReset().mockResolvedValue(succeeded(build()))
   api.guestsActiveBuild.mockReset().mockResolvedValue(failed('no build', 404))

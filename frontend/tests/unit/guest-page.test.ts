@@ -9,6 +9,7 @@ import { buildFixture, guestFixture } from './guest-fixtures'
 
 const api = vi.hoisted(() => ({
   guestsList: vi.fn(),
+  guestsMedia: vi.fn(),
   guestsProfiles: vi.fn(),
   guestsReadBuild: vi.fn(),
   guestsActiveBuild: vi.fn(),
@@ -60,6 +61,7 @@ beforeEach(() => {
   Notify.create = vi.fn()
   api.systemHealth.mockResolvedValue({ data: undefined })
   api.guestsList.mockReset().mockResolvedValue(succeeded([lab1, lab2, lab4]))
+  api.guestsMedia.mockReset().mockResolvedValue(succeeded([]))
   api.guestsProfiles.mockReset().mockResolvedValue(succeeded([{ id: 'windows', display_name: 'Windows 11' }]))
   api.guestsReadBuild.mockReset().mockResolvedValue(succeeded(buildFixture()))
   api.guestsActiveBuild.mockReset().mockResolvedValue(failed('none', 404))

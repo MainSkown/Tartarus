@@ -20,6 +20,7 @@ vi.mock('@/api', () => ({
   analysesRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
   rulesList: vi.fn().mockResolvedValue({ data: [] }),
   guestsList: vi.fn().mockResolvedValue({ data: [], error: undefined }),
+  guestsMedia: vi.fn().mockResolvedValue({ data: [], error: undefined }),
   guestsProfiles: vi.fn().mockResolvedValue({ data: [] }),
   guestsActiveBuild: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
   guestsReadBuild: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
