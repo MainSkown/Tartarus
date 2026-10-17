@@ -20,7 +20,9 @@ what the specs say; the specs are updated as the tasks land, not before.
 
 **Wave 1 (spikes) done 2026-10-15. Wave 2 done 2026-10-15** (C1, C2a, C2b-1, C2b-2a, C2b-2b, C3, C4, G1;
 commits 54353d8 to 6785331). **Wave 3 done 2026-10-16** (B1 to B5, C2b-3 and C5; commits 4166eb3 to 481eb52).
-Waves 4 and 5 (frontend, proof) are not started.
+**Wave 4 done 2026-10-17** (F15 to F18; commits a4b62b2 to 6b0b647): the Guests page, choosing a guest, the
+build wizard and clone form, and the build page, each reviewed by the user from screenshot Artifacts and approved
+(one round each; the only comment, a clogged header popover, was fixed in 8530db3). Wave 5 (proof) is next.
 
 What wave 3 proved on the real stack, through the public API only:
 
