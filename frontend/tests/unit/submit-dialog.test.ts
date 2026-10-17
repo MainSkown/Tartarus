@@ -5,6 +5,7 @@ import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisRead, ErrorEnvelope, Guest, GuestProfile, SystemHealth } from '@/api'
+import { BUILT_ROUTES } from '@/services/routes'
 
 const READY: SystemHealth = {
   postgres: { status: 'ok', message: null },
@@ -230,7 +231,7 @@ describe('SubmitDialog', () => {
       const { wrapper } = await mountDialog()
       const radios = wrapper.findAll<HTMLInputElement>('input[name="route"]')
 
-      expect(radios.map((radio) => radio.element.value)).toEqual(['inetsim', 'none', 'drop', 'internet'])
+      expect(radios.map((radio) => radio.element.value)).toEqual(BUILT_ROUTES)
       expect(wrapper.find<HTMLInputElement>('#route-inetsim').element.checked).toBe(true)
     })
 

@@ -2,11 +2,10 @@
 import { onMounted, reactive, ref, toRef } from 'vue'
 import { Notify } from 'quasar'
 import { settingsRead, settingsReplace } from '@/api'
-import type { Route, SettingsBody } from '@/api'
+import type { SettingsBody } from '@/api'
 import { useDefaultGuestField } from '@/composables/use-default-guest-field'
+import { BUILT_ROUTES } from '@/services/routes'
 import { validationIssues } from '@/services/validation-errors'
-
-const ROUTES: Route[] = ['none', 'drop', 'internet', 'inetsim', 'tor', 'vpn', 'wireguard', 'socks5']
 
 type LoadStatus = 'loading' | 'loaded' | 'failed'
 
@@ -95,7 +94,7 @@ onMounted(() => {
           aria-label="Default route"
         >
           <template
-            v-for="route in ROUTES"
+            v-for="route in BUILT_ROUTES"
             :key="route"
           >
             <input

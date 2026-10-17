@@ -13,7 +13,7 @@ import { mockGuests } from './guest-data'
 // Deliberately not the backend's defaults, so the screenshot proves the page is rendering
 // server-returned values rather than hardcoded fallbacks.
 const STORED_SETTINGS: SettingsBody = {
-  default_route: 'tor',
+  default_route: 'drop',
   default_timeout: 240,
   default_interactive: true,
   disk_warn_gb: 80,
@@ -30,7 +30,7 @@ test('settings-loaded', async ({ page }) => {
   await page.goto('/settings')
   await expect(page.locator('.save-btn')).toBeVisible()
   await expect(page.getByLabel('DEFAULT TIMEOUT')).toHaveValue('240')
-  await expect(page.locator('input[value="tor"]')).toBeChecked()
+  await expect(page.locator('input[value="drop"]')).toBeChecked()
   await page.screenshot({ path: screenshotPath('settings-loaded') })
 })
 

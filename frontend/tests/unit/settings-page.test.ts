@@ -4,6 +4,7 @@ import { Notify, Quasar, QInput, QSelect } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { guestsList, settingsRead, settingsReplace, type ErrorEnvelope, type Guest, type SettingsBody } from '@/api'
 import SettingsPage from '@/pages/SettingsPage.vue'
+import { BUILT_ROUTES } from '@/services/routes'
 
 vi.mock('@/api', () => ({
   settingsRead: vi.fn(),
@@ -101,6 +102,13 @@ describe('SettingsPage', () => {
     expect(numberInput(wrapper, 'DISK BLOCK (GB)').find('input').element.value).toBe('20')
     expect(wrapper.find<HTMLInputElement>('input[value="inetsim"]').element.checked).toBe(true)
     expect(wrapper.find<HTMLInputElement>('.checkbox-input').element.checked).toBe(true)
+  })
+
+  it('offers only the built routes as default route', async () => {
+    const wrapper = await mountLoaded()
+    const radios = wrapper.findAll<HTMLInputElement>('input[name="default-route"]')
+
+    expect(radios.map((radio) => radio.element.value)).toEqual(BUILT_ROUTES)
   })
 
   it('offers a retry when the read fails', async () => {

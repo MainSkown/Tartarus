@@ -9,14 +9,13 @@ import { useGuestChoice } from '@/composables/use-guest-choice'
 import { sha256Hex } from '@/services/file-hash'
 import { formatFileSize } from '@/services/file-size'
 import { useGuestBlockReason } from '@/services/guest-gate'
+import { BUILT_ROUTES } from '@/services/routes'
 import type { ValidationIssue } from '@/services/validation-errors'
 import { SubmissionRejected, useAnalysesStore, type SubmitOptions } from '@/stores/analyses'
 
 defineEmits([...useDialogPluginComponent.emits])
 const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginComponent()
 
-// The built subset of Route: VPN, WireGuard and SOCKS5 appear only once configured (gui spec).
-const ROUTES: Route[] = ['inetsim', 'none', 'drop', 'internet']
 const TIMEOUT_MIN_SECONDS = 60
 const TIMEOUT_MAX_SECONDS = 1200
 const SECONDS_PER_MINUTE = 60
@@ -75,7 +74,7 @@ const submitOptions = computed<SubmitOptions>(() => ({
 
 async function applySettingsDefaults(): Promise<void> {
   const { data } = await settingsRead()
-  if (data?.default_route && ROUTES.includes(data.default_route)) route.value = data.default_route
+  if (data?.default_route && BUILT_ROUTES.includes(data.default_route)) route.value = data.default_route
   const defaultTimeout = data?.default_timeout
   if (defaultTimeout && defaultTimeout >= TIMEOUT_MIN_SECONDS && defaultTimeout <= TIMEOUT_MAX_SECONDS) {
     timeoutText.value = String(defaultTimeout)
@@ -275,7 +274,7 @@ onMounted(() => {
             aria-label="Network route"
           >
             <template
-              v-for="option in ROUTES"
+              v-for="option in BUILT_ROUTES"
               :key="option"
             >
               <input

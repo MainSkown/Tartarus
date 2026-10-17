@@ -32,6 +32,9 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 - Windows hosts. Planned after v1 as experimental, via WSL2 + nested KVM.
 - Linux, Android or other guests. Creating a guest is OS-independent from M6 (an operating system is a
   [guest profile](../specs/guest-profiles.md)), but Windows is the only profile built.
+- Tunnel routes: Tor, VPN, WireGuard and SOCKS5. Planned after v1. The API accepts them as a `Route`, but no
+  tunnel is built, so Settings and the submit dialog offer only INetSim, none, drop and internet until the
+  rooter can send an analysis through a configured tunnel ([architecture](../architecture.md)).
 - URL and archive submission; PCAP or memory-image import.
 - Parallel analyses.
 - Comparing analyses and searching across analyses.
