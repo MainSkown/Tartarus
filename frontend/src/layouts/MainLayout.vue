@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import GuestHealthMenu from '@/components/guest/GuestHealthMenu.vue'
 import HealthDot from '@/components/HealthDot.vue'
 import { useReportNotices } from '@/composables/use-report-notices'
 import { useGuestBlockReason } from '@/services/guest-gate'
 import { openSubmitDialog } from '@/services/submit-dialog'
+import { useGuestsStore } from '@/stores/guests'
 import { useSystemStore } from '@/stores/system'
 
 interface NavItem {
@@ -24,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 const system = useSystemStore()
+const guests = useGuestsStore()
 const route = useRoute()
 const drawerExpanded = ref(false)
 
@@ -74,11 +77,23 @@ useReportNotices()
             :status="system.health?.cape.status ?? 'down'"
             :message="system.health?.cape.message"
           />
-          <HealthDot
-            label="Guest"
-            :status="system.health?.guest.status ?? 'down'"
-            :message="system.health?.guest.message"
-          />
+          <button
+            type="button"
+            class="guest-health-trigger"
+            aria-haspopup="true"
+          >
+            <HealthDot
+              label="Guest"
+              :status="system.health?.guest.status ?? 'down'"
+              :message="system.health?.guest.message"
+            />
+            <q-menu @before-show="guests.load">
+              <GuestHealthMenu
+                :guests="guests.guests"
+                :message="system.guestMessage"
+              />
+            </q-menu>
+          </button>
           <HealthDot
             label="Store"
             :status="system.storeStatus ?? 'down'"
@@ -190,6 +205,18 @@ useReportNotices()
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
+}
+
+.guest-health-trigger {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.guest-health-trigger:hover :deep(.health-dot__label),
+.guest-health-trigger:focus-visible :deep(.health-dot__label) {
+  color: var(--blue-hover);
 }
 
 .submit-wrapper {

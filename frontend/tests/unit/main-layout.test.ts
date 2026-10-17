@@ -1,9 +1,10 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { QDrawer, Quasar } from 'quasar'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SystemHealth } from '@/api'
+import { guestFixture } from './guest-fixtures'
 
 const HEALTHY: SystemHealth = {
   postgres: { status: 'ok', message: null },
@@ -18,6 +19,10 @@ vi.mock('@/api', () => ({
   analysesList: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
   analysesRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
   rulesList: vi.fn().mockResolvedValue({ data: [] }),
+  guestsList: vi.fn().mockResolvedValue({ data: [], error: undefined }),
+  guestsProfiles: vi.fn().mockResolvedValue({ data: [] }),
+  guestsActiveBuild: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
+  guestsReadBuild: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
   annotationsListTags: vi.fn().mockResolvedValue({ data: [] }),
   annotationsRead: vi.fn().mockResolvedValue({ data: { tags: [], notes: [] } }),
 }))
@@ -42,6 +47,7 @@ const { createAppRouter } = await import('@/router')
 const App = (await import('@/App.vue')).default
 const { useSystemStore } = await import('@/stores/system')
 const { openSubmitDialog } = await import('@/services/submit-dialog')
+const { guestsList } = await import('@/api')
 
 const GUEST_READY: SystemHealth = { ...HEALTHY, guest: { status: 'ok', message: null } }
 
@@ -124,6 +130,50 @@ describe('MainLayout', () => {
       expect.stringContaining('Guest'),
       expect.stringContaining('Store'),
     ])
+  })
+
+  describe('guest health popover', () => {
+    afterEach(() => {
+      document.body.innerHTML = ''
+    })
+
+    async function openGuestPopover() {
+      vi.mocked(guestsList).mockResolvedValue({
+        data: [guestFixture(), guestFixture({ name: 'lab4', state: 'building', badges: [] })],
+        error: undefined,
+      } as Awaited<ReturnType<typeof guestsList>>)
+      const { wrapper, store } = await mountShellAt('/')
+      store.health = { ...HEALTHY, guest: { status: 'degraded', message: 'degraded: lab4 is building' } }
+      await wrapper.find('.guest-health-trigger').trigger('click')
+      await flushPromises()
+      return wrapper
+    }
+
+    it('opens on a click on the guest dot, listing every guest and the aggregate message', async () => {
+      await openGuestPopover()
+      const menu = document.body.querySelector('.guest-health-menu')!
+      expect(menu.textContent).toContain('lab1')
+      expect(menu.textContent).toContain('lab4')
+      expect(menu.textContent).toContain('BUILDING')
+      expect(menu.textContent).toContain('degraded: lab4 is building')
+      expect(menu.querySelector('a[href="/guest"]')?.textContent).toContain('OPEN GUEST VM')
+    })
+
+    it('reads the guests when it opens, not before', async () => {
+      vi.mocked(guestsList).mockClear()
+      await mountShellAt('/')
+      expect(guestsList).not.toHaveBeenCalled()
+      await openGuestPopover()
+      expect(guestsList).toHaveBeenCalledTimes(1)
+    })
+
+    it('is a button the keyboard can reach, around the guest dot only', async () => {
+      const { wrapper } = await mountShellAt('/')
+      const triggers = wrapper.findAll('.guest-health-trigger')
+      expect(triggers).toHaveLength(1)
+      expect(triggers[0]!.element.tagName).toBe('BUTTON')
+      expect(triggers[0]!.find('.health-dot').attributes('aria-label')).toContain('Guest')
+    })
   })
 
   it('hides the reconnect bar while the connection is open', async () => {

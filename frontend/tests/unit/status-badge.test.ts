@@ -3,6 +3,7 @@ import { Quasar } from 'quasar'
 import { describe, expect, it } from 'vitest'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { ANALYSIS_STATUSES, analysisStatusMeta } from '@/services/analysis-status'
+import { GUEST_STATES, guestStateMeta } from '@/services/guest-state'
 import { VALIDITIES, validityMeta } from '@/services/rule-view'
 
 function mountBadge(status: (typeof ANALYSIS_STATUSES)[number]) {
@@ -58,5 +59,21 @@ describe('StatusBadge for a rule validity', () => {
     expect(wrapper.attributes('style')).toContain(`var(${meta.color})`)
     expect(wrapper.classes()).toContain(`status-badge--${validity}`)
     expect(wrapper.find('.live-dot').exists()).toBe(false)
+  })
+})
+
+describe('StatusBadge for a guest state', () => {
+  it.each(GUEST_STATES)('shows the label, icon and colour of %s', (guestState) => {
+    const wrapper = mount(StatusBadge, { global: { plugins: [Quasar] }, props: { guestState } })
+    const meta = guestStateMeta(guestState)
+    expect(wrapper.text()).toContain(meta.label)
+    expect(wrapper.find('.q-icon').text()).toBe(meta.icon)
+    expect(wrapper.attributes('style')).toContain(`var(${meta.color})`)
+    expect(wrapper.classes()).toContain(`status-badge--${guestState}`)
+  })
+
+  it.each(GUEST_STATES)('shows the live dot for %s only while a build job is running', (guestState) => {
+    const wrapper = mount(StatusBadge, { global: { plugins: [Quasar] }, props: { guestState } })
+    expect(wrapper.find('.live-dot').exists()).toBe(guestStateMeta(guestState).active)
   })
 })

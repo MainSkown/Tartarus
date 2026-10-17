@@ -16,7 +16,11 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/AnalysisPage.vue'),
       },
       { path: 'rules', name: 'rules', component: () => import('@/pages/RulesPage.vue') },
-      { path: 'guest', name: 'guest', component: () => import('@/pages/PlaceholderPage.vue') },
+      { path: 'guest', name: 'guest', component: () => import('@/pages/GuestPage.vue') },
+      // The wizard, clone form and build progress are built by their own tasks.
+      { path: 'guest/new', name: 'guest-new', component: () => import('@/pages/PlaceholderPage.vue') },
+      { path: 'guest/clone/:name', name: 'guest-clone', component: () => import('@/pages/PlaceholderPage.vue') },
+      { path: 'guest/builds/:buildId', name: 'guest-build', component: () => import('@/pages/PlaceholderPage.vue') },
       { path: 'settings', name: 'settings', component: () => import('@/pages/SettingsPage.vue') },
       {
         path: ':pathMatch(.*)*',

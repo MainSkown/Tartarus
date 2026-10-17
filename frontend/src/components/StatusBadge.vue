@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AnalysisStatus, Validity } from '@/api'
+import type { AnalysisStatus, GuestState, Validity } from '@/api'
 import { analysisStatusMeta } from '@/services/analysis-status'
+import { guestStateMeta } from '@/services/guest-state'
 import { validityMeta } from '@/services/rule-view'
 
-// One badge look for both: an analysis `status`, or a rule's `validity`.
-const props = defineProps<{ status?: AnalysisStatus; validity?: Validity }>()
+// One badge look for all three: an analysis `status`, a rule's `validity`, or a guest's state.
+const props = defineProps<{ status?: AnalysisStatus; validity?: Validity; guestState?: GuestState }>()
 
-const kind = computed(() => props.validity ?? props.status!)
-const meta = computed(() => (props.validity ? validityMeta(props.validity) : analysisStatusMeta(props.status!)))
+const kind = computed(() => props.guestState ?? props.validity ?? props.status!)
+const meta = computed(() => {
+  if (props.guestState) return guestStateMeta(props.guestState)
+  return props.validity ? validityMeta(props.validity) : analysisStatusMeta(props.status!)
+})
 </script>
 
 <template>
