@@ -650,6 +650,11 @@ pre,
   font-family: var(--font-mono);
   letter-spacing: 1px;
 }
+/* Quasar centres a dense label with top: 10px and leaves the line height to the font, so the
+   mono face puts it ~1px above the middle of the 40px control. An explicit 20px line box centres it. */
+.q-field--dense .q-field__label {
+  line-height: 20px;
+}
 
 /* Tables */
 .q-table__container {
