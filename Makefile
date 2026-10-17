@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-cape test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest e2e hooks
+.PHONY: help dev up down logs test test-cape test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest verify-wizard e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -59,6 +59,9 @@ build-guest: ## Build the Windows analysis guest unattended and register it with
 
 verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; needs make build-guest first)
 	scripts/verify-guest.sh
+
+verify-wizard: ## Prove the guest wizard's path through the public API: clone a ready guest, check the gates, run an analysis on it, delete it (about 6 minutes; needs the stack up and a ready guest)
+	python3 -I scripts/verify-wizard.py --sample "$${SAMPLE:?SAMPLE=path to a harmless Windows .exe}"
 
 e2e: ## End-to-end check against the running stack, up to date (make up) and with the built guest, slow: submit, live feed, views, Sigma rules (shipped set, the self-test alert live and final, disable and re-ingest), the query API, the analyst's tags and notes (added, filtered, kept by a re-ingest, removed with the analysis), the STIX, MISP and CSV IOC exports, the HTML and PDF reports as jobs, and the Events and Timeline tabs and the tag, note, export and report flows in a browser; DRILLS=1 adds the failure drills, DESKTOP=1 the interactive desktop (long)
 	E2E_DRILLS=$(or $(DRILLS),0) E2E_DESKTOP=$(or $(DESKTOP),0) scripts/e2e.sh
