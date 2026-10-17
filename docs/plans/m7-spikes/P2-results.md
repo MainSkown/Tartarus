@@ -164,3 +164,89 @@ and 14 detections, score 6.0, screenshots 2 to 4). The "(n)" counts in the detec
 - Variance: one run per mode, except the 409 and refusal checks, which are single calls. No repeats were made, so
   there is no spread to set against the numbers above.
 - The frontend `+60S` button (outside this spike).
+
+## Round 2 (after the end-request fix)
+
+Run on 2026-10-17 (local 18:09 to 18:15, UTC 16:09 to 16:15) on the rebuilt stack, guest `lab3`, sample `benign.exe`,
+route `inetsim`, package `exe`, interactive, timeout 120 in both runs. Driver: `scratchpad/p2b/p2b_run.py` (modes
+`restart` and `normal`), which imports `scratchpad/p2/p2_run.py` unchanged. No live socket was opened and no extend
+or finish was called in either run. Both analyses were deleted afterwards (`DELETE` 204). Nothing was committed and
+no product, docker or compose file was changed. The backend restart was the one `docker compose restart backend` in run 1.
+All times below are UTC; "monitor" is the oldest `logs/*.bson` mtime, as in round 1.
+
+### Verdict
+
+**Run 1 (restart in the middle of the run): PASS.** **Run 2 (normal path, log check): PASS.** No requirement failed.
+The backend log has no WARNING or ERROR line for either run, so no `Ending analysis ... failed` line appeared.
+
+### Run 1: backend restart at monitor + 45 s (analysis 262, CAPE task 250)
+
+| Item | Value |
+|---|---|
+| submitted / started_at | 16:09:12.92 / 16:09:13 |
+| monitor (oldest bson mtime) | 16:09:27.931 |
+| deadline_at, seen by GET | 16:11:27.931337 (first seen +1.25 s after monitor) |
+| deadline_at before restart / after restart | 16:11:27.931337 / 16:11:27.931337 (unchanged) |
+| restart issued | +45.42 s; `docker compose restart backend` returned rc 0 after 0.97 s |
+| backend log around the restart | "Shutting down" 16:10:13.74, "Backend started" 16:10:16.03 (about 2.3 s down) |
+| first 200 after restart | +48.41 s, status `running`, same `deadline_at` |
+| status left `running` | 16:11:32.43 (processing), **deadline + 4.50 s** |
+| `ingesting` / `done` | 16:11:36.49 / 16:11:37.02 (done = deadline + 9.09 s) |
+| processing time (processing to done) | 4.6 s |
+| result | done, score 6.0, max severity high, error null |
+| events / processes / detections | 4129 / 6 / 14 |
+| screenshots / pcap / network | 1 / 264357 bytes / 150 flows, 5 hosts |
+
+Requirements: still `running` after the backend was back (PASS). `deadline_at` unchanged (PASS). Backend ended the run at
+the deadline, leaving `running` 4.50 s after it (PASS). Done with a readable pcap and a summary (PASS). Events and
+processes comparable with round 1 (4129 against 4158; 6 processes against 6) (PASS). The live view was not checked, as the
+spec allowed. The process list includes `benign.exe`.
+
+### Run 2: normal path, no calls (analysis 263, CAPE task 251)
+
+| Item | Value |
+|---|---|
+| submitted / started_at | 16:11:46.20 / 16:11:46 |
+| monitor | 16:12:01.922 |
+| deadline_at, seen by GET | 16:14:01.922212 (first seen +0.54 s after monitor) |
+| calls made | none |
+| status left `running` | 16:14:06.82 (processing), **deadline + 4.90 s** |
+| `ingesting` / `done` | 16:14:10.89 / 16:14:11.39 (done = deadline + 9.47 s) |
+| processing time | 4.6 s |
+| result | done, score 6.0, error null |
+| events / processes / detections | 4163 / 6 / 14 |
+| screenshots / pcap / network | 2 / 335825 bytes / 191 flows, 5 hosts |
+
+Requirement: ended at the deadline with no call (PASS).
+
+### Backend log (`docker compose logs --since 2026-10-17T18:09:12+02:00 backend`)
+
+- WARNING or ERROR lines in that window: **none**. Checked with `grep -E ' (WARNING|ERROR) '` (0 lines) and with a grep
+  for `warn|error|fail|Ending|Traceback` (no matches for analysis 262 or 263).
+- Lifecycle lines: `Analysis 262 ended as done` at 16:11:36.82 and `Analysis 263 ended as done` at 16:14:10.99. The
+  runner logs nothing on a successful end request, so the log cannot show how many end requests were sent.
+
+### Anomalies and caveats
+
+1. **Restart timing against the brief.** The brief said the sample had been running for about 25 s at monitor + 45 s.
+   Round 1 and R4 put the sample's start 5 to 6 s after the monitor, so at the restart the sample had most likely run
+   about 40 s. I did not measure the sample start directly, so this is not verified. The restart came before the deadline, while the
+   status was `running`; whether the sample was still executing at that moment is not measured.
+2. **The driver saw nothing during the outage.** The restart call blocks the driver's poll loop for about 1 s, and the
+   first GET after it returned 200 at +48.41 s. No 502 was seen on a poll, unlike round 1's R4 (502 on three polls).
+   This is a gap in the observation, not evidence the API stayed up.
+3. **Screenshots in run 1: 1.** Round 1 had 2, run 2 had 2, and S1's range was 2 to 4. Not investigated.
+4. **Lag before `running` ended.** Run 1 4.50 s and run 2 4.90 s, against 10.72 s (R1), 9.35 s (R2) and 5.88 s (R4)
+   in round 1. The round 1 502 retry is gone in round 2, which fits the fix, but two runs cannot show that the lag
+   changed for that reason. Not attributed.
+5. **Events during the outage were not compared.** The driver deleted analysis 262 at the end, so the events around the
+   restart window (about 16:10:13 to 16:10:16 UTC) cannot be counted now.
+
+### Not verified
+
+- That the runner sends the end request exactly once now. The backend log has no line for a successful send, so this needs
+  the guest agent's own log or a counter. Only the absence of the 502 WARNING is shown.
+- A restart while the run is in the ending state (after the deadline, before `done`), and a restart after `done`.
+- The guest unreachable at the deadline (the retry path that the fix keeps). Not triggered.
+- Repeats: one run per mode, no spread.
+- The live view across the restart (not required by the brief).
