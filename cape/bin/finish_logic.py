@@ -3,8 +3,7 @@
 CAPE's analyzer in the guest stops the analysis as soon as a folder named md5("cape-<task id>")
 exists in the guest's temp directory (analyzer/windows/analyzer.py, analysis_loop). The guest
 network exists only inside the cape container, so only a service in it can ask the agent to
-create that folder. Used by `finish-run` (one fixed guest) and `guest-control` (the guest named
-in the request).
+create that folder. Used by `guest-control`, for the guest named in the request.
 """
 
 import hashlib

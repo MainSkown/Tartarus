@@ -544,7 +544,7 @@ main() {
         step_browser_flow
     fi
     echo "== (j) ending a run early"
-    finish_run_ends_the_run
+    finishing_a_run_ends_it
     if [[ $DESKTOP == 1 ]]; then
         echo "== (i) the interactive desktop"
         step_i_interactive_desktop

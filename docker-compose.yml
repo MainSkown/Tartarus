@@ -68,8 +68,8 @@ services:
       OPENSEARCH_URL: http://opensearch:9200
       CAPE_API_URL: http://cape:8000
       CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
-      # The alias, not the name cape: cape also lives on tartarus-internal, where its API, guacd and
-      # finish-run listen, and the control service listens only on tartarus-control.
+      # The alias, not the name cape: cape also lives on tartarus-internal, where its API and guacd
+      # listen, and the control service listens only on tartarus-control.
       GUEST_CONTROL_URL: http://cape-control:8002
       GUEST_CONTROL_TOKEN: ${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
       CAPE_STORAGE_PATH: /cape-storage

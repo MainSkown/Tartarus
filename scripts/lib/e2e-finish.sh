@@ -78,7 +78,7 @@ cancel_analysis() { # id
     [[ $HTTP_CODE == 200 ]] || { echo "cancelling $1 answered $HTTP_CODE: $(body)"; return 1; }
 }
 
-finish_run_ends_the_run() {
+finishing_a_run_ends_it() {
     local id queued
     submit_sample "$(unique_sample e2e-finish.exe)" '{"interactive": true, "route": "inetsim", "timeout": '"$FINISH_RUN_SECONDS"'}' &&
         remember "$SUBMITTED_ID" || { fail "(j) submitting the interactive analysis"; return 1; }

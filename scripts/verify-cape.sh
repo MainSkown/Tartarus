@@ -494,7 +494,7 @@ cannot_connect_to_guest_control_from() {
 }
 
 # The backend is on both networks; the name cape must keep meaning the internal address, where
-# CAPE's API, guacd and finish-run listen.
+# CAPE's API and guacd listen.
 cape_resolves_to_the_internal_address_for_the_backend() {
     local resolved expected
     resolved=$(compose exec -T backend python -c "$RESOLVER")

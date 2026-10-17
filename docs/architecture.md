@@ -112,7 +112,7 @@ tartarus/
 ├── cape/               Dockerfile (built from the repo root), supervisord config, CAPE conf overrides,
 │   │                   entrypoint
 │   ├── bin/                 guest-control (the control service), guest-build (its command-line client),
-│   │                        finish-run, wait-then-exec, ...
+│   │                        wait-then-exec, ...
 │   ├── guest_engine/        the guest engine behind the control service: profiles, registry, sequencer,
 │   │                        validation, registration, self-test; it never names an operating system
 │   └── conf/

@@ -15,7 +15,7 @@ with `make verify-cape`.
 | Install | QEMU 9.2.2 and SeaBIOS 1.16.3 built by CAPE's `kvm-qemu.sh`, with the anti-VM strings passed as build args (`cape/build/kvm-config.sh`). libvirt is Ubuntu's 10.0.0 package with matching libvirt-python, not built from source. CAPE itself is installed by hand with **uv** from its `uv.lock`; `cape2.sh` is used only for Suricata, because its `sandbox` step hardcodes a localhost database, cron, a libvirt-python version and systemd sudoers. |
 | Privileges | `privileged: true` and `/dev/kvm`. A narrower set looks feasible (see Findings) but is untested. |
 | Network namespace | Its own namespace, never the host's. `tt-guest` (192.168.150.1/24), the rooter's iptables rules and QEMU's tap devices all live inside it. A `net.ipv4.ip_forward=1` sysctl is set on the container. |
-| Process supervisor | supervisord, no systemd: `virtlogd`, `libvirtd`, `cape-rooter`, `cape` (scheduler and ResultServer), `cape-processor`, `cape-web` (gunicorn serving CAPE's whole Django app, reachable only on the internal network and loopback), `suricata`, `inetsim`, `guacd`, `guest-control` (the guest control service, control address only) and `finish-run` (the early-end helper of M1, internal address only; the backend no longer uses it, it finishes runs through `guest-control`, and it still knows only the guest at `.10`). |
+| Process supervisor | supervisord, no systemd: `virtlogd`, `libvirtd`, `cape-rooter`, `cape` (scheduler and ResultServer), `cape-processor`, `cape-web` (gunicorn serving CAPE's whole Django app, reachable only on the internal network and loopback), `suricata`, `inetsim`, `guacd`, `guest-control` (the guest control service, control address only, which also ends runs early). |
 | libvirt | Local UNIX socket only, for CAPE inside the container. The TCP endpoint is **off** (`libvirtd` runs without `--listen`): it has no authentication, and the guest wizard does not need it, because it goes through the [control service](#the-control-service) instead (see Findings). `security_driver = "none"` and `cgroup_controllers = [ ]` in `qemu.conf`. |
 | Guest network | `tt-guest` is a transient libvirt network rebuilt on every start: isolated (no forward), libvirt's DNS off so INetSim owns port 53, DHCP offering the pool `.100` to `.119` with router and DNS `.1`, for guests that cold-boot; registered guests have static addresses from `.10` to `.99`, because the rooter's INetSim route DNATs DHCP renewals. |
 | INetSim | Ubuntu's 1.3.2, patched at build time because its DNS service dies with the Net::DNS in Ubuntu 24.04 (`main_loop` becomes `loop_once`); the build fails if the patch stops applying. |
@@ -215,7 +215,8 @@ guest it builds is accepted without the backend's self-test, so `make verify-gue
   but not offered for analyses) until the backend's self-test gives its verdict, then `ready`, or `failed`
   (unregistered, files kept so a step can be retried). Only `ready` guests run analyses. A record that cannot be
   read is listed as `broken` so it can be deleted.
-- **At most five guests**, a failed one included. Each is a full, independent disk of about 22 GB (17 to 18 GB
+- **At most five guests** that are building, testing or ready. A `failed` guest does not count: it keeps its name and
+  its address until it is deleted, but it never blocks a new build or clone. Each is a full, independent disk of about 22 GB (17 to 18 GB
   of disk and 3 GB of memory image for Windows 11): nothing is shared, so deleting any guest is safe. A
   linked clone would save the space and tie two guests' lifetimes; it is not built.
 - **Addresses.** Every guest gets its own static address, the lowest free one from `.10` to `.99` of the guest

@@ -1,4 +1,4 @@
-"""The HTTP plumbing of the services in this directory (`guest-control`, `finish-run`).
+"""The HTTP plumbing of the services in this directory (`guest-control`).
 
 A service declares a route table of `Route`s whose handlers take a `Request` and return
 `(status, json_body)`, or `(status, Binary(...))` for a file; this module does the rest: matching,
@@ -90,16 +90,9 @@ def make_handler(
     *,
     service: str,
     token: str | None = None,
-    wrong_method_status: int = 405,
 ) -> type[BaseHTTPRequestHandler]:
-    """`token` None means no authentication. `wrong_method_status` exists for `finish-run`,
-    which has always answered 404 to a method its one route does not take."""
-    attributes = {
-        "routes": routes,
-        "service": service,
-        "token": token,
-        "wrong_method_status": wrong_method_status,
-    }
+    """`token` None means no authentication."""
+    attributes = {"routes": routes, "service": service, "token": token}
     return type("ControlHandler", (ControlHandler,), attributes)
 
 
@@ -107,7 +100,6 @@ class ControlHandler(BaseHTTPRequestHandler):
     routes: ClassVar[list[Route]]
     service: ClassVar[str]
     token: ClassVar[str | None]
-    wrong_method_status: ClassVar[int]
     timeout = REQUEST_TIMEOUT_SECONDS
 
     def _handle(self) -> None:
@@ -132,8 +124,6 @@ class ControlHandler(BaseHTTPRequestHandler):
     def _unrouted_answer(self, allowed_methods: list[str]) -> tuple[int, dict, dict | None]:
         if not allowed_methods:
             return 404, {"error": "not found"}, None
-        if self.wrong_method_status != 405:  # noqa: PLR2004 - 405 is the HTTP status, not a tuning value
-            return self.wrong_method_status, {"error": "not found"}, None
         return 405, {"error": "method not allowed"}, {"Allow": ", ".join(allowed_methods)}
 
     def _run(self, route: Route, arguments: dict[str, str], query: dict[str, str]) -> Answer:

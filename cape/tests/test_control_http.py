@@ -1,4 +1,4 @@
-"""Tests of `bin/control_http.py`, the HTTP plumbing `guest-control` and `finish-run` share.
+"""Tests of `bin/control_http.py`, the HTTP plumbing `guest-control` is built on.
 
 The server runs for real on a loopback port; requests go through `http.client` so paths reach it
 exactly as written.
@@ -233,12 +233,6 @@ def test_the_wrong_method_is_405_and_names_the_allowed_ones(client):
 
     assert reply.status == 405
     assert reply.headers["allow"] == "DELETE, GET, POST"
-
-
-def test_the_wrong_method_status_can_be_set_by_the_service():
-    handler = control_http.make_handler(ROUTES, service="test", wrong_method_status=404)
-    with served(handler) as client:
-        assert client.request("PUT", "/things/a").status == 404
 
 
 def test_head_answers_the_status_and_no_body(client):

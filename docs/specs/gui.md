@@ -375,7 +375,7 @@ A vertical stepper; `[CANCEL]` returns to `/guest`.
 
 A refusal from the backend is shown on its field and jumps back to that step: a name already taken, a giveaway
 word (`identity.machine contains 'sandbox', which tells a sample what the machine is`), a limit. A `409` (an
-analysis is running, another build is active, five guests exist) is shown on the review step. On success the
+analysis is running, another build is active, five guests are building, testing or ready) is shown on the review step. On success the
 page opens the build.
 
 ### Clone form (`/guest/clone/:name`)

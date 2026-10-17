@@ -36,9 +36,8 @@ derive_guest_addresses() {
     fi
     # Registered guests have static addresses from .10 to .99. The DHCP pool is apart from them so a
     # guest that cold-boots on DHCP (every clone does) never competes with a registered guest's
-    # address. GUEST_IP, the first static address, remains only for finish-run's default agent URL
-    # (supervisord.conf), until the backend finishes runs through guest-control instead.
-    export GUEST_GATEWAY_IP="${BASH_REMATCH[1]}.1" GUEST_IP="${BASH_REMATCH[1]}.10"
+    # address.
+    export GUEST_GATEWAY_IP="${BASH_REMATCH[1]}.1"
     export GUEST_DHCP_START="${BASH_REMATCH[1]}.100" GUEST_DHCP_END="${BASH_REMATCH[1]}.119"
 }
 

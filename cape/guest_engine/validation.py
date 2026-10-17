@@ -26,7 +26,14 @@ from guest_engine.profile import (
     Profile,
     option_value_problem,
 )
-from guest_engine.registry import MAX_GUESTS, Guest, GuestIdentity, GuestResources, GuestSpec
+from guest_engine.registry import (
+    LIVE_STATES,
+    MAX_GUESTS,
+    Guest,
+    GuestIdentity,
+    GuestResources,
+    GuestSpec,
+)
 
 RESERVED_GUEST_NAMES = frozenset({"kvm"})  # the CAPE section that lists the machines
 BUILD_FIELDS = ("name", "profile", "media", "options", "identity", "resources")
@@ -88,9 +95,11 @@ def _request(params: object) -> Mapping[str, Any]:
 
 
 def _refuse_when_full(context: ValidationContext) -> None:
-    if len(context.guests) >= MAX_GUESTS:
+    live = [guest for guest in context.guests if guest.state in LIVE_STATES]
+    if len(live) >= MAX_GUESTS:
         raise Conflict(
-            f"there are already {MAX_GUESTS} guests, the most there can be; delete one first"
+            f"there are already {MAX_GUESTS} guests that are building, testing or ready, "
+            "the most there can be; delete one first"
         )
 
 

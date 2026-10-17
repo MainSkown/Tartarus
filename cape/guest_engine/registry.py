@@ -29,6 +29,8 @@ GUEST_FILE = "guest.json"
 SNAPSHOT_NAME = "tartarus-clean"
 MAX_GUESTS = 5
 STATES = ("building", "testing", "ready", "failed")
+# A failed guest keeps its name and address but does not count towards MAX_GUESTS.
+LIVE_STATES = ("building", "testing", "ready")
 KINDS = ("build", "clone")
 FIRST_HOST, LAST_HOST = 10, 99
 NIC_OUI = "00:14:22"

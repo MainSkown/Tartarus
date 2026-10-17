@@ -327,6 +327,36 @@ def test_one_below_the_cap_is_fine():
     assert validate_build(GOOD_BUILD, context(guests), seeded(1)).spec.name == "lab-one"
 
 
+def test_the_cap_names_the_live_states_and_says_what_to_do():
+    guests = [
+        make_guest("guest-0", "192.168.150.10", state="building"),
+        make_guest("guest-1", "192.168.150.11", state="testing"),
+        make_guest("guest-2", "192.168.150.12", state="ready"),
+        make_guest("guest-3", "192.168.150.13", state="ready"),
+        make_guest("guest-4", "192.168.150.14", state="ready"),
+    ]
+
+    with pytest.raises(Conflict, match="building, testing or ready") as raised:
+        validate_build(GOOD_BUILD, context(guests), seeded(1))
+
+    assert "delete one first" in str(raised.value)
+
+
+def test_a_failed_guest_does_not_count_towards_the_cap_for_a_build():
+    guests = [make_guest("guest-0", "192.168.150.10", state="failed")] + [
+        make_guest(f"guest-{n}", f"192.168.150.{10 + n}", state="ready")
+        for n in range(1, MAX_GUESTS)
+    ]
+
+    assert validate_build(GOOD_BUILD, context(guests), seeded(1)).spec.name == "lab-one"
+
+
+def test_a_failed_guest_keeps_its_name_for_a_new_build():
+    existing = [make_guest("lab-one", "192.168.150.10", state="failed")]
+
+    assert "name" in fields_of(GOOD_BUILD, context(existing))
+
+
 # --- a clone request -----------------------------------------------------------------------
 
 
@@ -489,6 +519,15 @@ def test_cloning_is_refused_at_the_guest_cap():
 
     with pytest.raises(Conflict, match=str(MAX_GUESTS)):
         validate_clone("win", {"name": "win-two"}, context(guests), seeded(1))
+
+
+def test_a_failed_guest_does_not_count_towards_the_cap_for_a_clone():
+    guests = [source_guest()] + [
+        make_guest(f"guest-{n}", f"192.168.150.{20 + n}", state="failed")
+        for n in range(MAX_GUESTS - 1)
+    ]
+
+    assert validate_clone("win", {"name": "win-two"}, context(guests), seeded(1)).name == "win-two"
 
 
 def test_a_source_whose_profile_is_gone_cannot_be_cloned():
