@@ -15,7 +15,10 @@ marked **Confirm** change scope or a spec and wait for the user before their wav
 gone, and a resumed `reconfigure` waits for an earlier apply instead of racing it (tested against the bash suite's
 fake agent; the real-guest drill is P1). The `cape` image was rebuilt and the container recreated; `win`, `lab1`,
 `lab3` and `lab5` are ready. **S1 done 2026-10-17** ([findings](m7-spikes/S1-findings.md)): `+60s` is a go, with the
-reference point and cap now in decision 5. S2 is next; wave 3 waits for it and for the answer to decision 4.
+reference point and cap now in decision 5. **X1a, X1b, F1 and F2 done 2026-10-17** (commits 48c781f, 11c5a57, 222396f,
+3297ee1, c954aa4): the `+60s` backend, the `[+60S]` button (right after the RUNNING badge in the LIVE status bar, as
+the user asked in review) and the shared countdown; the user approved the button from the screenshot Artifact after one
+round. The real-stack proof is P2. S2 is running; X2 waits for it, W1 and E1 for the answer to decision 4.
 
 ## Outcome
 
