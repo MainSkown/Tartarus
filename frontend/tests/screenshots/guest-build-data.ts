@@ -123,6 +123,16 @@ export const FAILED = buildView({
   log: [...LOG, 'provision: waiting for the agent (attempt 58 of 60)', 'provision: the agent did not answer within 600 s', 'control: step provision failed with exit code 1'],
 })
 
+export const CANCELLED = buildView({
+  status: 'failed',
+  step: 2,
+  // A cancelled step has no exit code of its own: the control service stopped it.
+  steps: stepsAt(BUILD_PIPELINE, 2, 'failed').map((step) => ({ ...step, exit_code: null })),
+  percent: 34,
+  message: 'the build was cancelled',
+  log: [...LOG.slice(0, 6), 'control: build build-lab4 cancelled during install'],
+})
+
 export const SUCCEEDED = buildView({
   status: 'succeeded',
   step: 6,
@@ -209,6 +219,10 @@ export interface BuildApiMock {
   readDelayMs?: number
   /** The action answers 409 with this message. */
   actionRefusal?: string
+  /** The cancel answers 409 with this message. */
+  cancelRefusal?: string
+  /** What the build reads as once an accepted cancel has been answered. */
+  afterCancel?: BuildReply
   /** The action answers only after this settles, to photograph its busy state. */
   holdAction?: Promise<void>
 }
@@ -220,6 +234,7 @@ function jsonOf(reply: BuildReply): { status: number; json: unknown } {
 
 function apiRoute(options: BuildApiMock): (route: Route) => Promise<void> {
   let reads = 0
+  let cancelled = false
   return async (route) => {
     const { pathname } = new URL(route.request().url())
     const method = route.request().method()
@@ -230,13 +245,21 @@ function apiRoute(options: BuildApiMock): (route: Route) => Promise<void> {
     } else if (pathname === '/api/guests/builds/active') {
       if (options.job) await route.fulfill({ json: { build_id: BUILD_ID, guest: 'lab4', job_id: options.job.id } })
       else await route.fulfill({ status: 404, json: errorEnvelope('not_found', 'no build is running') })
+    } else if (method === 'POST' && /\/builds\/[^/]+\/cancel$/.test(pathname)) {
+      await options.holdAction
+      if (options.cancelRefusal) await route.fulfill({ status: 409, json: errorEnvelope('conflict', options.cancelRefusal) })
+      else {
+        cancelled = true
+        await route.fulfill({ status: 202, json: { build_id: BUILD_ID, guest: 'lab4' } })
+      }
     } else if (method === 'POST' && /\/builds\/[^/]+\/(resume|restart|continue)$/.test(pathname)) {
       await options.holdAction
       if (options.actionRefusal) await route.fulfill({ status: 409, json: errorEnvelope('conflict', options.actionRefusal) })
       else await route.fulfill({ status: 202, json: { job_id: 8, build_id: BUILD_ID, guest: 'lab4' } })
     } else if (pathname.startsWith('/api/guests/builds/')) {
       if (options.readDelayMs) await new Promise((resolve) => setTimeout(resolve, options.readDelayMs))
-      const reply = options.reads[Math.min(reads, options.reads.length - 1)]!
+      const scripted = options.reads[Math.min(reads, options.reads.length - 1)]!
+      const reply = cancelled && options.afterCancel ? options.afterCancel : scripted
       reads += 1
       await route.fulfill(jsonOf(reply))
     } else if (pathname.startsWith('/api/jobs/')) {

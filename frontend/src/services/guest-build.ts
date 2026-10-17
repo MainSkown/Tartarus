@@ -49,6 +49,15 @@ export function failedStep(build: BuildView): BuildStep | undefined {
   return build.steps.find((step) => step.status === 'failed')
 }
 
+// The control service's own text for a cancelled build; there is no structured field for it.
+export const CANCELLED_BUILD_MESSAGE = 'the build was cancelled'
+
+export function failureTitle(build: BuildView): string {
+  if (build.message === CANCELLED_BUILD_MESSAGE) return 'BUILD CANCELLED'
+  const failing = failedStep(build)
+  return failing ? `${humanStepName(failing.name)} FAILED` : 'BUILD FAILED'
+}
+
 export type BuildPhase = 'loading' | 'not-found' | 'unreachable' | 'running' | 'paused' | 'failed' | 'selftest' | 'ready' | 'selftest-failed'
 
 export interface PhaseMeta {

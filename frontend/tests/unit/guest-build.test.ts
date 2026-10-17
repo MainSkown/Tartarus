@@ -6,6 +6,7 @@ import {
   buildKindLabel,
   buildPhaseMeta,
   failedStep,
+  failureTitle,
   humanStepName,
   phaseOf,
   progressShown,
@@ -17,6 +18,8 @@ import {
   stepMeta,
 } from '@/services/guest-build'
 import { buildFixture, guestFixture } from './guest-fixtures'
+
+const CANCELLED = 'the build was cancelled'
 
 function step(overrides: Partial<BuildStep> = {}): BuildStep {
   return { name: 'install', status: 'pending', weight: 1, timeout_s: 60, desktop: false, progress: 0, ...overrides }
@@ -97,6 +100,23 @@ describe('failedStep', () => {
 
   it('is nothing when no step failed', () => {
     expect(failedStep(buildFixture({ steps: [step()] }))).toBeUndefined()
+  })
+})
+
+describe('failureTitle', () => {
+  const failedBuild = (message: string, failingStep = 'install') =>
+    buildFixture({ status: 'failed', message, steps: [step({ name: 'define', status: 'succeeded' }), step({ name: failingStep, status: 'failed', exit_code: 1 })] })
+
+  it('names a cancelled build as cancelled, whatever step it stopped in', () => {
+    expect(failureTitle(failedBuild(CANCELLED))).toBe('BUILD CANCELLED')
+  })
+
+  it('names any other failed build by the step that failed', () => {
+    expect(failureTitle(failedBuild('provision exited with code 1', 'tamper-off'))).toBe('TAMPER OFF FAILED')
+  })
+
+  it('falls back to BUILD FAILED when no step is marked failed', () => {
+    expect(failureTitle(buildFixture({ status: 'failed', message: 'control service crashed', steps: [] }))).toBe('BUILD FAILED')
   })
 })
 

@@ -10,7 +10,7 @@ import SelfTestVerdict from '@/components/guest/SelfTestVerdict.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useGuestBuild } from '@/composables/use-guest-build'
-import { failedStep, humanStepName, stepsWithSelfTest } from '@/services/guest-build'
+import { failureTitle, stepsWithSelfTest } from '@/services/guest-build'
 import { guestDesktopPath } from '@/services/desktop-url'
 
 const route = useRoute()
@@ -19,7 +19,6 @@ const state = useGuestBuild(() => String(route.params.buildId))
 const build = computed(() => state.build.value)
 const phase = computed(() => state.phase.value)
 const steps = computed(() => stepsWithSelfTest(build.value?.steps ?? [], phase.value))
-const failing = computed(() => (build.value ? failedStep(build.value) : undefined))
 const verdictShown = computed(() => phase.value === 'ready' || phase.value === 'selftest-failed')
 const busy = computed(() => state.busy.value !== undefined)
 </script>
@@ -35,23 +34,23 @@ const busy = computed(() => state.busy.value !== undefined)
           :percent="state.progress.value.percent"
           :message="state.progress.value.message"
           :back-link="!verdictShown"
-        />
-
-        <div
-          v-if="state.cancellable.value"
-          class="build-page__cancel"
         >
-          <q-btn
-            outline
-            square
-            no-caps
-            :label="state.busy.value === 'cancel' ? '[CANCELLING...]' : '[CANCEL BUILD]'"
-            class="build-page__cancel-button text-mono"
-            data-build="cancel"
-            :disable="busy"
-            @click="state.cancel"
-          />
-        </div>
+          <template
+            v-if="state.cancellable.value"
+            #actions
+          >
+            <q-btn
+              outline
+              square
+              no-caps
+              :label="state.busy.value === 'cancel' ? '[CANCELLING...]' : '[CANCEL BUILD]'"
+              class="build-page__cancel-button text-mono"
+              data-build="cancel"
+              :disable="busy"
+              @click="state.cancel"
+            />
+          </template>
+        </BuildHeader>
 
         <p
           v-if="state.connectionLost.value"
@@ -89,7 +88,7 @@ const busy = computed(() => state.busy.value !== undefined)
         <BuildNotice
           v-else-if="phase === 'failed'"
           tone="red"
-          :title="failing ? `${humanStepName(failing.name)} FAILED` : 'BUILD FAILED'"
+          :title="failureTitle(build)"
           icon="dangerous"
           :error="state.actionError.value"
         >
@@ -218,11 +217,6 @@ const busy = computed(() => state.busy.value !== undefined)
 .build-page__restart,
 .build-page__cancel-button {
   color: var(--status-critical);
-}
-
-.build-page__cancel {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .build-page__grid {

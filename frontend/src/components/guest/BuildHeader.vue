@@ -32,16 +32,19 @@ defineProps<{
         </router-link>
       </h1>
       <StatusBadge :build-phase="phase" />
-      <q-btn
-        v-if="backLink"
-        flat
-        dense
-        square
-        no-caps
-        label="[BACK TO GUEST VM]"
-        class="build-header__back text-mono"
-        to="/guest"
-      />
+      <div class="build-header__actions">
+        <q-btn
+          v-if="backLink"
+          flat
+          dense
+          square
+          no-caps
+          label="[BACK TO GUEST VM]"
+          class="build-header__back text-mono"
+          to="/guest"
+        />
+        <slot name="actions" />
+      </div>
     </div>
     <progress
       :value="percent"
@@ -100,8 +103,16 @@ defineProps<{
   color: var(--blue-light);
 }
 
-.build-header__back {
+.build-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
   margin-left: auto;
+}
+
+.build-header__back {
   color: var(--text-gray);
   font-size: 0.75rem;
 }

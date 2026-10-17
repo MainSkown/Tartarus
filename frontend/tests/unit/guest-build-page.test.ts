@@ -357,9 +357,17 @@ describe('GuestBuildPage cancelling', () => {
     expect(button(wrapper, '[CANCEL BUILD]').exists()).toBe(true)
   })
 
+  it('puts [CANCEL BUILD] in the header, beside the back link, not in a row of its own', async () => {
+    const wrapper = await show(succeeded(runningView()))
+    const header = wrapper.find('[data-build="header"]')
+    expect(header.find('[data-build="cancel"]').text()).toBe('[CANCEL BUILD]')
+    expect(header.text()).toContain('[BACK TO GUEST VM]')
+    expect(wrapper.find('.build-page__cancel').exists()).toBe(false)
+  })
+
   it('offers [CANCEL BUILD] while the build is paused, beside its CONTINUE', async () => {
     const wrapper = await show(succeeded(pausedView()))
-    expect(button(wrapper, '[CANCEL BUILD]').exists()).toBe(true)
+    expect(wrapper.find('[data-build="header"] [data-build="cancel"]').exists()).toBe(true)
     expect(button(wrapper, '[CONTINUE]').exists()).toBe(true)
   })
 
@@ -378,6 +386,7 @@ describe('GuestBuildPage cancelling', () => {
     await flushPromises()
     expect(api.guestsCancelBuild).toHaveBeenCalledTimes(1)
     expect(wrapper.find('.status-badge').text()).toContain('FAILED')
+    expect(wrapper.find('.build-notice--red').text()).toContain('BUILD CANCELLED')
     expect(wrapper.find('.build-notice--red').text()).toContain('the build was cancelled')
     expect(buttons(wrapper).join(' ')).toContain('[RESUME]')
   })
