@@ -18,7 +18,7 @@ fake agent; the real-guest drill is P1). The `cape` image was rebuilt and the co
 reference point and cap now in decision 5. **X1a, X1b, F1 and F2 done 2026-10-17** (commits 48c781f, 11c5a57, 222396f,
 3297ee1, c954aa4): the `+60s` backend, the `[+60S]` button (right after the RUNNING badge in the LIVE status bar, as
 the user asked in review) and the shared countdown; the user approved the button from the screenshot Artifact after one
-round. The real-stack proof is P2. S2 is running; X2 waits for it, W1 and E1 for the answer to decision 4.
+round. The real-stack proof is P2. **S2 done 2026-10-17** ([findings](m7-spikes/S2-findings.md)): the drives ship, no display adapter does (decision 6). X2 is next; W1 and E1 wait for the answer to decision 4.
 
 ## Outcome
 
@@ -27,9 +27,9 @@ round. The real-stack proof is P2. S2 is running; X2 waits for it, W1 and E1 for
 - A `failed` guest does not count towards the five-guest cap, in the control service and in every message.
 - `finish-run` is gone from the `cape` image, its tests and the docs; the backend still ends runs, through
   `guest-control` as it does today.
-- New guests have **no optical drives** and, if a spike finds a way that breaks nothing, **a display adapter a
-  sample reads as a real GPU**. The guest facts check (`cdrom.name`, `video.name`) fails the self-test when either
-  tell comes back.
+- New guests and clones have **no optical drives** and no ghost drive left in the registry. The self-test fails when
+  a drive comes back or the display adapter is a worse one than today's; the Basic Display Adapter stays and is
+  reported as a known tell (decision 6).
 - `+60s` works on interactive runs: the analyst's deadline is kept in the analysis, enforced by the backend, and
   shown as a countdown in the analysis header and the LIVE status bar.
 - `make e2e` includes a short browser flow of the build wizard against the real backend.
@@ -119,10 +119,26 @@ round. The real-stack proof is P2. S2 is running; X2 waits for it, W1 and E1 for
    - **Frontend:** `+60s` beside END RUN on the LIVE tab and in the header (interactive and `running` only,
      disabled at the cap with the reason as its title); the countdown in the header and in `LiveStatusBar`
      switches to the warning colour for the last 30 s, follows an extension, and reads "ending" at 0.
-6. **The display adapter ships only if a spike proves it breaks nothing; the drives ship alone otherwise**
-   (already the finish-line risk handling). "Breaks nothing" is a list that can fail: `make verify-guest`
-   12 of 12, an analysis with capemon's events as before, the Guacamole desktop drawn and usable, the snapshot
-   revert, and a clone of the result.
+6. **Only the drives ship; the display adapter stays. Decided by the S2 spike
+   ([findings](m7-spikes/S2-findings.md)).** Removing the two cdrom `<disk>`s from the run-mode domain (the sata
+   controller stays) was measured on clones of `lab3`: boot, agent, snapshot and revert (2 s), a normal analysis
+   (capemon events, 12 signatures and detections as the baseline), the desktop and a clone of the result all work, and
+   `Win32_CDROMDrive` goes from two rows to none. **No display candidate meets the criterion:** every one that boots
+   and draws binds the inbox Basic Display driver (`Podstawowa karta graficzna Microsoft` on the pl-PL guests);
+   `bochs` is identical to `vga`, `virtio` (`VEN_1AF4`) and `qxl` (`VEN_1B36`) name the hypervisor and are worse,
+   `ati-vga` gives Code 43 and a black screen, and this QEMU 9.2.2 build gives the standard VGA no PCI vendor or device
+   id property. A real GPU name would need vfio passthrough, which is out of scope. What ships:
+   - **Run-mode domain without drives** (install mode keeps both: the installer and the answer ISO).
+   - **A Windows pre-snapshot step that removes the ghost drives.** Windows keeps two non-present CD-ROM device nodes
+     and their `Enum\SCSI\CdRom&...` keys from the install, which a sample can still read;
+     `Get-PnpDevice -Class CDROM | Where-Object { -not $_.Present }` piped to `pnputil /remove-device` removes them as
+     the agent user, and the removal survived a real snapshot and revert. It runs through the profile's
+     `agent.pre_snapshot` hook (null today), which the spike did not exercise: P3 proves it on a real clone.
+   - **The facts check.** The self-test fails when `cdrom.name` is not empty. It does *not* fail on `video.name` (it is
+     localised, so a match would fail every guest or none); instead a language-independent `video.pnp` fact
+     (`Win32_VideoController.PNPDeviceID`) fails only on a worse vendor (`PCI\VEN_1AF4`, `VEN_1B36`, `VEN_15AD`,
+     `VEN_80EE`, `VEN_1013`) or a `ConfigManagerErrorCode` other than 0, and reports `VEN_1234&DEV_1111` and the
+     Basic Display name as known tells without failing.
 7. **Guests built before M7 keep their drives.** Their memory snapshot was taken with the hardware they have;
    redefining the domain without the drives under it would break the revert. A *clone* of an old guest is
    rendered from the new template and retakes its snapshot, so cloning is the way to a guest without drives.
@@ -156,7 +172,7 @@ Start from a rebuilt `cape` image with wave 1 in it. Check `df` on the guest vol
 | ID | Task | Model | Question and check |
 |---|---|---|---|
 | **S1** (done) | `+60s` | Sonnet, **care** | On a real interactive run (the benign sample on a Defender-off guest): (1) submit with `timeout=1200`, let the backend, by hand through `POST /finish`, end it at 120 s, and compare with an identical run that CAPE ends at `timeout=120`: processes, per-lane event counts, files, screenshots, PCAP, report fields, the status path; (2) the 409 window: how long after CAPE says `running` the monitor starts, and what a deadline of 60 s (the minimum) does against it; (3) how long after the finish call the status leaves `running` (measured before: 11 to 18 s) and whether the countdown should read "ends at" the deadline or the deadline plus that; (4) one run left to CAPE's own 1200 s limit, to learn how close to `started + 1200` an extension may go before CAPE itself ends the run (the margin in decision 5); (5) restart the backend mid-run: is the run still ended at the deadline. Output: findings file; decision 5 amended |
-| **S2** | Anti-VM tells | Sonnet, **care** | On a throwaway **clone** of a ready guest (never the only good guest): (a) render the run-mode domain without the two cdrom `<disk>` elements and the `sata` controller kept: `Win32_CDROMDrive` empty, the snapshot taken, the revert, `verify-guest`, an analysis; (b) display adapter candidates, each judged by what `Win32_VideoController` (`Name`, `AdapterCompatibility`, `PNPDeviceID`) reports to a sample and by the break list in decision 6: the current `vga`, `bochs` (`bochs-display`), `virtio` (no driver, so Basic Display again), `qxl` (its Red Hat driver is a tell of its own), the standard VGA with a real vendor's PCI IDs set through QEMU device properties (check that they exist in the patched QEMU under `cape/build`), and any candidate that needs a driver inside the guest, with where that driver would come from (the `fetch` step's pinned, hashed downloads) and whether it loads at all. Output: a table of candidate against result, one chosen or none |
+| **S2** (done) | Anti-VM tells | Sonnet, **care** | On a throwaway **clone** of a ready guest (never the only good guest): (a) render the run-mode domain without the two cdrom `<disk>` elements and the `sata` controller kept: `Win32_CDROMDrive` empty, the snapshot taken, the revert, `verify-guest`, an analysis; (b) display adapter candidates, each judged by what `Win32_VideoController` (`Name`, `AdapterCompatibility`, `PNPDeviceID`) reports to a sample and by the break list in decision 6: the current `vga`, `bochs` (`bochs-display`), `virtio` (no driver, so Basic Display again), `qxl` (its Red Hat driver is a tell of its own), the standard VGA with a real vendor's PCI IDs set through QEMU device properties (check that they exist in the patched QEMU under `cape/build`), and any candidate that needs a driver inside the guest, with where that driver would come from (the `fetch` step's pinned, hashed downloads) and whether it loads at all. Output: a table of candidate against result, one chosen or none |
 
 ### Wave 3 (parallel, disjoint files)
 
@@ -166,7 +182,7 @@ X1a, X2, W1a and E1 start together; X1b follows X1a and W1b follows W1a (same fi
 |---|---|---|---|---|
 | **X1a** | `+60s` backend, data and endpoint (decision 5, as S1 amends it) | Haiku | Migration and `deadline_at`; interactive submit with `timeout=1200`; `POST /analyses/{id}/extend` (a CRUD-shaped endpoint beside `/finish`); `AnalysisRead`, `remaining_s`, the live `status` push; regenerate the API client (`make api-sync`) | Pure: the deadline arithmetic and the cap. API: extend moves the deadline, `409` for a queued, finished or non-interactive analysis and at the cap, validation of `seconds`; `remaining_s` from the deadline |
 | **X1b** | `+60s` backend, enforcement | Haiku (after X1a; the planner reads this diff line by line) | The runner's deadline check calling the finish path `POST /finish` already uses, in `_track` | Runner with fakes: a deadline in the past ends the run once the monitor is up and retries while it is not; a restart (new runner, same database) still ends it; non-interactive runs never get a deadline |
-| **X2** | Anti-VM fix (S2's result, which makes it a spec) | Haiku | `domain.xml.tpl` and `render_domain.py`: run mode without the cdrom disks (install mode keeps them); the chosen display fragment if there is one (`hardware.display` in the profile schema and a new `fragments/display.*.xml`); the self-test verdict fails on a `cdrom.name` that is not empty and on a `video.name` that is on a tell list kept next to the giveaway list; `guest-facts.ps1` unchanged where it already reports both | `test_render_domain.py`: install mode has two drives, run mode none; the fragment is picked by the profile. `test_selftest_checks.py`: each tell fails the verdict, a clean fact set passes. The real check is S2's break list, rerun in wave 5 |
+| **X2** | Anti-VM fix (decision 6, from S2's recommendation) | Haiku | (1) `domain.xml.tpl` and `render_domain.py`: an `${install_drives}` placeholder after the system disk, filled with the two cdrom disks in install mode and empty in run mode; the template's header comment corrected; (2) a Windows pre-snapshot step that removes non-present CD-ROM devices through the agent, wired as `agent.pre_snapshot` in `profile.json`; (3) `guest-facts.ps1` gains `video.pnp`; the self-test verdict fails on a non-empty `cdrom.name` and on a worse display vendor or a display `ConfigManagerErrorCode` other than 0, and reports the Basic Display name and `VEN_1234&DEV_1111` without failing (the tell list lives next to the giveaway list); no display fragment and no `hardware.display` field | `test_render_domain.py`: install mode two cdrom disks, run mode none, the drive-less XML still parses and keeps the sata controller (the existing run-mode test changes from "no cdrom source" to "no cdrom disk"). `test_windows_profile.py`: the profile names the step and the step file exists and is valid. `test_selftest_checks.py`: each tell fails the verdict, a clean fact set (empty `cdrom.name`, Basic Display, `VEN_1234`) passes. The real check is P3 |
 | **W1a** | Cancel a build, engine (decision 4, **if confirmed**) | Sonnet, **care** | Sequencer/engine `cancel`: stop the step's process group (as `shutdown` already does), mark the build `failed` with the reason "cancelled", no registration change | Sequencer: cancelling a running stub step leaves no process and a `failed` build that `resume` and `delete` accept; a cancel when nothing runs is a 409 |
 | **W1b** | Cancel a build, routes and button (after W1a) | Haiku | Control service route, backend route and job message (the `resume` route is the template), the build page's `[CANCEL]` with a confirm (the `Restart` button is the template), regenerated client | Route and error-mapping tests copied in shape from `resume`; vitest for the button's phases |
 | **E1** | Wizard browser e2e | Haiku | `frontend/tests/e2e/wizard-flow.spec.ts` and a step in `scripts/e2e.sh` (opt-out like the others, the check counted in the total): the ISO listed with edition, build and language; the name, username and computer-name fields with their rules (a giveaway such as `sandbox-1` refused with the form's message, a name already taken refused); `[RANDOM]`; the review step; the submit hands over to the build page, which shows the first step running and a log line; then (with W1) `[CANCEL]`, and the guest is deleted so the stack is as it was | The spec is the test. A vitest for any form helper it needs; if the wizard needs a `data-test` hook, the unit test for the component comes first |
@@ -186,7 +202,7 @@ Wait for and address comments on both Artifacts before wave 5 (rule 4, steps 5 a
 |---|---|---|---|
 | **P1** | The stop-and-resume drill again | Sonnet, **care** | On a real clone: start it, stop `guest-control` (or restart the backend) while `reconfigure` is applying, resume at once, then after it settled; both end `ready` with the self-test passed. This is the drill that failed in M6 |
 | **P2** | Real `+60s` run | Haiku, driven by a script; the planner re-runs it | An interactive run through the public API: `extend` twice, the run ends at the moved deadline, the report has the same sections as a normal run, and a backend restart in the middle still ends it |
-| **P3** | The suites | planner | `make e2e` (with the wizard flow), `make verify-guest` and `make verify-wizard` on a guest built or cloned after X2; the new guest has no optical drive and the facts check holds |
+| **P3** | The suites | planner | `make e2e` (with the wizard flow), `make verify-guest` and `make verify-wizard` on a guest cloned after X2 (the `pre_snapshot` hook, which S2 did not run, must remove the ghost CD-ROM nodes: no `CDROM` PnP device and no `Enum\SCSI\CdRom` key after the clone's snapshot and revert), and the facts check holds; `make verify-guest` is hard-wired to `win`, so the same checks are run on the clone. S2 also left one decision-7 premise unmeasured (an old guest's memory snapshot breaking when drives are removed from under it): nothing tries it, the rule stays |
 | **D2** | Close the questions in the docs | Haiku | `tartarus-v1.md` open questions 2, 3 and 10 say what was built; specs: `backend.md` (`/extend` row, the cancel route, the deadline field), `cape-integration.md` ("Extend" row, the cap, drives and display, **Sysmon is collected at the end of the run**), `data-model.md` (Sysmon is a final-phase source, no live forwarder), `gui.md` (the button and countdown), `guest-profiles.md` (the `hardware` block's new field), `overview.md` (M7 row), `finish-line.md` (status, and the roadmap's M7 list ticked), the "CAPE says `running` about 25 s earlier" statements in `backend/app/api/analyses.py` (docstring) and `backend.md` (S1 measured 13 to 14 s), the README's `make` list if it changed, and this plan's Status filled in as M6's was |
 
 ## Risks
