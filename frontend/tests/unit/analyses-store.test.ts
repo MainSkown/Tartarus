@@ -42,6 +42,7 @@ function analysis(id: number, status: AnalysisStatus = 'done'): AnalysisRead {
     submitted_at: '2026-10-13T10:00:00Z',
     started_at: null,
     finished_at: null,
+    deadline_at: null,
     summary: null,
     tags: [],
     guest: null,

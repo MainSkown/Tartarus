@@ -64,3 +64,21 @@ def test_downgrading_ends_the_paused_jobs_before_the_constraint_forbids_them(
     assert sql.index("UPDATE job SET status='interrupted'") < sql.index("ADD CONSTRAINT")
     assert "'paused'" in sql.split("ADD CONSTRAINT")[0]
     assert "'paused'" not in sql.split("ADD CONSTRAINT")[1]
+
+
+def test_the_deadline_is_added_as_a_nullable_timezone_aware_column_on_the_analysis(
+    alembic_config: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    command.upgrade(alembic_config, "0006:0007", sql=True)
+
+    sql = capsys.readouterr().out
+    assert "ALTER TABLE analysis ADD COLUMN deadline_at TIMESTAMP WITH TIME ZONE" in sql
+    assert "deadline_at TIMESTAMP WITH TIME ZONE NOT NULL" not in sql
+
+
+def test_downgrading_drops_the_deadline_column(
+    alembic_config: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    command.downgrade(alembic_config, "0007:0006", sql=True)
+
+    assert "ALTER TABLE analysis DROP COLUMN deadline_at" in capsys.readouterr().out

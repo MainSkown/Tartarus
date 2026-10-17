@@ -31,6 +31,7 @@ class AnalysisChanges(TypedDict, total=False):
     cape_task_id: int | None
     started_at: datetime | None
     finished_at: datetime | None
+    deadline_at: datetime | None
     error: str | None
     summary: dict[str, Any] | None
     score: float | None

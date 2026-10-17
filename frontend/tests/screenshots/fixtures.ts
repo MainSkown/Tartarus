@@ -222,6 +222,7 @@ export function makeAnalysis(overrides: Partial<AnalysisRead> & Pick<AnalysisRea
     submitted_at: SUBMITTED_AT,
     started_at: null,
     finished_at: null,
+    deadline_at: null,
     summary: null,
     tags: [],
     guest: null,

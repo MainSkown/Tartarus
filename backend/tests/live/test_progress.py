@@ -87,6 +87,38 @@ async def test_the_remaining_time_never_goes_below_zero(
     assert (progress.elapsed_s, progress.remaining_s) == (TIMEOUT_S + 50.0, 0.0)
 
 
+async def test_an_interactive_run_counts_down_to_the_deadline_the_analyst_set(
+    source: DbProgressSource, session_factory: Factory
+) -> None:
+    analysis_id = await analysis_with(
+        session_factory,
+        status=AnalysisStatus.RUNNING,
+        started_at=STARTED,
+        deadline_at=STARTED + timedelta(seconds=300),
+    )
+
+    progress = await source.read(analysis_id)
+
+    assert progress is not None
+    assert (progress.elapsed_s, progress.remaining_s) == (30.0, 270.0)
+
+
+async def test_a_passed_deadline_leaves_nothing_remaining(
+    source: DbProgressSource, session_factory: Factory, clock: Clock
+) -> None:
+    analysis_id = await analysis_with(
+        session_factory,
+        status=AnalysisStatus.RUNNING,
+        started_at=STARTED,
+        deadline_at=STARTED + timedelta(seconds=20),
+    )
+
+    progress = await source.read(analysis_id)
+
+    assert progress is not None
+    assert progress.remaining_s == 0.0
+
+
 async def test_a_finished_analysis_reports_its_run_time_and_nothing_remaining(
     source: DbProgressSource, session_factory: Factory
 ) -> None:

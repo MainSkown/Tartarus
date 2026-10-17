@@ -102,6 +102,12 @@ export type AnalysisRead = {
      * Finished At
      */
     finished_at: string | null;
+    /**
+     * Deadline At
+     *
+     * When an interactive run ends unless the analyst extends it; null otherwise.
+     */
+    deadline_at: string | null;
     summary: ReportSummary | null;
     /**
      * Tags
@@ -774,6 +780,18 @@ export type EventProcess = {
  * ExportFormat
  */
 export type ExportFormat = 'stix' | 'misp' | 'csv';
+
+/**
+ * ExtendRequest
+ *
+ * How many seconds to move an interactive run's deadline later.
+ */
+export type ExtendRequest = {
+    /**
+     * Seconds
+     */
+    seconds: number;
+};
 
 /**
  * ExtractedConfig
@@ -3552,6 +3570,36 @@ export type AnalysesFinishResponses = {
 };
 
 export type AnalysesFinishResponse = AnalysesFinishResponses[keyof AnalysesFinishResponses];
+
+export type AnalysesExtendData = {
+    body: ExtendRequest;
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/api/analyses/{analysis_id}/extend';
+};
+
+export type AnalysesExtendErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesExtendError = AnalysesExtendErrors[keyof AnalysesExtendErrors];
+
+export type AnalysesExtendResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisRead;
+};
+
+export type AnalysesExtendResponse = AnalysesExtendResponses[keyof AnalysesExtendResponses];
 
 export type ViewsProcessesData = {
     body?: never;

@@ -38,24 +38,28 @@ class DbProgressSource:
             analysis = await get_analysis(session, analysis_id)
         if analysis is None:
             return None
-        elapsed_s = self._elapsed_s(analysis)
+        now = self._clock()
+        elapsed_s = _elapsed_s(analysis, now)
         return StatusData(
             status=analysis.status,
             phase=analysis.phase,
             elapsed_s=elapsed_s,
-            remaining_s=_remaining_s(analysis, elapsed_s),
+            remaining_s=_remaining_s(analysis, elapsed_s, now),
         )
 
-    def _elapsed_s(self, analysis: Analysis) -> float | None:
-        if analysis.started_at is None:
-            return None
-        end = as_utc(analysis.finished_at) if analysis.finished_at else self._clock()
-        return max(0.0, (end - as_utc(analysis.started_at)).total_seconds())
+
+def _elapsed_s(analysis: Analysis, now: datetime) -> float | None:
+    if analysis.started_at is None:
+        return None
+    end = as_utc(analysis.finished_at) if analysis.finished_at else now
+    return max(0.0, (end - as_utc(analysis.started_at)).total_seconds())
 
 
-def _remaining_s(analysis: Analysis, elapsed_s: float | None) -> float | None:
+def _remaining_s(analysis: Analysis, elapsed_s: float | None, now: datetime) -> float | None:
     if elapsed_s is None:
         return None
     if is_finished(analysis.status):
         return 0.0
+    if analysis.deadline_at is not None:
+        return max(0.0, (as_utc(analysis.deadline_at) - now).total_seconds())
     return max(0.0, float(analysis.options["timeout"]) - elapsed_s)

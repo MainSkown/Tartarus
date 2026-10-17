@@ -2,6 +2,7 @@ import json
 import logging
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,7 @@ from app.db.models.job import JobStatus, JobType
 from app.errors import install_error_handlers
 from app.guest.errors import GuestControlBadResponse, GuestControlRejected, GuestControlUnreachable
 from app.guest.http_errors import install_guest_control_error_handler
+from app.live.utc import as_utc
 from app.samples.store import SampleStore
 from tests.analyses.guest_fakes import ScriptedGuestControl, guest_named
 
@@ -836,6 +838,148 @@ async def test_a_running_analysis_without_a_cape_task_cannot_be_finished(
     assert harness.guests.finished == []
 
 
+EXTEND_STARTED = datetime(2026, 10, 17, 9, 0, 0, tzinfo=UTC)
+INTERACTIVE_OPTIONS: dict[str, Any] = {**OPTIONS, "interactive": True}
+
+
+def started_at(seconds: float) -> datetime:
+    return EXTEND_STARTED + timedelta(seconds=seconds)
+
+
+async def interactive_run(
+    harness: Harness,
+    *,
+    deadline_at: datetime | None,
+    status: AnalysisStatus = AnalysisStatus.RUNNING,
+    options: dict[str, Any] = INTERACTIVE_OPTIONS,
+) -> int:
+    analysis_id = (await harness.upload(options=options)).json()["id"]
+    await harness.set_state(
+        analysis_id,
+        status=status,
+        cape_task_id=7,
+        started_at=EXTEND_STARTED,
+        deadline_at=deadline_at,
+    )
+    return int(analysis_id)
+
+
+def deadline_in(body: dict[str, Any]) -> datetime:
+    # SQLite returns naive datetimes; Postgres returns them with the UTC offset.
+    return as_utc(datetime.fromisoformat(body["deadline_at"]))
+
+
+def extend(harness: Harness, analysis_id: int, seconds: object) -> Any:
+    return harness.client.post(f"/api/analyses/{analysis_id}/extend", json={"seconds": seconds})
+
+
+async def test_extending_moves_the_deadline_by_the_seconds_asked(harness: Harness) -> None:
+    analysis_id = await interactive_run(harness, deadline_at=started_at(300))
+
+    response = await extend(harness, analysis_id, 60)
+
+    assert response.status_code == 200
+    assert deadline_in(response.json()) == started_at(360)
+    assert (await harness.analysis(analysis_id)).deadline_at is not None
+
+
+async def test_an_extension_stops_at_twenty_minutes_after_the_start(harness: Harness) -> None:
+    analysis_id = await interactive_run(harness, deadline_at=started_at(1170))
+
+    response = await extend(harness, analysis_id, 600)
+
+    assert response.status_code == 200
+    assert deadline_in(response.json()) == started_at(1200)
+
+
+async def test_a_run_at_its_longest_cannot_be_extended_and_the_reason_says_why(
+    harness: Harness,
+) -> None:
+    analysis_id = await interactive_run(harness, deadline_at=started_at(1200))
+
+    response = await extend(harness, analysis_id, 60)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == ("The run is already at its longest (20 minutes)")
+    assert deadline_in((await harness.client.get(f"/api/analyses/{analysis_id}")).json()) == (
+        started_at(1200)
+    )
+
+
+async def test_an_interactive_run_that_has_not_started_in_the_guest_cannot_be_extended(
+    harness: Harness,
+) -> None:
+    analysis_id = await interactive_run(harness, deadline_at=None)
+
+    response = await extend(harness, analysis_id, 60)
+
+    assert response.status_code == 409
+    assert "wait a few seconds" in response.json()["error"]["message"]
+    assert (await harness.analysis(analysis_id)).deadline_at is None
+
+
+async def test_only_an_interactive_run_can_be_extended(harness: Harness) -> None:
+    analysis_id = await interactive_run(
+        harness, deadline_at=started_at(300), options={**OPTIONS, "interactive": False}
+    )
+
+    response = await extend(harness, analysis_id, 60)
+
+    assert response.status_code == 409
+    assert "only an interactive run can be extended" in response.json()["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    "status",
+    [AnalysisStatus.QUEUED, AnalysisStatus.DONE, AnalysisStatus.CANCELLED],
+)
+async def test_only_a_running_analysis_can_be_extended(
+    harness: Harness, status: AnalysisStatus
+) -> None:
+    analysis_id = await interactive_run(harness, deadline_at=started_at(300), status=status)
+
+    response = await extend(harness, analysis_id, 60)
+
+    assert response.status_code == 409
+    assert "only a running analysis can be extended" in response.json()["error"]["message"]
+    assert (await harness.analysis(analysis_id)).deadline_at == started_at(300).replace(tzinfo=None)
+
+
+@pytest.mark.parametrize("seconds", [0, 601, -5, "soon", None])
+async def test_the_seconds_asked_must_be_a_whole_number_from_1_to_600(
+    harness: Harness, seconds: object
+) -> None:
+    analysis_id = await interactive_run(harness, deadline_at=started_at(300))
+
+    response = await extend(harness, analysis_id, seconds)
+
+    assert response.status_code == 422
+    assert ["body", "seconds"] in error_locations(response)
+
+
+async def test_extending_does_not_end_or_touch_the_guest(harness: Harness) -> None:
+    analysis_id = await interactive_run(harness, deadline_at=started_at(300))
+
+    await extend(harness, analysis_id, 60)
+
+    assert harness.guests.finished == []
+
+
+async def test_the_analysis_shows_its_deadline_only_once_it_has_one(harness: Harness) -> None:
+    upload = (await harness.upload()).json()
+    deadline_id = await interactive_run(harness, deadline_at=started_at(300))
+
+    assert upload["deadline_at"] is None
+    shown = (await harness.client.get(f"/api/analyses/{deadline_id}")).json()
+    assert deadline_in(shown) == started_at(300)
+
+
+async def test_extending_an_unknown_analysis_is_a_404(harness: Harness) -> None:
+    response = await extend(harness, 999, 60)
+
+    assert response.status_code == 404
+
+
 async def test_finishing_an_unknown_analysis_is_a_404(harness: Harness) -> None:
     response = await harness.client.post("/api/analyses/999/finish")
 
@@ -1211,6 +1355,7 @@ def test_the_operation_ids_are_tag_and_function_name_and_unique() -> None:
         ("delete", "/api/analyses/{analysis_id}"): "analyses_delete",
         ("post", "/api/analyses/{analysis_id}/reingest"): "analyses_reingest",
         ("post", "/api/analyses/{analysis_id}/finish"): "analyses_finish",
+        ("post", "/api/analyses/{analysis_id}/extend"): "analyses_extend",
     }
     assert len(set(operations.values())) == len(operations)
 

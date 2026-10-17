@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -19,6 +20,7 @@ from opensearchpy.exceptions import OpenSearchException
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analyses.deadline import MAX_RUN_S, at_the_latest, extended_deadline
 from app.analyses.guest_badges import badges_by_guest
 from app.analyses.guest_choice import GuestRefusedError, PackageNotAcceptedError, recorded_guest
 from app.analyses.ports import RunnerControl
@@ -44,6 +46,7 @@ from app.db.analysis_repository import (
     delete_analysis,
     list_analyses,
     queue_positions,
+    update_analysis,
 )
 from app.db.annotation_repository import analysis_level_tags
 from app.db.job_repository import has_active_job
@@ -59,7 +62,7 @@ from app.samples.store import (
     SampleTooLargeError,
 )
 from app.schemas.analysis import AnalysisRead
-from app.schemas.analysis_requests import AnalysisOptions, AnalysisPage
+from app.schemas.analysis_requests import AnalysisOptions, AnalysisPage, ExtendRequest
 from app.search.index import EventIndex
 
 logger = logging.getLogger(__name__)
@@ -225,6 +228,29 @@ async def finish(
     return await _read_one(session, guests, analysis)
 
 
+@router.post("/{analysis_id}/extend")
+async def extend(
+    analysis_id: int,
+    extension: ExtendRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
+) -> AnalysisRead:
+    """Moves the deadline of a running interactive run later by `seconds` (1 to 600).
+
+    The backend ends the run at its deadline, as `POST /finish` would, and the live status counts
+    down to the new one. The deadline never moves past 20 minutes after the start, the longest CAPE
+    lets a task run: the new deadline is the earlier of the current one plus `seconds` and that
+    limit. `409` with the reason when the analysis is not an interactive run, is not `running`, has
+    not started in the guest yet, or is already at the 20-minute limit. `422` when `seconds` is not
+    from 1 to 600.
+    """
+    analysis = await require_analysis(session, analysis_id)
+    await update_analysis(
+        session, analysis_id, deadline_at=_extended_deadline_of(analysis, extension.seconds)
+    )
+    return await _read_one(session, guests, analysis)
+
+
 @router.delete("/{analysis_id}", status_code=204)
 async def delete(  # noqa: PLR0913 - one argument per resource the analysis owns
     analysis_id: int,
@@ -265,6 +291,27 @@ def _monitor_started(storage: Path, cape_task_id: int) -> bool:
     """The analyzer's monitor writes one log per process as soon as it runs in the guest."""
     logs = storage / "analyses" / str(cape_task_id) / "logs"
     return logs.is_dir() and any(logs.glob("*.bson"))
+
+
+def _extended_deadline_of(analysis: Analysis, seconds: int) -> datetime:
+    current, started = analysis.deadline_at, analysis.started_at
+    if analysis.options.get("interactive") is not True:
+        raise HTTPException(
+            409,
+            f"Analysis {analysis.id} is not an interactive run: "
+            "only an interactive run can be extended",
+        )
+    if analysis.status is not AnalysisStatus.RUNNING:
+        raise HTTPException(
+            409,
+            f"Analysis {analysis.id} is {analysis.status.value}: "
+            "only a running analysis can be extended",
+        )
+    if current is None or started is None:
+        raise HTTPException(409, "The run has not started in the guest yet: wait a few seconds")
+    if at_the_latest(current, started):
+        raise HTTPException(409, f"The run is already at its longest ({MAX_RUN_S // 60} minutes)")
+    return extended_deadline(current, started, seconds)
 
 
 def _reason_not_finishable(analysis: Analysis) -> str:

@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.analyses.deadline import MAX_RUN_S
 from app.analyses.runner import Runner
 from app.cape.errors import CapeRejected
 from app.db.models.analysis import AnalysisStatus
@@ -67,6 +68,26 @@ async def test_a_plain_analysis_sends_no_options_even_though_the_profile_has_som
     await runner.run_once()
 
     assert (cape.created[0]["options"], cape.created[0]["task_fields"]) == ("", {})
+
+
+async def test_an_interactive_analysis_is_sent_with_capes_longest_timeout(
+    runner: Runner, session_factory: Factory, cape: FakeCape
+) -> None:
+    await queue(session_factory, interactive=True, timeout=180)
+
+    await runner.run_once()
+
+    assert cape.created[0]["timeout"] == MAX_RUN_S
+
+
+async def test_a_plain_analysis_keeps_the_timeout_of_its_options(
+    runner: Runner, session_factory: Factory, cape: FakeCape
+) -> None:
+    await queue(session_factory, interactive=False, timeout=180)
+
+    await runner.run_once()
+
+    assert cape.created[0]["timeout"] == 180
 
 
 async def test_an_interactive_analysis_gets_the_options_of_the_guests_profile(

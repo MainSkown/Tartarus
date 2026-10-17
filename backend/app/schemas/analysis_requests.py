@@ -24,6 +24,12 @@ class AnalysisOptions(BaseModel):
     )
 
 
+class ExtendRequest(BaseModel):
+    """How many seconds to move an interactive run's deadline later."""
+
+    seconds: int = Field(ge=1, le=600)
+
+
 class AnalysisPage(BaseModel):
     items: list[AnalysisRead]
     total: int

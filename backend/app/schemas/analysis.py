@@ -27,6 +27,10 @@ class AnalysisRead(ApiModel):
     submitted_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    deadline_at: datetime | None = Field(
+        default=None,
+        description="When an interactive run ends unless the analyst extends it; null otherwise.",
+    )
     summary: ReportSummary | None
     tags: list[str] = Field(
         default_factory=list, description="The analyst's tags on the analysis itself, by name."

@@ -10,6 +10,7 @@ from typing import Protocol, Self, Unpack
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.analyses.deadline import MAX_RUN_S
 from app.analyses.guest_choice import recorded_guest
 from app.analyses.ports import (
     EventIngester,
@@ -241,18 +242,16 @@ class Runner:
     async def _upload(self, analysis: Analysis) -> int:
         options = analysis.options
         guest = await self._guest_of(analysis)
-        interactive = (
-            await self._interactive_options(guest)
-            if options.get("interactive") is True
-            else NOT_INTERACTIVE
-        )
+        is_interactive = options.get("interactive") is True
+        interactive = await self._interactive_options(guest) if is_interactive else NOT_INTERACTIVE
         async with self._samples.open_plain(analysis.sample_sha256) as path:
             return await self._cape.create_file_task(
                 path,
                 analysis.filename,
                 machine=guest.name,
                 route=options["route"],
-                timeout=options["timeout"],
+                # The backend ends interactive runs at their deadline; CAPE only backstops them.
+                timeout=MAX_RUN_S if is_interactive else options["timeout"],
                 package=options.get("package", "auto"),
                 options=interactive.options,
                 task_fields=interactive.task_fields,
