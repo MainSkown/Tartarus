@@ -835,6 +835,39 @@ def test_files_outside_the_libvirt_folder_and_the_media_are_never_deleted(lab):
     assert (lab.media_dir / "disc.fake").exists()
 
 
+def files_a_build_lays_down(lab, name):
+    images, nvram = lab.libvirt_dir / "images", lab.libvirt_dir / "nvram"
+    return [
+        images / f"{name}.qcow2",
+        images / f"{name}-clean.mem",
+        images / f"{name}-clean.qcow2",
+        nvram / f"{name}_VARS.fd",
+    ]
+
+
+def test_the_files_a_build_left_are_removed_when_its_domain_is_already_gone(lab):
+    lab.build("alpha")
+    lab.host.create_files("alpha")
+    (lab.dir() / "defined").unlink()  # a restart's preflight undefines the domain before define
+
+    lab.engine.delete_guest("alpha")
+
+    assert not lab.dir().exists()
+    assert not any(path.exists() for path in files_a_build_lays_down(lab, "alpha"))
+    assert lab.host.outside_file.exists()
+
+
+def test_deleting_a_guest_never_removes_the_files_of_a_guest_whose_name_it_starts(lab):
+    lab.build("alpha")
+    lab.build("alpha2")
+    lab.host.create_files("alpha2")
+    (lab.dir("alpha") / "defined").unlink()
+
+    lab.engine.delete_guest("alpha")
+
+    assert all(path.exists() for path in files_a_build_lays_down(lab, "alpha2"))
+
+
 # --- cloning ----------------------------------------------------------------------------
 
 

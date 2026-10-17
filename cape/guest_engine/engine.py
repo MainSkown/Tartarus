@@ -31,7 +31,7 @@ from guest_engine.builds import (
 from guest_engine.config import EngineConfig
 from guest_engine.errors import Conflict, GuestNotFound
 from guest_engine.health import CapeMachinesProbe, SnapshotAgentCheck, run_checks
-from guest_engine.host import Host, HostError
+from guest_engine.host import Host, HostError, guest_files
 from guest_engine.inspectors import load_inspectors
 from guest_engine.media import MediaProblem, cleanup_stale_mounts, scan_media
 from guest_engine.profile import PipelineStep, Profile, derive_badges, load_profiles
@@ -258,7 +258,7 @@ class Engine:
                 raise Conflict(
                     f"{name} could not be unregistered, so it was not deleted: {error}"
                 ) from None
-            files = self._host.owned_files(name) if self._host.domain_exists(name) else []
+            files = self._files_of(guest)
             self._host.destroy(name)
             try:
                 self._host.undefine(name)
@@ -378,6 +378,14 @@ class Engine:
         building = self._registry.get(active.guest)
         if building.cloned_from == guest.name:
             raise Conflict(f"{active.guest} is being cloned from {guest.name}; wait for it")
+
+    def _files_of(self, guest: Guest) -> list[Path]:
+        domain_files = (
+            self._host.owned_files(guest.name) if self._host.domain_exists(guest.name) else []
+        )
+        recorded = [Path(path) for path in (guest.disk_path, guest.nvram_path) if path]
+        fixed = guest_files(self._config.libvirt_dir, guest.name)
+        return list(dict.fromkeys([*domain_files, *recorded, *fixed]))
 
     def _remove_files(self, files: list[Path]) -> None:
         libvirt_dir = self._config.libvirt_dir.resolve()

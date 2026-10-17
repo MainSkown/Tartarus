@@ -37,6 +37,21 @@ def files_referenced_by(xml: str) -> list[Path]:
     return [Path(path) for path in dict.fromkeys(paths) if path]
 
 
+def guest_files(libvirt_dir: Path, name: str) -> list[Path]:
+    """The files a build of `name` lays down under the fixed names its step scripts use.
+
+    Undefining a domain forgets the files it named, so a build whose domain is already gone, or
+    never existed, would otherwise leave its disk and firmware behind.
+    """
+    images, nvram = libvirt_dir / "images", libvirt_dir / "nvram"
+    return [
+        images / f"{name}.qcow2",
+        images / f"{name}-clean.mem",
+        images / f"{name}-clean.qcow2",
+        nvram / f"{name}_VARS.fd",
+    ]
+
+
 def parse_display(printed: str) -> dict[str, str | int] | None:
     """`{host, port}` from `virsh domdisplay` (`vnc://127.0.0.1:1` is display 1, port 5901)."""
     parts = urlsplit(printed.strip())
