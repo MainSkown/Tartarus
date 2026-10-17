@@ -365,12 +365,14 @@ describe('LiveTab +60S', () => {
   const interactiveRun = (overrides: Partial<AnalysisRead> = {}) =>
     running({ options: { interactive: true }, deadline_at: '2026-10-13T10:03:00Z', started_at: '2026-10-13T10:00:00Z', ...overrides })
 
-  it('sits in the status bar after END RUN for an interactive run that has a deadline', async () => {
+  it('sits in the status bar right after the state badge, with END RUN still at the end, for an interactive run that has a deadline', async () => {
     const wrapper = await mountTab(interactiveRun())
-    expect(wrapper.find('[data-live="status"] [data-live="extend-run"]').exists()).toBe(true)
+    expect(wrapper.find('[data-live="status"] .live-status__lead [data-live="extend-run"]').exists()).toBe(true)
     expect(extendRun(wrapper).text()).toContain('+60S')
     const html = wrapper.find('[data-live="status"]').html()
-    expect(html.indexOf('data-live="extend-run"')).toBeGreaterThan(html.indexOf('data-live="end-run"'))
+    expect(html.indexOf('data-live="extend-run"')).toBeGreaterThan(html.indexOf('status-badge'))
+    expect(html.indexOf('data-live="extend-run"')).toBeLessThan(html.indexOf('data-field="elapsed"'))
+    expect(html.indexOf('data-live="end-run"')).toBeGreaterThan(html.indexOf('data-field="events"'))
   })
 
   it('is not shown for a run that is not interactive', async () => {

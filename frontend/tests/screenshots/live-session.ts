@@ -265,3 +265,14 @@ export async function expectInsideStatusBar(page: Page, button: Locator, name: s
 export function expectEndRunInsideStatusBar(page: Page): Promise<void> {
   return expectInsideStatusBar(page, endRunButton(page), 'the end-run button')
 }
+
+/** The +60S button sits right after the state badge, on the badge's line, so the pair reads as one control. */
+export async function expectExtendBesideBadge(page: Page): Promise<void> {
+  const badge = (await page.locator('[data-live="status"] .status-badge').boundingBox())!
+  const button = (await extendRunButton(page).boundingBox())!
+  const badgeRight = badge.x + badge.width
+  expect(button.x, 'the +60S button starts right of the badge').toBeGreaterThanOrEqual(badgeRight)
+  expect(button.x - badgeRight, 'the +60S button sits close to the badge').toBeLessThanOrEqual(16)
+  const centreGap = Math.abs(button.y + button.height / 2 - (badge.y + badge.height / 2))
+  expect(centreGap, 'the +60S button is on the badge line').toBeLessThanOrEqual(2)
+}

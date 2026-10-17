@@ -8,10 +8,10 @@ const LIVE = { status: 'running', phase: 'live', elapsed_s: 72, remaining_s: 108
 
 type Props = InstanceType<typeof LiveStatusBar>['$props']
 
-function mountBar(props: Partial<Props> = {}, actions = '') {
+function mountBar(props: Partial<Props> = {}, actions = '', afterStatus = '') {
   return mount(LiveStatusBar, {
     global: { plugins: [Quasar] },
-    slots: { actions },
+    slots: { actions, 'after-status': afterStatus },
     props: {
       status: 'running',
       live: LIVE,
@@ -143,5 +143,15 @@ describe('LiveStatusBar', () => {
     const wrapper = mountBar({}, '<button data-test="action">END</button>')
     const html = wrapper.html()
     expect(html.indexOf('data-test="action"')).toBeGreaterThan(html.indexOf('data-field="events"'))
+  })
+
+  it('keeps what is put in its afterStatus slot in one group right after the state badge', () => {
+    const wrapper = mountBar({}, '', '<button data-test="after">+60S</button>')
+    const lead = wrapper.find('.live-status__lead')
+    expect(lead.find('.status-badge').exists()).toBe(true)
+    expect(lead.find('[data-test="after"]').exists()).toBe(true)
+    const html = wrapper.html()
+    expect(html.indexOf('data-test="after"')).toBeGreaterThan(html.indexOf('status-badge'))
+    expect(html.indexOf('data-test="after"')).toBeLessThan(html.indexOf('data-field="elapsed"'))
   })
 })

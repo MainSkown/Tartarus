@@ -46,7 +46,10 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
     class="live-status text-mono"
     data-live="status"
   >
-    <StatusBadge :status="status" />
+    <span class="live-status__lead">
+      <StatusBadge :status="status" />
+      <slot name="after-status" />
+    </span>
 
     <template v-if="queued">
       <span class="live-status__item text-gray">{{ queuePosition === null ? 'waiting for the guest' : `position ${queuePosition} in the queue` }}</span>
@@ -141,7 +144,14 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
   margin-left: auto;
 }
 
-/* The buttons wrap as one group: a lone [+60S] on a line of its own reads as a different control. */
+/* The badge and what sits beside it wrap as one group, so a button never parts from the state it belongs to. */
+.live-status__lead {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
 .live-status__actions {
   display: inline-flex;
   flex: none;

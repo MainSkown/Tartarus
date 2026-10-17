@@ -85,18 +85,20 @@ function selectProcess(pid: number | undefined): void {
       :events-per-minute="live.eventsPerMinute.value"
       :queue-position="queuePosition"
     >
+      <template #after-status>
+        <LiveExtendButton
+          :visible="extendRun.visible.value"
+          :disabled="extendRun.disabled.value"
+          :title="extendRun.title.value"
+          @press="extendRun.press"
+        />
+      </template>
       <template #actions>
         <LiveEndRunButton
           :phase="endRun.phase.value"
           :label="endRun.label.value"
           :title="endRun.title.value"
           @press="endRun.press"
-        />
-        <LiveExtendButton
-          :visible="extendRun.visible.value"
-          :disabled="extendRun.disabled.value"
-          :title="extendRun.title.value"
-          @press="extendRun.press"
         />
       </template>
     </LiveStatusBar>

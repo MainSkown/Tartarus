@@ -18,6 +18,7 @@ import {
 } from './fixtures'
 import {
   endRunButton,
+  expectExtendBesideBadge,
   expectInsideStatusBar,
   expectPanelsInsideViewport,
   extendRunButton,
@@ -109,6 +110,7 @@ test('live-extend-default', async ({ page }) => {
   await expect(extendRunButton(page)).toHaveText('[+60S]')
   await expect(extendRunButton(page)).toBeEnabled()
   await expect(endRunButton(page)).toContainText('END RUN')
+  await expectExtendBesideBadge(page)
   await expectInsideStatusBar(page, extendRunButton(page), 'the +60S button')
   await expectInsideStatusBar(page, endRunButton(page), 'the end-run button')
   await expectNoHorizontalOverflow(page)
@@ -121,6 +123,7 @@ test('live-extend-warning', async ({ page }) => {
   await page.setViewportSize({ width: WIDE, height: 720 })
   await openInteractiveRun(page, { remainingS: 24, startedAgoS: 400 })
   await expect(warningCountdown(page)).toContainText(/2[0-4]s/)
+  await expectExtendBesideBadge(page)
   await expectInsideStatusBar(page, extendRunButton(page), 'the +60S button')
   await expectNoHorizontalOverflow(page)
   await expectNoVerticalScroll(page)
@@ -132,6 +135,7 @@ test('live-extend-ending', async ({ page }) => {
   await openInteractiveRun(page, { remainingS: 0, startedAgoS: 400 })
   await expect(warningCountdown(page)).toHaveText('ending')
   await expect(extendRunButton(page), 'the run still runs, so it can still be extended').toBeEnabled()
+  await expectExtendBesideBadge(page)
   await expectInsideStatusBar(page, extendRunButton(page), 'the +60S button')
   await expectNoHorizontalOverflow(page)
   await snapshot(page, 'live-extend-ending')
@@ -150,6 +154,7 @@ test('live-extend-extending-then-extended', async ({ page }) => {
   await extendRunButton(page).click()
   await expect(extendRunButton(page)).toBeDisabled()
   await expect.poll(() => extend.requests(), { message: 'the press sends one extend request' }).toBe(1)
+  await expectExtendBesideBadge(page)
   await expectInsideStatusBar(page, extendRunButton(page), 'the +60S button')
   await snapshot(page, 'live-extend-extending')
 
@@ -158,6 +163,7 @@ test('live-extend-extending-then-extended', async ({ page }) => {
   sendClock(opened.live, EXTENDED_CLOCK)
   await expect(remainingField(page)).toContainText(/4m (19|20)s/)
   await expect(page.locator('.tt-toast--warning'), 'an accepted extension shows no warning').toHaveCount(0)
+  await expectExtendBesideBadge(page)
   await expectInsideStatusBar(page, extendRunButton(page), 'the +60S button')
   await expectNoHorizontalOverflow(page)
   await snapshot(page, 'live-extend-extended')
@@ -169,6 +175,7 @@ test('live-extend-at-longest', async ({ page }) => {
   await expect(extendRunButton(page)).toBeDisabled()
   await expect(page.locator('.live-extend-run')).toHaveAttribute('title', LONGEST_RUN_MESSAGE)
   await page.locator('.live-extend-run').hover()
+  await expectExtendBesideBadge(page)
   await expectInsideStatusBar(page, extendRunButton(page), 'the +60S button')
   await expectNoHorizontalOverflow(page)
   await snapshot(page, 'live-extend-at-longest')
@@ -206,7 +213,8 @@ for (const width of [NARROW, PHONE]) {
     await page.setViewportSize({ width, height: width === NARROW ? 900 : 844 })
     await openInteractiveRun(page)
     await expect(extendRunButton(page)).toBeEnabled()
-    await expectInsideStatusBar(page, extendRunButton(page), 'the +60S button')
+    await expectExtendBesideBadge(page)
+  await expectInsideStatusBar(page, extendRunButton(page), 'the +60S button')
     await expectInsideStatusBar(page, endRunButton(page), 'the end-run button')
     await expectNoHorizontalOverflow(page)
     await snapshot(page, `live-extend-narrow-${width}`)
