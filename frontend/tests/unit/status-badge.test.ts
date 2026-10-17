@@ -3,6 +3,7 @@ import { Quasar } from 'quasar'
 import { describe, expect, it } from 'vitest'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { ANALYSIS_STATUSES, analysisStatusMeta } from '@/services/analysis-status'
+import { BUILD_PHASES, buildPhaseMeta } from '@/services/guest-build'
 import { GUEST_STATES, guestStateMeta } from '@/services/guest-state'
 import { VALIDITIES, validityMeta } from '@/services/rule-view'
 
@@ -75,5 +76,17 @@ describe('StatusBadge for a guest state', () => {
   it.each(GUEST_STATES)('shows the live dot for %s only while a build job is running', (guestState) => {
     const wrapper = mount(StatusBadge, { global: { plugins: [Quasar] }, props: { guestState } })
     expect(wrapper.find('.live-dot').exists()).toBe(guestStateMeta(guestState).active)
+  })
+})
+
+describe('StatusBadge for a build phase', () => {
+  it.each(BUILD_PHASES)('shows the label, icon and colour of %s', (buildPhase) => {
+    const wrapper = mount(StatusBadge, { global: { plugins: [Quasar] }, props: { buildPhase } })
+    const meta = buildPhaseMeta(buildPhase)
+    expect(wrapper.text()).toContain(meta.label)
+    expect(wrapper.find('.q-icon').text()).toBe(meta.icon)
+    expect(wrapper.attributes('style')).toContain(`var(${meta.color})`)
+    expect(wrapper.classes()).toContain(`status-badge--${buildPhase}`)
+    expect(wrapper.find('.live-dot').exists()).toBe(meta.active)
   })
 })

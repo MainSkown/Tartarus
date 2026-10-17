@@ -64,6 +64,18 @@ describe('phaseMessage', () => {
     expect(phaseMessage('run-ended')).toBe('The run has ended. CAPE is processing the results.')
   })
 
+  it('speaks of the build, not the analysis, for the desktop of a guest build', () => {
+    expect(phaseMessage('run-ended', '', 'build')).toBe('The build no longer shows a desktop.')
+    expect(phaseMessage('not-running', '', 'build')).toContain('only available while the build is at a step that shows one')
+    expect(phaseMessage('not-running', '', 'build')).not.toContain('analysis')
+    expect(phaseMessage('unavailable', '', 'build')).not.toContain('analysis')
+  })
+
+  it('keeps the wording that does not mention a run for a build too', () => {
+    expect(phaseMessage('connecting', '', 'build')).toBe(phaseMessage('connecting'))
+    expect(phaseMessage('timeout', 'desktop not available yet', 'build')).toBe('desktop not available yet')
+  })
+
   it('never prints NaN or undefined', () => {
     for (const phase of ['connecting', 'waiting', 'connected', 'run-ended', 'unavailable', 'not-running', 'timeout', 'unreachable', 'failed'] as const) {
       expect(phaseMessage(phase, 'x')).not.toMatch(/NaN|undefined/)

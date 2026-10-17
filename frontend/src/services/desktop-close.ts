@@ -61,8 +61,17 @@ const MESSAGES: Record<DesktopPhase, string> = {
   failed: 'the desktop connection was lost',
 }
 
-export function phaseMessage(phase: DesktopPhase, reason?: string): string {
-  return phase === 'timeout' && reason ? reason : MESSAGES[phase]
+/** The desktop of an analysis follows its run; the one of a guest follows the step its build is at. */
+export type DesktopSubject = 'analysis' | 'build'
+
+const BUILD_MESSAGES: Partial<Record<DesktopPhase, string>> = {
+  'run-ended': 'The build no longer shows a desktop.',
+  'not-running': 'the desktop is only available while the build is at a step that shows one',
+}
+
+export function phaseMessage(phase: DesktopPhase, reason?: string, subject: DesktopSubject = 'analysis'): string {
+  if (phase === 'timeout' && reason) return reason
+  return (subject === 'build' ? BUILD_MESSAGES[phase] : undefined) ?? MESSAGES[phase]
 }
 
 export interface RunContext {

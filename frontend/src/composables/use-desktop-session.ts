@@ -5,8 +5,9 @@ import { DesktopSession } from '@/services/desktop-session'
 import { resolveWsUrl } from '@/services/ws'
 
 export interface DesktopSessionOptions {
-  analysisId: () => number
-  /** Whether the analysis is in a state that has a desktop; the connection follows it. */
+  /** The socket path of the desktop (`desktop-url.ts`). */
+  path: () => string
+  /** Whether what the desktop belongs to is in a state that has one; the connection follows it. */
   wanted: () => boolean
   /** The focusable element the keyboard listens on. */
   screen: Ref<HTMLElement | undefined>
@@ -57,7 +58,7 @@ export function useDesktopSession(options: DesktopSessionOptions): DesktopSessio
       if (mine !== attempt || !screen.value || !stage.value) return
       session = new DesktopSession({
         guacamole,
-        url: resolveWsUrl(`/ws/analyses/${options.analysisId()}/desktop`),
+        url: resolveWsUrl(options.path()),
         panel: screen.value,
         stage: stage.value,
         onChange: (state) => {

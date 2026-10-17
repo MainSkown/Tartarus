@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { copyToClipboard, Notify } from 'quasar'
 
-const props = defineProps<{ text: string; what: string }>()
+const props = defineProps<{ text: string; what: string; label?: string }>()
 
 async function copy(): Promise<void> {
   try {
@@ -24,6 +24,10 @@ async function copy(): Promise<void> {
       name="content_copy"
       size="14px"
     />
+    <span
+      v-if="label"
+      class="copy-button__label text-mono"
+    >{{ label }}</span>
   </button>
 </template>
 
@@ -36,6 +40,11 @@ async function copy(): Promise<void> {
   color: var(--text-gray);
   cursor: pointer;
   vertical-align: middle;
+}
+
+.copy-button__label {
+  margin-left: var(--spacing-xs);
+  font-size: 0.75rem;
 }
 
 .copy-button:hover,

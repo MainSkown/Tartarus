@@ -42,11 +42,16 @@ export interface DesktopSocketMock {
 }
 
 /** Mocks `WS /ws/analyses/{id}/desktop`; the test plays the server and guacd. */
-export async function mockDesktopSocket(page: Page, analysisId: number): Promise<DesktopSocketMock> {
+export function mockDesktopSocket(page: Page, analysisId: number): Promise<DesktopSocketMock> {
+  return mockDesktopSocketAt(page, `/ws/analyses/${analysisId}/desktop`)
+}
+
+/** The same mock for any desktop path, such as a guest build's `/ws/guests/{name}/desktop`. */
+export async function mockDesktopSocketAt(page: Page, pathname: string): Promise<DesktopSocketMock> {
   const sockets: { send(message: string): void; close(options: { code: number; reason: string }): void }[] = []
   const received: string[] = []
 
-  await page.routeWebSocket((url) => url.pathname === `/ws/analyses/${analysisId}/desktop`, (ws) => {
+  await page.routeWebSocket((url) => url.pathname === pathname, (ws) => {
     sockets.push(ws)
     ws.onMessage((message) => {
       const text = String(message)

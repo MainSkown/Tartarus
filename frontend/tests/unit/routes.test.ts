@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import GuestPage from '@/pages/GuestPage.vue'
+import GuestBuildPage from '@/pages/GuestBuildPage.vue'
 import PlaceholderPage from '@/pages/PlaceholderPage.vue'
 import RulesPage from '@/pages/RulesPage.vue'
 import { routes } from '@/router/routes'
@@ -15,7 +16,7 @@ describe('routes', () => {
     { path: 'guest', component: GuestPage },
     { path: 'guest/new', component: PlaceholderPage },
     { path: 'guest/clone/:name', component: PlaceholderPage },
-    { path: 'guest/builds/:buildId', component: PlaceholderPage },
+    { path: 'guest/builds/:buildId', component: GuestBuildPage },
   ]
 
   it.each(guestRoutes)('serves /$path with the page its task has built so far', async ({ path, component }) => {

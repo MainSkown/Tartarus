@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { phaseMessage, retryLabel, type DesktopPhase } from '@/services/desktop-close'
+import { phaseMessage, retryLabel, type DesktopPhase, type DesktopSubject } from '@/services/desktop-close'
 
-const props = defineProps<{ phase: DesktopPhase; reason?: string; screenshot?: string }>()
+const props = defineProps<{ phase: DesktopPhase; reason?: string; screenshot?: string; subject?: DesktopSubject }>()
 const emit = defineEmits<{ retry: [] }>()
 
-const text = computed(() => phaseMessage(props.phase, props.reason))
+const text = computed(() => phaseMessage(props.phase, props.reason, props.subject))
 // The server's reason for a run that ended is its own bookkeeping ("analysis is no longer running"), not news.
 const detail = computed(() =>
   props.reason && props.reason !== text.value && props.phase !== 'run-ended' ? props.reason : undefined,

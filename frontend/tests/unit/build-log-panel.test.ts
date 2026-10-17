@@ -1,0 +1,97 @@
+import { mount } from '@vue/test-utils'
+import { Quasar } from 'quasar'
+import { describe, expect, it } from 'vitest'
+import BuildLogPanel from '@/components/guest/BuildLogPanel.vue'
+
+const LINES = ['preflight: media ok', 'guest: agent answered on 8000', 'install: copying files']
+
+const mountPanel = (lines: string[] = LINES) => mount(BuildLogPanel, { attachTo: document.body, global: { plugins: [Quasar] }, props: { lines } })
+const body = (wrapper: ReturnType<typeof mountPanel>) => wrapper.find('[data-build="log-body"]')
+const followButton = (wrapper: ReturnType<typeof mountPanel>) => wrapper.find('[data-build="follow"]')
+
+function scrollable(element: Element, { scrollHeight, clientHeight }: { scrollHeight: number; clientHeight: number }) {
+  Object.defineProperty(element, 'scrollHeight', { value: scrollHeight, configurable: true })
+  Object.defineProperty(element, 'clientHeight', { value: clientHeight, configurable: true })
+}
+
+describe('BuildLogPanel', () => {
+  it('shows every line it was given, one per row, in a mono code block', () => {
+    const wrapper = mountPanel()
+    expect(body(wrapper).element.tagName).toBe('PRE')
+    expect(wrapper.findAll('.build-log__line').map((line) => line.text())).toEqual(LINES)
+  })
+
+  it('dims the lines the guest wrote and nothing else', () => {
+    const wrapper = mountPanel()
+    expect(wrapper.findAll('.build-log__line').map((line) => line.classes().includes('build-log__line--guest'))).toEqual([false, true, false])
+  })
+
+  it('says there is no output yet instead of showing an empty box', () => {
+    const wrapper = mountPanel([])
+    expect(wrapper.text()).toContain('> no output yet')
+    expect(wrapper.find('.build-log__line').exists()).toBe(false)
+  })
+
+  it('has a COPY LOG button that copies all the lines', () => {
+    const wrapper = mountPanel()
+    const copy = wrapper.findComponent({ name: 'CopyButton' })
+    expect(copy.props()).toMatchObject({ text: LINES.join('\n'), label: '[COPY LOG]' })
+  })
+
+  describe('following', () => {
+    it('follows from the start, and offers to pause', () => {
+      const wrapper = mountPanel()
+      expect(followButton(wrapper).text()).toBe('[PAUSE FOLLOW]')
+      expect(followButton(wrapper).attributes('aria-pressed')).toBe('true')
+    })
+
+    it('starts at the newest line when it opens on a long log', () => {
+      const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight')
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { value: 900, configurable: true })
+      try {
+        const wrapper = mountPanel()
+        expect(body(wrapper).element.scrollTop).toBe(900)
+      } finally {
+        if (original) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', original)
+        else delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight
+      }
+    })
+
+    it('scrolls to the newest line when lines arrive while following', async () => {
+      const wrapper = mountPanel()
+      scrollable(body(wrapper).element, { scrollHeight: 900, clientHeight: 200 })
+      await wrapper.setProps({ lines: [...LINES, 'install: next'] })
+      expect(body(wrapper).element.scrollTop).toBe(900)
+    })
+
+    it('stays where it is when lines arrive while follow is paused', async () => {
+      const wrapper = mountPanel()
+      await followButton(wrapper).trigger('click')
+      expect(followButton(wrapper).text()).toBe('[FOLLOW]')
+      scrollable(body(wrapper).element, { scrollHeight: 900, clientHeight: 200 })
+      body(wrapper).element.scrollTop = 40
+      await wrapper.setProps({ lines: [...LINES, 'install: next'] })
+      expect(body(wrapper).element.scrollTop).toBe(40)
+    })
+
+    it('jumps to the end when FOLLOW is pressed again', async () => {
+      const wrapper = mountPanel()
+      await followButton(wrapper).trigger('click')
+      scrollable(body(wrapper).element, { scrollHeight: 900, clientHeight: 200 })
+      await followButton(wrapper).trigger('click')
+      expect(body(wrapper).element.scrollTop).toBe(900)
+      expect(followButton(wrapper).text()).toBe('[PAUSE FOLLOW]')
+    })
+
+    it('pauses itself when the analyst scrolls up to read, and follows again at the end', async () => {
+      const wrapper = mountPanel()
+      scrollable(body(wrapper).element, { scrollHeight: 900, clientHeight: 200 })
+      body(wrapper).element.scrollTop = 100
+      await body(wrapper).trigger('scroll')
+      expect(followButton(wrapper).text()).toBe('[FOLLOW]')
+      body(wrapper).element.scrollTop = 700
+      await body(wrapper).trigger('scroll')
+      expect(followButton(wrapper).text()).toBe('[PAUSE FOLLOW]')
+    })
+  })
+})

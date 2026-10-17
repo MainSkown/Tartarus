@@ -2,14 +2,16 @@
 import { computed } from 'vue'
 import type { AnalysisStatus, GuestState, Validity } from '@/api'
 import { analysisStatusMeta } from '@/services/analysis-status'
+import { buildPhaseMeta, type BuildPhase } from '@/services/guest-build'
 import { guestStateMeta } from '@/services/guest-state'
 import { validityMeta } from '@/services/rule-view'
 
-// One badge look for all three: an analysis `status`, a rule's `validity`, or a guest's state.
-const props = defineProps<{ status?: AnalysisStatus; validity?: Validity; guestState?: GuestState }>()
+// One badge look for all four: an analysis `status`, a rule's `validity`, a guest's state or a build's phase.
+const props = defineProps<{ status?: AnalysisStatus; validity?: Validity; guestState?: GuestState; buildPhase?: BuildPhase }>()
 
-const kind = computed(() => props.guestState ?? props.validity ?? props.status!)
+const kind = computed(() => props.buildPhase ?? props.guestState ?? props.validity ?? props.status!)
 const meta = computed(() => {
+  if (props.buildPhase) return buildPhaseMeta(props.buildPhase)
   if (props.guestState) return guestStateMeta(props.guestState)
   return props.validity ? validityMeta(props.validity) : analysisStatusMeta(props.status!)
 })

@@ -16,6 +16,15 @@ beforeEach(() => {
 })
 
 describe('CopyButton', () => {
+  it('shows a label next to the icon when it is given one, and still copies', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    const wrapper = mount(CopyButton, { global: { plugins: [Quasar] }, props: { text: 'log', what: 'build log', label: '[COPY LOG]' } })
+    expect(wrapper.text()).toContain('[COPY LOG]')
+    await wrapper.trigger('click')
+    expect(writeText).toHaveBeenCalledWith('log')
+  })
+
   it('is labelled for what it copies', () => {
     stubClipboard(vi.fn())
     expect(mountButton().attributes('aria-label')).toBe('Copy SHA-256')
