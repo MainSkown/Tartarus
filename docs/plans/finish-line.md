@@ -63,6 +63,7 @@ who use or contribute to the project replace them.
 ## Milestones
 
 ### M7: Foundations (small fixes, closing questions)
+Planned in [m7-foundations.md](m7-foundations.md).
 - **Fix the resume race** (test-first, then the stop-and-resume drill again on a real clone).
 - **Failed guests do not count towards the cap** (control service validation, the backend's error text, the
   wizard's messages, tests).
