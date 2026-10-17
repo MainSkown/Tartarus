@@ -4,8 +4,10 @@ import type { AnalysisRead } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
 import ExportMenu from '@/components/ExportMenu.vue'
 import GuestChip from '@/components/GuestChip.vue'
+import RunCountdown from '@/components/RunCountdown.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagInput from '@/components/TagInput.vue'
+import { type Reading, useTickingSeconds } from '@/composables/use-ticking-seconds'
 import { isActiveStatus } from '@/services/analysis-status'
 import { formatDuration, secondsBetween } from '@/services/format-duration'
 import { formatTimestamp } from '@/services/format-time'
@@ -27,6 +29,19 @@ const duration = computed(() => {
   const { started_at, finished_at } = props.analysis
   return started_at && finished_at ? formatDuration(secondsBetween(started_at, finished_at)) : undefined
 })
+const showRemaining = computed(
+  () => props.analysis.options.interactive === true && props.analysis.status === 'running' && props.analysis.deadline_at !== null,
+)
+const remaining = useTickingSeconds(() => remainingUntil(props.analysis.deadline_at), {
+  direction: -1,
+  counting: () => props.analysis.status === 'running',
+})
+
+function remainingUntil(deadlineAt: string | null): Reading | undefined {
+  if (deadlineAt === null) return undefined
+  const receivedAt = Date.now()
+  return { seconds: secondsBetween(new Date(receivedAt).toISOString(), deadlineAt), receivedAt }
+}
 </script>
 
 <template>
@@ -110,6 +125,19 @@ const duration = computed(() => {
       >
         <dt>DURATION</dt>
         <dd>{{ duration }}</dd>
+      </div>
+      <div
+        v-if="showRemaining"
+        class="analysis-header__remaining"
+      >
+        <dt>REMAINING</dt>
+        <dd>
+          <RunCountdown
+            :seconds="remaining"
+            interactive
+            running
+          />
+        </dd>
       </div>
     </dl>
 

@@ -1,4 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { Quasar } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisRead } from '@/api'
@@ -31,7 +32,7 @@ const socket = () => FakeWebSocket.latest
 const mounted: VueWrapper[] = []
 
 async function mountTab(analysis: AnalysisRead = running()) {
-  const wrapper = mount(LiveTab, { attachTo: document.body, global: { plugins: [Quasar] }, props: { analysis } })
+  const wrapper = mount(LiveTab, { attachTo: document.body, global: { plugins: [Quasar, createPinia()] }, props: { analysis } })
   mounted.push(wrapper)
   socket().serverOpens()
   await flushPromises()
@@ -356,5 +357,30 @@ describe('LiveTab finished', () => {
   it('reports the finished status in the bar even before the stream says so', async () => {
     const wrapper = await mountTab(analysisWithStatus('done'))
     expect(wrapper.find('.status-badge').text()).toContain('DONE')
+  })
+})
+
+describe('LiveTab +60S', () => {
+  const extendRun = (wrapper: VueWrapper) => wrapper.find('[data-live="extend-run"]')
+  const interactiveRun = (overrides: Partial<AnalysisRead> = {}) =>
+    running({ options: { interactive: true }, deadline_at: '2026-10-13T10:03:00Z', started_at: '2026-10-13T10:00:00Z', ...overrides })
+
+  it('sits in the status bar after END RUN for an interactive run that has a deadline', async () => {
+    const wrapper = await mountTab(interactiveRun())
+    expect(wrapper.find('[data-live="status"] [data-live="extend-run"]').exists()).toBe(true)
+    expect(extendRun(wrapper).text()).toContain('+60S')
+    const html = wrapper.find('[data-live="status"]').html()
+    expect(html.indexOf('data-live="extend-run"')).toBeGreaterThan(html.indexOf('data-live="end-run"'))
+  })
+
+  it('is not shown for a run that is not interactive', async () => {
+    const wrapper = await mountTab(running({ deadline_at: '2026-10-13T10:03:00Z' }))
+    expect(extendRun(wrapper).exists()).toBe(false)
+  })
+
+  it('is disabled with the reason once the run is at its longest', async () => {
+    const wrapper = await mountTab(interactiveRun({ deadline_at: '2026-10-13T10:20:00Z' }))
+    expect(extendRun(wrapper).attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.live-extend-run').attributes('title')).toBe('The run is already at its longest (20 minutes)')
   })
 })

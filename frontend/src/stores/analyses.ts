@@ -222,6 +222,7 @@ export const useAnalysesStore = defineStore('analyses', () => {
     fetchOne,
     submit,
     setTags,
+    replaceEverywhere,
     cancel,
     reingest,
     remove,

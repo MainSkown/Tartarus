@@ -4,12 +4,14 @@ import type { AnalysisRead } from '@/api'
 import LiveDesktopSlot from '@/components/LiveDesktopSlot.vue'
 import LiveDetectionsPanel from '@/components/LiveDetectionsPanel.vue'
 import LiveEndRunButton from '@/components/LiveEndRunButton.vue'
+import LiveExtendButton from '@/components/LiveExtendButton.vue'
 import LiveEventStream from '@/components/LiveEventStream.vue'
 import LiveFinishedPanel from '@/components/LiveFinishedPanel.vue'
 import LiveNotice from '@/components/LiveNotice.vue'
 import LiveProcessTree from '@/components/LiveProcessTree.vue'
 import LiveStatusBar from '@/components/LiveStatusBar.vue'
 import { useEndRun } from '@/composables/use-end-run'
+import { useExtendRun } from '@/composables/use-extend-run'
 import { useLiveAnalysis } from '@/composables/use-live-analysis'
 import { useViewportFill } from '@/composables/use-viewport-fill'
 import { isTerminalStatus } from '@/services/analysis-status'
@@ -35,6 +37,13 @@ const endRun = useEndRun({
   analysisId: () => props.analysis.id,
   status: () => status.value,
   monitorUp: () => live.monitorStarted.value,
+})
+const extendRun = useExtendRun({
+  analysisId: () => props.analysis.id,
+  status: () => status.value,
+  interactive: () => interactive.value,
+  deadlineAt: () => props.analysis.deadline_at,
+  startedAt: () => props.analysis.started_at,
 })
 const finished = computed(() => live.finished.value || isTerminalStatus(props.analysis.status))
 // The guest stops when the run ends, a while before the analysis is done: its processes have ended.
@@ -70,6 +79,7 @@ function selectProcess(pid: number | undefined): void {
       :live="live.status.value"
       :connection="live.connection.value"
       :ended="finished"
+      :interactive="interactive"
       :total="total"
       :listed="live.events.value.length"
       :events-per-minute="live.eventsPerMinute.value"
@@ -81,6 +91,12 @@ function selectProcess(pid: number | undefined): void {
           :label="endRun.label.value"
           :title="endRun.title.value"
           @press="endRun.press"
+        />
+        <LiveExtendButton
+          :visible="extendRun.visible.value"
+          :disabled="extendRun.disabled.value"
+          :title="extendRun.title.value"
+          @press="extendRun.press"
         />
       </template>
     </LiveStatusBar>

@@ -115,6 +115,30 @@ describe('LiveStatusBar', () => {
     expect(wrapper.find('[data-field="link"]').text()).toContain('STREAM ENDED')
   })
 
+  it('warns in the last 30 seconds of an interactive run and says ending once it is out', async () => {
+    const wrapper = mountBar({ interactive: true, live: { ...LIVE, remaining_s: 31 } })
+    expect(wrapper.find('[data-field="remaining"]').text()).toContain('31s')
+    expect(wrapper.find('[data-field="remaining"] .run-countdown--warning').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(wrapper.find('[data-field="remaining"] .run-countdown--warning').exists()).toBe(true)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(wrapper.find('[data-field="remaining"]').text()).toContain('ending')
+  })
+
+  it('jumps to the new figure when an extension raises the remaining time', async () => {
+    const wrapper = mountBar({ interactive: true, live: { ...LIVE, remaining_s: 20 } })
+    await vi.advanceTimersByTimeAsync(3_000)
+    await wrapper.setProps({ live: { ...LIVE, remaining_s: 80, receivedAt: Date.now() } })
+    expect(wrapper.find('[data-field="remaining"]').text()).toContain('1m 20s')
+  })
+
+  it('keeps the remaining time of a run that is not interactive as it was: no warning, no ending', async () => {
+    const wrapper = mountBar({ live: { ...LIVE, remaining_s: 5 } })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(wrapper.find('[data-field="remaining"]').text()).toContain('0s')
+    expect(wrapper.find('.run-countdown--warning').exists()).toBe(false)
+  })
+
   it('shows what is put in its actions slot after the event counter', () => {
     const wrapper = mountBar({}, '<button data-test="action">END</button>')
     const html = wrapper.html()

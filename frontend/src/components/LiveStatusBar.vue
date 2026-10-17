@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed } from 'vue'
 import type { AnalysisStatus } from '@/api'
+import RunCountdown from '@/components/RunCountdown.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import type { LiveStatusSnapshot } from '@/composables/use-live-analysis'
-import { formatDuration } from '@/services/format-duration'
+import { useTickingSeconds, type Reading } from '@/composables/use-ticking-seconds'
+import { shownDuration } from '@/services/countdown'
 import { formatCount } from '@/services/format-number'
 import type { WsConnectionState } from '@/services/ws'
-
-const TICK_MS = 500
-const MS_PER_SECOND = 1000
-const NOTHING = '–'
 
 const LINK_LABELS: Record<WsConnectionState, string> = {
   connecting: 'CONNECTING',
@@ -23,6 +21,7 @@ const props = defineProps<{
   live?: LiveStatusSnapshot
   connection: WsConnectionState
   ended: boolean
+  interactive?: boolean
   total: number
   /** How many events the stream lists; fewer than `total` while a lane is hidden or the buffer is full. */
   listed?: number
@@ -30,20 +29,11 @@ const props = defineProps<{
   queuePosition: number | null
 }>()
 
-const now = ref(Date.now())
-const ticker = setInterval(() => (now.value = Date.now()), TICK_MS)
-onBeforeUnmount(() => clearInterval(ticker))
-
 const counting = computed(() => props.status === 'running' && props.live !== undefined)
-const sinceUpdate = computed(() => (counting.value ? Math.max(0, (now.value - props.live!.receivedAt) / MS_PER_SECOND) : 0))
-
-function shown(seconds: number | null | undefined, direction: 1 | -1): string {
-  if (seconds == null) return NOTHING
-  return formatDuration(Math.max(0, seconds + direction * sinceUpdate.value))
-}
-
-const elapsed = computed(() => shown(props.live?.elapsed_s, 1))
-const remaining = computed(() => shown(props.live?.remaining_s, -1))
+const readingOf = (field: 'elapsed_s' | 'remaining_s'): Reading | undefined =>
+  props.live && { seconds: props.live[field], receivedAt: props.live.receivedAt }
+const elapsedS = useTickingSeconds(() => readingOf('elapsed_s'), { direction: 1, counting: () => counting.value })
+const remainingS = useTickingSeconds(() => readingOf('remaining_s'), { direction: -1, counting: () => counting.value })
 const shownLabel = computed(() =>
   props.listed !== undefined && props.listed !== props.total ? ` (${formatCount(props.listed)} shown)` : '',
 )
@@ -65,11 +55,15 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
       <span
         class="live-status__item"
         data-field="elapsed"
-      ><span class="live-status__label">ELAPSED</span> {{ elapsed }}</span>
+      ><span class="live-status__label">ELAPSED</span> {{ shownDuration(elapsedS) }}</span>
       <span
         class="live-status__item"
         data-field="remaining"
-      ><span class="live-status__label">REMAINING</span> {{ remaining }}</span>
+      ><span class="live-status__label">REMAINING</span> <RunCountdown
+        :seconds="remainingS"
+        :interactive="interactive"
+        :running="status === 'running'"
+      /></span>
     </template>
 
     <span

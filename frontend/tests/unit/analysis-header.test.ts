@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { Notify, Quasar } from 'quasar'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisStatus } from '@/api'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import ExportMenu from '@/components/ExportMenu.vue'
@@ -159,3 +159,46 @@ describe('AnalysisHeader actions', () => {
     expect(wrapper.find('.analysis-header__delete').attributes('disabled')).toBeDefined()
   })
 })
+
+describe('AnalysisHeader countdown', () => {
+  const NOW = '2026-10-13T10:00:00Z'
+  const deadline = (seconds: number) => new Date(Date.parse(NOW) + seconds * 1000).toISOString()
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(Date.parse(NOW))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('counts down the time left of an interactive run that has a deadline', async () => {
+    const wrapper = mountHeader(analysisWithStatus('running', { finished_at: null, options: { interactive: true }, deadline_at: deadline(180) }))
+    expect(wrapper.find('.analysis-header__remaining').text()).toContain('3m 0s')
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(wrapper.find('.analysis-header__remaining').text()).toContain('2m 55s')
+  })
+
+  it('takes the new deadline when an extension moves it', async () => {
+    const wrapper = mountHeader(analysisWithStatus('running', { finished_at: null, options: { interactive: true }, deadline_at: deadline(30) }))
+    await wrapper.setProps({ analysis: analysisWithStatus('running', { finished_at: null, options: { interactive: true }, deadline_at: deadline(90) }) })
+    expect(wrapper.find('.analysis-header__remaining').text()).toContain('1m 30s')
+  })
+
+  it('shows nothing for a run that is not interactive', () => {
+    const wrapper = mountHeader(analysisWithStatus('running', { finished_at: null, deadline_at: deadline(180) }))
+    expect(wrapper.find('.analysis-header__remaining').exists()).toBe(false)
+  })
+
+  it('shows nothing for an interactive run without a deadline yet', () => {
+    const wrapper = mountHeader(analysisWithStatus('running', { finished_at: null, options: { interactive: true }, deadline_at: null }))
+    expect(wrapper.find('.analysis-header__remaining').exists()).toBe(false)
+  })
+
+  it('shows nothing once the interactive run is over', () => {
+    const wrapper = mountHeader(analysisWithStatus('processing', { options: { interactive: true }, deadline_at: deadline(-5) }))
+    expect(wrapper.find('.analysis-header__remaining').exists()).toBe(false)
+  })
+})
+
