@@ -137,6 +137,7 @@ class Runner:
         self._collecting: int | None = None
         self._trouble_since: float | None = None
         self._consecutive_errors: dict[int, int] = {}
+        self._end_requested: set[int] = set()
         self._nudged = asyncio.Event()
         self._loop_task: asyncio.Task[None] | None = None
         self._stopping = False
@@ -345,6 +346,7 @@ class Runner:
         if not _is_interactive_run(analysis) or started_at is None:
             return
         if analysis.status is not AnalysisStatus.RUNNING:
+            self._end_requested.discard(analysis.id)
             return
         if analysis.deadline_at is None:
             await self._set_deadline(session, analysis, task_id, started_at)
@@ -366,6 +368,9 @@ class Runner:
         return analysis.deadline_at is not None and self._now() >= as_utc(analysis.deadline_at)
 
     async def _end_run(self, analysis: Analysis, task_id: int) -> None:
+        # Once the guest accepted the end it shuts down, so a repeat would only hit a dead agent.
+        if analysis.id in self._end_requested:
+            return
         guest = recorded_guest(analysis.options)
         if guest is None:
             return
@@ -375,6 +380,8 @@ class Runner:
             logger.warning(
                 "Ending analysis %s at its deadline failed, retrying: %s", analysis.id, error
             )
+        else:
+            self._end_requested.add(analysis.id)
 
     async def _finish_for_forgotten_task(
         self, session: AsyncSession, analysis: Analysis, task_id: int
@@ -526,6 +533,7 @@ class Runner:
         await update_analysis(session, analysis_id, **ended)
         self._trouble_since = None
         self._consecutive_errors.pop(analysis_id, None)
+        self._end_requested.discard(analysis_id)
         logger.info("Analysis %s ended as %s", analysis_id, changes["status"])
 
 

@@ -166,7 +166,7 @@ async def test_nothing_is_ended_before_the_deadline(
     assert (await load(session_factory, analysis_id)).status is AnalysisStatus.RUNNING
 
 
-async def test_a_run_past_its_deadline_is_asked_to_end_once_per_poll(
+async def test_a_run_past_its_deadline_is_asked_to_end_only_once_when_that_succeeds(
     make_deadline_runner: Callable[[], Runner],
     session_factory: Factory,
     cape: FakeCape,
@@ -178,11 +178,55 @@ async def test_a_run_past_its_deadline_is_asked_to_end_once_per_poll(
     wall_clock.now = at(101)
     runner = make_deadline_runner()
 
+    for _ in range(3):
+        await runner.run_once()
+
+    assert guests.finished == [(7, "win")]
+    assert (await load(session_factory, analysis_id)).status is AnalysisStatus.RUNNING
+
+
+async def test_a_run_is_asked_again_after_failed_end_requests_and_not_after_a_success(
+    make_deadline_runner: Callable[[], Runner],
+    session_factory: Factory,
+    cape: FakeCape,
+    guests: ScriptedGuestControl,
+    wall_clock: WallClock,
+) -> None:
+    cape.scripts[7] = ["running"]
+    await running_analysis(session_factory, deadline_at=at(100))
+    wall_clock.now = at(101)
+    guests.finish_error = GuestControlUnreachable("finish_task", "ConnectError")
+    runner = make_deadline_runner()
+
+    for _ in range(2):
+        await runner.run_once()
+    guests.finish_error = None
+    for _ in range(3):
+        await runner.run_once()
+
+    assert guests.calls_named("finish_task") == [(7, "win")] * 3
+    assert guests.finished == [(7, "win")]
+
+
+async def test_a_finished_end_request_is_forgotten_once_the_run_leaves_running(
+    make_deadline_runner: Callable[[], Runner],
+    session_factory: Factory,
+    cape: FakeCape,
+    guests: ScriptedGuestControl,
+    wall_clock: WallClock,
+) -> None:
+    cape.scripts[7] = ["running"]
+    analysis_id = await running_analysis(session_factory, deadline_at=at(100))
+    wall_clock.now = at(101)
+    runner = make_deadline_runner()
     await runner.run_once()
+    assert runner._end_requested == {analysis_id}
+
+    async with session_factory() as session:
+        await repository.update_analysis(session, analysis_id, status=AnalysisStatus.INGESTING)
     await runner.run_once()
 
-    assert guests.finished == [(7, "win"), (7, "win")]
-    assert (await load(session_factory, analysis_id)).status is AnalysisStatus.RUNNING
+    assert runner._end_requested == set()
 
 
 @pytest.mark.parametrize(
