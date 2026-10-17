@@ -135,6 +135,19 @@ describe('useSystemStore', () => {
     store.$dispose()
   })
 
+  it('counts a degraded guest status as ready: some guest is not ready, another is', async () => {
+    const store = useSystemStore()
+    await vi.waitFor(() => expect(store.health).toBeDefined())
+
+    pushMessage({ ...REST_HEALTH, guest: { status: 'degraded', message: 'lab4 is building' } })
+    expect(store.guestReady).toBe(true)
+    expect(store.guestMessage).toBe('lab4 is building')
+
+    pushMessage({ ...REST_HEALTH, guest: { status: 'down', message: 'no guest is ready' } })
+    expect(store.guestReady).toBe(false)
+    store.$dispose()
+  })
+
   it('hands job pushes to the job handlers and keeps them out of the health snapshot', async () => {
     const store = useSystemStore()
     await vi.waitFor(() => expect(store.health).toEqual(REST_HEALTH))

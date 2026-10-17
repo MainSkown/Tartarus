@@ -54,7 +54,8 @@ export const useSystemStore = defineStore('system', () => {
     health.value ? worseStatus(health.value.postgres.status, health.value.opensearch.status) : undefined,
   )
 
-  const guestReady = computed(() => health.value?.guest.status === 'ok')
+  // degraded: some guest is not ready but at least one is, so a submission can still go somewhere.
+  const guestReady = computed(() => health.value?.guest.status !== undefined && health.value.guest.status !== 'down')
   const guestMessage = computed(() => health.value?.guest.message ?? undefined)
 
   return {
