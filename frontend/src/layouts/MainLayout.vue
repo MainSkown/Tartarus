@@ -207,7 +207,14 @@ useReportNotices()
   gap: var(--spacing-md);
 }
 
+/* A <button> does not inherit font or line-height from its parent, so without these it sits
+   at a different height from the plain HealthDots beside it. */
 .guest-health-trigger {
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
   padding: 0;
   border: none;
   background: transparent;
