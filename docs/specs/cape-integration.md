@@ -209,7 +209,7 @@ guest it builds is accepted without the backend's self-test, so `make verify-gue
   address, hardware identity, state, last self-test) is the one source of truth, and the libvirt domain, the
   CAPE registration and the backend's view are derived from it; `builds/<id>/` holds each build's
   `build.json`, `log` and `context.json`. Disks, the memory file of the snapshot and the nvram are under
-  `images/` and `nvram/`. A guest's **name** is a slug (2 to 32 lower-case letters, digits and hyphens); it is
+  `images/` and `nvram/`. A guest's **name** is a slug (2 to 32 lower-case letters, digits and hyphens, not ending in `-clean`, because that is how the snapshot files of another guest are named: `<name>` would give the disk `images/<name>.qcow2`, which is `<other>-clean`'s overlay); it is
   the libvirt domain name and CAPE machine label and exists nowhere inside the guest.
 - **States.** `building` while a build or clone runs, `testing` once it has finished (registered with CAPE,
   but not offered for analyses) until the backend's self-test gives its verdict, then `ready`, or `failed`

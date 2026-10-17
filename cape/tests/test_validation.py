@@ -559,3 +559,27 @@ def test_a_clone_carries_the_media_kind_of_its_source():
     spec = validate_clone("win", {"name": "win-two"}, context([source]), seeded(1))
 
     assert spec.media_kind == "disk_image"
+
+
+CLEAN_REASON = "must not end in -clean: the snapshot files of another guest are named that way"
+
+
+@pytest.mark.parametrize("name", ["win-clean", "lab-one-clean"])
+def test_a_build_named_with_a_clean_suffix_is_refused_on_the_name(name):
+    assert fields_of(changed(GOOD_BUILD, "name", name)) == {"name": CLEAN_REASON}
+
+
+@pytest.mark.parametrize("name", ["win-clean", "lab-one-clean"])
+def test_a_clone_named_with_a_clean_suffix_is_refused_on_the_name(name):
+    assert clone_fields({"name": name}) == {"name": CLEAN_REASON}
+
+
+@pytest.mark.parametrize("name", ["cleanroom", "clean-lab", "my-clean-lab"])
+def test_a_name_that_only_contains_clean_is_accepted(name):
+    spec = validate_build(changed(GOOD_BUILD, "name", name), context(), seeded(1)).spec
+
+    assert spec.name == name
+
+
+def test_the_reserved_name_kvm_is_still_refused_with_its_own_reason():
+    assert fields_of(changed(GOOD_BUILD, "name", "kvm")) == {"name": "is reserved"}

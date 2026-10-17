@@ -36,6 +36,9 @@ from guest_engine.registry import (
 )
 
 RESERVED_GUEST_NAMES = frozenset({"kvm"})  # the CAPE section that lists the machines
+# A guest's disk is `images/<name>.qcow2`, which is another guest's snapshot overlay when
+# `<name>` is `<other>-clean`: building or deleting it would overwrite or remove that snapshot.
+SNAPSHOT_SUFFIX = "-clean"
 BUILD_FIELDS = ("name", "profile", "media", "options", "identity", "resources")
 CLONE_FIELDS = ("name", "options", "identity", "resources")
 IDENTITY_ROLES = ("account", "machine", "password")
@@ -110,6 +113,12 @@ def _check_name(params: Mapping[str, Any], context: ValidationContext, problems:
         return ""
     if name in RESERVED_GUEST_NAMES:
         _fail(problems, "name", "is reserved")
+    elif name.endswith(SNAPSHOT_SUFFIX):
+        _fail(
+            problems,
+            "name",
+            "must not end in -clean: the snapshot files of another guest are named that way",
+        )
     elif any(guest.name == name for guest in context.guests):
         _fail(problems, "name", "is already used by another guest")
     return name
