@@ -24,6 +24,36 @@ commits 54353d8 to 6785331). **Wave 3 done 2026-10-16** (B1 to B5, C2b-3 and C5;
 build wizard and clone form, and the build page, each reviewed by the user from screenshot Artifacts and approved
 (one round each; the only comment, a clogged header popover, was fixed in 8530db3). Wave 5 (proof) is next.
 
+**Wave 5 proof runs, 2026-10-17, all on the real stack through the public API:**
+
+- **Build desktop WebSocket:** during a clone's `reconfigure` step `WS /ws/guests/lab5/desktop` upgraded with the
+  `guacamole` subprotocol, sent the tunnel's opening frame and then `size`, `rect`, `cfill`, `img`, `blob` and
+  `sync` instructions (the guest's screen); an unknown guest closes 4404 and a ready guest with no build 4409.
+- **`defender-on.ps1`** (never run before): the first run paused the build with `window=not-found`, the same
+  Windows Security lookup bug fixed earlier in `tamper-off.ps1`, because each script carried its own copy. Both now
+  load one `security-ui.ps1` (40de7c9). A clone of the Defender-off `lab3` made with Defender on then passed:
+  toggle found by its Polish name, Tamper Protection and real-time protection on, the EICAR file removed,
+  self-test passed (`lab5`, 5.5 minutes).
+- **A failing self-test:** a clone of the adopted `win` (account `Analyst`, `C:\tartarus`, the old agent names)
+  ended `failed` with the giveaways listed in the verdict, was unregistered from CAPE (which kept the other four
+  guests), made an analysis on it a 409 and the header `degraded: lab6 is failed`.
+- **Interruptions:** restarting the backend mid-build reattached the build under a new job; stopping the control
+  service mid-step stopped the step (no process left) and left the build `failed`, "resume it"; resume then
+  finished the build and the self-test passed (`lab7`).
+- **The DNS puzzle is CAPE's:** in the packet captures of an answered and of two unanswered self-test runs INetSim
+  answers every lookup; CAPE's own report has `answers: []` for some of them. The verdict keeps accepting an
+  unanswered lookup. Not a Tartarus bug.
+
+Findings that stay open:
+
+- **Resuming too soon races the guest.** A resume issued while the first run's reconfigure was still applying and
+  rebooting the guest failed ("did not start its reboot within 90 s"); the same resume a few minutes later,
+  from a stable guest, worked. The step could wait for an in-flight apply to finish before it applies again.
+- **The five-guest cap** counts failed guests: a failed build must be deleted before a sixth can start.
+- **Not run for real:** a failing build step (not a self-test) at an install step, the `make build-guest` wrapper
+  end to end with the self-test left out, a Windows 10 ISO, another UI language, and the Linux profile (S0e's
+  design only).
+
 What wave 3 proved on the real stack, through the public API only:
 
 - A clone of `lab1` into `lab3` (Defender off) went from `POST /api/guests/lab1/clone` to `ready` in 6.5 minutes
