@@ -143,11 +143,10 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
    `backend`, behind a bearer token. libvirt's TCP endpoint stays off (`make verify-cape` enforces it, and
    checks the control service's token and isolation), and the Docker socket is never mounted. See
    [CAPE integration](../specs/cape-integration.md#the-control-service).
-2. **Stop and extend a running task:** which CAPE mechanism stops a task early and extends an
-   interactive one? If extending isn't supported, the `+60s` button is dropped and the timeout
-   is only set at submission.
-3. **Sysmon timing:** CAPE probably collects the Sysmon EVTX only at the end of the run, so
-   Sysmon events would be final-phase only. Add a live forwarder in the guest later?
+2. **Stop and extend a running task. Decided 2026-10-17: the `+60s` button is dropped.** Stop works (END RUN);
+   the timeout is set at submission only.
+3. **Sysmon timing. Decided 2026-10-17: final phase only.** CAPE collects the Sysmon EVTX at the end of the run;
+   capemon gives the live events. No live forwarder.
 4. **Default Sigma ruleset (decided 2026-10-14: a curated SigmaHQ subset, see [M4](../plans/m4-sigma.md)).**
 5. **Defender: how the choice is offered. Resolved in M6, except one item.** It is a per-guest option,
    on by default, and there are several guests, so the analyst picks "Defender on" or "Defender off" at
@@ -160,17 +159,15 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
    Defender did in an analysis.** When it is on, record its verdict (the Windows Defender operational event
    log, and whether the sample file or its process was removed), so an analysis says "Defender removed the
    sample" instead of showing an empty run. It touches the ingest and the normalisers, not the guest wizard.
-6. **Default analysis timeout:** 180 s is proposed.
-7. **App icon:** design a PWA and app icon (a descending pit or gate motif in ice blue).
-8. **PDF report styling:** a print variant (white background, blue accents) is proposed instead
-   of a black PDF.
-9. **Maximum sample upload size:** 512 MB is proposed (nginx `client_max_body_size` on `/api/`).
-10. **Remaining sandbox-detection tells (from M0b):** remove the two empty optical drives once the
-    guest is installed? The display adapter is "Microsoft Basic Display Adapter" (no GPU driver).
-    Both are cheap to leave and moderately cheap to fix; decide how far to go.
-11. **The guest's default password** (`Tartarus1!`, overridable with `GUEST_PASSWORD`) is in the
-    repo and stored in plain text for autologon. Fine for a throwaway account in an isolated
-    guest; say so if you want a generated one per build instead.
+6. **Default analysis timeout. Decided: 180 s.**
+7. **App icon. The user supplies the logo later;** wiring it in (favicon, PWA manifest, header) is part of the release (M11).
+8. **PDF report styling. Closed:** the print variant (white background, blue accents) shipped in M5.
+9. **Maximum sample upload size. Decided: 512 MB** (nginx `client_max_body_size` on `/api/`).
+10. **Remaining sandbox-detection tells (from M0b). Decided 2026-10-17: fix both** (the two empty optical
+    drives and the "Microsoft Basic Display Adapter"), after a real-guest spike in M7 that checks the display
+    adapter against capemon, the Guacamole desktop and the snapshot.
+11. **The guest's default password. Closed.** Wizard builds get a random password; only the adopted `win` guest
+    keeps `Tartarus1!`, a throwaway account on an isolated machine.
 
 ## Research references
 - CAPEv2: https://github.com/kevoreilly/CAPEv2. Docs: https://capev2.readthedocs.io/en/latest/

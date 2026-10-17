@@ -134,7 +134,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 
 ```
 #42  invoice.exe   sha256 9f2c…a1 ⧉   ● LIVE 01:12 / 03:00   SCORE –   ⚠ HIGH   [phishing ×][+]
-                                                       [⏹ STOP] [+60s] [⇩ EXPORT ▾] [🗑]
+                                                       [⏹ STOP] [⇩ EXPORT ▾] [🗑]
 [ LIVE ][ OVERVIEW ][ PROCESSES ][ TIMELINE ][ EVENTS ][ NETWORK ][ ARTIFACTS ][ DETECTIONS ][ NOTES ]
 > process.name:cmd.exe AND lane:network                                              [?] [✕]
 [proc: cmd.exe ×] [NOT api: NtDelayExecution ×]

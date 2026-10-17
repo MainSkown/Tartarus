@@ -62,17 +62,20 @@ remote access. Everything binds to `127.0.0.1`.
 | M4 | **Sigma** | **Done** ([plan](plans/m4-sigma.md)): rule loader, in-stream matcher, Rules page, detections in the live feed; `make e2e` proves the rules live and final on a real run (85 checks). Closed by the user on 2026-10-17. |
 | M5 | **Analyst workflow** | **Done and approved** ([plan](plans/m5-analyst-workflow.md)): tags and notes, IOC exports (STIX, MISP, CSV), HTML and PDF report. |
 | M6 | **Guest wizard** | **Done** ([plan](plans/m6-guest-wizard.md)). Guests are built, cloned, checked and deleted from the GUI through a token-authenticated control service in the `cape` container; there can be up to five, the analyst picks one for each analysis, and an operating system is a [guest profile](specs/guest-profiles.md) (Windows is the first). Verified on the real stack through the public API with the user's Polish Windows 11 25H2 ISO: a build (about 16 minutes) and clones (about 5) reached `ready` through their self-tests, Defender went off by a scripted step and on again, a failing self-test left a guest `failed` and unregistered, and builds survived a backend restart and a control-service stop. Not run for real: a failing install step, a Windows 10 ISO, another UI language, the manual Defender pause, the build desktop in a browser, and a Linux profile (paper design only). |
+| M7 | **Foundations** | Planned ([finish line](plans/finish-line.md)): the resume race, failed guests off the cap, `finish-run` removed, the anti-VM tells, the wizard's browser e2e, open questions closed. |
+| M8 | **More event sources** | Planned: Sysmon, ETW and Volatility3 events (final phase), the memory-dump option, and what Defender did in an analysis. |
+| M9 | **Beyond one run** | Planned: PCAP and memory-image import, a cross-analysis Search page with IOC pivot, parallel analyses on several guests. |
+| M10 | **Guest proofs** | Planned: the manual Defender pause, a failing install step, a Windows 10 ISO and an English-language Windows ISO, run for real. |
+| M11 | **Hardening and release** | Planned: security review, CI on GitHub Actions, docs cleanup, GPL-3.0 and release files, a clean-host install test, `v1.0.0`. |
 
 ### Next up
 
-M0 to M6 are built. What is open is listed at the end of each plan's Status and in the [v1 open
-questions](features/tartarus-v1.md#open-questions). For the guest: resuming a clone's build too soon
-(the step does not wait for an in-flight reboot), a failed build counting towards the five-guest cap until
-it is deleted, and the cases above that were not run. Reporting what Defender did in an analysis is its own
-item.
+M0 to M6 are built; the rest of v1 is M7 to M11, decided with the user on 2026-10-17 and written down in the
+[finish line](plans/finish-line.md): foundations, then features, then guest proofs, then hardening and release.
+Open questions are closed there too (see the [v1 open questions](features/tartarus-v1.md#open-questions)).
 
 ### After v1 (not designed yet)
-- **Windows hosts (experimental):** the same compose stack inside WSL2 with nested KVM (see
+- **Windows hosts (experimental), dropped from the v1 finish line until a Windows host is available to test on:** the same compose stack inside WSL2 with nested KVM (see
   [cape-integration](specs/cape-integration.md#windows-hosts-post-v1-experimental)).
 - **ISO drop zone:** drag a Windows ISO onto the Guest VM page instead of copying it into
   `data/iso` by hand. Needs a chunked, resumable upload (an ISO is about 5 GB, and the nginx
@@ -80,13 +83,8 @@ item.
   the edition and build from `sources/install.wim` and, for evaluation ISOs, compare the SHA256
   against Microsoft's published hashes. Until then the wizard lists `data/iso` and explains where
   to put the file. Windows itself is never bundled or downloaded for the user (licence).
-- URL and archive submission, PCAP and memory-image import.
+- URL and archive submission. (PCAP and memory-image import are M9.)
 - Compare two analyses (behaviour diff).
-- Search and IOC pivot across all analyses (OpenSearch alias over the per-analysis indices).
-- Parallel analyses (two analyses on two guests at once). Several guests exist since M6, but one
-  analysis runs at a time, and a build or clone keeps every analysis out.
-- **Defender's verdict in the report** (its event log, and whether it removed the sample). The two
-  Defender guests it needs exist since M6.
 - **A Linux profile and the normaliser that reads Linux runs.** The profile is a new directory under
   `guest/profiles/` ([guest profiles](specs/guest-profiles.md), with the checklist from S0e); CAPE's
   Linux support is community-grade and its monitor is `strace` text, so the events of a Linux run need
