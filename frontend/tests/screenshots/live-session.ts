@@ -1,6 +1,6 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import type { AnalysisRead } from '../../src/api/types.gen'
-import { errorEnvelope, expect, realView } from './fixtures'
+import { errorEnvelope, expect, realView, screenshotPath, waitForTransitions, type LiveSocketMock } from './fixtures'
 
 export interface SessionProcess {
   pid: number
@@ -176,31 +176,77 @@ export function countsMessage(events: SessionEvent[]): { by_lane: Record<string,
 
 export const RUNNING_STATUS = { status: 'running', phase: 'live', elapsed_s: 14.2, remaining_s: 165.8 }
 
-export interface FinishAnswer {
+export interface EndpointAnswer {
   status: number
   json: AnalysisRead | ReturnType<typeof errorEnvelope>
 }
 
-export function refusal(status: number, message: string): FinishAnswer {
+export function refusal(status: number, message: string): EndpointAnswer {
   return { status, json: errorEnvelope(status === 409 ? 'conflict' : 'bad_gateway', message) }
 }
 
-/** Plays `POST /api/analyses/{id}/finish`; `answer` is asked on every request, so a test can change its mind. */
-export async function mockFinish(page: Page, id: number, answer: () => FinishAnswer): Promise<{ requests: () => number }> {
+type Answer = () => EndpointAnswer | Promise<EndpointAnswer>
+
+/** `answer` is asked on every request, so a test can change its mind; a promise it returns holds the response back. */
+async function mockPost(page: Page, pathname: string, answer: Answer): Promise<{ requests: () => number }> {
   let requests = 0
   await page.route(
-    (url) => url.pathname === `/api/analyses/${id}/finish`,
+    (url) => url.pathname === pathname,
     async (route) => {
       requests += 1
-      const { status, json } = answer()
+      const { status, json } = await answer()
       await route.fulfill({ status, json })
     },
   )
   return { requests: () => requests }
 }
 
+/** Plays `POST /api/analyses/{id}/finish`. */
+export function mockFinish(page: Page, id: number, answer: Answer): Promise<{ requests: () => number }> {
+  return mockPost(page, `/api/analyses/${id}/finish`, answer)
+}
+
+/** Plays `POST /api/analyses/{id}/extend`. */
+export function mockExtend(page: Page, id: number, answer: Answer): Promise<{ requests: () => number }> {
+  return mockPost(page, `/api/analyses/${id}/extend`, answer)
+}
+
 export const endRunButton = (page: Page) => page.locator('[data-live="end-run"]')
+export const extendRunButton = (page: Page) => page.locator('[data-live="extend-run"]')
 const confirmDialog = (page: Page) => page.locator('.q-dialog')
+
+export function feedProcesses(live: LiveSocketMock, processes: SessionProcess[]): void {
+  for (const { pid, ppid, name, executable, command_line, start, end } of processes) {
+    const node = { pid, ppid, name, executable, command_line, start, end: null }
+    live.send('process', { op: 'add', node })
+    if (end !== null) live.send('process', { op: 'end', node: { ...node, end } })
+  }
+}
+
+export function stream(live: LiveSocketMock, processes = PROCESSES.length, events = NON_API_EVENTS): void {
+  live.send('status', RUNNING_STATUS)
+  feedProcesses(live, PROCESSES.slice(0, processes))
+  live.sendEvents(events)
+  live.send('counts', countsMessage(SESSION_EVENTS))
+}
+
+export async function expectPanelsInsideViewport(page: Page): Promise<void> {
+  const { innerHeight } = await page.evaluate(() => ({ innerHeight: window.innerHeight }))
+  for (const part of ['status', 'processes', 'stream']) {
+    const box = (await page.locator(`[data-live="${part}"]`).boundingBox())!
+    expect(box.y + box.height, `${part} reaches below the window`).toBeLessThanOrEqual(innerHeight)
+  }
+}
+
+export async function snapshot(page: Page, name: string, options: { toast?: boolean } = {}): Promise<void> {
+  // A pointer left over a button from the last click would paint its hover state into the picture.
+  await page.mouse.move(0, 0)
+  await page.evaluate(() => window.scrollTo(0, 0))
+  // A toast's progress bar is a finite animation that ends with the toast, so waiting it out would photograph an empty corner.
+  if (options.toast) await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  else await waitForTransitions(page)
+  await page.screenshot({ path: screenshotPath(name), fullPage: true })
+}
 
 export async function pressEndRun(page: Page): Promise<void> {
   await endRunButton(page).click()
@@ -208,10 +254,14 @@ export async function pressEndRun(page: Page): Promise<void> {
   await expect(confirmDialog(page), 'the dialog fades out before anything is photographed').toHaveCount(0)
 }
 
-export async function expectEndRunInsideStatusBar(page: Page): Promise<void> {
+export async function expectInsideStatusBar(page: Page, button: Locator, name: string): Promise<void> {
   const bar = (await page.locator('[data-live="status"]').boundingBox())!
-  const button = (await endRunButton(page).boundingBox())!
-  expect(button.x, 'the button starts left of the bar').toBeGreaterThanOrEqual(bar.x)
-  expect(button.x + button.width, 'the button ends right of the bar').toBeLessThanOrEqual(bar.x + bar.width)
-  expect(button.y + button.height, 'the button sticks out of the bar').toBeLessThanOrEqual(bar.y + bar.height)
+  const box = (await button.boundingBox())!
+  expect(box.x, `${name} starts left of the bar`).toBeGreaterThanOrEqual(bar.x)
+  expect(box.x + box.width, `${name} ends right of the bar`).toBeLessThanOrEqual(bar.x + bar.width)
+  expect(box.y + box.height, `${name} sticks out of the bar`).toBeLessThanOrEqual(bar.y + bar.height)
+}
+
+export function expectEndRunInsideStatusBar(page: Page): Promise<void> {
+  return expectInsideStatusBar(page, endRunButton(page), 'the end-run button')
 }

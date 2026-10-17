@@ -80,7 +80,9 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
       data-field="events"
     ><strong>{{ formatCount(total) }} events</strong>{{ shownLabel }} · {{ formatCount(eventsPerMinute) }}/min</span>
 
-    <slot name="actions" />
+    <span class="live-status__actions">
+      <slot name="actions" />
+    </span>
   </div>
 </template>
 
@@ -137,5 +139,13 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
 
 .live-status__events {
   margin-left: auto;
+}
+
+/* The buttons wrap as one group: a lone [+60S] on a line of its own reads as a different control. */
+.live-status__actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 </style>

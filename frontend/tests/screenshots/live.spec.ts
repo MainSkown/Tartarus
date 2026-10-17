@@ -13,24 +13,24 @@ import {
   mockLiveSocket,
   mockShell,
   mockViews,
-  screenshotPath,
   test,
-  waitForTransitions,
   type LiveSocketMock,
 } from './fixtures'
 import {
   NON_API_EVENTS,
   endRunButton,
   expectEndRunInsideStatusBar,
+  expectPanelsInsideViewport,
+  feedProcesses,
   mockFinish,
   pressEndRun,
   refusal,
   PROCESSES,
   RUNNING_STATUS,
   SESSION_EVENTS,
-  countsMessage,
   fillerEvents,
-  type SessionProcess,
+  snapshot,
+  stream,
 } from './live-session'
 
 const ID = 45
@@ -72,21 +72,6 @@ async function openLive(page: Page, options: OpenOptions = {}): Promise<LiveSock
   return live
 }
 
-function feedProcesses(live: LiveSocketMock, processes: SessionProcess[]): void {
-  for (const { pid, ppid, name, executable, command_line, start, end } of processes) {
-    const node = { pid, ppid, name, executable, command_line, start, end: null }
-    live.send('process', { op: 'add', node })
-    if (end !== null) live.send('process', { op: 'end', node: { ...node, end } })
-  }
-}
-
-function stream(live: LiveSocketMock, processes = PROCESSES.length, events = NON_API_EVENTS): void {
-  live.send('status', RUNNING_STATUS)
-  feedProcesses(live, PROCESSES.slice(0, processes))
-  live.sendEvents(events)
-  live.send('counts', countsMessage(SESSION_EVENTS))
-}
-
 async function expectFollowingNewest(page: Page): Promise<void> {
   await expect
     .poll(() =>
@@ -97,24 +82,6 @@ async function expectFollowingNewest(page: Page): Promise<void> {
 
 async function showApiCalls(page: Page): Promise<void> {
   await page.locator('.live-stream__api input').check()
-}
-
-async function expectPanelsInsideViewport(page: Page): Promise<void> {
-  const { innerHeight } = await page.evaluate(() => ({ innerHeight: window.innerHeight }))
-  for (const part of ['status', 'processes', 'stream']) {
-    const box = (await page.locator(`[data-live="${part}"]`).boundingBox())!
-    expect(box.y + box.height, `${part} reaches below the window`).toBeLessThanOrEqual(innerHeight)
-  }
-}
-
-async function snapshot(page: Page, name: string, options: { toast?: boolean } = {}): Promise<void> {
-  // A pointer left over a button from the last click would paint its hover state into the picture.
-  await page.mouse.move(0, 0)
-  await page.evaluate(() => window.scrollTo(0, 0))
-  // A toast's progress bar is a finite animation that ends with the toast, so waiting it out would photograph an empty corner.
-  if (options.toast) await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-  else await waitForTransitions(page)
-  await page.screenshot({ path: screenshotPath(name), fullPage: true })
 }
 
 test('live-default-tab-for-a-running-analysis', async ({ page }) => {
