@@ -643,3 +643,12 @@ rule stays); linked clones that share the source's disk to save the 22 GB (decis
 username, language, edition or disk size (those need a build); ISO
 upload by drag and drop; Windows hosts; the remaining anti-VM tells of
 [open question 10](../features/tartarus-v1.md#open-questions) (empty optical drives, display adapter).
+
+**M6 closed 2026-10-17.** A guest is built, cloned, checked and chosen per analysis from the GUI and the API; the
+specs, README and `docs/specs/guest-profiles.md` describe it; `make verify-wizard` repeats the clone, gate and
+analysis drill on a running stack (about six minutes). The unit suites (cape 1453, backend 3590 plus 269
+integration, frontend 3147) are green. Not done from this plan, and why: the `[REBUILD]` button and the "verified on
+Windows 11 25H2" text (a clone or a new build covers rebuilding), pafish (cut as planned), the `make e2e` browser
+flow for the wizard (the screenshots and `verify-wizard` cover the screens and the API; a Playwright flow against
+the real backend is still to write), removing the old `finish-run` program from the cape image (nothing calls it).
+
