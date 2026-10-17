@@ -463,7 +463,7 @@ test_tamper_off_uploads_both_scripts_runs_it_and_logs_the_result_lines() {
     run_step tamper-off
     assert_status 0 &&
         assert_contains "LOG RESULT IsTamperProtected=False" &&
-        [[ -f $WORK_ON_DISK/tamper-off.ps1 && -f $WORK_ON_DISK/defender-settings.ps1 ]] &&
+        [[ -f $WORK_ON_DISK/tamper-off.ps1 && -f $WORK_ON_DISK/defender-settings.ps1 && -f $WORK_ON_DISK/security-ui.ps1 ]] &&
         requests_satisfy "
 stored = [r['form']['filepath'] for r in requests if r['path'] == '/store']
 assert 'C:\\\\ProgramData\\\\abcdefgh\\\\tamper-off.ps1' in stored, stored
@@ -545,7 +545,7 @@ test_defender_on_runs_its_own_script_with_the_shared_settings_script() {
         assert_contains "LOG RESULT eicar_removed=True" &&
         requests_satisfy "
 stored = [r['form']['filepath'] for r in requests if r['path'] == '/store']
-assert any(p.endswith('defender-on.ps1') for p in stored) and any(p.endswith('defender-settings.ps1') for p in stored), stored
+assert any(p.endswith('defender-on.ps1') for p in stored) and any(p.endswith('defender-settings.ps1') for p in stored) and any(p.endswith('security-ui.ps1') for p in stored), stored
 "
 }
 

@@ -770,12 +770,41 @@ class TestDefenderSettingsScript:
 
 
 class TestSecurityWindowLookup:
-    def test_tamper_off_finds_the_app_frame_by_title_not_a_core_window(self):
-        text = script_text("tamper-off.ps1")
+    """One helper finds the Windows Security window and its Tamper Protection switch, because a copy in
+    each script is how a bug fixed in tamper-off.ps1 survived in defender-on.ps1."""
+
+    def test_the_helper_finds_the_app_frame_by_title_not_a_core_window(self):
+        text = script_text("security-ui.ps1")
         assert "CoreWindow" not in text
         assert "ApplicationFrameWindow" in text
         assert "Zabezpieczenia Windows" in text
         assert "Windows Security" in text
+
+    def test_the_helper_knows_the_localized_switch_names_and_the_fifth_toggle_fallback(self):
+        text = script_text("security-ui.ps1")
+        for name in ("Ochrona przed naruszeniami", "Ochrona przed manipulacją", "Tamper Protection"):
+            assert name in text
+        assert "settingToggle" in text
+        assert "TogglePattern" in text
+
+    def test_the_helper_loads_ui_automation(self):
+        assert "Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes" in script_text("security-ui.ps1")
+
+    @pytest.mark.parametrize("script", ["tamper-off.ps1", "defender-on.ps1"])
+    def test_both_scripts_load_the_helper_and_carry_no_lookup_of_their_own(self, script):
+        text = script_text(script)
+        assert "security-ui.ps1" in text
+        for own_copy in ("ApplicationFrameWindow", "CoreWindow", "settingToggle", "TogglePattern", "$KnownNames"):
+            assert own_copy not in text, own_copy
+
+    @pytest.mark.parametrize("script", ["tamper-off.ps1", "defender-on.ps1"])
+    def test_a_missing_window_or_switch_is_exit_10_so_the_build_pauses(self, script):
+        text = script_text(script)
+        assert re.search(r"RESULT|Result 'window'", text)
+        assert len(re.findall(r"\bexit 10\b", text)) >= 2
+
+    def test_the_steps_upload_the_helper_with_the_script(self):
+        assert "--with security-ui.ps1" in (PROFILE_DIR / "steps" / "lib" / "windows.sh").read_text()
 
 
 class TestDefenderScripts:
@@ -783,10 +812,9 @@ class TestDefenderScripts:
         text = script_text("tamper-off.ps1")
         order = [
             "defender-settings.ps1",
-            "windowsdefender://threatsettings",
-            "$KnownNames",
-            "settingToggle",
-            "TogglePattern",
+            "Open-SecurityWindow",
+            "Find-TamperToggle",
+            "Set-ToggleState",
             "IsTamperProtected",
             "RealTimeProtectionEnabled",
             "Set-MpPreference",
@@ -794,15 +822,6 @@ class TestDefenderScripts:
         ]
         positions = [text.index(marker) for marker in order]
         assert positions == sorted(positions)
-
-    def test_tamper_off_knows_the_localized_names(self):
-        text = script_text("tamper-off.ps1")
-        for name in (
-            "Ochrona przed naruszeniami",
-            "Ochrona przed manipulacją",
-            "Tamper Protection",
-        ):
-            assert name in text
 
     def test_exit_codes(self):
         text = script_text("tamper-off.ps1")
@@ -817,10 +836,8 @@ class TestDefenderScripts:
         assert "EICAR-STANDARD-ANTIVIRUS" not in text.upper()
 
     @pytest.mark.parametrize("script", ["tamper-off.ps1", "defender-on.ps1"])
-    def test_loads_ui_automation_and_writes_result_lines(self, script):
-        text = script_text(script)
-        assert "Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes" in text
-        assert "RESULT " in text
+    def test_writes_result_lines(self, script):
+        assert "RESULT " in script_text(script)
 
     def test_defender_on_is_idempotent_and_proves_removal(self):
         text = script_text("defender-on.ps1")

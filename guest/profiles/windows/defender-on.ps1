@@ -14,7 +14,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+. (Join-Path $PSScriptRoot 'security-ui.ps1')
 
 function Result([string] $key, $value) {
   Write-Output ("RESULT {0}={1}" -f $key, $value)
@@ -28,46 +28,20 @@ if ($status.IsTamperProtected -and $status.RealTimeProtectionEnabled) {
 
 & (Join-Path $PSScriptRoot 'defender-settings.ps1') -Mode On
 
-Start-Process 'windowsdefender://threatsettings'
-Start-Sleep -Seconds 2
-
-$root = [Windows.Automation.AutomationElement]::RootElement
-$windowCondition = New-Object Windows.Automation.PropertyCondition(
-  [Windows.Automation.AutomationElement]::ClassNameProperty, 'Windows.UI.Core.CoreWindow'
-)
-$securityWindow = $null
-for ($attempt = 0; $attempt -lt 10 -and -not $securityWindow; $attempt++) {
-  Start-Sleep -Seconds 1
-  $candidates = $root.FindAll([Windows.Automation.TreeScope]::Children, $windowCondition)
-  foreach ($candidate in $candidates) {
-    if ($candidate.Current.Name -match 'Security|Zabezpiecz') { $securityWindow = $candidate }
-  }
-}
+$securityWindow = Open-SecurityWindow
 if (-not $securityWindow) {
   Result 'window' 'not-found'
   exit 10
 }
 
-$KnownNames = @('Ochrona przed naruszeniami', 'Ochrona przed manipulacją', 'Tamper Protection')
-$toggleCondition = New-Object Windows.Automation.PropertyCondition(
-  [Windows.Automation.AutomationElement]::AutomationIdProperty, 'settingToggle'
-)
-$toggles = @($securityWindow.FindAll([Windows.Automation.TreeScope]::Descendants, $toggleCondition))
-
-$tamperToggle = $toggles | Where-Object { $KnownNames -contains $_.Current.Name } | Select-Object -First 1
-if (-not $tamperToggle -and $toggles.Count -ge 5) {
-  $tamperToggle = $toggles[4]
-}
+$tamperToggle = Find-TamperToggle $securityWindow
 if (-not $tamperToggle) {
   Result 'toggle' 'not-found'
   exit 10
 }
 Result 'toggle_name' $tamperToggle.Current.Name
 
-$togglePattern = $tamperToggle.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
-if ($togglePattern.Current.ToggleState -eq [Windows.Automation.ToggleState]::Off) {
-  $togglePattern.Toggle()
-}
+Set-ToggleState $tamperToggle $true
 Start-Sleep -Seconds $VerifyWaitSeconds
 
 function Get-TamperProtected { (Get-MpComputerStatus).IsTamperProtected }
@@ -111,7 +85,7 @@ if (-not $removed) {
   exit 30
 }
 
-try { $securityWindow.SetFocus(); [System.Windows.Forms.SendKeys]::SendWait('%{F4}') } catch {}
+Close-SecurityWindow $securityWindow
 
 Result 'done' $true
 exit 0

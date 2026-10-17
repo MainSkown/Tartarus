@@ -49,7 +49,7 @@ result_summary() {
 # verification failed, 30 a proof step failed.
 run_defender_script() {
     local script=$1 instructions=$2 output code
-    output=$(guest_agent run "$script" --with defender-settings.ps1 --timeout "$DEFENDER_SCRIPT_TIMEOUT_S")
+    output=$(guest_agent run "$script" --with defender-settings.ps1 --with security-ui.ps1 --timeout "$DEFENDER_SCRIPT_TIMEOUT_S")
     code=$?
     [[ -z $output ]] || printf '%s\n' "$output"
     case $code in
