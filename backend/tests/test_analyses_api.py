@@ -744,7 +744,7 @@ async def running_analysis(
 async def test_an_analysis_whose_monitor_has_not_started_cannot_be_finished_yet(
     harness: Harness,
 ) -> None:
-    # CAPE says `running` about 25 s before the analyzer starts in the guest. Ending the run in that
+    # CAPE says `running` about 14 s before the analyzer starts in the guest. Ending the run in that
     # gap made the guest agent stop answering, and CAPE then took minutes to give the analysis up.
     analysis_id = await running_analysis(harness, monitor_started=False)
 

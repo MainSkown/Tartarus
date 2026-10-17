@@ -4,14 +4,16 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
 from typing import Protocol, Self, Unpack
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.analyses.deadline import MAX_RUN_S
+from app.analyses.deadline import MAX_RUN_S, initial_deadline
 from app.analyses.guest_choice import recorded_guest
+from app.analyses.monitor import first_monitor_log_time
 from app.analyses.ports import (
     EventIngester,
     GuestSource,
@@ -52,6 +54,7 @@ from app.guest.errors import (
     GuestControlUnreachable,
 )
 from app.guest.schemas import Guest, InteractiveOptions
+from app.live.utc import as_utc
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +121,7 @@ class Runner:
         config: RunnerConfig,
         *,
         clock: Callable[[], float] = time.monotonic,
+        now: Callable[[], datetime] = utc_now,
         live: LiveCollection | None = None,
     ) -> None:
         self._session_factory = session_factory
@@ -128,6 +132,7 @@ class Runner:
         self._guests = guests
         self._config = config
         self._clock = clock
+        self._now = now
         self._live = live or NoLiveCollection()
         self._collecting: int | None = None
         self._trouble_since: float | None = None
@@ -329,8 +334,47 @@ class Runner:
         else:
             if trouble is None:
                 self._trouble_since = None
+                await self._steer_interactive_run(session, analysis, task_id)
             else:
                 await self._tolerate(session, analysis.id, trouble)
+
+    async def _steer_interactive_run(
+        self, session: AsyncSession, analysis: Analysis, task_id: int
+    ) -> None:
+        started_at = analysis.started_at
+        if not _is_interactive_run(analysis) or started_at is None:
+            return
+        if analysis.status is not AnalysisStatus.RUNNING:
+            return
+        if analysis.deadline_at is None:
+            await self._set_deadline(session, analysis, task_id, started_at)
+        if self._deadline_passed(analysis):
+            await self._end_run(analysis, task_id)
+
+    async def _set_deadline(
+        self, session: AsyncSession, analysis: Analysis, task_id: int, started_at: datetime
+    ) -> None:
+        monitor_seen_at = first_monitor_log_time(self._config.cape_storage_path, task_id)
+        if monitor_seen_at is None:
+            return
+        deadline = initial_deadline(
+            as_utc(monitor_seen_at), as_utc(started_at), analysis.options["timeout"]
+        )
+        await update_analysis(session, analysis.id, deadline_at=deadline)
+
+    def _deadline_passed(self, analysis: Analysis) -> bool:
+        return analysis.deadline_at is not None and self._now() >= as_utc(analysis.deadline_at)
+
+    async def _end_run(self, analysis: Analysis, task_id: int) -> None:
+        guest = recorded_guest(analysis.options)
+        if guest is None:
+            return
+        try:
+            await self._guests.finish_task(task_id, guest)
+        except GuestControlError as error:
+            logger.warning(
+                "Ending analysis %s at its deadline failed, retrying: %s", analysis.id, error
+            )
 
     async def _finish_for_forgotten_task(
         self, session: AsyncSession, analysis: Analysis, task_id: int
@@ -483,6 +527,10 @@ class Runner:
         self._trouble_since = None
         self._consecutive_errors.pop(analysis_id, None)
         logger.info("Analysis %s ended as %s", analysis_id, changes["status"])
+
+
+def _is_interactive_run(analysis: Analysis) -> bool:
+    return analysis.options.get("interactive") is True
 
 
 def _stage(status: AnalysisStatus) -> int:

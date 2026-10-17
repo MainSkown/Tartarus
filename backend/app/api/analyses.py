@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.analyses.deadline import MAX_RUN_S, at_the_latest, extended_deadline
 from app.analyses.guest_badges import badges_by_guest
 from app.analyses.guest_choice import GuestRefusedError, PackageNotAcceptedError, recorded_guest
+from app.analyses.monitor import monitor_started
 from app.analyses.ports import RunnerControl
 from app.analyses.submission import AnalysisSubmitter, discard_unreferenced_sample
 from app.api.dependencies import (
@@ -204,7 +205,7 @@ async def finish(
 
     The guest stops within about a second and the analysis then moves on to processing by itself,
     so the status answered is still `running`. Asking again is harmless. `409` unless the analysis
-    is `running` and its monitor has started in the guest (CAPE says `running` about 25 s earlier,
+    is `running` and its monitor has started in the guest (CAPE says `running` about 14 s earlier,
     and ending the run in that gap leaves the guest agent dead, or the analysis records no guest);
     `502` when the guest control service cannot reach the guest agent.
     """
@@ -213,7 +214,7 @@ async def finish(
         raise HTTPException(409, _reason_not_finishable(analysis))
     if analysis.cape_task_id is None:
         raise HTTPException(409, f"Analysis {analysis_id} has no CAPE task to end")
-    if not _monitor_started(storage, analysis.cape_task_id):
+    if not monitor_started(storage, analysis.cape_task_id):
         raise HTTPException(
             409,
             f"Analysis {analysis_id} has not started in the guest yet: wait a few seconds",
@@ -285,12 +286,6 @@ def _reason_not_reingestible(analysis: Analysis) -> str:
             "only a done or report_failed analysis can be re-ingested"
         )
     return f"Analysis {analysis.id} cannot be re-ingested while another analysis is active"
-
-
-def _monitor_started(storage: Path, cape_task_id: int) -> bool:
-    """The analyzer's monitor writes one log per process as soon as it runs in the guest."""
-    logs = storage / "analyses" / str(cape_task_id) / "logs"
-    return logs.is_dir() and any(logs.glob("*.bson"))
 
 
 def _extended_deadline_of(analysis: Analysis, seconds: int) -> datetime:

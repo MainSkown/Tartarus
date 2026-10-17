@@ -65,6 +65,9 @@ class GuestSource(Protocol):
 
     async def profiles(self) -> list[GuestProfile]: ...
 
+    async def finish_task(self, task_id: int, guest: str) -> None:
+        """Ends the task's run in the guest; raises `GuestControlError` when it cannot."""
+
 
 class RunnerControl(Protocol):
     """What the API may ask of the runner."""
