@@ -12,7 +12,7 @@ as M5 and M6 did; this file is the roadmap and the decision record.
 
 | Question | Decision |
 |---|---|
-| Stop and extend a running task | **Drop the `+60s` button.** Stopping works (END RUN); the timeout is set at submission only. Remove the button from the GUI spec if it is still there. |
+| Stop and extend a running task | **Keep the `+60s` button, for interactive runs only** (changed the same day: the first answer, dropping it, was a misunderstanding). CAPE cannot extend a running task, so Tartarus enforces the deadline itself: an interactive task is submitted with CAPE's maximum timeout (1200 s) as the safety net, the backend ends the run at the analyst's deadline through the existing finish call, and `+60s` moves that deadline later, up to 1200 s. Non-interactive runs keep CAPE's own timeout. END RUN already works. |
 | Sysmon timing | **Final phase only.** capemon gives the live events; Sysmon arrives with the final report. |
 | Default analysis timeout | **180 s stays.** |
 | App icon | **The user supplies the logo later.** Wiring it in (favicon, PWA manifest, header) is a release task (M11). |
@@ -72,8 +72,14 @@ who use or contribute to the project replace them.
   that a sample reads as a real GPU without breaking capemon, the Guacamole desktop or the snapshot; keep the
   facts script's check of both.
 - **The wizard's browser e2e** in `make e2e`.
-- **Close the questions in the docs:** update `tartarus-v1.md` open questions, drop `+60s` from the GUI spec and
-  the Submit/analysis header mockups, note final-phase Sysmon in the specs.
+- **The `+60s` button** (interactive runs): a spike first on a real interactive run (does a task submitted with
+  `timeout=1200` that the backend finishes at its own deadline give the same complete results as CAPE's own timeout;
+  what the finish call's 409 window in the first seconds means for a short deadline), then test-first: the
+  deadline kept in the analysis record, a backend timer that survives a restart (reattached like the guest builds),
+  the `+60s` endpoint with its cap, the button and the running-out countdown in the analysis header and the LIVE
+  status bar, screenshots for the Artifact review.
+- **Close the questions in the docs:** update `tartarus-v1.md` open questions and note final-phase Sysmon in the
+  specs.
 - Exit: `make e2e`, `make verify-guest` and `make verify-wizard` pass on the real stack.
 
 ### M8: More event sources and Defender's verdict

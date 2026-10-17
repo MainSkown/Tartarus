@@ -143,8 +143,10 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
    `backend`, behind a bearer token. libvirt's TCP endpoint stays off (`make verify-cape` enforces it, and
    checks the control service's token and isolation), and the Docker socket is never mounted. See
    [CAPE integration](../specs/cape-integration.md#the-control-service).
-2. **Stop and extend a running task. Decided 2026-10-17: the `+60s` button is dropped.** Stop works (END RUN);
-   the timeout is set at submission only.
+2. **Stop and extend a running task. Decided 2026-10-17: keep `+60s`, for interactive runs only.** Stop works
+   (END RUN). CAPE cannot extend a running task, so Tartarus enforces the deadline itself: the task is submitted
+   with CAPE's maximum timeout (1200 s) as a safety net, the backend ends the run at the analyst's deadline through
+   the finish call, and `+60s` moves that deadline later, up to 1200 s. Built in M7, after a spike on a real run.
 3. **Sysmon timing. Decided 2026-10-17: final phase only.** CAPE collects the Sysmon EVTX at the end of the run;
    capemon gives the live events. No live forwarder.
 4. **Default Sigma ruleset (decided 2026-10-14: a curated SigmaHQ subset, see [M4](../plans/m4-sigma.md)).**
