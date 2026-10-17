@@ -2,7 +2,8 @@
 
 M0 to M7 are built (M7 closed 2026-10-17 after its exit run passed, see its plan). This is what is left before Tartarus v1 is finished, decided with the user
 on 2026-10-17 by going through every open question and every unfinished feature one by one. Milestones M7 to
-M11 follow the order the user chose: **foundations, features, guest proofs, hardening, release**. Each
+M11 follow the order the user chose: **foundations, features, guest proofs, hardening, release**; M7b (frontend i18n,
+added later the same day) sits between foundations and features. Each
 milestone gets its own plan file (`m7-*.md` and so on) with waves and a test-first task table when it starts,
 as M5 and M6 did; this file is the roadmap and the decision record.
 
@@ -41,11 +42,14 @@ as M5 and M6 did; this file is the roadmap and the decision record.
 | Search and IOC pivot across analyses | **A Search page plus an IOC pivot** (an IOC to every analysis that saw it). |
 | Parallel analyses | **Analyses on different ready guests run at the same time; builds, clones, deletes and registration still wait for every analysis to finish.** CAPE reads its machine list at start, so hot reload is out of scope. |
 | Windows hosts (WSL2) | **Dropped from the finish line** until the user has a Windows host to test on. |
+| Frontend i18n | **Added 2026-10-17: every user-facing string of the frontend moves into a locale catalogue, and only English ships.** It touches about 110 files, so it gets its own milestone, M7b, placed before M8 so that the screens M8 and M9 add are written with message keys from the start. No translation and no language switcher in v1. |
 
 ### Stays after v1
 
 Linux profile and its normaliser, ISO drop zone, URL and archive submission, compare two analyses, custom
-rules and sequence detections, linked clones, profile `extends`, Windows hosts.
+rules and sequence detections, linked clones, profile `extends`, Windows hosts, **translations into other languages
+with a language switcher** (M7b only builds the catalogue and ships English), and localising what the backend writes
+(API error texts, the HTML and PDF report).
 
 ### Guest proofs the user wants run for real
 
@@ -77,6 +81,45 @@ Done 2026-10-17. The plan with its decisions and what each wave proved is in [m7
 - **Close the questions in the docs:** done for `tartarus-v1.md` questions 2, 3 and 10, and the specs.
 - Exit: passed on 2026-10-17 on the real stack: `make verify-guest` 12 of 12, `make verify-wizard` 12 of 12 and
   `make e2e` 129 checks, none failed; see the Status of [m7-foundations.md](m7-foundations.md).
+
+### M7b: Frontend i18n, English only
+Every string a user can read in the frontend moves out of the templates, services and composables into a locale
+catalogue, with one locale, `en-US`, shipping. **Why now:** it is a change across about 110 files (108 Vue files, about
+81 of them with visible text, and about 32 of the 126 TypeScript files outside the generated client, led by
+`services/guest-build.ts`, `timeline-tooltip.ts`, `analysis-status.ts`, `analysis-tabs.ts`, `report-request.ts` and
+`composables/use-guest-wizard.ts`), so it is cheapest while M8's Memory view and M9's Search and Import pages do not exist
+yet: written afterwards, they would need migrating too. **What does not change:** how the app looks and reads. The exit
+proof is that every screenshot comes out pixel-identical and every English assertion in the 230 unit tests still holds.
+- **Conventions spike first (Sonnet).** Migrate three representative files by hand: a component with template text, a
+  service that builds sentences from parts (`guest-build.ts` has pluralised and concatenated messages), and a composable
+  that raises toasts (`use-end-run.ts`). Decide and write down, in a new "Internationalisation" section of
+  [gui.md](../specs/gui.md): the library (the proposal is `vue-i18n` v9 in Composition mode, installed from a Quasar boot
+  file, with Quasar's own component strings set from the same locale, `quasar/lang/en-US`); the key scheme
+  (`area.screen.thing`, one catalogue file per area under `src/i18n/en-US/`); one source of truth for the key list (the
+  `en-US` catalogue is the message schema, so `vue-tsc` fails on an unknown key); how code outside a component translates
+  (one shared `t` imported from `@/i18n`, not a copy per file); plurals (`1 process`, `3 processes`) through the library's
+  plural rules, not string building; numbers and dates through its formatters, replacing the hard-coded
+  `toLocaleString('en-US')` in `format-number.ts` and `NoteEditor.vue`, while timestamps shown in UTC stay in UTC; and how
+  tests get the catalogue (the proposal is one vitest `setupFiles` entry that installs the plugin through
+  `config.global.plugins`, which `@vue/test-utils` merges with each mount's own plugins, so the roughly 100 mounting tests
+  need no edit; the spike confirms it on `guest-card.test.ts`).
+- **Infrastructure (Sonnet).** The i18n instance and boot file, the `en-US` catalogue skeleton, the typed schema, the
+  vitest setup entry, and the lint rule: `@intlify/vue-i18n/no-raw-text` for templates (and `no-unused-keys`), added
+  first as a warning list of the files not yet migrated.
+- **Migration by area (Haiku, parallel, disjoint files, test-first only where logic changes).** Services and composables
+  with strings first (about 32 files), then the components and pages by area: Guests, wizard and build page; the analysis
+  page shell and its tabs; LIVE; Events, Network, Artifacts, Detections and the detail drawer; Timeline (canvas text and
+  tooltips); Settings, Dashboard, Submit dialog, Rules, Notes and Export. Each task migrates only its own files and adds
+  its keys to its own catalogue file, so tasks do not collide. Strings the API sends (error texts, validation messages) are
+  shown as received.
+- **Lock it in.** The lint rule goes from a warning list to an error for the whole tree, so a new screen cannot add raw
+  text; a unit test fails when a key used in code is missing from the catalogue or a catalogue key is unused.
+- **Proof.** Capture all 32 screenshot specs on the commit before the change and on the commit after, and compare the
+  images: any pixel that differs is either fixed or explained. `npm run test:unit` exits 0 with the existing assertions
+  unchanged except where a message was split or pluralised, `eslint` and `vue-tsc` are clean, and `make e2e`'s browser flows
+  pass. No screenshot review Artifact is needed while the images are identical (rule 4 is about visual changes).
+- **Not in M7b:** translations, a language switcher or a locale Setting, right-to-left layout, the backend's texts, the
+  report export, and the docs.
 
 ### M8: More event sources and Defender's verdict
 - **Sysmon normaliser:** CAPE's collected Sysmon EVTX to process, network, file and registry events; Sigma rules
@@ -117,7 +160,7 @@ proof becomes a `verify-*` check where it can be automated.
 3. **Docs cleanup:** `docs/plans/**` to `docs/history/` with an index; new top-level docs for users (install,
    first analysis, building a guest, reading a report, backup and disk use, troubleshooting) and contributors
    (architecture overview, running the tests, the rules in `.claude/CLAUDE.md` in plain language, how to add a
-   guest profile or an event source); the specs stay as the reference.
+   guest profile, an event source or a translatable message key); the specs stay as the reference.
 4. **License and release files:** `LICENSE` (GPL-3.0), `CONTRIBUTING.md`, `CHANGELOG.md`, a version in the app,
    the About page and the backend, the app icon from the user's logo, a licence note about CAPEv2 and the other
    bundled components.
@@ -140,4 +183,5 @@ proof becomes a `verify-*` check where it can be automated.
 | An EVTX reader or the ETW module does not give usable events | Each source starts with a spike on a real run; a source that cannot meet the bar is dropped from v1 and recorded |
 | The display adapter change breaks capemon or the desktop | The spike runs first on a throwaway clone with `verify-guest` and an interactive run as checks; the empty-drive removal ships alone if the adapter cannot |
 | GPL-3.0 and bundled components | The README and `LICENSE` note which parts are separate programs in the cape container (CAPEv2 is GPL-3.0 too); checked in the release step |
+| The i18n migration changes a string without anyone noticing, or a template keeps a raw string | The before-and-after screenshot comparison, the unchanged English unit assertions, and a lint rule that errors on raw text across the tree |
 | Agents report results optimistically (found again in M6) | Every milestone is proven on the real stack through the public API before it is called done, as M6 was |
