@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import GuestPage from '@/pages/GuestPage.vue'
 import GuestBuildPage from '@/pages/GuestBuildPage.vue'
-import PlaceholderPage from '@/pages/PlaceholderPage.vue'
+import GuestClonePage from '@/pages/GuestClonePage.vue'
+import GuestPage from '@/pages/GuestPage.vue'
+import GuestWizardPage from '@/pages/GuestWizardPage.vue'
 import RulesPage from '@/pages/RulesPage.vue'
 import { routes } from '@/router/routes'
 
@@ -14,8 +15,8 @@ describe('routes', () => {
 
   const guestRoutes = [
     { path: 'guest', component: GuestPage },
-    { path: 'guest/new', component: PlaceholderPage },
-    { path: 'guest/clone/:name', component: PlaceholderPage },
+    { path: 'guest/new', component: GuestWizardPage },
+    { path: 'guest/clone/:name', component: GuestClonePage },
     { path: 'guest/builds/:buildId', component: GuestBuildPage },
   ]
 
