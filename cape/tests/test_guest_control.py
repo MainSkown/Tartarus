@@ -104,6 +104,9 @@ class FakeEngine:
     def continue_after_pause(self, build_id):
         self._called("continue_after_pause", build_id)
 
+    def cancel(self, build_id):
+        self._called("cancel", build_id)
+
     def complete_build(self, build_id, passed, selftest):
         self._called("complete_build", build_id, passed, selftest)
 
@@ -215,13 +218,26 @@ def test_a_clone_starts_from_the_named_guest_with_the_body_as_its_parameters(cli
 
 @pytest.mark.parametrize(
     ("action", "method"),
-    [("resume", "resume"), ("restart", "restart"), ("continue", "continue_after_pause")],
+    [
+        ("resume", "resume"),
+        ("restart", "restart"),
+        ("continue", "continue_after_pause"),
+        ("cancel", "cancel"),
+    ],
 )
-def test_a_build_can_be_resumed_restarted_and_continued(client, engine, action, method):
+def test_a_build_can_be_resumed_restarted_continued_and_cancelled(client, engine, action, method):
     reply = client.request("POST", f"/builds/build-1/{action}", headers=AUTH)
 
     assert (reply.status, reply.json) == (202, {"id": "build-1"})
     assert engine.calls == [(method, "build-1")]
+
+
+def test_cancelling_an_unknown_build_is_404(client, engine):
+    engine.failures["cancel"] = GuestNotFound("no build called build-1")
+
+    reply = client.request("POST", "/builds/build-1/cancel", headers=AUTH)
+
+    assert (reply.status, reply.json) == (404, {"error": "no build called build-1"})
 
 
 def test_the_backends_verdict_completes_a_build(client, engine):
@@ -394,6 +410,7 @@ def test_the_engines_exceptions_become_status_codes(client, engine, failure, sta
         ("POST", "/builds/b1/resume", "resume"),
         ("POST", "/builds/b1/restart", "restart"),
         ("POST", "/builds/b1/continue", "continue_after_pause"),
+        ("POST", "/builds/b1/cancel", "cancel"),
         ("POST", "/builds/b1/complete", "complete_build"),
         ("GET", "/guests/win/display", "display"),
         ("GET", "/guests/win/selftest/sample", "selftest_sample"),
@@ -438,6 +455,7 @@ ALL_ROUTES = [
     ("POST", "/builds/b1/resume"),
     ("POST", "/builds/b1/restart"),
     ("POST", "/builds/b1/continue"),
+    ("POST", "/builds/b1/cancel"),
     ("POST", "/builds/b1/complete"),
     ("POST", "/tasks/7/finish"),
 ]
@@ -543,6 +561,7 @@ def test_a_build_id_outside_its_pattern_is_400_before_it_reaches_the_engine(
         ("POST", "/resume"),
         ("POST", "/restart"),
         ("POST", "/continue"),
+        ("POST", "/cancel"),
     ]:
         assert client.request(method, f"/builds/{build_id}{suffix}", headers=AUTH).status == 400, (
             method,

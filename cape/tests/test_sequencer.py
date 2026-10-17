@@ -13,6 +13,7 @@ from guest_engine.builds import BuildStore
 from guest_engine.errors import Conflict, GuestNotFound
 from guest_engine.profile import PipelineStep
 from guest_engine.sequencer import (
+    CANCELLED_MESSAGE,
     INTERRUPTED_MESSAGE,
     SHUTDOWN_MESSAGE,
     BuildFailed,
@@ -864,6 +865,132 @@ def test_a_step_that_would_start_once_the_shutdown_began_is_not_started(shop):
     assert (build.status, build.message) == ("failed", SHUTDOWN_MESSAGE)
     assert statuses_of(build) == ["pending"]
     assert not (shop.root / "alpha" / "runs").exists()
+
+
+# --- cancelling a build ------------------------------------------------------------------
+
+
+def test_cancelling_a_running_step_stops_its_process_and_leaves_the_build_failed_and_resumable(
+    shop,
+):
+    shop.step("long", "sleep 300")
+    shop.step("after", "echo after >> $TT_GUEST_DIR/runs")
+    build = shop.new("long", "after")
+    pid = step_pid_of(shop, build.id)
+
+    shop.sequencer.cancel(build.id, shop.job())
+
+    after = shop.store.load(build.id)
+    assert not alive(pid)
+    assert (after.status, after.message) == ("failed", CANCELLED_MESSAGE)
+    assert CANCELLED_MESSAGE == "the build was cancelled"
+    assert statuses_of(after) == ["failed", "pending"]
+    assert (after.step_pid, after.step_path) == (None, None)
+    assert shop.statuses[-1] == "failed"
+    assert not (shop.root / "alpha" / "runs").exists()
+    shop.step("long", "true")
+    shop.sequencer.resume(build.id, shop.job())
+    assert shop.finish(build.id).status == "succeeded"
+
+
+def test_cancelling_does_not_close_the_sequencer(shop):
+    shop.step("long", "sleep 300")
+    shop.step("one", "true")
+    build = shop.new("long")
+    step_pid_of(shop, build.id)
+
+    shop.sequencer.cancel(build.id, shop.job())
+
+    assert shop.finish(shop.new("one", guest="bravo").id).status == "succeeded"
+
+
+def test_cancelling_kills_a_step_that_ignores_sigterm_after_the_grace(shop):
+    shop.sequencer = shop.service(stop_grace_s=0.5)
+    shop.step("stubborn", "trap '' TERM\nwhile :; do sleep 0.05; done")
+    build = shop.new("stubborn")
+    pid = step_pid_of(shop, build.id)
+    time.sleep(0.3)
+
+    shop.sequencer.cancel(build.id, shop.job())
+
+    assert not alive(pid)
+    assert shop.store.load(build.id).message == CANCELLED_MESSAGE
+
+
+def test_cancelling_a_paused_build_ends_it_failed_and_resumable(shop):
+    pausing_step(shop)
+    paused = shop.finish(shop.new("ask", "after").id)
+
+    shop.sequencer.cancel(paused.id, shop.job())
+
+    after = shop.store.load(paused.id)
+    assert (after.status, after.message, after.pause) == ("failed", CANCELLED_MESSAGE, None)
+    assert statuses_of(after) == ["failed", "pending"]
+    assert shop.statuses[-1] == "failed"
+    (shop.root / "alpha" / "answered").write_text("")
+    shop.sequencer.resume(paused.id, shop.job())
+    assert shop.finish(paused.id).status == "succeeded"
+
+
+def test_a_cancelled_build_leaves_a_line_in_its_log(shop):
+    shop.step("long", "sleep 300")
+    build = shop.new("long")
+    step_pid_of(shop, build.id)
+
+    shop.sequencer.cancel(build.id, shop.job())
+
+    assert f"== {CANCELLED_MESSAGE}" in shop.log(build.id)
+
+
+@pytest.mark.parametrize(("body", "status"), [("true", "succeeded"), ("exit 1", "failed")])
+def test_a_build_that_is_not_running_or_paused_cannot_be_cancelled(shop, body, status):
+    shop.step("one", body)
+    finished = shop.finish(shop.new("one").id)
+
+    with pytest.raises(Conflict, match=f"alpha is {status}, not running or paused"):
+        shop.sequencer.cancel(finished.id, shop.job())
+
+    assert shop.store.load(finished.id).status == status
+
+
+def test_cancelling_an_unknown_build_is_not_found(shop):
+    with pytest.raises(GuestNotFound):
+        shop.sequencer.cancel("bnothing", shop.job())
+
+
+def test_a_cancel_asked_before_the_next_step_starts_stops_the_build_without_starting_it(shop):
+    shop.step("one", "echo ran >> $TT_GUEST_DIR/runs")
+    cancellers: list[threading.Thread] = []
+
+    def cancel_while_preparing(build):
+        cancellers.append(
+            threading.Thread(target=lambda: shop.sequencer.cancel(build.id, shop.job()))
+        )
+        cancellers[0].start()
+        wait_for(lambda: f"== {CANCELLED_MESSAGE}" in shop.log(build.id))
+
+    build = shop.finish(shop.new("one", prepare=cancel_while_preparing).id)
+
+    cancellers[0].join(20)
+    assert (build.status, build.message) == ("failed", CANCELLED_MESSAGE)
+    assert statuses_of(build) == ["pending"]
+    assert not (shop.root / "alpha" / "runs").exists()
+
+
+def test_a_cancel_that_came_too_late_says_the_build_finished(shop):
+    shop.step("one", "true")
+
+    finalizing = threading.Event()
+
+    def finish_once_cancelled(build):
+        finalizing.set()
+        wait_for(lambda: f"== {CANCELLED_MESSAGE}" in shop.log(build.id))
+
+    build = shop.new("one", finalize=finish_once_cancelled)
+    assert finalizing.wait(10)
+
+    with pytest.raises(Conflict, match="succeeded"):
+        shop.sequencer.cancel(build.id, shop.job())
 
 
 # --- the slot taken by something that is not a build --------------------------------------

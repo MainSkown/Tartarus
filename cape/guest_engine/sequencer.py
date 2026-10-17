@@ -44,6 +44,7 @@ log = logging.getLogger(__name__)
 
 INTERRUPTED_MESSAGE = "the control service restarted while this step was running; resume it"
 SHUTDOWN_MESSAGE = "the control service was stopped while this step was running; resume it"
+CANCELLED_MESSAGE = "the build was cancelled"
 STOP_GRACE_S = 5.0
 CONCLUDE_WAIT_S = 10.0
 OCCUPANT_CONTROL = "occupant"
@@ -95,6 +96,7 @@ class Sequencer:
         self._controls: dict[str, StepControl] = {}
         self._controls_lock = threading.Lock()
         self._closed = False
+        self._cancelled: set[str] = set()
         self._occupant: str | None = None
 
     def begin(
@@ -130,6 +132,29 @@ class Sequencer:
             self._store.append_log(build, "== restarting from the first step")
             self._start_again(build, job, from_step=0)
 
+    def cancel(self, build_id: str, job: BuildJob) -> None:
+        """End the running or paused build as failed ("cancelled"), once its step process is gone.
+
+        The build stays resumable and the sequencer stays open. `job` serves a paused build, which
+        has no thread left to report its end.
+        """
+        with self._lock:
+            build = self._stopped_build(build_id, ("running", "paused"))
+            paused = build.status == "paused"
+            running_step = None if paused else self._request_cancel(build_id)
+            self._store.append_log(build, f"== {CANCELLED_MESSAGE}")
+            if paused:
+                self._cancel_paused(build, job)
+                return
+        if running_step is not None:
+            running_step.stop(self._stop_grace_s, CANCELLED_MESSAGE)
+        self.wait(build_id, self._stop_grace_s + CONCLUDE_WAIT_S)
+        ended = self._store.load(build_id)
+        if ended.status != "failed":
+            raise Conflict(
+                f"the {ended.kind} of {ended.guest} is {ended.status}; it could not be cancelled"
+            )
+
     def recover_interrupted(self) -> list[BuildRecord]:
         """Fail the builds a killed service left `running`, so the analyst can resume them."""
         recovered = []
@@ -159,7 +184,7 @@ class Sequencer:
             self._closed = True
             controls = list(self._controls.values())
         for control in controls:
-            control.stop(self._stop_grace_s)
+            control.stop(self._stop_grace_s, SHUTDOWN_MESSAGE)
         for thread in list(self._threads.values()):
             thread.join(self._stop_grace_s + CONCLUDE_WAIT_S)
 
@@ -202,6 +227,18 @@ class Sequencer:
             thread.join(timeout)
             return not thread.is_alive()
         return True
+
+    def _request_cancel(self, build_id: str) -> StepControl | None:
+        """Refuse the build any further step, and hand back the control of the one that may run."""
+        with self._controls_lock:
+            self._cancelled.add(build_id)
+            return self._controls.get(build_id)
+
+    def _cancel_paused(self, build: BuildRecord, job: BuildJob) -> None:
+        for step in build.steps:
+            if step.status == "paused":
+                step.status = "failed"
+        self._conclude(build, job, "failed", CANCELLED_MESSAGE)
 
     def _stop_orphaned_step(self, build: BuildRecord) -> str | None:
         """Stop the step a dead service left running; the build's note, or None if none ran."""
@@ -278,6 +315,7 @@ class Sequencer:
         finally:
             with self._controls_lock:
                 self._controls.pop(build_id, None)
+                self._cancelled.discard(build_id)
 
     def _execute(self, build: BuildRecord, job: BuildJob) -> None:
         job.prepare(build)
@@ -301,7 +339,7 @@ class Sequencer:
             return False
         control = self._new_control(build)
         if control is None:
-            self._conclude(build, job, "failed", SHUTDOWN_MESSAGE)
+            self._conclude(build, job, "failed", self._reason_for_not_starting())
             return False
         step.status, step.started, step.progress = "running", timestamp(), 0
         build.message = step.name
@@ -354,7 +392,7 @@ class Sequencer:
             return False
         step.status = "failed"
         reason = (
-            SHUTDOWN_MESSAGE
+            control.stop_reason
             if control.stop_requested
             else failure_message(step.name, step.timeout_s, outcome, recent)
         )
@@ -362,13 +400,16 @@ class Sequencer:
         return False
 
     def _new_control(self, build: BuildRecord) -> StepControl | None:
-        """The handle on the next step of `build`, or None when the sequencer was shut down."""
+        """The handle on the next step of `build`, or None when it was cancelled or shut down."""
         with self._controls_lock:
-            if self._closed:
+            if self._closed or build.id in self._cancelled:
                 return None
             control = StepControl(on_start=lambda pid: self._record_step_process(build, pid))
             self._controls[build.id] = control
             return control
+
+    def _reason_for_not_starting(self) -> str:
+        return SHUTDOWN_MESSAGE if self._closed else CANCELLED_MESSAGE
 
     def _record_step_process(self, build: BuildRecord, pid: int) -> None:
         build.step_pid = pid

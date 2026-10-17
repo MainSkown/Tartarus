@@ -63,7 +63,7 @@ class NotReadyEngine:
 
     profiles = media = guests = guest = guest_address = delete_guest = _refuse
     start_build = start_clone = build = build_log = resume = restart = _refuse
-    continue_after_pause = complete_build = check = display = _refuse
+    continue_after_pause = cancel = complete_build = check = display = _refuse
     selftest_sample = selftest_checks = _refuse
 
     def shutdown(self) -> None:
@@ -165,6 +165,7 @@ class Routes:
             self._route("POST", f"{build}/resume", self.resume),
             self._route("POST", f"{build}/restart", self.restart),
             self._route("POST", f"{build}/continue", self.continue_after_pause),
+            self._route("POST", f"{build}/cancel", self.cancel),
             self._route("POST", f"{build}/complete", self.complete_build),
             self._route("POST", r"/tasks/(?P<task_id>[^/]*)/finish", self.finish_task),
         ]
@@ -233,6 +234,9 @@ class Routes:
 
     def continue_after_pause(self, request: Request) -> control_http.Answer:
         return self._accepted(request, self.engine.continue_after_pause)
+
+    def cancel(self, request: Request) -> control_http.Answer:
+        return self._accepted(request, self.engine.cancel)
 
     def _accepted(self, request: Request, action: Callable[[str], None]) -> control_http.Answer:
         identifier = build_id(request)

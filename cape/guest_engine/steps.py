@@ -131,6 +131,7 @@ class StepControl:
         self._lock = threading.Lock()
         self._pid: int | None = None
         self.stop_requested = False
+        self.stop_reason = ""
 
     @property
     def running(self) -> bool:
@@ -149,9 +150,14 @@ class StepControl:
         with self._lock:
             self._pid = None
 
-    def stop(self, grace_s: float) -> bool:
-        """Stop the running step's group (see `terminate_group`); False when none was running."""
+    def stop(self, grace_s: float, reason: str = "") -> bool:
+        """Stop the running step's group (see `terminate_group`); False when none was running.
+
+        `reason` is what the build will say about the stop; the first one asked for stays.
+        """
         with self._lock:
+            if not self.stop_requested:
+                self.stop_reason = reason
             self.stop_requested = True
             if self._pid is None:
                 return False

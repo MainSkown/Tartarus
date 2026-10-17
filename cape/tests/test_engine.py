@@ -222,6 +222,7 @@ def test_an_unknown_build_is_not_found_everywhere(lab):
         lambda: lab.engine.build_log("bnothing", 5),
         lambda: lab.engine.resume("bnothing"),
         lambda: lab.engine.restart("bnothing"),
+        lambda: lab.engine.cancel("bnothing"),
         lambda: lab.engine.continue_after_pause("bnothing"),
         lambda: lab.engine.complete_build("bnothing", True, {}),
     ):
@@ -323,6 +324,58 @@ def test_cape_that_will_not_list_the_guest_fails_the_build_and_resume_registers_
     assert lab.engine.guest("alpha")["state"] == "testing"
     assert lab.host.machines() == ["alpha"]
     assert lab.ran().count("define") == 1
+
+
+# --- cancelling ----------------------------------------------------------------------------
+
+
+def test_cancelling_a_running_build_fails_the_guest_and_lets_it_be_deleted(lab):
+    started = lab.engine.start_build(params(options={"slow": True}))
+    wait_until(lambda: (lab.dir() / "defined").exists() and _running(lab, started, "hang"))
+
+    lab.engine.cancel(started)
+
+    build = lab.engine.build(started)
+    assert (build["status"], build["message"]) == ("failed", "the build was cancelled")
+    assert lab.engine.guest("alpha")["state"] == "failed"
+    assert lab.host.machines() == []
+    lab.engine.delete_guest("alpha")
+    assert lab.engine.guests() == []
+
+
+def test_a_cancelled_build_can_be_resumed(lab):
+    started = lab.engine.start_build(params(options={"slow": True}))
+    wait_until(lambda: (lab.dir() / "defined").exists() and _running(lab, started, "hang"))
+    lab.engine.cancel(started)
+    (lab.dir() / "release").write_text("")
+
+    lab.engine.resume(started)
+
+    assert lab.settle(started)["status"] == "succeeded"
+
+
+def test_cancelling_a_paused_clone_fails_the_new_guest_and_registers_only_its_source(lab):
+    lab.engine.complete_build(lab.build("alpha")["id"], True, {"ok": True})
+    source_record = (lab.dir("alpha") / "guest.json").read_bytes()
+    clone = lab.engine.start_clone("alpha", {"name": "bravo", "options": {"pause": True}})
+    assert lab.settle(clone)["status"] == "paused"
+
+    lab.engine.cancel(clone)
+
+    assert lab.engine.build(clone)["message"] == "the build was cancelled"
+    assert lab.engine.guest("bravo")["state"] == "failed"
+    assert lab.engine.guest("alpha")["state"] == "ready"
+    assert lab.host.machines() == ["alpha"]
+    assert (lab.dir("alpha") / "guest.json").read_bytes() == source_record
+    lab.engine.delete_guest("bravo")
+    assert [guest["name"] for guest in lab.engine.guests()] == ["alpha"]
+
+
+def test_a_build_that_is_not_running_or_paused_cannot_be_cancelled(lab):
+    build_id = lab.build()["id"]
+
+    with pytest.raises(Conflict, match="succeeded, not running or paused"):
+        lab.engine.cancel(build_id)
 
 
 # --- pause ---------------------------------------------------------------------------------

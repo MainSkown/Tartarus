@@ -50,6 +50,11 @@ class GuestEngine(Protocol):
 
     def restart(self, build_id: str) -> None: ...
 
+    def cancel(self, build_id: str) -> None:
+        """End a running or paused build as failed ("cancelled"), once its step process is gone.
+        Its guest becomes `failed` like any failed build's and can be deleted."""
+        ...
+
     def continue_after_pause(self, build_id: str) -> None: ...
 
     def complete_build(self, build_id: str, passed: bool, selftest: Json) -> None:

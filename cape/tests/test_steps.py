@@ -295,6 +295,15 @@ def test_stopping_a_control_with_no_step_running_reports_nothing_to_stop():
     assert control.stop_requested
 
 
+def test_a_stop_remembers_who_asked_and_the_first_reason_stays():
+    control = StepControl()
+
+    control.stop(grace_s=1, reason="cancelled")
+    control.stop(grace_s=1, reason="shutdown")
+
+    assert control.stop_reason == "cancelled"
+
+
 def test_a_step_started_after_the_stop_is_killed_at_once(tmp_path):
     control = StepControl()
     control.stop(grace_s=1)

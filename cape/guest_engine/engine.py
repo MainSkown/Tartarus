@@ -180,6 +180,10 @@ class Engine:
     def continue_after_pause(self, build_id: str) -> None:
         self._run_again(build_id, self._sequencer.continue_after_pause)
 
+    def cancel(self, build_id: str) -> None:
+        # Not under the engine's lock: cancel waits for the build's thread, which needs the lock.
+        self._sequencer.cancel(build_id, self._job_of(build_id))
+
     def complete_build(self, build_id: str, passed: bool, selftest: Json) -> None:
         with self._lock:
             build = self._builds.load(build_id)
@@ -316,9 +320,12 @@ class Engine:
 
     def _run_again(self, build_id: str, action: Any) -> None:
         with self._lock:
-            build = self._builds.load(build_id)
-            guest = self._registry.get(build.guest)
-            action(build_id, self._job(guest, self._profile_of(guest)))
+            action(build_id, self._job_of(build_id))
+
+    def _job_of(self, build_id: str) -> BuildJob:
+        with self._lock:
+            guest = self._registry.get(self._builds.load(build_id).guest)
+            return self._job(guest, self._profile_of(guest))
 
     def _on_build_status(self, build: BuildRecord) -> None:
         state = {"running": "building", "failed": "failed"}.get(build.status)
