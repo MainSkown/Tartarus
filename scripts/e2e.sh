@@ -25,7 +25,8 @@
 # mid-run and put them back afterwards. `E2E_SKIP_UI=1` skips the browser test.
 # `E2E_DESKTOP=1` adds the interactive desktop (the tunnel's API half, then the browser test
 # frontend/tests/e2e/desktop-flow.spec.ts): it holds the guest for the whole timeout of two
-# interactive runs, about 10 minutes.
+# interactive runs, about 10 minutes. `E2E_WIZARD=0` skips the guest wizard's browser test
+# (frontend/tests/e2e/wizard-flow.spec.ts), which builds, cancels and deletes a guest named e2e-wizard.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -43,6 +44,8 @@ CAPE_DOWN_SECONDS=${E2E_CAPE_DOWN_SECONDS:-15}
 GRACE_MARGIN=${E2E_GRACE_MARGIN:-45}
 SKIP_UI=${E2E_SKIP_UI:-0}
 DESKTOP=${E2E_DESKTOP:-0}
+WIZARD=${E2E_WIZARD:-1}
+WIZARD_SECONDS=${E2E_WIZARD_SECONDS:-300}
 
 source "$REPO/scripts/lib/benign-sample.sh"
 source "$REPO/scripts/lib/e2e-api.sh"
@@ -353,6 +356,15 @@ step_browser_flow() {
     info "browser flow took $((SECONDS - started)) s"
 }
 
+# Deleting the guest restarts cape, so the step waits for it before the next one can submit.
+step_w_guest_wizard() {
+    local started=$SECONDS
+    check "browser: the wizard lists the ISO, refuses a bad name and a giveaway, builds, cancels and deletes e2e-wizard, leaving the guests as they were" \
+        browser_test_passes "" wizard-flow 0 "$WIZARD_SECONDS"
+    check "(w) cape is ok in /api/system/health after the guest was deleted" wait_for_health cape ok "$RESTORE_TIMEOUT"
+    info "(w) took $((SECONDS - started)) s"
+}
+
 step_i_interactive_desktop() {
     local started=$SECONDS
     desktop_api_flow
@@ -542,6 +554,10 @@ main() {
     if [[ $SKIP_UI != 1 ]]; then
         echo "== browser flow"
         step_browser_flow
+    fi
+    if [[ $SKIP_UI != 1 && $WIZARD == 1 ]]; then
+        echo "== (w) the guest wizard"
+        step_w_guest_wizard
     fi
     echo "== (j) ending a run early"
     finishing_a_run_ends_it
