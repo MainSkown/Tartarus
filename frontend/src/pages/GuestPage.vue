@@ -46,6 +46,7 @@ const list = useGuestList()
           <GuestCard
             :guest="guest"
             :profile="list.profileOf(guest)"
+            :edition="list.editionOf(guest)"
             :is-default="guest.name === list.defaultName.value"
             :build="list.buildOf(guest.name)"
             :check="list.checkOf(guest.name)"

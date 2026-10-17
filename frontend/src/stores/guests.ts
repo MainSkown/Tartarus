@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { guestsList, guestsProfiles } from '@/api'
-import type { Guest, GuestProfile } from '@/api'
+import { guestsList, guestsMedia, guestsProfiles } from '@/api'
+import type { Guest, GuestProfile, MediaEntry } from '@/api'
 import { errorMessage } from '@/services/api-error'
 import { quietOn } from '@/services/quiet-statuses'
 
@@ -12,6 +12,7 @@ import { quietOn } from '@/services/quiet-statuses'
 export const useGuestsStore = defineStore('guests', () => {
   const guests = ref<Guest[]>([])
   const profiles = ref<GuestProfile[]>([])
+  const media = ref<MediaEntry[]>([])
   const loadError = ref<string>()
 
   const readyGuests = computed(() => guests.value.filter((guest) => guest.state === 'ready'))
@@ -26,6 +27,19 @@ export const useGuestsStore = defineStore('guests', () => {
   async function loadProfiles(): Promise<void> {
     const { data, error } = await guestsProfiles({ meta: quietOn(502) })
     if (data && !error) profiles.value = data
+  }
+
+  async function loadMedia(): Promise<void> {
+    const { data, error } = await guestsMedia({ meta: quietOn(502) })
+    if (data && !error) media.value = data
+  }
+
+  /** The edition a guest was built from ("Windows 11 Pro"): its record keeps only the index, the media names it. */
+  function editionName(guest: Guest): string | undefined {
+    const built = guest.media
+    if (!built?.variant) return undefined
+    const entry = media.value.find((candidate) => candidate.file === built.file)
+    return entry?.variants?.find((variant) => String(variant.index) === built.variant)?.name
   }
 
   function byName(name: string): Guest | undefined {
@@ -43,5 +57,5 @@ export const useGuestsStore = defineStore('guests', () => {
     return profiles.value.find((profile) => profile.id === profileId)?.packages ?? []
   }
 
-  return { guests, profiles, loadError, readyGuests, load, loadProfiles, byName, defaultGuestName, packagesOf }
+  return { guests, profiles, media, loadError, readyGuests, load, loadProfiles, loadMedia, editionName, byName, defaultGuestName, packagesOf }
 })

@@ -1,6 +1,23 @@
 import type { Page, Route } from '@playwright/test'
 import type { BuildView, ErrorEnvelope, Guest, GuestProfile, HealthCheckResult } from '../../src/api/types.gen'
 
+/** What the control service lists for the image the fixtures' guests were built from: editions have an index and a name. */
+const WINDOWS_MEDIA = {
+  file: 'Win11_25H2_Polish_x64.iso',
+  size: 8_345_856_000,
+  mtime: 1_791_852_244,
+  profile: 'windows',
+  kind: 'installer',
+  version: '10.0.26200',
+  build: 26200,
+  language: 'pl-PL',
+  arch: 'amd64',
+  variants: [
+    { index: 1, name: 'Windows 11 Home', edition_id: 'Core', arch: 'amd64', languages: ['pl-PL'], default_language: 'pl-PL', build: 26200, installation_type: 'Client' },
+    { index: 5, name: 'Windows 11 Pro', edition_id: 'Professional', arch: 'amd64', languages: ['pl-PL'], default_language: 'pl-PL', build: 26200, installation_type: 'Client' },
+  ],
+}
+
 export const WINDOWS_PROFILE = {
   id: 'windows',
   display_name: 'Windows 11',
@@ -18,7 +35,7 @@ function windowsGuest(name: string, overrides: Partial<Guest> = {}): Guest {
     profile: 'windows',
     kind: 'build',
     created: '2026-10-16T09:30:00Z',
-    media: { file: 'Win11_25H2_Polish_x64.iso', variant: 'Pro', version: '25H2', language: 'pl-PL', arch: 'x64' },
+    media: { file: 'Win11_25H2_Polish_x64.iso', variant: '5', version: '25H2', language: 'pl-PL', arch: 'x64' },
     options: { defender: true },
     identity: { account: 'Marta', machine: 'DESKTOP-4K7QX2A', password: 'q7Zp-Lm2x-Rv9d' },
     resources: { vcpus: 4, ram_mb: 8192, disk_gb: 80 },
@@ -148,6 +165,8 @@ function guestsApiRoute(options: GuestApiMock): (route: Route) => Promise<void> 
       await route.fulfill({ json: options.guests })
     } else if (pathname === '/api/guests/profiles') {
       await route.fulfill({ json: [WINDOWS_PROFILE] })
+    } else if (pathname === '/api/guests/media') {
+      await route.fulfill({ json: [WINDOWS_MEDIA] })
     } else if (pathname === '/api/guests/builds/active') {
       await route.fulfill({ status: 404, json: errorEnvelope('not_found', 'no build is running') })
     } else if (pathname.startsWith('/api/guests/builds/')) {

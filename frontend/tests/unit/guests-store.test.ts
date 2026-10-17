@@ -5,9 +5,11 @@ import { failed, succeeded } from './annotation-fixtures'
 
 const guestsListMock = vi.fn()
 const guestsProfilesMock = vi.fn()
+const guestsMediaMock = vi.fn()
 vi.mock('@/api', () => ({
   guestsList: (...args: unknown[]) => guestsListMock(...args),
   guestsProfiles: (...args: unknown[]) => guestsProfilesMock(...args),
+  guestsMedia: (...args: unknown[]) => guestsMediaMock(...args),
 }))
 
 const { useGuestsStore } = await import('@/stores/guests')
@@ -22,6 +24,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   guestsListMock.mockReset().mockResolvedValue(succeeded(GUESTS))
   guestsProfilesMock.mockReset().mockResolvedValue(succeeded([{ id: 'windows' }]))
+  guestsMediaMock.mockReset().mockResolvedValue(succeeded([]))
 })
 
 describe('guests store', () => {
@@ -84,5 +87,19 @@ describe('guests store', () => {
     await Promise.all([store.load(), store.loadProfiles()])
     expect(store.packagesOf('win')).toEqual(['exe', 'dll'])
     expect(store.packagesOf('nosuch')).toEqual([])
+  })
+
+  it('names the edition a guest was built from through the media it came from', async () => {
+    const media = [
+      { file: 'w.iso', variants: [{ index: 4, name: 'Windows 11 Education' }, { index: 5, name: 'Windows 11 Pro' }] },
+    ]
+    guestsMediaMock.mockResolvedValue(succeeded(media))
+    const store = useGuestsStore()
+    await store.loadMedia()
+    const built = { name: 'a', media: { file: 'w.iso', variant: '5' } } as Guest
+    expect(store.editionName(built)).toBe('Windows 11 Pro')
+    expect(store.editionName({ name: 'b', media: { file: 'gone.iso', variant: '5' } } as Guest)).toBeUndefined()
+    expect(store.editionName({ name: 'c', media: { file: 'w.iso', variant: '9' } } as Guest)).toBeUndefined()
+    expect(store.editionName({ name: 'd' } as Guest)).toBeUndefined()
   })
 })

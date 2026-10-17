@@ -29,6 +29,7 @@ export interface GuestList {
   loadError: ComputedRef<string | undefined>
   defaultName: ComputedRef<string | undefined>
   profileOf: (guest: Guest) => GuestProfile | undefined
+  editionOf: (guest: Guest) => string | undefined
   buildOf: (name: string) => BuildView | undefined
   checkOf: (name: string) => CheckState | undefined
   isDeleting: (name: string) => boolean
@@ -143,6 +144,7 @@ export function useGuestList(): GuestList {
   })
 
   void store.loadProfiles()
+  void store.loadMedia()
   void readDefaultSetting()
   void reload()
 
@@ -152,6 +154,7 @@ export function useGuestList(): GuestList {
     loadError: computed(() => store.loadError),
     defaultName,
     profileOf: (guest) => store.profiles.find((profile) => profile.id === guest.profile),
+    editionOf: (guest) => store.editionName(guest),
     buildOf: (name) => builds.value[name],
     checkOf: (name) => checks.value[name],
     isDeleting: (name) => deleting.value[name] === true,

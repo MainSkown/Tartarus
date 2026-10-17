@@ -16,6 +16,7 @@ const MASKED_PASSWORD = '••••••••'
 const props = defineProps<{
   guest: Guest
   profile?: GuestProfile
+  edition?: string
   isDefault?: boolean
   build?: BuildView
   check?: CheckState
@@ -94,10 +95,10 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
 
     <dl class="guest-card__fields">
       <GuestField
-        v-if="systemLabel(guest, profile)"
+        v-if="systemLabel(guest, profile, edition)"
         label="SYSTEM"
       >
-        {{ systemLabel(guest, profile) }}
+        {{ systemLabel(guest, profile, edition) }}
       </GuestField>
       <GuestField
         v-if="kindLabel(guest)"

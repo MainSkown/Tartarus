@@ -36,6 +36,16 @@ describe('systemLabel', () => {
     expect(systemLabel(guest({ media }), WINDOWS)).toBe('Windows 11 Pro')
   })
 
+  it('uses the edition name when the media could name it', () => {
+    const media = { file: 'w.iso', arch: 'x64', variant: '5' }
+    expect(systemLabel(guest({ media }), WINDOWS, 'Windows 11 Pro')).toBe('Windows 11 Pro')
+  })
+
+  it('never shows a bare edition index', () => {
+    const media = { file: 'w.iso', arch: 'x64', variant: '5' }
+    expect(systemLabel(guest({ media }), WINDOWS)).toBe('Windows 11')
+  })
+
   it('falls back to the profile id when the profiles are not loaded', () => {
     expect(systemLabel(guest({ profile: 'windows' }), undefined)).toBe('windows')
   })

@@ -16,9 +16,22 @@ export function kindLabel(guest: Guest): string | undefined {
   return guest.kind?.toUpperCase()
 }
 
-/** "Windows 11 Pro": what the profile calls the OS, then the edition the media carried. */
-export function systemLabel(guest: Guest, profile: GuestProfile | undefined): string | undefined {
-  const parts = [profile?.display_name ?? guest.profile, guest.media?.variant].filter(Boolean)
+const BARE_INDEX = /^\d+$/
+
+/**
+ * "Windows 11 Pro". The edition name the media gave already says which OS it is, so it is the whole label;
+ * without it the profile's name stands alone. A guest record keeps only the edition's index, which means
+ * nothing to read, so a bare number is never shown.
+ */
+export function systemLabel(
+  guest: Guest,
+  profile: GuestProfile | undefined,
+  edition?: string,
+): string | undefined {
+  if (edition) return edition
+  const variant = guest.media?.variant
+  const named = variant && !BARE_INDEX.test(variant) ? variant : undefined
+  const parts = [profile?.display_name ?? guest.profile, named].filter(Boolean)
   return parts.length > 0 ? parts.join(' ') : undefined
 }
 
