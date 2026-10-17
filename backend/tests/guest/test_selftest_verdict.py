@@ -155,6 +155,48 @@ def test_every_giveaway_is_listed_and_fails() -> None:
     assert "analyst" in verdict.details["message"]
 
 
+CLEAN_HARDWARE_FACTS = {
+    "cdrom.name": "",
+    "video.name": "Microsoft Basic Display Adapter",
+    "video.pnp": "PCI\\VEN_1234&DEV_1111&SUBSYS_11001AF4&REV_02\\3&2411E6FE&0&0",
+}
+
+
+def test_a_guest_with_no_drive_and_the_basic_display_adapter_passes() -> None:
+    checks = clean_checks().model_copy(
+        update={"facts": {**clean_checks().facts, **CLEAN_HARDWARE_FACTS}}
+    )
+
+    verdict = judged(checks=checks)
+
+    assert verdict.passed is True
+    assert verdict.details["giveaways"] == []
+
+
+def test_an_optical_drive_left_in_the_guest_fails_and_names_it() -> None:
+    checks = clean_checks().model_copy(
+        update={
+            "facts": {**clean_checks().facts, **CLEAN_HARDWARE_FACTS, "cdrom.name": "HL-DT-ST WB8"},
+            "giveaways": ["optical drive: HL-DT-ST WB8"],
+        }
+    )
+
+    verdict = judged(checks=checks)
+
+    assert verdict.passed is False
+    assert "optical drive: HL-DT-ST WB8" in verdict.details["message"]
+
+
+def test_a_display_adapter_of_a_hypervisor_vendor_fails_and_names_its_id() -> None:
+    pnp = "PCI\\VEN_1AF4&DEV_1050&SUBSYS_11001AF4&REV_01\\3&2411E6FE&0&10"
+    checks = clean_checks().model_copy(update={"giveaways": [f"display adapter: {pnp}"]})
+
+    verdict = judged(checks=checks)
+
+    assert verdict.passed is False
+    assert pnp in verdict.details["message"]
+
+
 def test_a_failing_proof_fails_with_its_message() -> None:
     checks = clean_checks().model_copy(
         update={"proofs": {"eicar": ProofResult(ok=False, message="Defender removed the file")}}

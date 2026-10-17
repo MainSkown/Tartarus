@@ -217,10 +217,25 @@ def test_install_mode_boots_the_cdrom_first_and_attaches_the_media():
     assert sources == [INSTALLER, EXTRA]
 
 
-def test_run_mode_boots_the_disk_and_ejects_every_cdrom():
+def test_run_mode_boots_the_disk_with_no_optical_drive_at_all():
     domain = rendered(context(), "run")
     assert [boot.get("dev") for boot in domain.findall("os/boot")] == ["hd"]
-    assert domain.findall("devices/disk[@device='cdrom']/source") == []
+    assert domain.findall("devices/disk[@device='cdrom']") == []
+
+
+def test_install_mode_has_exactly_the_two_optical_drives_with_their_media():
+    domain = rendered(context(), "install")
+    drives = domain.findall("devices/disk[@device='cdrom']")
+    assert [drive.find("target").get("dev") for drive in drives] == ["sdb", "sdc"]
+    assert [drive.find("source").get("file") for drive in drives] == [INSTALLER, EXTRA]
+    assert all(drive.find("readonly") is not None for drive in drives)
+
+
+def test_run_mode_keeps_the_sata_controller_and_the_system_disk():
+    domain = rendered(context(), "run")
+    assert domain.find("devices/controller[@type='sata']") is not None
+    system = domain.find("devices/disk[@device='disk']")
+    assert system.find("source").get("file") == paths().disk
 
 
 def test_install_mode_without_extra_media_leaves_that_drive_empty():

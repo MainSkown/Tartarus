@@ -12,9 +12,9 @@
      migratable='on' keeps non-migratable CPU features such as invtsc out of the guest: with them,
      libvirt refuses to save guest memory, so no tartarus-clean snapshot could be taken.
 
-     The two optical drives are always present: the first holds the installation medium and the
-     second an extra disc (an answer file, a seed) while a guest is being installed; both are empty
-     when a guest runs. -->
+     The two optical drives exist only while a guest is being installed: the first holds the
+     installation medium and the second an extra disc (an answer file, a seed). A running guest has
+     no optical drive, because an empty one is a tell (decision 6 of the M7 foundations). -->
 
 <domain type='kvm'>
   <name>${name}</name>
@@ -59,20 +59,7 @@
       ${disk_bus}
       <serial>${disk_serial}</serial>
     </disk>
-    <disk type='file' device='cdrom'>
-      <driver name='qemu' type='raw'/>
-      ${installer_source}
-      <target dev='sdb' bus='sata'/>
-      <readonly/>
-      <address type='drive' controller='0' bus='0' target='0' unit='1'/>
-    </disk>
-    <disk type='file' device='cdrom'>
-      <driver name='qemu' type='raw'/>
-      ${extra_source}
-      <target dev='sdc' bus='sata'/>
-      <readonly/>
-      <address type='drive' controller='0' bus='0' target='0' unit='2'/>
-    </disk>
+    ${install_drives}
     <controller type='sata' index='0'/>
     ${machine_controllers}
     <interface type='network'>

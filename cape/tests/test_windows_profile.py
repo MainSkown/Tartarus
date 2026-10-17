@@ -259,7 +259,7 @@ class TestProfileFile:
         assert agent.finish_dir == "C:\\Windows\\Temp"
         assert agent.shutdown == "acpi"
         assert agent.interactive.options == "interactive=1,nohuman=yes"
-        assert agent.pre_snapshot is None
+        assert agent.pre_snapshot == "remove-ghost-drives"
 
     def test_ready_marker_is_the_done_marker_of_the_names_table(self, profile, names):
         assert profile.agent.ready.marker == "{work_dir}\\" + names["done_marker"]
@@ -723,6 +723,55 @@ class TestDesktopOnPausableSteps:
         assert missing == []
 
 
+class TestRemoveGhostDrivesStep:
+    def test_the_step_is_an_executable_bash_script_with_strict_mode(self):
+        step = PROFILE_DIR / "steps" / "remove-ghost-drives"
+        assert os.access(step, os.X_OK)
+        assert step.read_text().splitlines()[0] == "#!/usr/bin/env bash"
+        assert "set -uo pipefail" in step.read_text()
+
+    def test_the_step_runs_its_script_through_the_guest_agent_helper(self):
+        text = script_text("steps/remove-ghost-drives")
+        assert "guest_agent run remove-ghost-drives.ps1" in text
+        assert "source" in text
+        assert "lib/windows.sh" in text
+
+
+class TestRemoveGhostDrivesScript:
+    def test_removes_only_the_cdrom_devices_that_are_not_present(self):
+        text = script_text("remove-ghost-drives.ps1")
+        assert "Get-PnpDevice -Class CDROM" in text
+        assert "Where-Object { -not $_.Present }" in text
+        removals = [line for line in text.splitlines() if "pnputil" in line.lower()]
+        assert len(removals) == 1
+        assert "/remove-device" in removals[0]
+        assert "InstanceId" in removals[0]
+
+    def test_no_other_destructive_command_is_used(self):
+        text = script_text("remove-ghost-drives.ps1")
+        for command in (
+            "Remove-Item",
+            "Remove-PnpDevice",
+            "Remove-Service",
+            "Disable-",
+            "Stop-",
+            "Restart-",
+            "Format-",
+            "reg delete",
+            "Uninstall",
+        ):
+            assert command not in text, command
+
+    def test_is_best_effort_and_reports_how_many_it_found_and_removed(self):
+        text = script_text("remove-ghost-drives.ps1")
+        assert "$ErrorActionPreference = 'Continue'" in text
+        assert "'RESULT {0}={1}'" in text
+        assert "'removed'" in text
+        assert "'found'" in text
+        assert "exit 0" in text
+        assert "exit 1" not in text
+
+
 class TestDecoysScript:
     def test_creates_traces_with_spread_out_dates_and_no_network(self):
         text = script_text("decoys.ps1")
@@ -969,6 +1018,52 @@ def powershell_files() -> list[Path]:
     return [path for path in profile_files() if path.suffix == ".ps1"]
 
 
+class TestFactsScriptTells:
+    """Decision 6: a drive and a display adapter are giveaways only when they are a tell."""
+
+    WORSE_VENDORS = (
+        "PCI\\VEN_1AF4",
+        "PCI\\VEN_1B36",
+        "PCI\\VEN_15AD",
+        "PCI\\VEN_80EE",
+        "PCI\\VEN_1013",
+    )
+
+    def test_reports_the_pnp_id_of_the_first_display_adapter_as_a_fact(self):
+        assert "Fact 'video.pnp' " in script_text("selftest/guest-facts.ps1")
+
+    def test_every_optical_drive_is_a_giveaway_whatever_its_name(self):
+        text = script_text("selftest/guest-facts.ps1")
+        assert re.search(
+            r"foreach \(\$drive in Get-CimInstance Win32_CDROMDrive\) \{\s*"
+            r"Write-Giveaway 'optical drive' \$drive\.Name\s*\}",
+            text,
+        )
+
+    def test_a_display_adapter_is_a_giveaway_for_a_worse_vendor_or_a_driver_error(self):
+        text = script_text("selftest/guest-facts.ps1")
+        assert "Write-Giveaway 'display adapter' $display.PNPDeviceID" in text
+        assert "$display.ConfigManagerErrorCode -gt 0" in text
+
+    def test_the_worse_vendor_ids_are_named_once_in_the_parameters(self):
+        text = script_text("selftest/guest-facts.ps1")
+        block = param_block(text)
+        for vendor in self.WORSE_VENDORS:
+            assert block.count(vendor) == 1, vendor
+            assert text.count(vendor) == 1, vendor
+
+    def test_the_qemu_standard_vga_and_the_basic_display_are_never_reported(self):
+        text = script_text("selftest/guest-facts.ps1")
+        reports = [
+            line for line in text.splitlines() if re.search(r"(Write|Report)-Giveaway '", line)
+        ]
+        assert reports
+        for line in reports:
+            assert "VEN_1234" not in line, line
+            assert "Basic" not in line, line
+        assert "VEN_1234" not in param_block(text)
+
+
 class TestPowerShellSyntax:
     @pytest.mark.skipif(
         shutil.which("pwsh") is None,
@@ -1002,4 +1097,5 @@ class TestPowerShellSyntax:
             "defender-on.ps1",
             "defender-proof.ps1",
             "guest-facts.ps1",
+            "remove-ghost-drives.ps1",
         }

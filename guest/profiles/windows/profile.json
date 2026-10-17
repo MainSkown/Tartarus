@@ -233,7 +233,7 @@
       "options": "interactive=1,nohuman=yes",
       "task_fields": {}
     },
-    "pre_snapshot": null
+    "pre_snapshot": "remove-ghost-drives"
   },
   "selftest": {
     "sample": {

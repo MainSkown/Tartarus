@@ -9,7 +9,9 @@ param(
   [string] $TaskName = 'RemoteAssistanceSessionSync',
   [string[]] $SubstringWords = @('tartarus', 'sandbox', 'malware', 'virus', 'cuckoo'),
   [string[]] $TokenWords = @('cape', 'test', 'admin'),
-  [string[]] $PrefixWords = @('analy')
+  [string[]] $PrefixWords = @('analy'),
+  # Display vendors that name the hypervisor in their PNP id (virtio, QXL, VMware, VirtualBox, Cirrus).
+  [string[]] $WorseDisplayVendors = @('PCI\VEN_1AF4', 'PCI\VEN_1B36', 'PCI\VEN_15AD', 'PCI\VEN_80EE', 'PCI\VEN_1013')
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -34,6 +36,7 @@ Fact 'nic.name' ((Get-CimInstance Win32_NetworkAdapter -Filter 'PhysicalAdapter=
 Fact 'nic.mac' ((Get-CimInstance Win32_NetworkAdapter -Filter 'PhysicalAdapter=True' | Select-Object -First 1).MACAddress)
 Fact 'nic.ipv4' ((Get-NetIPAddress -AddressFamily IPv4 | Where-Object IPAddress -ne '127.0.0.1').IPAddress -join ',')
 Fact 'video.name' ((Get-CimInstance Win32_VideoController | Select-Object -First 1).Name)
+Fact 'video.pnp' ((Get-CimInstance Win32_VideoController | Select-Object -First 1).PNPDeviceID)
 Fact 'cpu.name' ((Get-CimInstance Win32_Processor | Select-Object -First 1).Name)
 Fact 'cpu.hypervisor_present' $system.HypervisorPresent
 Fact 'tpm.present' ((Get-Tpm).TpmPresent)
@@ -92,10 +95,13 @@ function Find-Giveaway([string] $text) {
   return $null
 }
 
+function Write-Giveaway([string] $where, [string] $text) {
+  Write-Output ("GIVEAWAY {0}: {1}" -f $where, $text)
+}
+
 function Report-Giveaway([string] $where, [string] $text) {
   if ($AllowedTokenHits -contains $text) { return }
-  $hit = Find-Giveaway $text
-  if ($hit) { Write-Output ("GIVEAWAY {0}: {1}" -f $where, $text) }
+  if (Find-Giveaway $text) { Write-Giveaway $where $text }
 }
 
 Report-Giveaway 'computer name' $env:COMPUTERNAME
@@ -140,5 +146,22 @@ $uninstallPaths = @(
 foreach ($path in $uninstallPaths) {
   Get-ItemProperty -Path $path -ErrorAction SilentlyContinue | ForEach-Object {
     if ($_.DisplayName) { Report-Giveaway 'installed program' $_.DisplayName }
+  }
+}
+
+# --- decision 6: the drive and the display adapter that say the guest is a virtual machine -------
+
+# Every guest has the inbox Basic Display Adapter and the QEMU standard VGA (VEN_1234), and video.name
+# is localised, so neither is reported: only a drive, or a display adapter from a hypervisor vendor or
+# one that Windows could not start, is.
+foreach ($drive in Get-CimInstance Win32_CDROMDrive) {
+  Write-Giveaway 'optical drive' $drive.Name
+}
+
+$display = Get-CimInstance Win32_VideoController | Select-Object -First 1
+if ($display) {
+  $worseVendor = $WorseDisplayVendors | Where-Object { $display.PNPDeviceID -like "$_*" }
+  if ($worseVendor -or $display.ConfigManagerErrorCode -gt 0) {
+    Write-Giveaway 'display adapter' $display.PNPDeviceID
   }
 }

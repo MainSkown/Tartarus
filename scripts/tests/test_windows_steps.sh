@@ -568,9 +568,53 @@ test_defender_on_fails_when_verification_or_the_removal_proof_fails() {
 
 # --- the steps themselves --------------------------------------------------------------------------
 
+# --- remove-ghost-drives ----------------------------------------------------------------------
+
+test_remove_ghost_drives_uploads_its_script_runs_it_and_logs_what_it_removed() {
+    new_sandbox
+    script_replies remove-ghost-drives.ps1 'RESULT found=2\r\nRESULT removed=2\r\nEXITCODE 0\r\n'
+    run_step remove-ghost-drives
+    assert_status 0 &&
+        assert_contains "LOG RESULT removed=2" &&
+        requests_satisfy "
+stored = [r['form']['filepath'] for r in requests if r['path'] == '/store']
+assert 'C:\\\\ProgramData\\\\abcdefgh\\\\remove-ghost-drives.ps1' in stored, stored
+(execute,) = [r for r in requests if r['path'] == '/execute']
+assert 'remove-ghost-drives.ps1' in execute['driver'] and 'Remove-Item' in execute['driver']
+"
+}
+
+test_remove_ghost_drives_with_nothing_to_remove_succeeds_again() {
+    new_sandbox
+    script_replies remove-ghost-drives.ps1 'RESULT found=0\r\nRESULT removed=0\r\nEXITCODE 0\r\n'
+    run_step remove-ghost-drives
+    assert_status 0 && assert_contains "LOG RESULT removed=0"
+}
+
+test_remove_ghost_drives_fails_when_the_script_fails() {
+    new_sandbox
+    script_replies remove-ghost-drives.ps1 'RESULT error=boom\r\nEXITCODE 40\r\n'
+    run_step remove-ghost-drives
+    assert_status 1 && assert_contains "remove-ghost-drives.ps1"
+}
+
+test_remove_ghost_drives_fails_when_the_script_reports_no_exit_code() {
+    new_sandbox
+    script_replies remove-ghost-drives.ps1 'RESULT a=b\r\n'
+    run_step remove-ghost-drives
+    assert_status 1 && assert_contains "no exit code"
+}
+
+test_remove_ghost_drives_fails_when_the_agent_is_unreachable() {
+    new_sandbox
+    stop_agent
+    run_step remove-ghost-drives
+    assert_status 1 && assert_contains "agent"
+}
+
 test_every_step_is_executable_and_is_bash_with_strict_mode() {
     local step
-    for step in install provision tamper-off defender-on; do
+    for step in install provision tamper-off defender-on remove-ghost-drives; do
         [[ -x $REPO/guest/profiles/windows/steps/$step ]] || { echo "  $step is not executable"; return 1; }
         head -n1 "$REPO/guest/profiles/windows/steps/$step" | grep -qx '#!/usr/bin/env bash' || { echo "  $step: wrong shebang"; return 1; }
         grep -q '^set -uo pipefail' "$REPO/guest/profiles/windows/steps/$step" || { echo "  $step: no strict mode"; return 1; }

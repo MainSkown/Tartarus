@@ -62,8 +62,7 @@ def render_domain(
     }
     blocks["sysinfo"] = _sysinfo(_persona(personas_dir, hardware["persona"]), guest["machine"])
     blocks["boot_order"] = BOOT_ORDER[mode]
-    blocks["installer_source"] = _media_source(paths.installer_media) if mode == "install" else ""
-    blocks["extra_source"] = _media_source(paths.extra_media) if mode == "install" else ""
+    blocks["install_drives"] = _install_drives(paths) if mode == "install" else ""
     xml = _fill((domain_dir / "domain.xml.tpl").read_text(), scalars, blocks)
     _require_well_formed(xml)
     return xml
@@ -121,6 +120,25 @@ def _scalars(
 
 def _media_source(path: str | None) -> str:
     return f"<source file='{escape(path, ATTRIBUTE_ESCAPES)}'/>" if path else ""
+
+
+def _install_drives(paths: DomainPaths) -> str:
+    """The two optical drives of an installation. An absent medium leaves a blank line, which
+    `_fill` drops, so that drive is attached empty as before."""
+    return f"""<disk type='file' device='cdrom'>
+  <driver name='qemu' type='raw'/>
+  {_media_source(paths.installer_media)}
+  <target dev='sdb' bus='sata'/>
+  <readonly/>
+  <address type='drive' controller='0' bus='0' target='0' unit='1'/>
+</disk>
+<disk type='file' device='cdrom'>
+  <driver name='qemu' type='raw'/>
+  {_media_source(paths.extra_media)}
+  <target dev='sdc' bus='sata'/>
+  <readonly/>
+  <address type='drive' controller='0' bus='0' target='0' unit='2'/>
+</disk>"""
 
 
 def _persona(personas_dir: Path, name: str) -> dict[str, Any]:
