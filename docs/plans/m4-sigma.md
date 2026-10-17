@@ -10,7 +10,8 @@ and the [GUI spec](../specs/gui.md#rules-rules) describe.
 
 Planned 2026-10-14, after M3 was approved. Built the same day: S0 to S3 and Wave 5 are committed and
 `make e2e` passes with the Sigma checks (85 checks, on a real run). F12 (the Rules page, the LIVE
-detections panel) is built and awaits the user's review of its two Artifacts.
+detections panel) is built. M4 was closed by the user on 2026-10-17, without a recorded round of comments on
+the two Artifacts.
 
 Added to M4 afterwards: a Sigma alert's `tartarus.detection.match` names the matching values of the
 triggering event instead of the rule's condition text (an explainer compiled beside the predicate, run
