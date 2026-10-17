@@ -17,6 +17,7 @@ export interface SubmitOptions {
   route: Route
   timeout: number
   interactive?: boolean
+  guest?: string
   package?: string
 }
 

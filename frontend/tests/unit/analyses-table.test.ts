@@ -78,6 +78,19 @@ describe('AnalysesTable', () => {
     expect(wrapper.get('.tag-list__more').text()).toBe('+3')
   })
 
+  it('puts the guest chip under the file name, so the table gains no column', () => {
+    const wrapper = mountTable([analysis({ guest: 'lab1', guest_badges: ['DEFENDER OFF'] })])
+    const fileCell = wrapper.findAll('tbody td').find((cell) => cell.find('.cell-filename').exists())!
+    expect(fileCell.find('.guest-chip__name').text()).toBe('lab1')
+    expect(fileCell.find('.guest-chip__badge').text()).toBe('DEFENDER OFF')
+    expect(wrapper.findAll('th')).toHaveLength(9)
+  })
+
+  it('shows no guest chip for an analysis from before guests', () => {
+    const wrapper = mountTable([analysis({ guest: null })])
+    expect(wrapper.find('.guest-chip').exists()).toBe(false)
+  })
+
   it('keeps the full file name and hash reachable on hover when they are truncated', () => {
     const filename = `${'very-long-name-'.repeat(8)}.exe`
     const wrapper = mountTable([analysis({ filename })])

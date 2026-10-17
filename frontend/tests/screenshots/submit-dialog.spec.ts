@@ -19,8 +19,13 @@ import {
   waitForTransitions,
   type AnalysesMockOptions,
 } from './fixtures'
+import { mockGuests } from './guest-data'
 
 test.use({ timezoneId: 'UTC' })
+
+test.beforeEach(async ({ page }) => {
+  await mockGuests(page)
+})
 
 // Not the backend defaults (interactive is on, the backend's is off), so waiting for this timeout
 // and switch proves the dialog applied the stored settings.

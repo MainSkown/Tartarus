@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, toRef } from 'vue'
 import { Notify } from 'quasar'
 import { settingsRead, settingsReplace } from '@/api'
 import type { Route, SettingsBody } from '@/api'
+import { useDefaultGuestField } from '@/composables/use-default-guest-field'
 import { validationIssues } from '@/services/validation-errors'
 
 const ROUTES: Route[] = ['none', 'drop', 'internet', 'inetsim', 'tor', 'vpn', 'wireguard', 'socks5']
@@ -15,6 +16,8 @@ const form = reactive<SettingsBody>({})
 // Keyed by form field name: the last segment of each 422 `location`. The server owns the
 // rules; this only shows each message on the input it names.
 const fieldErrors = ref<Record<string, string>>({})
+const defaultGuest = toRef(form, 'default_guest')
+const guestField = useDefaultGuestField(defaultGuest)
 
 async function loadSettings(): Promise<void> {
   status.value = 'loading'
@@ -40,7 +43,10 @@ async function saveSettings(): Promise<void> {
   Notify.create({ type: 'tt-success', message: 'Settings saved' })
 }
 
-onMounted(loadSettings)
+onMounted(() => {
+  void loadSettings()
+  void guestField.load()
+})
 </script>
 
 <template>
@@ -112,6 +118,30 @@ onMounted(loadSettings)
           role="alert"
         >
           {{ fieldErrors.default_route }}
+        </p>
+      </div>
+
+      <div class="settings-field">
+        <q-select
+          v-model="form.default_guest"
+          :options="guestField.options.value"
+          :display-value="guestField.displayValue.value"
+          outlined
+          dense
+          hide-bottom-space
+          emit-value
+          map-options
+          label="DEFAULT GUEST"
+          :error="Boolean(fieldErrors.default_guest)"
+          :error-message="fieldErrors.default_guest"
+          class="settings-input text-mono"
+        />
+        <p
+          v-if="guestField.note.value"
+          class="guest-note text-mono"
+          role="status"
+        >
+          {{ guestField.note.value }}
         </p>
       </div>
 
@@ -242,6 +272,8 @@ onMounted(loadSettings)
 .radio-group {
   position: relative;
   align-self: flex-start;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .radio-label {
@@ -254,6 +286,13 @@ onMounted(loadSettings)
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+}
+
+.guest-note {
+  margin: 0;
+  color: var(--status-medium);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
 }
 
 .field-error {

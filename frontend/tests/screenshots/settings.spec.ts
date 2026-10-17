@@ -8,6 +8,7 @@ import {
   validationErrorEnvelope,
   waitForFieldMessages,
 } from './fixtures'
+import { mockGuests } from './guest-data'
 
 // Deliberately not the backend's defaults, so the screenshot proves the page is rendering
 // server-returned values rather than hardcoded fallbacks.
@@ -18,6 +19,10 @@ const STORED_SETTINGS: SettingsBody = {
   disk_warn_gb: 80,
   disk_block_gb: 30,
 }
+
+test.beforeEach(async ({ page }) => {
+  await mockGuests(page)
+})
 
 test('settings-loaded', async ({ page }) => {
   await mockShell(page)
@@ -44,7 +49,7 @@ test('settings form has the same gap between every pair of components', async ({
     )
     return boxes.slice(1).map((box, index) => Math.round(box.top - boxes[index]!.bottom))
   })
-  expect(gaps).toHaveLength(5)
+  expect(gaps).toHaveLength(6)
   expect(new Set(gaps).size, `gaps between components were ${gaps.join(', ')}px`).toBe(1)
 })
 

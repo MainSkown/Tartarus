@@ -1,10 +1,10 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { Quasar, QBtn, QInput, QToggle } from 'quasar'
+import { Quasar, QBtn, QInput, QSelect, QToggle } from 'quasar'
 import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AnalysisRead, ErrorEnvelope, SystemHealth } from '@/api'
+import type { AnalysisRead, ErrorEnvelope, Guest, GuestProfile, SystemHealth } from '@/api'
 
 const READY: SystemHealth = {
   postgres: { status: 'ok', message: null },
@@ -19,6 +19,8 @@ vi.mock('@/api', () => ({
   analysesCreate: vi.fn(),
   analysesList: vi.fn(),
   settingsRead: vi.fn(),
+  guestsList: vi.fn(),
+  guestsProfiles: vi.fn(),
   systemHealth: vi.fn().mockResolvedValue({ data: undefined }),
 }))
 
@@ -32,7 +34,7 @@ vi.mock('@/services/ws', () => ({
   }),
 }))
 
-const { analysesCreate, settingsRead } = await import('@/api')
+const { analysesCreate, guestsList, guestsProfiles, settingsRead } = await import('@/api')
 const SubmitDialog = (await import('@/components/SubmitDialog.vue')).default
 const { useSystemStore } = await import('@/stores/system')
 
@@ -48,6 +50,13 @@ const QDialogStub = defineComponent({
   methods: { show: () => undefined, hide: () => hideDialog() },
 })
 
+const GUESTS = [
+  { name: 'win', state: 'ready', profile: 'windows', badges: ['DEFENDER ON'] },
+  { name: 'lab2', state: 'ready', profile: 'windows', badges: ['DEFENDER OFF'] },
+  { name: 'lab3', state: 'building', profile: 'windows', badges: [] },
+] as Guest[]
+const PROFILES = [{ id: 'windows', display_name: 'Windows 11', packages: ['exe', 'dll', 'doc'] }] as GuestProfile[]
+
 const SAMPLE = new File(['MZ-binary'], 'invoice.exe')
 
 async function mountDialog({ guest = 'ok' as 'ok' | 'down' } = {}) {
@@ -56,6 +65,7 @@ async function mountDialog({ guest = 'ok' as 'ok' | 'down' } = {}) {
     history: createMemoryHistory(),
     routes: [
       { path: '/', name: 'dashboard', component: { render: () => null } },
+      { path: '/guest', name: 'guest', component: { render: () => null } },
       { path: '/analyses/:id/:tab?', name: 'analysis-workspace', component: { render: () => null } },
     ],
   })
@@ -80,6 +90,16 @@ function textInput(wrapper: VueWrapper, label: string) {
   const input = wrapper.findAllComponents(QInput).find((component) => component.props('label') === label)
   if (!input) throw new Error(`no q-input labelled ${label}`)
   return input
+}
+
+function selectLabelled(wrapper: VueWrapper, label: string) {
+  const select = wrapper.findAllComponents(QSelect).find((component) => component.props('label') === label)
+  if (!select) throw new Error(`no q-select labelled ${label}`)
+  return select
+}
+
+function listResult(guests: Guest[]) {
+  return { data: guests, error: undefined } as unknown as Awaited<ReturnType<typeof guestsList>>
 }
 
 function interactiveSwitch(wrapper: VueWrapper) {
@@ -118,6 +138,8 @@ function sentOptions() {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(settingsRead).mockResolvedValue({ data: undefined, error: {} } as unknown as SettingsResult)
+  vi.mocked(guestsList).mockResolvedValue(listResult(GUESTS))
+  vi.mocked(guestsProfiles).mockResolvedValue({ data: PROFILES, error: undefined } as unknown as Awaited<ReturnType<typeof guestsProfiles>>)
 })
 
 describe('SubmitDialog', () => {
@@ -351,24 +373,24 @@ describe('SubmitDialog', () => {
       await chooseFile(wrapper)
       await wrapper.find('#route-drop').setValue(true)
       await textInput(wrapper, 'TIMEOUT').find('input').setValue('300')
-      await textInput(wrapper, 'PACKAGE').find('input').setValue('doc')
+      selectLabelled(wrapper, 'PACKAGE').vm.$emit('update:modelValue', 'doc')
+      await flushPromises()
 
       await submit(wrapper)
 
       expect(analysesCreate).toHaveBeenCalledTimes(1)
       expect(vi.mocked(analysesCreate).mock.calls[0]![0].body.file).toBe(SAMPLE)
-      expect(sentOptions()).toEqual({ route: 'drop', timeout: 300, interactive: false, package: 'doc' })
+      expect(sentOptions()).toEqual({ route: 'drop', timeout: 300, interactive: false, guest: 'win', package: 'doc' })
     })
 
-    it('leaves the package out when it is blank so the backend picks auto', async () => {
+    it('leaves the package out while it is auto so the backend picks one', async () => {
       vi.mocked(analysesCreate).mockResolvedValue(created())
       const { wrapper } = await mountDialog()
       await chooseFile(wrapper)
-      await textInput(wrapper, 'PACKAGE').find('input').setValue('   ')
 
       await submit(wrapper)
 
-      expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false })
+      expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false, guest: 'win' })
     })
 
     it('shows the in-flight state and blocks a second submit while uploading', async () => {
@@ -419,7 +441,7 @@ describe('SubmitDialog', () => {
       await submit(wrapper)
 
       expect(textInput(wrapper, 'TIMEOUT').props('errorMessage')).toBe('Input should be at least 60')
-      expect(textInput(wrapper, 'PACKAGE').props('errorMessage')).toBe('unknown package')
+      expect(selectLabelled(wrapper, 'PACKAGE').props('errorMessage')).toBe('unknown package')
       expect(wrapper.find('.interactive-error').text()).toBe('not a valid boolean')
       expect(wrapper.find('.file-error').text()).toBe('The uploaded file is empty')
       expect(wrapper.find('.error-banner').exists()).toBe(false)
@@ -465,5 +487,118 @@ describe('SubmitDialog', () => {
     expect(analysesCreate).not.toHaveBeenCalled()
     expect(hideDialog).toHaveBeenCalledTimes(1)
     expect(wrapper.emitted('ok')).toBeUndefined()
+  })
+
+  describe('guest', () => {
+    it('lists every guest, disabling one that is not ready with its state as the reason', async () => {
+      const { wrapper } = await mountDialog()
+      const options = selectLabelled(wrapper, 'GUEST').props('options') as Record<string, unknown>[]
+
+      expect(options.map((option) => [option.name, option.disabled, option.reason, option.profileName])).toEqual([
+        ['win', false, undefined, 'Windows 11'],
+        ['lab2', false, undefined, 'Windows 11'],
+        ['lab3', true, 'building', 'Windows 11'],
+      ])
+    })
+
+    it('preselects the first ready guest, or the Settings default when that is ready', async () => {
+      expect(selectLabelled((await mountDialog()).wrapper, 'GUEST').props('modelValue')).toBe('win')
+
+      storedSettings({ default_guest: 'lab2' })
+      expect(selectLabelled((await mountDialog()).wrapper, 'GUEST').props('modelValue')).toBe('lab2')
+    })
+
+    it('loads the guests and the profiles when it opens', async () => {
+      await mountDialog()
+      expect(guestsList).toHaveBeenCalledTimes(1)
+      expect(guestsProfiles).toHaveBeenCalledTimes(1)
+    })
+
+    it('sends the guest the analyst picked', async () => {
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      selectLabelled(wrapper, 'GUEST').vm.$emit('update:modelValue', 'lab2')
+      await flushPromises()
+
+      await submit(wrapper)
+
+      expect(sentOptions().guest).toBe('lab2')
+    })
+
+    it('offers the packages of the chosen guest and goes back to auto when the guest cannot take the chosen one', async () => {
+      vi.mocked(guestsList).mockResolvedValue(
+        listResult([...GUESTS, { name: 'box', state: 'ready', profile: 'ubuntu', badges: [] } as Guest]),
+      )
+      vi.mocked(guestsProfiles).mockResolvedValue({
+        data: [...PROFILES, { id: 'ubuntu', display_name: 'Ubuntu 24.04', packages: ['bash'] }],
+        error: undefined,
+      } as unknown as Awaited<ReturnType<typeof guestsProfiles>>)
+      const { wrapper } = await mountDialog()
+      expect(selectLabelled(wrapper, 'PACKAGE').props('options')).toEqual(['auto', 'exe', 'dll', 'doc'])
+      selectLabelled(wrapper, 'PACKAGE').vm.$emit('update:modelValue', 'doc')
+      await flushPromises()
+
+      selectLabelled(wrapper, 'GUEST').vm.$emit('update:modelValue', 'box')
+      await flushPromises()
+
+      expect(selectLabelled(wrapper, 'PACKAGE').props('options')).toEqual(['auto', 'bash'])
+      expect(selectLabelled(wrapper, 'PACKAGE').props('modelValue')).toBe('auto')
+    })
+
+    it('shows a 422 on options.guest on the select', async () => {
+      vi.mocked(analysesCreate).mockResolvedValue(
+        failedValidation([{ location: ['body', 'options', 'guest'], message: 'unknown guest' }]),
+      )
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await submit(wrapper)
+
+      expect(selectLabelled(wrapper, 'GUEST').props('errorMessage')).toBe('unknown guest')
+      expect(wrapper.find('.error-banner').exists()).toBe(false)
+    })
+
+    describe('when no guest is ready', () => {
+      beforeEach(() => {
+        vi.mocked(guestsList).mockResolvedValue(listResult([GUESTS[2]!]))
+      })
+
+      it('blocks DETONATE with the reason and a link to the Guest page', async () => {
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper)
+
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
+        expect(wrapper.find('.submit-reason').text()).toContain('No guest is ready: lab3 is building')
+        expect(wrapper.find('.guest-link').attributes('href')).toBe('/guest')
+        expect(wrapper.find('.guest-link').text()).toBe('[OPEN GUEST VM]')
+      })
+
+      it('sends nothing, even when the form is submitted', async () => {
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper)
+        await submit(wrapper)
+        expect(analysesCreate).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('when the guest list cannot be loaded', () => {
+      beforeEach(() => {
+        vi.mocked(guestsList).mockResolvedValue({ data: undefined, error: { error: { message: 'down' } } } as unknown as ReturnType<typeof listResult>)
+      })
+
+      it('says so and keeps submitting possible, leaving the choice to the backend', async () => {
+        vi.mocked(analysesCreate).mockResolvedValue(created())
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper)
+
+        expect(wrapper.find('.guest-unavailable').text()).toContain('guest list')
+        expect(wrapper.findAllComponents(QSelect).some((select) => select.props('label') === 'GUEST')).toBe(false)
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
+
+        await submit(wrapper)
+        expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false })
+      })
+    })
   })
 })

@@ -4,6 +4,8 @@ import { useDialogPluginComponent } from 'quasar'
 import { useRouter } from 'vue-router'
 import { settingsRead } from '@/api'
 import type { Route } from '@/api'
+import GuestOptionRow from '@/components/GuestOptionRow.vue'
+import { useGuestChoice } from '@/composables/use-guest-choice'
 import { sha256Hex } from '@/services/file-hash'
 import { formatFileSize } from '@/services/file-size'
 import { useGuestBlockReason } from '@/services/guest-gate'
@@ -19,7 +21,7 @@ const TIMEOUT_MIN_SECONDS = 60
 const TIMEOUT_MAX_SECONDS = 1200
 const SECONDS_PER_MINUTE = 60
 const TIMEOUT_ERROR = `Whole seconds, ${TIMEOUT_MIN_SECONDS} to ${TIMEOUT_MAX_SECONDS}`
-const FORM_FIELDS = ['file', 'route', 'timeout', 'package', 'interactive'] as const
+const FORM_FIELDS = ['file', 'route', 'timeout', 'guest', 'package', 'interactive'] as const
 type FormField = (typeof FORM_FIELDS)[number]
 
 function formatMinutes(seconds: number): string {
@@ -34,7 +36,8 @@ const file = shallowRef<File>()
 const hash = ref<string>()
 const route = ref<Route>('inetsim')
 const timeoutText = ref('180')
-const packageName = ref('')
+const defaultGuestSetting = ref<string | null>()
+const guestChoice = useGuestChoice(defaultGuestSetting)
 const interactive = ref(false)
 
 const dragOver = ref(false)
@@ -56,18 +59,19 @@ const interactiveNote = computed(() => {
   return `Drive the guest yourself. The run lasts the full timeout${minutes} unless you press END RUN on the live page.`
 })
 
-const blockReason = computed(() => guestBlockReason.value ?? (file.value ? undefined : 'Choose a sample to analyse'))
+const emptyGuestText = computed(() => (guestChoice.noGuestReason.value ? 'none ready' : 'loading…'))
+
+const blockReason = computed(
+  () => guestChoice.noGuestReason.value ?? guestBlockReason.value ?? (file.value ? undefined : 'Choose a sample to analyse'),
+)
 const canSubmit = computed(() => !blockReason.value && !timeoutError.value && !submitting.value)
 
-const submitOptions = computed<SubmitOptions>(() => {
-  const trimmedPackage = packageName.value.trim()
-  return {
-    route: route.value,
-    timeout: Number(timeoutText.value),
-    interactive: interactive.value,
-    ...(trimmedPackage ? { package: trimmedPackage } : {}),
-  }
-})
+const submitOptions = computed<SubmitOptions>(() => ({
+  route: route.value,
+  timeout: Number(timeoutText.value),
+  interactive: interactive.value,
+  ...guestChoice.optionPayload.value,
+}))
 
 async function applySettingsDefaults(): Promise<void> {
   const { data } = await settingsRead()
@@ -77,6 +81,7 @@ async function applySettingsDefaults(): Promise<void> {
     timeoutText.value = String(defaultTimeout)
   }
   interactive.value = data?.default_interactive === true
+  defaultGuestSetting.value = data?.default_guest
 }
 
 async function chooseFile(chosen: File): Promise<void> {
@@ -138,7 +143,10 @@ async function submit(): Promise<void> {
   }
 }
 
-onMounted(applySettingsDefaults)
+onMounted(() => {
+  void applySettingsDefaults()
+  void guestChoice.load()
+})
 </script>
 
 <template>
@@ -212,6 +220,54 @@ onMounted(applySettingsDefaults)
         </div>
 
         <div class="form-field">
+          <q-select
+            v-if="!guestChoice.listUnavailable.value"
+            v-model="guestChoice.guestName.value"
+            :options="guestChoice.guestOptions.value"
+            option-value="name"
+            option-label="name"
+            option-disable="disabled"
+            outlined
+            dense
+            hide-bottom-space
+            emit-value
+            map-options
+            label="GUEST"
+            stack-label
+            :disable="submitting"
+            :error="Boolean(fieldErrors.guest)"
+            :error-message="fieldErrors.guest"
+            popup-content-class="guest-select-menu"
+            class="guest-select text-mono"
+          >
+            <template #selected>
+              <GuestOptionRow
+                v-if="guestChoice.chosenOption.value"
+                :option="guestChoice.chosenOption.value"
+              />
+              <span
+                v-else
+                class="guest-select__empty"
+              >{{ emptyGuestText }}</span>
+            </template>
+            <template #option="{ opt, itemProps }">
+              <q-item v-bind="itemProps">
+                <q-item-section>
+                  <GuestOptionRow :option="opt" />
+                </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+          <p
+            v-else
+            class="guest-unavailable text-gray"
+            role="status"
+          >
+            The guest list could not be loaded: the backend picks the default guest.
+          </p>
+        </div>
+
+        <div class="form-field">
           <span class="field-title text-mono">NETWORK</span>
           <div
             class="radio-group"
@@ -267,17 +323,17 @@ onMounted(applySettingsDefaults)
             :error-message="timeoutError ?? fieldErrors.timeout"
             class="timeout-input"
           />
-          <q-input
-            v-model="packageName"
+          <q-select
+            v-model="guestChoice.packageName.value"
+            :options="guestChoice.packageOptions.value"
             outlined
             dense
             hide-bottom-space
             label="PACKAGE"
-            placeholder="auto"
             :disable="submitting"
             :error="Boolean(fieldErrors.package)"
             :error-message="fieldErrors.package"
-            class="package-input"
+            class="package-input text-mono"
           />
         </div>
 
@@ -313,7 +369,14 @@ onMounted(applySettingsDefaults)
           <span
             v-if="blockReason"
             class="submit-reason text-mono text-gray"
-          >{{ blockReason }}</span>
+          >
+            {{ blockReason }}
+            <router-link
+              v-if="guestChoice.noGuestReason.value"
+              to="/guest"
+              class="guest-link"
+            >[OPEN GUEST VM]</router-link>
+          </span>
           <q-space />
           <q-btn
             flat
@@ -337,6 +400,18 @@ onMounted(applySettingsDefaults)
     </q-card>
   </q-dialog>
 </template>
+
+<!-- Not scoped: the options menu is teleported out of the dialog. -->
+<style>
+/* The dialog is as wide as the viewport allows (560px, 94vw, or the viewport less Quasar's 24px gutters) with 24px padding and a 2px border; the menu may not outgrow the select it opens from. */
+.guest-select-menu {
+  max-width: calc(min(560px, 94vw, 100vw - 2 * var(--spacing-lg)) - 2 * var(--spacing-lg) - 4px);
+}
+
+.guest-select-menu .guest-option-row {
+  width: 100%;
+}
+</style>
 
 <style scoped>
 .submit-dialog {
@@ -503,12 +578,47 @@ onMounted(applySettingsDefaults)
 
 .form-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-sm);
 }
 
 .submit-reason {
+  flex: 1 1 14rem;
+  min-width: 0;
   font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.guest-link {
+  color: var(--blue-primary);
+  white-space: nowrap;
+}
+
+.guest-unavailable {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.guest-select {
+  min-width: 0;
+}
+
+/* A chip is taller than the plain text of the other fields; without the room it touches the floating label. */
+.guest-select :deep(.q-field__control) {
+  min-height: 3rem;
+}
+
+.guest-select__empty {
+  color: var(--text-gray);
+  font-size: 0.8rem;
+}
+
+.guest-select :deep(.q-field__native) {
+  flex-wrap: nowrap;
+  padding-top: 0.9rem;
+  padding-bottom: 0.3rem;
+  overflow: hidden;
 }
 
 .cancel-btn {

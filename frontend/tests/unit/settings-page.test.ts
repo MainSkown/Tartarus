@@ -1,12 +1,15 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { Notify, Quasar, QInput } from 'quasar'
+import { createPinia } from 'pinia'
+import { Notify, Quasar, QInput, QSelect } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { settingsRead, settingsReplace, type ErrorEnvelope, type SettingsBody } from '@/api'
+import { guestsList, settingsRead, settingsReplace, type ErrorEnvelope, type Guest, type SettingsBody } from '@/api'
 import SettingsPage from '@/pages/SettingsPage.vue'
 
 vi.mock('@/api', () => ({
   settingsRead: vi.fn(),
   settingsReplace: vi.fn(),
+  guestsList: vi.fn(),
+  guestsProfiles: vi.fn(),
 }))
 
 type ReadResult = Awaited<ReturnType<typeof settingsRead>>
@@ -39,7 +42,7 @@ function failedValidation(fields: { location: string[]; message: string }[]) {
 
 async function mountLoaded(settings: SettingsBody = SAVED) {
   vi.mocked(settingsRead).mockResolvedValue(succeeded(settings))
-  const wrapper = mount(SettingsPage, { global: { plugins: [Quasar] } })
+  const wrapper = mount(SettingsPage, { global: { plugins: [Quasar, createPinia()] } })
   await flushPromises()
   return wrapper
 }
@@ -60,10 +63,23 @@ function numberInput(wrapper: VueWrapper, label: string) {
 
 // Quasar only attaches Notify.create once its plugin is installed (see api.test.ts), so the
 // property is assigned directly rather than spied on.
+const GUESTS = [
+  { name: 'lab1', state: 'ready' },
+  { name: 'lab2', state: 'ready' },
+  { name: 'lab3', state: 'building' },
+] as Guest[]
+
 beforeEach(() => {
   vi.clearAllMocks()
   Notify.create = vi.fn()
+  vi.mocked(guestsList).mockResolvedValue({ data: GUESTS, error: undefined } as unknown as Awaited<ReturnType<typeof guestsList>>)
 })
+
+function guestSelect(wrapper: VueWrapper) {
+  const select = wrapper.findAllComponents(QSelect).find((component) => component.props('label') === 'DEFAULT GUEST')
+  if (!select) throw new Error('no select labelled DEFAULT GUEST')
+  return select
+}
 
 describe('SettingsPage', () => {
   it('shows a loader until the read resolves, then the loaded values', async () => {
@@ -72,7 +88,7 @@ describe('SettingsPage', () => {
       resolveRead = resolve
     })
     vi.mocked(settingsRead).mockReturnValue(pendingRead as ReturnType<typeof settingsRead>)
-    const wrapper = mount(SettingsPage, { global: { plugins: [Quasar] } })
+    const wrapper = mount(SettingsPage, { global: { plugins: [Quasar, createPinia()] } })
     expect(wrapper.find('.loader').exists()).toBe(true)
     expect(wrapper.find('.save-btn').exists()).toBe(false)
 
@@ -89,7 +105,7 @@ describe('SettingsPage', () => {
 
   it('offers a retry when the read fails', async () => {
     vi.mocked(settingsRead).mockResolvedValueOnce({ data: undefined, error: {} } as unknown as ReadResult)
-    const wrapper = mount(SettingsPage, { global: { plugins: [Quasar] } })
+    const wrapper = mount(SettingsPage, { global: { plugins: [Quasar, createPinia()] } })
     await flushPromises()
     expect(wrapper.text()).toContain('> failed to load settings')
     expect(wrapper.find('.save-btn').exists()).toBe(false)
@@ -173,5 +189,47 @@ describe('SettingsPage', () => {
 
     expect(numberInput(wrapper, 'DISK WARN (GB)').props('error')).toBe(false)
     expect(numberInput(wrapper, 'DEFAULT TIMEOUT').props('errorMessage')).toBe('Input should be at least 60')
+  })
+
+  describe('default guest', () => {
+    it('offers the first ready guest and each ready guest, and shows the stored one', async () => {
+      const wrapper = await mountLoaded({ ...SAVED, default_guest: 'lab2' })
+      const select = guestSelect(wrapper)
+      expect(select.props('options')).toEqual([
+        { label: 'first ready guest', value: null },
+        { label: 'lab1', value: 'lab1' },
+        { label: 'lab2', value: 'lab2' },
+      ])
+      expect(select.props('modelValue')).toBe('lab2')
+      expect(wrapper.find('.guest-note').exists()).toBe(false)
+    })
+
+    it('saves the guest the analyst picks, and null for the first ready guest', async () => {
+      const wrapper = await mountLoaded({ ...SAVED, default_guest: 'lab2' })
+      vi.mocked(settingsReplace).mockResolvedValue(succeeded(SAVED) as unknown as ReplaceResult)
+
+      guestSelect(wrapper).vm.$emit('update:modelValue', 'lab1')
+      await submitForm(wrapper)
+      expect(settingsReplace).toHaveBeenLastCalledWith({ body: { ...SAVED, default_guest: 'lab1' } })
+
+      guestSelect(wrapper).vm.$emit('update:modelValue', null)
+      await submitForm(wrapper)
+      expect(settingsReplace).toHaveBeenLastCalledWith({ body: { ...SAVED, default_guest: null } })
+    })
+
+    it('says so when the stored guest no longer exists', async () => {
+      const wrapper = await mountLoaded({ ...SAVED, default_guest: 'lab9' })
+      expect(wrapper.find('.guest-note').text()).toBe('lab9 no longer exists: the first ready guest is used')
+    })
+
+    it('shows a 422 message on the select', async () => {
+      const wrapper = await mountLoaded({ ...SAVED, default_guest: 'lab1' })
+      vi.mocked(settingsReplace).mockResolvedValue(
+        failedValidation([{ location: ['body', 'default_guest'], message: 'unknown guest' }]),
+      )
+      await submitForm(wrapper)
+      await flushPromises()
+      expect(guestSelect(wrapper).props('errorMessage')).toBe('unknown guest')
+    })
   })
 })

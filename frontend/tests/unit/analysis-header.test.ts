@@ -48,6 +48,25 @@ describe('AnalysisHeader identity', () => {
   })
 })
 
+describe('AnalysisHeader guest', () => {
+  it('shows the guest the analysis ran on with its badges', () => {
+    const wrapper = mountHeader(analysisFixture({ guest: 'lab1', guest_badges: ['DEFENDER OFF'] }))
+    const guest = wrapper.find('.analysis-header__guest')
+    expect(guest.find('.guest-chip__name').text()).toBe('lab1')
+    expect(guest.find('.guest-chip__badge').text()).toBe('DEFENDER OFF')
+  })
+
+  it('shows a deleted guest by its stored name alone', () => {
+    const wrapper = mountHeader(analysisFixture({ guest: 'lab9', guest_badges: [] }))
+    expect(wrapper.find('.analysis-header__guest .guest-chip__name').text()).toBe('lab9')
+    expect(wrapper.find('.guest-chip__badge').exists()).toBe(false)
+  })
+
+  it('shows no guest for an analysis from before guests', () => {
+    expect(mountHeader(analysisFixture({ guest: null })).find('.analysis-header__guest').exists()).toBe(false)
+  })
+})
+
 describe('AnalysisHeader tags', () => {
   it('edits the tags of the analysis, whatever its status', () => {
     for (const status of ['running', 'done', 'failed'] as const) {

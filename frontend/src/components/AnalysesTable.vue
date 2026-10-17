@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AnalysisRead } from '@/api'
 import AnalysisRowMenu from '@/components/AnalysisRowMenu.vue'
+import GuestChip from '@/components/GuestChip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagList from '@/components/TagList.vue'
@@ -68,6 +69,11 @@ function shaPrefix(sha256: string): string {
               class="cell-filename"
               :title="analysis.filename"
             >{{ analysis.filename }}</span>
+            <GuestChip
+              class="cell-guest"
+              :name="analysis.guest"
+              :badges="analysis.guest_badges"
+            />
           </td>
           <td
             class="col-optional cell-sha"
@@ -189,6 +195,12 @@ function shaPrefix(sha256: string): string {
   text-overflow: ellipsis;
 }
 
+/* The chip is a second line of the FILE cell, capped at the file name's width so it never widens the column. */
+.cell-guest {
+  margin-top: var(--spacing-xs);
+  max-width: min(28ch, 40vw);
+}
+
 @media (max-width: 700px) {
   .col-optional,
   .col-id {
@@ -202,6 +214,21 @@ function shaPrefix(sha256: string): string {
 
   .cell-filename {
     max-width: 12ch;
+  }
+
+  /* No width to spare beside the name, so the badges go under it. */
+  .cell-guest {
+    max-width: 14ch;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cell-guest :deep(.guest-chip__badge) {
+    padding-inline: var(--spacing-xs);
+    overflow: hidden;
+    border-top: 1px solid var(--border-subtle);
+    border-left: none;
+    text-overflow: ellipsis;
   }
 }
 </style>

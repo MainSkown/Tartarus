@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { AnalysisRead } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
 import ExportMenu from '@/components/ExportMenu.vue'
+import GuestChip from '@/components/GuestChip.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagInput from '@/components/TagInput.vue'
 import { isActiveStatus } from '@/services/analysis-status'
@@ -83,6 +84,18 @@ const duration = computed(() => {
       <div>
         <dt>SUBMITTED</dt>
         <dd>{{ formatTimestamp(analysis.submitted_at) }}</dd>
+      </div>
+      <div
+        v-if="analysis.guest"
+        class="analysis-header__guest"
+      >
+        <dt>GUEST</dt>
+        <dd>
+          <GuestChip
+            :name="analysis.guest"
+            :badges="analysis.guest_badges"
+          />
+        </dd>
       </div>
       <div
         v-if="analysis.started_at"
@@ -198,6 +211,11 @@ const duration = computed(() => {
   font-size: 0.65rem;
   font-weight: bold;
   letter-spacing: 1px;
+}
+
+.analysis-header__guest {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .analysis-header__timing dd {
