@@ -30,7 +30,8 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 
 ## Non-goals (v1)
 - Windows hosts. Planned after v1 as experimental, via WSL2 + nested KVM.
-- Linux, Android or other guests.
+- Linux, Android or other guests. Creating a guest is OS-independent from M6 (an operating system is a
+  [guest profile](../specs/guest-profiles.md)), but Windows is the only profile built.
 - URL and archive submission; PCAP or memory-image import.
 - Parallel analyses.
 - Comparing analyses and searching across analyses.
@@ -56,7 +57,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 
 ### Backend ([backend](../specs/backend.md), [data-model](../specs/data-model.md))
 - [ ] FastAPI app with operation ids, serving the schema at `/openapi.json` for `@hey-api/openapi-ts`
-- [ ] PostgreSQL models + Alembic: sample, analysis, tag, tag_link, note, sigma_rule, guest_vm, job, setting
+- [ ] PostgreSQL models + Alembic: sample, analysis, tag, tag_link, note, sigma_rule, job, setting (guests live in the control service's registry, not in Postgres)
 - [ ] OpenSearch index template (ECS + `tartarus.*` + `api.*`), one index per analysis
 - [ ] Submission + one-at-a-time queue runner
 - [ ] Live collector (BSON + ETW tailing, offsets, resume)
@@ -111,7 +112,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | Solo analyst, local only, no auth, bind 127.0.0.1 | Simplest scope; the user's use case |
 | Linux hosts in v1; Windows post-v1 via WSL2 + nested KVM (experimental) | CAPE is Linux-only. A container makes the software portable but still needs KVM. Nested KVM in Hyper-V is unsupported by Microsoft and unpredictable. |
 | CAPE in a privileged Ubuntu 24.04 container; everything in Docker Compose | Any distro; the user's preferred deployment style |
-| Windows 10/11 guests only | CAPE's Linux guest support is community-grade |
+| Windows guests only in v1, as one of several possible guest profiles | CAPE's Linux guest support is community-grade ("Linux guests don't have official CAPE support"). Creating a guest does not depend on the OS: Windows is the first profile, and a Linux guest later is a new profile, not a rewrite. There can be several guests (for example Windows 11 with Defender on and off), and the analyst chooses one for every detonation |
 | Backend: Python + FastAPI; client via `@hey-api/openapi-ts` | Reuse CAPE/Python tooling. Same pattern as the user's Momos project |
 | Custom live collector tailing BSON/ETW; final data via `callback` + report.json on the shared volume | CAPE has no streaming feed |
 | OpenSearch (events) + PostgreSQL (metadata) | Full-text log search is the main UX |
@@ -130,41 +131,35 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | Guided auto-build of the guest from a user ISO | Guest prep is the hardest part of running CAPE |
 | Sources: capemon, Sysmon, ETW, Suricata/PCAP, Volatility3 | User's choice; Sysmon and ETW complement user-mode hooks |
 | Extra workflows: tags/notes and export/report only | User's choice |
-| Defender in the guest is the user's choice, **on by default** (a guest-build option; off means one manual step) | Which is right depends on the malware. Known malware is detected either way, but newer samples may check whether Defender is running and behave differently when it is off, since that suggests a sandbox; and leaving it on shows how a sample gets past Defender. Turning it off helps when Defender would remove a sample before it runs. On by default also means the default build needs no manual step. Turning Tamper Protection off cannot be scripted. |
+| Defender in the guest is the user's choice, **on by default**, a per-guest option: "Defender on" and "Defender off" are two guests and the analyst picks one at submission | Which is right depends on the malware. Known malware is detected either way, but newer samples may check whether Defender is running and behave differently when it is off, since that suggests a sandbox; and leaving it on shows how a sample gets past Defender. Turning it off helps when Defender would remove a sample before it runs. The state is baked into the guest's snapshot, so it is a property of the guest, not of the submission. "Off" is built by a scripted step that turns Tamper Protection off and proves it with the EICAR test string; a manual pause is only the fallback if the toggle cannot be found |
 | Separate `frontend` container: Vite in dev, nginx in prod proxying `/api` and `/ws` | Same pattern as the user's Momos project; fast HMR; still one published port |
-| The guest wizard (M6) will control libvirt via `qemu+tcp://cape/system`, off until then; never mount the Docker socket | The Docker socket is root on the host, and the backend processes untrusted malware data |
+| The guest wizard (M6) controls guests through a token-authenticated control service in the `cape` container on a network only `cape` and `backend` share (`tartarus-control`); libvirt's TCP endpoint stays off and the Docker socket is never mounted | The Docker socket is root on the host, libvirt's TCP endpoint has no authentication, and the backend processes untrusted malware data. The service exposes only list, read, delete, build, clone and check, with validated parameters |
 | No `mongo` service | Verified from CAPE source: `tasks/create/file`, `tasks/status`, `tasks/delete`, `machines/list` and `cuckoo/status` only touch CAPE's SQL task DB; CAPE's scheduler skips the `mongodb` reporting module when it's disabled (the shipped default); `jsondump` (what Tartarus reads) has no Mongo dependency; and the one startup check that requires Mongo or Elasticsearch only fires if `web.conf [web_reporting]` is enabled, which also ships off. Keep both at their defaults. `pymongo` stays installed in the `cape` image (an unconditional import for `bson.objectid.ObjectId`), but no connection is ever opened. |
 
 ## Open questions
-1. **How to protect libvirt's TCP endpoint when the guest wizard needs it (M6, not before).**
-   Resolved for now by switching the endpoint off: it has no authentication, and the container is
-   privileged, so any container on `tartarus-internal` reaching it would be host root. `make
-   verify-cape` enforces that it stays off. For M6 the options are: (a) a network shared only by
-   `cape` and `backend`; (b) SASL or TLS client certificates; (c) drop the remote libvirt API for a
-   small control service inside `cape` that exposes only define, snapshot, start and stop.
-   Recommended: (a) plus (b) or (c), since the backend parses untrusted malware reports.
+1. **How to protect libvirt's TCP endpoint when the guest wizard needs it. Resolved in M6.** The wizard
+   did not need the endpoint. Option (c) was built, with (a) added: a small control service inside `cape`
+   that exposes only list, read, delete, build, clone and check, on a network shared only by `cape` and
+   `backend`, behind a bearer token. libvirt's TCP endpoint stays off (`make verify-cape` enforces it, and
+   checks the control service's token and isolation), and the Docker socket is never mounted. See
+   [CAPE integration](../specs/cape-integration.md#the-control-service).
 2. **Stop and extend a running task:** which CAPE mechanism stops a task early and extends an
    interactive one? If extending isn't supported, the `+60s` button is dropped and the timeout
    is only set at submission.
 3. **Sysmon timing:** CAPE probably collects the Sysmon EVTX only at the end of the run, so
    Sysmon events would be final-phase only. Add a live forwarder in the guest later?
 4. **Default Sigma ruleset (decided 2026-10-14: a curated SigmaHQ subset, see [M4](../plans/m4-sigma.md)).**
-5. **Defender: how the choice is offered (decided: optional, on by default; details for M6).**
-   Defender's state is a property of the analysis environment, so the guest wizard offers it as an
-   option, and the default build leaves it on, which needs no manual step. Turning it off cannot
-   be scripted (Tamper Protection ignores the policy keys and `Set-MpPreference`; bypass methods
-   were not tried), so choosing "off" makes the wizard pause once for the user to switch Tamper
-   Protection off in Windows Security on the live desktop, then re-apply the settings. Open for M6:
-   - **One guest, or two?** The state is baked into the snapshot, so one guest is one state. The
-     v1 proposal is one guest with the option chosen at build time. Letting the analyst pick per
-     submission needs two registered guests (two domains with their own snapshots, sharing the
-     base image as a backing file); CAPE's current one-registration-at-a-time limit (M0b) has to
-     be lifted first, so that is post-v1.
-   - **Report what Defender did.** When it is on, record its verdict: the Windows Defender
-     operational event log (detections and remediation), and whether the sample file or its
-     process was removed, so an analysis says "Defender removed the sample" instead of showing an
-     empty run. A self-test for the option with the EICAR antivirus test string (harmless, and
-     detected by design) would prove Defender is really on or really off.
+5. **Defender: how the choice is offered. Resolved in M6, except one item.** It is a per-guest option,
+   on by default, and there are several guests, so the analyst picks "Defender on" or "Defender off" at
+   submission: the state is baked into the snapshot, and CAPE's one-registration-at-a-time limit (M0b) was
+   lifted. "Off" is no longer a manual step: a scripted click on Windows Security's Tamper Protection toggle
+   turns it off, verified by `IsTamperProtected` and proved with the EICAR test string (kept on a
+   Defender-off guest, removed on a Defender-on one, checked by every guest's self-test); a manual pause
+   remains only as a fallback if the toggle cannot be found. See
+   [CAPE integration](../specs/cape-integration.md#defender). **Still open, and moved out of M6: report what
+   Defender did in an analysis.** When it is on, record its verdict (the Windows Defender operational event
+   log, and whether the sample file or its process was removed), so an analysis says "Defender removed the
+   sample" instead of showing an empty run. It touches the ingest and the normalisers, not the guest wizard.
 6. **Default analysis timeout:** 180 s is proposed.
 7. **App icon:** design a PWA and app icon (a descending pit or gate motif in ice blue).
 8. **PDF report styling:** a print variant (white background, blue accents) is proposed instead

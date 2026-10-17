@@ -5,12 +5,10 @@ Drop in a Windows sample, watch it detonate **live** in an isolated, hardened Wi
 with the guest desktop, then dig through processes, timeline, network and detections with a
 query bar, and export IOCs and reports.
 
-> **Status:** the foundation is built and running (the Docker stack, a FastAPI backend with a
-> live health feed and a Settings API, a Quasar PWA with the app shell and Settings page), and
-> the sandbox works underneath it: a privileged CAPE container runs a script-built Windows 11
-> guest on KVM, and a test sample has been analysed end to end. What isn't built yet is the part
-> that connects them: submitting a sample from the UI, live monitoring, and the analysis views.
-> See the [overview](docs/overview.md#roadmap) and the [M0 plan](docs/plans/m0-cape-spike.md).
+> **Status:** milestones M0 to M6 are built: submitting a sample from the UI, live monitoring and
+> the interactive desktop, the analysis views, the query bar and timeline, Sigma detections, tags,
+> notes and exports, and building, cloning and choosing guests from the GUI. See the
+> [overview](docs/overview.md#roadmap) for what each milestone proved and what was not run.
 
 ## Documentation
 
@@ -22,19 +20,21 @@ query bar, and export IOCs and reports.
 | [Backend spec](docs/specs/backend.md) | Modules, REST and WebSocket API, collector, Sigma, query language, exports |
 | [Data model](docs/specs/data-model.md) | PostgreSQL schema, OpenSearch ECS event schema, source mappings |
 | [GUI spec](docs/specs/gui.md) | Screens, layouts, interactions, states, frontend structure |
-| [CAPE integration](docs/specs/cape-integration.md) | `cape` container, CAPE config, guest build wizard, Windows-host plan |
+| [CAPE integration](docs/specs/cape-integration.md) | `cape` container, CAPE config, the guest control service, guest build and clone, Windows-host plan |
+| [Guest profiles](docs/specs/guest-profiles.md) | How to add an operating system: the profile directory, `profile.json`, the step contract, the self-test |
 | [Design system](docs/design/design-system.md) | Ice-blue cyberpunk theme: tokens, components, data-viz rules |
 | [Theme CSS](frontend/src/css/app.css) | The theme stylesheet, single source of the design tokens |
 | [Plan: foundation](docs/plans/foundation.md) | Compose stack, backend and frontend skeletons: subtasks, model tiers, dependencies |
 | [Plan: M0 CAPE spike](docs/plans/m0-cape-spike.md) | The privileged CAPE container and the Windows 11 guest: checks, results, findings |
 | [Plan: M1a](docs/plans/m1a-submit-and-report.md) | Submit a sample from the UI and see its result: decisions, contracts, subtasks |
+| [Plan: M6](docs/plans/m6-guest-wizard.md) | The guest wizard and several guests: decisions, what each wave proved, what is open |
 
 ## Quick start
 
 Needs Docker with Compose 2.24.4 or newer. Run `make preflight` first to check your host.
 
 ```bash
-cp .env.example .env     # then set POSTGRES_PASSWORD, CAPE_DB_PASSWORD and CAPE_API_TOKEN
+cp .env.example .env     # then set POSTGRES_PASSWORD, CAPE_DB_PASSWORD, CAPE_API_TOKEN and GUEST_CONTROL_TOKEN
 make up                  # production build at http://127.0.0.1:8080
 ```
 
@@ -43,6 +43,10 @@ make up                  # production build at http://127.0.0.1:8080
 UI with `docker compose up -d --no-deps postgres opensearch backend frontend` (`--no-deps`,
 because the backend waits for a healthy `cape` otherwise); CAPE then shows as down.
 
+The two tokens are secrets between containers: make each with `openssl rand -hex 32`. `GUEST_CONTROL_TOKEN`
+is what lets the backend, and nothing else, ask the `cape` container to build and delete guests;
+`make preflight` checks it is at least 32 characters.
+
 For development with hot reload, use `make dev` instead (frontend on `127.0.0.1:5173`, backend
 and its API docs on `127.0.0.1:8000`). Database migrations run when the backend starts.
 
@@ -50,9 +54,28 @@ and its API docs on `127.0.0.1:8000`). Database migrations run when the backend 
 Node 24 or newer on the host. `make smoke` checks the compose files' safety rules without
 starting anything; `make smoke MODE=prod` or `MODE=dev` checks a running stack.
 
-Submitting a sample needs the Windows guest: build it once with `make build-guest` (see the
-[CAPE integration spec](docs/specs/cape-integration.md)). The `cape` container is part of the
-default stack; `make verify-guest` proves the guest works.
+## The guest
+
+Submitting a sample needs at least one guest. Tartarus never bundles or downloads Windows: put your own
+ISO in `data/iso/` (git-ignored; the `cape` container mounts it read-only), open **Guest VM** in the app
+and press **[+ NEW GUEST]**. The wizard reads the ISO, asks for a name, the editions and the options
+(Defender on or off, a lived-in look, Sysmon), and builds the guest while showing the log and, during the
+install, its screen. The same build from the command line is `make build-guest` (the stack must be up; it
+reads `GUEST_ISO`, `GUEST_IMAGE_INDEX` and the other `GUEST_*` settings of `.env`). `make verify-guest`
+proves a guest works.
+
+What to expect:
+- **Time:** a build takes about 16 minutes and a clone (`[CLONE]` on a guest's card) about 5. No
+  analysis can start while one runs, and neither can start while an analysis is queued or running,
+  because registering a guest restarts CAPE.
+- **Disk:** every guest is a full copy of about 22 GB, and there can be at most five (a failed one counts
+  until you delete it).
+- **Several guests:** build Windows 11 with Defender on and clone it with Defender off; the Submit dialog
+  then lets you pick one for each analysis. Only Windows 11 25H2 with a Polish ISO has been run.
+- **Names:** the account and computer name inside the guest are random unless you choose them, and the
+  wizard refuses names such as `sandbox` that tell a sample what the machine is. The guest built before
+  the wizard existed (`win`) is adopted as it is and keeps its account `Analyst` and a few other names a
+  sample can read; its card lists them, and a rebuild is the way to a clean one.
 
 ## Developing
 

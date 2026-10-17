@@ -33,7 +33,7 @@ writes to the shared storage volume. See [architecture](../architecture.md#compo
 | `cape_task_id` | int, nullable | Set when submitted to CAPE |
 | `status` | enum | `queued`, `starting`, `running`, `processing`, `ingesting`, `done`, `failed`, `report_failed`, `cancelled` |
 | `phase` | enum | `live`, `final` |
-| `options` | jsonb | `{route, timeout, package, memory_dump, interactive}` |
+| `options` | jsonb | `{route, timeout, package, memory_dump, interactive, guest}`. `guest` is the name of the guest the analysis runs on, written resolved when the analysis is queued (no migration: analyses from before guests have no `guest`, and the runner fails one that records none). The name is kept even after the guest is deleted |
 | `score` | numeric(3,1), nullable | CAPE malscore 0–10 |
 | `max_severity` | enum, nullable | `info`, `low`, `medium`, `high`, `critical` |
 | `detected_families` | text[] | From CAPE detections and config extraction |
@@ -56,9 +56,14 @@ short run; if reuse is detected, the process key becomes `pid@start_ts`.
 | Table | Columns |
 |---|---|
 | `sigma_rule` | `id` (the Sigma rule UUID), `title`, `level`, `status` (Sigma status), `path`, `content_sha256`, `enabled` bool (default true; the analyst's, kept across reloads), `validity` (`valid`, `invalid` or `unsupported`, a check-constrained text, so the GUI can tell a wrong rule from valid Sigma this engine cannot run), `error` text, `loaded_at`. The file owns every column but `enabled`; a rule whose file is gone is deleted |
-| `guest_vm` | `id`, `name`, `os_label` (e.g. "Windows 11 23H2 Pro"), `vcpus`, `ram_mb`, `disk_gb`, `ip`, `snapshot`, `state` enum(`building`,`ready`,`broken`), `last_check` jsonb, `created_at` |
-| `job` | `id`, `type` enum(`guest_build`,`ingest`,`reingest`,`export_report`,`delete_analysis`), `analysis_id` nullable, `status` enum(`pending`,`running`,`done`,`failed`,`interrupted`), `step` text, `progress` 0–100, `log` text (tail), `result` jsonb, `created_at`, `updated_at` |
-| `setting` | `key` text PK, `value` jsonb: default route, default timeout, default interactive, disk warn/block thresholds, timeline aggregation threshold |
+| `job` | `id`, `type` enum(`guest_build`,`ingest`,`reingest`,`export_report`,`delete_analysis`), `analysis_id` nullable, `status` enum(`pending`,`running`,`paused`,`done`,`failed`,`interrupted`), `step` text, `progress` 0–100, `log` text (tail), `result` jsonb (a `paused` job holds `{"pause": {"instructions": ...}}`), `created_at`, `updated_at` |
+| `setting` | `key` text PK, `value` jsonb: default route, default timeout, default interactive, default guest (a guest name, or null for the first ready guest), disk warn/block thresholds, timeline aggregation threshold |
+
+**There is no guest table.** Guests live in the guest registry on the `guest-images` volume, one
+`guest.json` per guest, owned by the guest control service and read through its API (see the
+[backend spec](backend.md#guests) and [CAPE integration](cape-integration.md#several-guests)); the libvirt
+domain and the CAPE registration are derived from it. Postgres holds only the guest's name, in an analysis's
+`options` and in the `default_guest` setting, and the `guest_build` job that follows a build.
 
 ## OpenSearch
 

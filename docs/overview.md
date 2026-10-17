@@ -39,7 +39,7 @@ doesn't have:
 | GUI | Vue 3 + Quasar web app, installable PWA | [specs/gui.md](specs/gui.md) |
 | Backend | Python/FastAPI: API, live collector, ingester, Sigma, query, export | [specs/backend.md](specs/backend.md) |
 | Database | OpenSearch (events, ECS) + PostgreSQL (metadata) | [specs/data-model.md](specs/data-model.md) |
-| Sandbox | CAPEv2 + KVM in a privileged Ubuntu container; Windows 10/11 guest | [specs/cape-integration.md](specs/cape-integration.md) |
+| Sandbox | CAPEv2 + KVM in a privileged Ubuntu container; Windows guests, built from profiles ([specs/guest-profiles.md](specs/guest-profiles.md)) | [specs/cape-integration.md](specs/cape-integration.md) |
 | Look & feel | Ice-blue cyberpunk design system | [design/design-system.md](design/design-system.md) |
 
 [architecture.md](architecture.md) explains how they fit together. The v1 scope, decisions and
@@ -58,17 +58,18 @@ remote access. Everything binds to `127.0.0.1`.
 | M0 | **Container spike** | **Done.** The privileged `cape` container runs a script-built Windows 11 guest and completes a CAPE analysis end to end (libvirt, KVM, rooter, INetSim, guacd, capemon on build 26200). See the [M0 plan](plans/m0-cape-spike.md). |
 | M1 | **Stack and final-report path** | **Done and approved.** M1a (submit a sample, the queue, the CAPE callback, the Dashboard, the Submit dialog and the analysis page) and M1b (the event index, the capemon, network and signature normalisers, and the Processes, Network, Artifacts and Detections views). Verified end to end on the real stack by `make e2e DRILLS=1`. See the [M1a](plans/m1a-submit-and-report.md) and [M1b](plans/m1b-explore-a-report.md) plans. |
 | M2 | **Live** | **Built and verified on the real stack** ([plan](plans/m2-live.md)): collector (capemon BSON logs), live WebSocket, LIVE tab with event stream and process tree, interactive desktop (guacd tunnel and panel). ETW tailing and live detections wait for later sources and M4. |
-| M3 | **Query and timeline** | KQL-like query compiler, facets, Events tab, timeline, event detail drawer |
-| M4 | **Sigma** | Rule loader, in-stream matcher, Rules page, detections in the live feed |
-| M5 | **Analyst workflow** | Tags and notes, IOC exports, HTML and PDF report |
-| M6 | **Guest wizard** | Automated hardened guest build, health checks, self-test. **Seeded by M0b:** `make build-guest` and `make verify-guest` already do the build and the checks; the wizard adds the UI, the ISO scan and the manual Defender step. |
+| M3 | **Query and timeline** | **Built and approved** ([plan](plans/m3-query-and-timeline.md)): KQL-like query compiler, facets, Events tab, timeline, event detail drawer; `make e2e` proves the query API and the two tabs on a real run (73 checks). |
+| M4 | **Sigma** | **Built** ([plan](plans/m4-sigma.md)): rule loader, in-stream matcher, Rules page, detections in the live feed; `make e2e` proves the rules live and final on a real run (85 checks). The plan lists the review of the Rules page as still pending. |
+| M5 | **Analyst workflow** | **Done and approved** ([plan](plans/m5-analyst-workflow.md)): tags and notes, IOC exports (STIX, MISP, CSV), HTML and PDF report. |
+| M6 | **Guest wizard** | **Done** ([plan](plans/m6-guest-wizard.md)). Guests are built, cloned, checked and deleted from the GUI through a token-authenticated control service in the `cape` container; there can be up to five, the analyst picks one for each analysis, and an operating system is a [guest profile](specs/guest-profiles.md) (Windows is the first). Verified on the real stack through the public API with the user's Polish Windows 11 25H2 ISO: a build (about 16 minutes) and clones (about 5) reached `ready` through their self-tests, Defender went off by a scripted step and on again, a failing self-test left a guest `failed` and unregistered, and builds survived a backend restart and a control-service stop. Not run for real: a failing install step, a Windows 10 ISO, another UI language, the manual Defender pause, the build desktop in a browser, and a Linux profile (paper design only). |
 
 ### Next up
 
-Nothing blocks M1 now. libvirt's unauthenticated TCP endpoint is switched off until the guest
-wizard needs it (question 1), and Defender is an option in the guest wizard, on by default
-(question 5). M1 proper: submit a sample from the UI, receive CAPE's callback, ingest
-`report.json` into OpenSearch, and the first analysis views.
+M0 to M6 are built. What is open is listed at the end of each plan's Status and in the [v1 open
+questions](features/tartarus-v1.md#open-questions). For the guest: resuming a clone's build too soon
+(the step does not wait for an in-flight reboot), a failed build counting towards the five-guest cap until
+it is deleted, and the cases above that were not run. Reporting what Defender did in an analysis is its own
+item.
 
 ### After v1 (not designed yet)
 - **Windows hosts (experimental):** the same compose stack inside WSL2 with nested KVM (see
@@ -82,11 +83,18 @@ wizard needs it (question 1), and Defender is an option in the guest wizard, on 
 - URL and archive submission, PCAP and memory-image import.
 - Compare two analyses (behaviour diff).
 - Search and IOC pivot across all analyses (OpenSearch alias over the per-analysis indices).
-- Parallel analyses (several guests).
-- **Two guest profiles (Defender on and off)**, picked per submission, and Defender's verdict in
-  the report (its event log, and whether it removed the sample). Needs more than one registered
-  guest.
-- Linux guests (CAPE community support via strace/Tracee).
+- Parallel analyses (two analyses on two guests at once). Several guests exist since M6, but one
+  analysis runs at a time, and a build or clone keeps every analysis out.
+- **Defender's verdict in the report** (its event log, and whether it removed the sample). The two
+  Defender guests it needs exist since M6.
+- **A Linux profile and the normaliser that reads Linux runs.** The profile is a new directory under
+  `guest/profiles/` ([guest profiles](specs/guest-profiles.md), with the checklist from S0e); CAPE's
+  Linux support is community-grade and its monitor is `strace` text, so the events of a Linux run need
+  their own normaliser, and until it exists a Linux guest could be built and run by CAPE but its analyses
+  would show report-level data only.
+- **Linked clones** that share the source's disk, to save the 22 GB per guest (at the cost of tying two
+  guests' lifetimes).
+- **Profile `extends`**, so two Linux distributions can share an apt and systemd base.
 - Custom Tartarus rules and sequence detections. Sigma correlation rules.
 
 ## Glossary
@@ -94,7 +102,8 @@ wizard needs it (question 1), and Defender is an option in the guest wizard, on 
 | Term | Meaning |
 |---|---|
 | **Analysis** | One detonation of one sample (Tartarus id `#42`; maps to one CAPE task) |
-| **Guest** | The Windows VM the sample runs in. It's reverted to the clean snapshot for every analysis |
+| **Guest** | A VM the sample runs in (Windows today). There can be several, each reverted to its clean snapshot for every analysis; the analyst picks one per analysis |
+| **Guest profile** | The directory that holds what differs between operating systems: how to read the media, install, provision, name and test a guest |
 | **capemon** | CAPE's monitor DLL injected into processes in the guest; hooks APIs |
 | **Live phase / final phase** | Events streamed while running / enrichment after CAPE processing |
 | **Lane** | One of six event categories (process, file, registry, network, memory, api) used for the timeline and colouring |

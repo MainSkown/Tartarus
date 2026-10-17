@@ -24,6 +24,10 @@
 - Wordmark `TARTARUS` in mono, `--blue-primary`, letter-spacing 4px.
 - Three health dots: CAPE, Guest, Store (OpenSearch + Postgres). Each is green, amber or red
   with a tooltip giving the detail, and clicking one opens the health popover.
+  - The **Guest** dot is the aggregate of every guest: green when all are ready, amber when some are not,
+    red when none is ready or none exists. Its popover lists each guest with its state badge and badges
+    (`lab1 READY DEFENDER ON`, `lab4 BUILDING`) and an `[OPEN GUEST VM]` button; the list is loaded when
+    the popover opens.
 - Queue count and disk usage. The disk usage turns amber or red at the warn and block
   thresholds.
 - The `+ SUBMIT` button is outlined in `--blue-primary`.
@@ -42,7 +46,10 @@
 | `/analyses/:id` | Analysis workspace (defaults to the `live` tab while running, otherwise `overview`) |
 | `/analyses/:id/:tab` | Tabs: `live`, `overview`, `processes`, `timeline`, `events`, `network`, `artifacts`, `detections`, `notes` |
 | `/rules` | Sigma rules |
-| `/guest` | Guest VM status and build wizard |
+| `/guest` | Guests: one card per guest |
+| `/guest/new` | Build wizard |
+| `/guest/clone/:name` | Clone form for the ready guest `:name` |
+| `/guest/builds/:buildId` | A build or clone: steps, log, live desktop, self-test verdict |
 | `/settings` | Defaults and system info |
 
 The query-bar state (query plus chips) and the selected process are kept in the URL query
@@ -70,8 +77,14 @@ The query-bar state (query plus chips) and the selected process are kept in the 
   - Severity is a severity badge (icon + label).
   - Filters: a search box (name or hash substring), a status select and a tag select.
 - **Empty state:** when there are no analyses, the page shows a centred terminal-style block:
-  `> no analyses yet` with a `[+ SUBMIT SAMPLE]` button. If the guest isn't ready, it shows
-  `> guest VM not built` with a `[BUILD GUEST]` button instead.
+  `> no analyses yet` with a `[+ SUBMIT SAMPLE]` button. If no guest is ready (the Guest health
+  is red), it shows `> guest VM not ready`, the health message, and a `[BUILD GUEST]` button that opens
+  `/guest` instead.
+- **Guest chip:** an analysis that records a guest shows it as a second line of its FILE cell: the
+  guest's name and its badges (`lab1 DEFENDER ON`), capped at 28 characters (14 below 700 px, the
+  badges then under the name), so the table gains no column and never scrolls sideways. A row from
+  before guests has no chip. The name is the one stored with the analysis, so it is shown plainly even
+  after the guest was deleted; its badges are the guest's current ones, and absent for a deleted guest.
 - **Delete:** a confirm dialog with a red outlined button, showing the size that will be freed.
 
 ## Submit dialog
@@ -82,6 +95,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 │ │        drop file here  ·  or  [BROWSE]                │ │
 │ │        invoice.exe · 412 KB · PE32 executable          │ │
 │ └───────────────────────────────────────────────────────┘ │
+│ GUEST    [ lab1  DEFENDER ON  Windows 11          ▾]      │
 │ NETWORK  [ INETSIM ][ NONE ][ DROP ][ INTERNET ][ VPN ]   │
 │ TIMEOUT  [ 180 ] s          PACKAGE [ auto        ▾]      │
 │ [x] Interactive desktop   [ ] Full memory dump + Volatility│
@@ -97,10 +111,20 @@ The query-bar state (query plus chips) and the selected process are kept in the 
     host's public IP."
   - `VPN`, `WIREGUARD` and `SOCKS5` appear only if configured.
 - Timeout: 60–1200 s.
-- Package: `auto` by default; a select lists CAPE packages (exe, dll, doc, xls, ps1, js, …).
+- **Guest:** a select of every guest, each as its name, its badges (`DEFENDER ON`) and the OS its profile
+  names. A guest that is not ready is listed but cannot be chosen, with its state as the reason. It starts
+  on the analyst's earlier choice while that guest is still ready, else on Settings' default guest, else on
+  the first ready guest. If the guest list cannot be loaded the select is replaced by a note and the
+  backend picks the default guest.
+- Package: `auto` by default; the select lists `auto` and the packages the **chosen guest's profile** accepts
+  (Windows: exe, dll, doc, xls, ppt, ps1, js, vbs, jar, msi, zip, pdf, python, hta, lnk), so changing the
+  guest changes the list. Until the profiles are loaded a short fallback list (exe, dll, doc, xls, ps1,
+  js) is shown.
 - The memory dump option warns: "Adds about 4 GB of disk and several minutes of processing."
-- `DETONATE` is disabled when the guest isn't ready or disk is below the block threshold. The
-  reason is shown inline.
+- `DETONATE` is disabled when no guest is ready or disk is below the block threshold. The reason is
+  shown inline: `No guest is ready: none has been built`, or `No guest is ready: lab1 is building,
+  lab2 is failed`, with an `[OPEN GUEST VM]` link to `/guest`. While any guest is building or testing the
+  backend refuses a submission whichever guest was chosen ("A guest is being built"), shown on the field.
 - After submitting, the app navigates to `/analyses/:id`. If another analysis is running, it
   shows "Queued, position N".
 
@@ -116,6 +140,8 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 [proc: cmd.exe ×] [NOT api: NtDelayExecution ×]
 ```
 
+- **Guest chip:** `GUEST lab1 DEFENDER ON`, the guest the analysis ran on, in the header's detail line
+  (absent for an analysis from before guests).
 - **Phase indicator:**
   - `● LIVE` while running.
   - `PROCESSING…` with an indeterminate progress bar while CAPE processes the task.
@@ -286,28 +312,121 @@ Analysis-level notes are edited inline: a plain QInput textarea in autogrow mode
 
 ## Guest VM (`/guest`)
 
-- **Status card:**
-  - OS label, resources and IP.
-  - Snapshot name and date.
-  - Health checks with icons and a `[RUN CHECKS]` button.
-  - Last self-test result, including the pafish summary (info only).
-- **Build wizard** (QStepper, vertical):
-  1. Choose ISO: a list from `data/iso` showing the detected edition and version. If the list is
-     empty, it explains where to put the ISO. (A drag-and-drop upload is planned after v1; see
-     the [overview](../overview.md#after-v1-not-designed-yet).)
-  2. Settings: edition, key (optional), locale, username, resources, decoys, and **Defender**
-     (on by default; "off" adds one manual step in the build, explained next to the option).
-  3. Review: a summary plus a warning that rebuilding replaces the current guest after it
-     passes its checks.
-  4. Build: per-step progress (preflight → define → install → provision → snapshot → register →
-     self-test) with a live log tail in a code block. The live desktop view is available
-     during install and provision. Each step has Retry and the build has Resume.
-- Only when the user chose Defender "off": the wizard pauses for the Tamper Protection manual
-  step, with instructions and the live desktop.
+Built in M6; every screen was reviewed from screenshots. What differs between operating systems
+(options, name rules, badges, packages) is read from the guest profiles the backend serves
+(`GET /guests/profiles`, see [guest profiles](guest-profiles.md)), so none of these screens is
+Windows-specific markup.
+
+### Guests page
+
+`GUEST VM` with a `[+ NEW GUEST]` button and a grid of **cards**, one per guest, in name order. The page
+reloads itself on every build job message and polls every 5 s while a guest is building or testing.
+
+- **Card:** the guest's name (mono), a `★ DEFAULT` mark on Settings' default guest, a state badge (`BUILDING`,
+  `TESTING`, `READY`, `FAILED`, `BROKEN`) and the profile's badges (`DEFENDER ON`). Then the fields: SYSTEM
+  (the profile's name and the media variant as the engine records it, which is the edition's index, so a
+  Pro guest reads `Windows 11 5`: the screenshots were taken with an edition name), KIND (`BUILD`, `CLONE OF lab1`, `ADOPTED`), RESOURCES, IP, ACCOUNT,
+  COMPUTER, PASSWORD (masked, with `[REVEAL]` and a copy button, so the analyst can log into the desktop),
+  SNAPSHOT, CREATED and SELF-TEST (the verdict's message, with a link to the self-test analysis).
+- **Building or testing:** a progress bar with the percent and the current step, and `[VIEW BUILD]`. Nothing
+  else can be done to the guest meanwhile.
+- **Failed:** the error and `[VIEW BUILD]`, `[DELETE]`. **Broken** (a record that cannot be read): the reason and
+  `[DELETE]`.
+- **Adopted guest with giveaways:** a warning block, `A SAMPLE CAN TELL THIS IS A SANDBOX`, lists what in
+  the guest says so (the account `Analyst`, a working folder, a firewall rule, ...) with "Rebuild or clone for a
+  clean guest" (a clone keeps all but the computer name; a rebuild is clean).
+- **Actions** on a ready guest: `[RUN CHECKS]` (shows a progress line, "this takes up to 2 minutes", then
+  `4 of 4 checks passed` and one row per check: `domain`, `snapshot`, `registration`, `agent`), `[CLONE]`,
+  `[DELETE]`. A guest can be deleted in any settled state. `[DELETE]` asks for confirmation ("Its virtual
+  machine, disk and snapshot are removed and it is unregistered from CAPE; analyses that used it keep their
+  data. This cannot be undone."); a refusal (an analysis is running, the guest is being cloned from) is shown on
+  the card.
+- **Empty state:** `> guest VM not built`, "Put a Windows ISO in `data/iso`, then build the guest from it", and
+  `[BUILD GUEST]`. **The control service is not reachable:** `> guest control service is not reachable`
+  above the cards already loaded or, when there are none, an error panel with `[RETRY]`.
+- There is no `[REBUILD]`: the wizard is opened with `[+ NEW GUEST]` and a new name, and the old guest is
+  deleted when the analyst is happy.
+
+### Build wizard (`/guest/new`)
+
+A vertical stepper; `[CANCEL]` returns to `/guest`.
+
+1. **CHOOSE MEDIA:** a list of every file in `data/iso` with its size, the profile that recognised it, and
+   what the scan read: version, build, language, architecture and the number of editions (their names are in
+   step 2). A file nothing recognised, or that no installed profile reads, is
+   listed disabled with the reason. Empty: "Put a Windows ISO in `data/iso` on the host, then reload the
+   list. Nothing is uploaded from the browser" and `[RELOAD]` (drag-and-drop upload is planned after v1; see
+   the [overview](../overview.md#after-v1-not-designed-yet)). Loading and a failed scan have their own states.
+   A profile picker is not shown while only one profile can read the media.
+2. **SETTINGS**, in four groups, the last rendered from the profile:
+   - **GUEST:** the guest's name ("Only Tartarus sees this name; Windows never does") and, if the media lists
+     several, the edition;
+   - **INSIDE THE GUEST:** the account, the computer name and the password, each with a hint ("A realistic one is
+     chosen when this is left blank"), a `[RANDOM]` button (it blanks the field; a blank value is generated when
+     the build starts), a reveal toggle on the password, and the API's message when a name is refused for a
+     giveaway;
+   - **RESOURCES:** vCPUs, RAM and disk (the disk not below the profile's minimum);
+   - **OPTIONS:** one control per option of the profile (a switch for a `bool`, a select for a `choice`, a text
+     field for a `string`, a masked one for a `secret`), each with its help text. For Windows: Microsoft
+     Defender (on by default, with the explanation of when to turn it off and that the build then switches
+     Tamper Protection off with a scripted step), "Make it look used", Sysmon, product key and keyboard layout.
+3. **REVIEW:** every value as chosen (a blank identity value is shown as "chosen at build time"), the warning
+   "The build takes about 15 minutes. No analysis can start until it is done." and `[BUILD GUEST]`.
+
+A refusal from the backend is shown on its field and jumps back to that step: a name already taken, a giveaway
+word (`identity.machine contains 'sandbox', which tells a sample what the machine is`), a limit. A `409` (an
+analysis is running, another build is active, five guests exist) is shown on the review step. On success the
+page opens the build.
+
+### Clone form (`/guest/clone/:name`)
+
+One page for a ready guest. Under the source's name and badges: a summary ("Copies lab1's disk, gives the copy
+its own identity, takes about 5 minutes and about 22 GB.") and three groups:
+
+- **NEW GUEST:** the new name; the computer name with the same hint and `[RANDOM]` (when the profile lets a
+  clone choose one; it is never the source's); the account, shown read-only with the reason ("A different
+  username needs a build: renaming leaves the old profile folder behind");
+- **RESOURCES:** vCPUs and RAM; the disk is shown fixed ("A clone has its source's disk");
+- **OPTIONS:** the profile's options, those a clone may change editable (Defender, decoys) and the rest shown
+  with the source's value and "Fixed on a clone; a build can change it".
+
+Then the warning "The clone takes about 5 minutes. No analysis can start until it is done." and the submit
+button. States: loading, a source that does not exist, a source that is not ready ("lab1 is building: only a
+ready guest can be cloned"), a refusal on a field, a `409`.
+
+### Build page (`/guest/builds/:buildId`)
+
+Opened after a build or clone starts, from a card's `[VIEW BUILD]`, and reloadable; it follows the build
+through the control service and the build job.
+
+- **Header:** the guest, `BUILD` or `CLONE`, a phase badge (`RUNNING`, `PAUSED`, `FAILED`, `SELF-TEST`,
+  `READY`, `SELF-TEST FAILED`), the percent and the step message.
+- **Steps:** one row per step (names as the profile gives them, `tamper-off` reads `TAMPER OFF`) with its
+  status (`PENDING`, `RUNNING`, `DONE`, `FAILED`, `PAUSED`), its duration and a progress bar for the running
+  one, then a last row for the self-test.
+- **BUILD LOG:** the tail of the log in a code block, following the end unless scrolled away, with a follow
+  toggle and a copy button; lines the guest itself printed are marked.
+- **Live desktop:** the guest's screen (the same desktop panel as an analysis's) while the current step is
+  marked `desktop` in the profile, install, provision, tamper-off and reconfigure for Windows. It is not
+  shown otherwise.
+- **Paused** (the Defender fallback): an amber `WAITING FOR YOU` block with the step's instructions ("Windows
+  Security could not be operated automatically. On the guest's desktop open Windows Security, go to the
+  threat protection settings, switch Tamper Protection off, then press Continue."), "Do it on the guest's
+  desktop below", and `[CONTINUE]`, which runs the step again. This appears only when the scripted step
+  could not find the toggle.
+- **Failed:** a red block naming the failed step with the error, and `[RESUME]` (runs the failed step again)
+  and `[RESTART]` (from the first step, discarding what was done).
+- **Self-test:** while it runs the page says so and shows its progress; the verdict then appears as a panel,
+  passed ("The guest was built and is ready.") or failed, with one row per signal (process, file, registry,
+  DNS, report), the proofs, any giveaways, and a link to the self-test analysis. A failed one lists why and
+  the guest is `failed`.
+- **The control service is not reachable:** `> the guest control service is not reachable; trying again`
+  while the last answer stays on screen. An unknown build id has its own `NOT FOUND` page.
 
 ## Settings (`/settings`)
-- **Defaults:** network route, timeout, interactive on/off, and the timeline aggregation
-  threshold.
+- **Defaults:** network route, timeout, interactive on/off, the **default guest** and the timeline
+  aggregation threshold. The DEFAULT GUEST select offers `first ready guest` and every ready guest; when the
+  stored guest is not ready or no longer exists, a note says "lab1 is failed: the first ready guest is used".
 - **Disk thresholds:** warn and block.
 - **Network routes:** read-only list of configured routes and how to add a VPN, WireGuard or
   SOCKS5 tunnel in `.env`.
@@ -333,9 +452,9 @@ Analysis-level notes are edited inline: a plain QInput textarea in autogrow mode
 |---|---|
 | `api/` | `@hey-api/openapi-ts` output (do not edit; `npm run api:sync`) |
 | `services/ws.ts` | Typed WebSocket client (reconnect with backoff, message types from the generated schema) |
-| `stores/` | Pinia: `system`, `analyses`, `analysis` (current workspace: detail, query state, selection), `live`, `rules`, `guest` |
+| `stores/` | Pinia: `system`, `analyses`, `analysis` (current workspace: detail, query state, selection), `live`, `rules`, `guests` (the guest list and profiles) |
 | `pages/` | One page component per route/tab |
-| `components/` | `QueryBar`, `FilterChips`, `EventTable`, `EventDetailDrawer`, `ProcessGraph`, `ProcessTree`, `Timeline` (canvas), `DesktopViewer` (guacamole-common-js), `SeverityBadge`, `LaneIcon`, `StatTile`, `AttackMatrix`, `CodeBlock`, `TerminalEmpty` |
+| `components/` | `QueryBar`, `FilterChips`, `EventTable`, `EventDetailDrawer`, `ProcessGraph`, `ProcessTree`, `Timeline` (canvas), `DesktopPanel` (guacamole-common-js; an analysis's and a build's), `SeverityBadge`, `LaneIcon`, `StatTile`, `AttackMatrix`, `CodeBlock`, `TerminalEmpty`, `GuestChip` (name and badges, used on the Dashboard row, the workspace header and the Submit dialog), and `guest/` (the cards, the option controls rendered from a profile, the build page's parts) |
 | `boot/` | `notify.ts` (toast types), `api.ts` (client base URL, error interceptor that raises toasts) |
 | `css/` | `app.css` (the theme stylesheet, single source of the design tokens), `quasar.variables.scss` |
 

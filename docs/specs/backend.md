@@ -2,7 +2,8 @@
 
 The backend is Python 3.12 and FastAPI, running as one Uvicorn worker. It owns the REST API, the
 WebSocket feeds, the live collector, the report ingester, Sigma, the query compiler, exports
-and the guest builder. The frontend talks **only** to this service.
+and the client of the guest control service (the guests themselves are built and kept by that service, in the
+`cape` container). The frontend talks **only** to this service.
 
 ## Module layout (`backend/app/`)
 
@@ -10,8 +11,8 @@ and the guest builder. The frontend talks **only** to this service.
 |---|---|
 | `main.py` | App factory, lifespan (start collector, queue runner, job runner, rule loader). No static files: the frontend container serves the PWA |
 | `config.py` | Settings from env (pydantic-settings) |
-| `api/` | Routers: `analyses`, `events`, `processes`, `network`, `artifacts`, `detections`, `annotations`, `rules`, `export`, `guest`, `system`, `internal` |
-| `ws/` | WebSocket endpoints: `live`, `desktop`, `system` |
+| `api/` | Routers: `analyses`, `events`, `processes`, `network`, `artifacts`, `detections`, `annotations`, `rules`, `export`, `guests`, `jobs`, `system`, `internal` |
+| `ws/` | WebSocket endpoints: `live`, `desktop` (an analysis's and a guest build's), `system` |
 | `cape/` | apiv2 client, task options mapping, storage path helpers |
 | `collector/` | Directory watcher, per-file offset tailer, CAPE BSON parser (ported from CAPE `lib/cuckoo/common/netlog.py`), ETW JSON tailer |
 | `normalize/` | Source → ECS mappers (`capemon.py`, `sysmon.py`, `etw.py`, `suricata.py`, `volatility.py`, `cape_report.py`), derived-event rules, `tartarus.summary` builders |
@@ -20,7 +21,8 @@ and the guest builder. The frontend talks **only** to this service.
 | `search/` | OpenSearch client, index template, bulk indexer, query helpers (search, facets, histogram) |
 | `query/` | KQL-like grammar (lark), AST → OpenSearch DSL compiler, field catalog and aliases |
 | `export/` | STIX 2.1, MISP JSON, CSV, HTML/PDF report (Jinja2 + WeasyPrint) |
-| `guest/` | Guest build pipeline steps and health checks (M6). Will use `libvirt-python` over `qemu+tcp://cape/system`, which is switched off until then; no Docker socket |
+| `guest/` | The client of the guest control service and what is built on it (M6): `client.py` (`GuestControl`, an HTTP client with the bearer token and its errors), `schemas.py` (the control service's JSON), `health.py` (the aggregate guest check), `build_job.py` (the `guest_build` job and its reattach), `selftest_runner.py`, `selftest_verdict.py` and `selftest_evidence.py` (the self-test). No `libvirt-python`, no Docker socket: libvirt's TCP endpoint stays off and the only way to the guests is the control service |
+| `analyses/` | `guest_choice.py` (which guest an analysis runs on, the package check; pure) and `submission.py` (`AnalysisSubmitter`, the one path `POST /analyses` and the self-test queue an analysis through) |
 | `jobs/` | Persistent job runner, queue runner |
 | `pubsub.py` | In-process broadcast: topics `analysis:{id}` and `system` |
 | `db/` | SQLAlchemy models, session, Alembic |
@@ -45,18 +47,18 @@ longer lists included routes in `app.routes`.
 ### System
 | Method & path | Purpose |
 |---|---|
-| `GET /system/health` | `{cape, guest, opensearch, postgres}`, each `ok` / `degraded` / `down` with a message |
+| `GET /system/health` | `{cape, guest, opensearch, postgres}`, each `ok` / `degraded` / `down` with a message. `guest` is the aggregate of every guest's state from the control service alone (CAPE is not asked, so a guest CAPE has locked for a run is not unhealthy): `ok` when every guest is `ready`; `degraded` when some are not (the message lists them, for example "lab4 is building" or "lab6 is failed"); `down` when there is no guest, none is ready, or the control service cannot be reached |
 | `GET /system/disk` | Total and free bytes, Tartarus usage (indices, artefacts, guest images), thresholds |
 | `GET /system/queue` | Running analysis and queued analyses |
-| `GET /settings`, `PUT /settings` | Defaults: route, timeout, interactive, disk thresholds |
+| `GET /settings`, `PUT /settings` | Defaults: route, timeout, interactive, disk thresholds, and `default_guest`: the guest an analysis runs on when its options name none (a guest name or `null`; a guest that is not ready or no longer exists counts as `null`, meaning the first ready guest by name) |
 
 ### Analyses
 | Method & path | Purpose |
 |---|---|
-| `POST /analyses` | **Built (M1a).** multipart: `file` and `options` (a JSON string: `route`, `timeout` 60 to 1200 s default 180, `package` default `auto`, `interactive` default `false`; unknown keys are rejected; `memory_dump` and tags are not in M1a). `interactive` is stored in `analysis.options` and makes the backend submit the CAPE task with `interactive=1,nohuman=yes`; the run then lasts the whole timeout (see the desktop tunnel below). `201` with the analysis, always `queued`. Checked in this order: the form (`422` with field locations, including an empty file at `["body","file"]`), then the guest is ready (`409`, nothing stored), then the upload (`413` past 512 MiB). Two identical uploads at once are fine; a failed submission leaves no file or row. |
+| `POST /analyses` | **Built (M1a, `guest` from M6).** multipart: `file` and `options` (a JSON string: `route`, `timeout` 60 to 1200 s default 180, `package` default `auto`, `interactive` default `false`, `guest`; unknown keys are rejected; `memory_dump` and tags are not in M1a). `guest` is the name of the guest to run on; omitted, it is Settings' `default_guest` while that guest is ready, else the first ready guest by name. The guest chosen is written into `analysis.options.guest` (no migration; an analysis from before guests has none), and the runner submits the CAPE task with `machine=<guest>` (the backend always sends it: CAPE alternates between machines when it is left out). `package` is checked against the chosen guest's profile: `auto` or one of its `packages`. `interactive` is stored in `analysis.options` and makes the backend submit the CAPE task with the options string and task fields of the guest's profile (`agent.interactive`; Windows: `interactive=1,nohuman=yes`); the run then lasts the whole timeout (see the desktop tunnel below). `201` with the analysis, always `queued`; the analysis carries `guest` (the stored name, shown even after the guest is deleted) and `guest_badges` (the badges the guest's profile derives from its options, such as `DEFENDER ON`; empty when the guest is gone or the control service cannot be asked). Checked in this order: the form (`422` with field locations), then the guest and the package, then the upload (`422` for an empty file at `["body","file"]`, `413` past 512 MiB). The guest check answers `409` with the reason, and stores nothing, when no guest has been built, the named guest does not exist ("There is no guest named x") or is not `ready` ("x is failed: it cannot run an analysis"), no guest is ready, or any guest is being built or tested ("A guest is being built: wait for it to finish"), because registering a guest restarts `cape` and would kill the run; a package the guest does not accept is `422` at `["body","options","package"]` naming what it accepts; `502` when the control service cannot be asked. Two identical uploads at once are fine; a failed submission leaves no file or row. If the guest is deleted before the runner submits, the analysis fails with "Guest x no longer exists". |
 | `GET /analyses` | **Built.** `{items, total}`, newest first; `limit`, `offset`, `q` (filename or hash substring) and `status`; each item carries `queue_position`, computed for the page in one query. (`tag` and `sort` come with M5 and later.) |
 | `GET /analyses/{id}` | **Built.** The analysis with its typed `summary` (duration, process count, signatures with severity, ATT&CK ids with the signatures that raised them, network counts, files and registry keys written, the sample's name and type) once the report is read; `queue_position` (1 is served next, `null` unless `queued`; also on every item of the list and on the `POST` response); `404` in the error envelope when unknown. `summary.lane_counts` maps each lane to its number of indexed events once the analysis is `done`. The process tree comes with M1b. |
-| `POST /analyses/{id}/finish` | **Built.** Ends a `running` analysis early (an interactive run otherwise lasts its whole timeout). Asks `finish-run`, the helper in the `cape` container (`CAPE_CONTROL_URL`, default `http://cape:8001`), to have the guest agent create the folder CAPE's analyzer watches for; the analyzer notices within about a second and the runner then tracks the task on to `processing` as usual. `200` with the analysis, whose `status` is still `running`; finishing again is harmless. `404` when unknown; `409` (error envelope, readable message) unless the analysis is `running`: a `queued` one should be cancelled, a `starting` one cannot be finished yet, anything later is already over; `409` too for a running analysis with no CAPE task; `502` when the helper or the guest agent cannot be reached or refuses. `409` also while the analyzer's monitor has not started in the guest (no `logs/*.bson` yet): CAPE says `running` about 25 s before that, and ending the run in the gap leaves the guest agent dead for minutes. |
+| `POST /analyses/{id}/finish` | **Built.** Ends a `running` analysis early (an interactive run otherwise lasts its whole timeout). Asks the guest control service (`POST /tasks/{id}/finish` with the analysis's guest name in the body) to have that guest's agent create the folder CAPE's analyzer watches for; the service looks up the guest's address, agent port and finish folder in its own record, and the backend never supplies one; the analyzer notices within about a second and the runner then tracks the task on to `processing` as usual. `200` with the analysis, whose `status` is still `running`; finishing again is harmless. `404` when unknown; `409` (error envelope, readable message) unless the analysis is `running`: a `queued` one should be cancelled, a `starting` one cannot be finished yet, anything later is already over; `409` too for a running analysis with no CAPE task or one that records no guest; `502` when the control service or the guest agent cannot be reached or refuses. `409` also while the analyzer's monitor has not started in the guest (no `logs/*.bson` yet): CAPE says `running` about 25 s before that, and ending the run in the gap leaves the guest agent dead for minutes. |
 | `POST /analyses/{id}/extend` | `{seconds}`. Only while running and interactive (see the open question in cape-integration) |
 | `POST /analyses/{id}/cancel` | **Built.** Only while `queued`: `200` with the cancelled analysis; `409` once it has started or ended; `404` when unknown. |
 | `POST /analyses/{id}/reingest` | **Built (M1b).** Only for a `done` or `report_failed` analysis: clears `error` and `finished_at`, moves it to `ingesting`, wakes the runner and returns `200` with the analysis. The runner then reads CAPE's `reported` status and indexes the report again, replacing the index. `409` (error envelope) when the analysis is in any other state, or while another analysis is active, because the runner follows one at a time; `404` when unknown. If CAPE no longer knows the task the analysis ends `report_failed` ("CAPE no longer knows task N"). |
@@ -139,18 +141,88 @@ built)"). The backend ANDs them with the compiled `query`.
 | `GET /analyses/{id}/export/iocs?format=stix\|misp\|csv` | File download |
 | `POST /analyses/{id}/export/report` | `{format: html\|pdf, include: {notes, screenshots, raw_iocs}}` → job. `GET /jobs/{id}/download` when done |
 
-### Guest
+### Guests
+Built in M6. The backend keeps no guest state: guests, builds and the media list belong to the **guest
+control service** in the `cape` container ([cape-integration](cape-integration.md#guest-vm-build-wizard)),
+and every route below is one request to it (`GUEST_CONTROL_URL`, with the bearer token
+`GUEST_CONTROL_TOKEN`, over the `tartarus-control` network). The service validates every build and clone
+parameter itself; the backend relays its answers. What differs between operating systems arrives as data,
+from `GET /guests/profiles` ([guest profiles](guest-profiles.md)), so none of these routes names an OS.
+
+**Errors** from the service pass through when they are the analyst's to read: its `404` is `404
+not_found`, its `409` is `409 conflict` with its message, and its `422` (or `400`) is `422
+validation_error` with one entry in `details.fields` per refused parameter, `location` `["body", "<dotted
+path>"]` (`name`, `media.file`, `identity.machine`, `options.defender`, `resources.vcpus`) and `type`
+`rejected`. Any other refusal, an unreachable service, a wrong token, a timeout and an unreadable answer
+are `502 bad_gateway` with a fixed message that never contains the URL or the token.
+
 | Method & path | Purpose |
 |---|---|
-| `GET /guest` | Current guest VM and its health checks |
-| `GET /guest/isos` | ISOs found in `data/iso` with detected edition and version |
-| `POST /guest/build` | Wizard inputs → job |
-| `POST /guest/build/{job_id}/resume`, `POST /guest/build/{job_id}/restart` | |
-| `POST /guest/check` | Run the health checks now |
+| `GET /guests` | Every guest: `name`, `state` (`building`, `testing`, `ready`, `failed`, or `broken` for a record that cannot be read, which is listed with its `error` so it can be seen and deleted), `profile`, `kind` (`build` or `clone`), `cloned_from`, `media`, `options` (a `secret` option such as a product key reads `***`), `identity` (account, computer name and password: the password is shown so the analyst can log into the desktop), `resources`, `ip`, `machine` (UUID, MAC, serials), `work_dir`, `snapshot`, `selftest` (the last verdict), `adopted`, `giveaways` (for an adopted guest: what a sample can see), `badges` (derived by the profile from the options) and `build_id` (the guest's latest build or clone, which the build page opens). `502` when the control service is down |
+| `GET /guests/media` | The installation media in `data/iso`, one entry per file and the profile that recognised it: `file`, `size`, `profile`, `kind` (`installer` or `disk_image`), `variants` (for Windows the editions: `index`, `name`, `edition_id`, `languages`, `build`), `version`, `build`, `language`, `arch`. A file nothing recognised is listed with an `error` saying why (not an ISO, truncated, no `install.wim`, not a Windows image) |
+| `GET /guests/profiles` | What the wizard and the cards render from, per profile: `id`, `display_name`, `family`, `arch`, `resources` (defaults and `min_disk_gb`), `media.kinds`, `options` (key, label, type, default, help, choices, `requires_user_step`, `changeable_on_clone`), `identity` rules, `clone.computer_name_editable`, `badges`, `packages`, `agent.interactive` and `selftest.signals` |
+| `POST /guests/build` | Starts a build: `{profile, name, media: {file, variant?}, options?, identity?: {account?, machine?, password?}, resources?: {vcpus?, ram_mb?, disk_gb?}}`. `202` with `{job_id, build_id, guest}`. The service refuses with `422` (per field) a `name` that is not 2 to 32 lower-case letters, digits or hyphens starting with a letter, is taken or is `kvm`; a `profile` that is not installed; a `media.file` that is not a plain name in the media list, not recognised by that profile or of a kind the profile has no pipeline for; a missing or unlisted `media.variant`; an option the profile does not have or a value of the wrong type; an identity value that does not match the profile's pattern, is reserved, or contains a giveaway word (`tartarus`, `sandbox`, `malware`, `virus`, `cuckoo`, or `cape`, `test`, `admin`, `analy...` as a whole word); resources outside the limits. Blank identity values are generated. `409` while an analysis is queued, starting or running, while another build, clone, check or self-test check is active, and when five guests already exist (a `failed` one counts: delete it first) |
+| `POST /guests/{name}/clone` | Clones a `ready` guest: `{name, options?, identity?: {machine?}, resources?: {vcpus?, ram_mb?}}`. Only what the profile marks `changeable_on_clone` may change (Windows: Defender, decoys), the account, password and disk size are the source's and a different value is `422`, and a computer name equal to the source's is refused. `202` with `{job_id, build_id, guest}` where `guest` is the new one. `404` for an unknown source; `409` when the source is not `ready` (and under the build rules above) |
+| `GET /guests/builds/active` | The build a job is following now: `{build_id, guest, job_id}`; `404` when none is |
+| `GET /guests/builds/{build_id}?tail=200` | The build: `id`, `guest`, `kind`, `status` (`running`, `paused`, `failed`, `succeeded`), `step` (the index of the current one), `steps[]` (`name`, `status`, `started`, `finished`, `exit_code`, `weight`, `timeout_s`, `desktop`, `progress`), `percent`, `message`, `pause` (`{instructions}` or `null`), `desktop` (the current step shows the guest's screen), and `log` (the last `tail` lines, 1 to 2000). `404` for an unknown id. A `succeeded` build is not yet a `ready` guest: the self-test follows |
+| `POST /guests/builds/{build_id}/resume` | Runs a `failed` (or `paused`) build again from the step that stopped it. `202` as for a build; `409` under the build rules, or when the build is running or succeeded |
+| `POST /guests/builds/{build_id}/restart` | Runs it again from the first step, discarding what was done. Same answers |
+| `POST /guests/builds/{build_id}/continue` | Carries on a `paused` build once the analyst has done what the pause asked: the step that paused runs again. `409` when the build is not paused |
+| `GET /guests/{name}` | One guest's record; `404` when unknown |
+| `DELETE /guests/{name}` | Unregisters the guest from CAPE, then removes its VM, snapshot, disks and nvram; `204`. Analyses that used it keep their data and the stored name. `409` while an analysis is queued, starting or running, while that guest's build is running or it is the source of the clone being made. A paused build's guest can be deleted. Deleting a different guest during a build is not refused, although it restarts `cape` under the build's registration step (an open item of the plan) |
+| `POST /guests/{name}/check` | Runs the health checks now and answers `{name, checks: [{id, ok, message}]}` for `domain` (the VM is defined), `snapshot` (it exists), `registration` (CAPE's machine list shows it) and `agent` (the snapshot is restored and the agent answers; skipped when the first two fail; takes up to two minutes and leaves the guest off). `409` while an analysis is queued, starting or running, or while a build or clone is active; `404` when unknown |
+
+The route order matters: `/guests/media`, `/guests/profiles` and `/guests/builds/...` come before
+`/guests/{name}`, so none of them is read as a guest called `media` or `builds`.
+
+**The build job.** Every call that starts or continues a build, `build`, `clone`, `resume`, `restart` and
+`continue`, makes sure a `guest_build` job is following that build and answers with it. A build has at most
+one such job at a time, so `continue` on a paused build resumes the job that is waiting instead of starting
+a second (the `job_id` it answers is that job's). The job only relays: the control service owns the build
+and runs it whether the job lives or not, so a job that ends, is cancelled or is lost with the backend never
+stops or undoes a build.
+
+- It polls the build every 2 s and passes on the step and percent (the build's steps fill the job's bar up
+  to 90%, the self-test up to 99%), the new log lines, and the pause: when the build pauses the job's
+  status becomes `paused` and its `result` is `{"pause": {"instructions": "..."}}`; when the analyst
+  continues, the job is `running` again.
+- A `failed` build fails the job with the build's message. The guest control service being unreachable
+  is retried for 60 s, then the job fails; the build goes on inside the service and can be followed again.
+- **Reattach.** After a backend restart the job runner marks jobs left `pending`, `running` or `paused`
+  `interrupted` as for any job. Once the runner has started, the backend asks the service for its guests
+  and submits a new job for each `building` guest whose build is still running or paused, and each
+  `testing` guest whose build succeeded but whose verdict never came. A control service that is down at that
+  moment is only logged.
+- **Self-test.** When the build succeeds the job runs the guest's self-test: the profile's benign sample
+  is fetched from the control service and queued as an ordinary analysis through `AnalysisSubmitter` with
+  `gate=False` (so it can run on a guest that is `testing` while no other may), `guest` set to the new guest,
+  `route=inetsim`, `timeout=60`, `interactive=false`, the package taken from the sample's extension when the
+  profile lists it, and the tag `self-test`, so it shows on the Dashboard. The job waits for it (five
+  minutes at most, polling every 2 s), reads the signals the profile lists out of the analysis's own
+  data, then asks the service to run the guest-side checks (`facts`, `giveaways`, `proofs`; the
+  checks take minutes). `selftest_verdict.judge` is a pure function of those: the analysis must be `done`;
+  each listed signal must pass (see the [signal catalog](guest-profiles.md#self-test): the backend judges
+  `events.process`, `events.file`, `events.registry`, `report.present` and `report.dns_answer`, and a signal it
+  cannot judge fails); the guest must report no giveaway and no failed proof. The verdict
+  (`{message, analysis_id, signals, proofs, giveaways, facts_summary}`) is sent to the service, which makes
+  the guest `ready` or `failed` (unregistered, files kept) and stores it on the card; a failed verdict fails
+  the job with "The self-test of x failed: ...". Not being able to start the test (the sample cannot be built
+  or queued) is also a failing verdict. A control service that cannot be reached, or a database error, fails
+  the job and leaves the guest `testing`.
+- While any guest is `building` or `testing` the exclusion of
+  [cape-integration](cape-integration.md#building-checking-deleting-and-analysing-exclude-each-other) holds:
+  `POST /analyses` is `409`.
 
 ### Jobs
 `GET /jobs/{id}` returns the status. `GET /jobs/{id}/download` returns the job's result file
 when it has one.
+
+A job's `status` is `pending`, `running`, `paused`, `done`, `failed` or `interrupted`. `paused` is for a job
+that waits for a person: the instructions are in its `result` as `{"pause": {"instructions": "..."}}`, and
+the job goes back to `running` when the person has acted. Only the `guest_build` job pauses today. A job
+left `pending`, `running` or `paused` by a dead backend is marked `interrupted` at the next start. The
+`guest_build` job (`params` `{guest, build_id, kind}`) follows one guest build or clone for the GUI; see
+[Guests](#guests).
 
 ### Internal
 `POST /internal/cape/callback` takes `{task_id}`. It is accepted only from the internal compose
@@ -197,8 +269,25 @@ is forwarded and then the tunnel closes, as it does when `guacd` hangs up or the
 `starting`/`running` (checked every 2 s). There is no authentication: one local analyst, bound to
 127.0.0.1.
 
+### `WS /ws/guests/{name}/desktop`
+The same tunnel for the screen of a guest while its build is at a step that shows one (the install, the
+provisioning, a pause for the analyst); the two routes differ only in who may open one and where `guacd`
+is pointed. The socket is accepted with the `guacamole` subprotocol, then closed with a code when refused:
+`4404` for a guest that does not exist (or a name that is not a guest name), `4409` unless the guest has a
+build that is `running` or `paused` whose current step is marked `desktop` in its profile's pipeline (so a
+`ready` guest's desktop is never served here), and `4408` ("desktop not available yet") when the guest's VNC
+display does not appear in time (it is defined a little before the step starts it; the wait is up to 90 s,
+asked of the control service every second). `1011` closes it when the control service cannot be asked.
+`guacd` is told to connect to the display address the control service reports for that guest inside the
+`cape` container, not to anything the browser sent. Everything else is as for the analysis desktop:
+clipboard off, the same allowlist of the browser's instructions, `error` forwarded, the tunnel closed when
+the build leaves a desktop step (checked every 2 s), no authentication. The tunnel was proven by the
+Guacamole handshake and the first drawing instructions of a real clone's `reconfigure` step; no browser
+drove a build desktop for real.
+
 ### `WS /ws/system`
-Pushes `health`, `queue`, `disk` and `job` (progress and step for guest builds and exports).
+Pushes `health`, `queue`, `disk` and `job` (progress, step, status and pause instructions for guest builds
+and exports; a `paused` job carries its instructions in `result`).
 
 ## Live collector
 
@@ -475,11 +564,19 @@ indexed, that is lowercase. It looks at the whole analysis, not at the current f
 
 ## Configuration (`.env`)
 
-`TARTARUS_PORT=8080` (the frontend's published port; the backend listens on `8000` internally), `TZ`, `OPENSEARCH_HEAP=1536m`, `GUEST_VCPUS=2`, `GUEST_RAM_MB=4096`,
+`TARTARUS_PORT=8080` (the frontend's published port; the backend listens on `8000` internally), `TZ`, `OPENSEARCH_HEAP=1536m`,
 `GUEST_SUBNET=192.168.150.0/24`, `CAPE_REF=<commit>`, `DEFAULT_ROUTE=inetsim`,
 `DEFAULT_TIMEOUT=180`, `DISK_WARN_GB=50`, `DISK_BLOCK_GB=20`, optional `VPN_*` / `WG_*` /
 `SOCKS5_*`. Secrets such as the CAPE API token and the callback token are generated on first
 start into `data/secrets.env`.
+
+The backend reads `GUEST_CONTROL_URL` (compose sets `http://cape-control:8002`: the name `cape-control` exists
+only on the `tartarus-control` network, so the control service is not reached over `tartarus-internal`) and
+`GUEST_CONTROL_TOKEN` (required: compose refuses to start without it; `openssl rand -hex 32` makes one, 32
+characters at least, and `make preflight` checks it). With no token the client answers `502`. There is no
+longer a `GUEST_LABEL` setting: which guest an analysis runs on is a per-analysis option. The guest's size
+and name belong to the build (wizard, or `make build-guest`, whose `GUEST_*` variables are read only by that
+script).
 
 ## API client
 
@@ -506,6 +603,11 @@ start into `data/secrets.env`.
   - Exports, validated with the `stix2` validator and a MISP JSON schema.
 - Integration tests: an OpenSearch and Postgres testcontainer. The collector is replayed
   against a fixture analysis directory that is written incrementally to simulate a live run.
+- Guests: the control client is tested against answers captured from the real service
+  (`backend/tests/guest/fixtures/`) behind a fake `GuestControl`, so every state (none, one ready, several, a
+  failed one, building, control down) is a test with no container; `make verify-wizard` drives the public API
+  against the real stack (about six minutes: it clones a ready guest with Defender the other way round, checks
+  that analyses and a second clone are refused meanwhile, runs an analysis on it, and deletes it).
 - End-to-end: the guest self-test sample (see cape-integration) runs in the dev environment, and `make e2e`
   (`scripts/e2e.sh`, helpers in `scripts/lib/`, browser tests in `frontend/tests/e2e/`) checks the real stack:
   step (a) submits it and checks the report views and, in `e2e-query.sh`, that the finished analysis answers

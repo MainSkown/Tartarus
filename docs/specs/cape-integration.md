@@ -1,6 +1,6 @@
 # CAPE integration and guest VM
 
-How Tartarus runs, configures and drives CAPEv2, and how the Windows guest gets built.
+How Tartarus runs, configures and drives CAPEv2, and how guests are built, cloned and kept.
 
 ## `cape` container
 
@@ -15,14 +15,14 @@ with `make verify-cape`.
 | Install | QEMU 9.2.2 and SeaBIOS 1.16.3 built by CAPE's `kvm-qemu.sh`, with the anti-VM strings passed as build args (`cape/build/kvm-config.sh`). libvirt is Ubuntu's 10.0.0 package with matching libvirt-python, not built from source. CAPE itself is installed by hand with **uv** from its `uv.lock`; `cape2.sh` is used only for Suricata, because its `sandbox` step hardcodes a localhost database, cron, a libvirt-python version and systemd sudoers. |
 | Privileges | `privileged: true` and `/dev/kvm`. A narrower set looks feasible (see Findings) but is untested. |
 | Network namespace | Its own namespace, never the host's. `tt-guest` (192.168.150.1/24), the rooter's iptables rules and QEMU's tap devices all live inside it. A `net.ipv4.ip_forward=1` sysctl is set on the container. |
-| Process supervisor | supervisord, no systemd: `virtlogd`, `libvirtd`, `cape-rooter`, `cape` (scheduler and ResultServer), `cape-processor`, `cape-web` (gunicorn serving CAPE's whole Django app, reachable only on the internal network and loopback), `suricata`, `inetsim`, `guacd`, `finish-run` (the early-end helper, internal address only). |
-| libvirt | Local UNIX socket only, for CAPE inside the container. The TCP endpoint is **off** (`libvirtd` runs without `--listen`): it has no authentication, and nothing needs it before the guest wizard (see Findings). `security_driver = "none"` and `cgroup_controllers = [ ]` in `qemu.conf`. |
-| Guest network | `tt-guest` is a transient libvirt network rebuilt on every start: isolated (no forward), libvirt's DNS off so INetSim owns port 53, DHCP offering only `.10` with router and DNS `.1`. The Windows guest uses a static IP instead, because the rooter's INetSim route DNATs DHCP renewals. |
+| Process supervisor | supervisord, no systemd: `virtlogd`, `libvirtd`, `cape-rooter`, `cape` (scheduler and ResultServer), `cape-processor`, `cape-web` (gunicorn serving CAPE's whole Django app, reachable only on the internal network and loopback), `suricata`, `inetsim`, `guacd`, `guest-control` (the guest control service, control address only) and `finish-run` (the early-end helper of M1, internal address only; the backend no longer uses it, it finishes runs through `guest-control`, and it still knows only the guest at `.10`). |
+| libvirt | Local UNIX socket only, for CAPE inside the container. The TCP endpoint is **off** (`libvirtd` runs without `--listen`): it has no authentication, and the guest wizard does not need it, because it goes through the [control service](#the-control-service) instead (see Findings). `security_driver = "none"` and `cgroup_controllers = [ ]` in `qemu.conf`. |
+| Guest network | `tt-guest` is a transient libvirt network rebuilt on every start: isolated (no forward), libvirt's DNS off so INetSim owns port 53, DHCP offering the pool `.100` to `.119` with router and DNS `.1`, for guests that cold-boot; registered guests have static addresses from `.10` to `.99`, because the rooter's INetSim route DNATs DHCP renewals. |
 | INetSim | Ubuntu's 1.3.2, patched at build time because its DNS service dies with the Net::DNS in Ubuntu 24.04 (`main_loop` becomes `loop_once`); the build fails if the patch stops applying. |
 | Analyzer patch | CAPE zips `analyzer/windows` and uploads it to the guest for every task, so the image patches it (`cape/patches/skip-packaged-apps.py`, run by the Dockerfile; it fails the build if CAPE's code moved) to not inject the monitor into Store apps in an interactive analysis, see "Store apps" under Interactive desktop. No change to the guest or its snapshot. |
 | Databases | The `cape` database on the `postgres` service. No Mongo: `web.conf [web_reporting]` and `reporting.conf [mongodb]` stay disabled. `pymongo` stays installed because CAPE imports `bson` unconditionally. The entrypoint creates the schema once before any process starts, because CAPE's processes race on `CREATE TYPE`. |
-| Volumes | `cape-storage` at `/opt/CAPEv2/storage` (the backend mounts it read-only). `guest-images` at `/var/lib/libvirt`, with `/etc/libvirt/qemu` symlinked into it, so domain XML, snapshots and the guest's registration survive recreating the container. |
-| Compose | Part of the default stack (`make up`, `make dev`); `backend` waits for its health check. Publishes no ports. Without `/dev/kvm`, start the rest with `docker compose up -d --no-deps postgres opensearch backend frontend`. |
+| Volumes | `cape-storage` at `/opt/CAPEv2/storage` (the backend mounts it read-only). `guest-images` at `/var/lib/libvirt`, with `/etc/libvirt/qemu` symlinked into it, so domain XML, disks, snapshots, the registry of guests (`tartarus/guests/`) and their CAPE registration survive recreating the container. `./data/iso` is bind-mounted read-only at `/data/iso`. |
+| Compose | Part of the default stack (`make up`, `make dev`); `backend` waits for its health check. Publishes no ports. It is on two networks: `tartarus-internal` and `tartarus-control`, which only it and `backend` share. Without `/dev/kvm`, start the rest with `docker compose up -d --no-deps postgres opensearch backend frontend`. |
 | Idle cost | About 1 GiB of memory and 63 processes with no guest running; image 3.08 GB; a full build takes about 10 minutes (QEMU 7), a config-only rebuild about 17 seconds. |
 
 ## CAPE configuration
@@ -37,7 +37,7 @@ the entrypoint exports.
 | File | Settings |
 |---|---|
 | `cuckoo.conf` | `machinery = kvm`; ResultServer on `192.168.150.1:2042`; timeouts; database connection to the `cape` database. |
-| `kvm.conf` | Holds **no machine**. Registering a guest writes `/var/lib/libvirt/tartarus/kvm.conf.d/<label>.conf` (a `[kvm] machines = <label>` section plus a `[<label>]` section with `platform`, `ip`, `snapshot`, `arch`, `interface = tt-guest`, `tags`) and restarts `cape`. The `cape` program waits until a registered machine is defined, because `cuckoo.py` exits with "No machines available". |
+| `kvm.conf` | Holds **no machine**. The control service writes `/var/lib/libvirt/tartarus/kvm.conf.d/guests.conf` (a `[kvm] machines = a,b,c` section plus a `[<label>]` section per `testing` or `ready` guest with `platform`, `ip`, `snapshot`, `arch`, `interface = tt-guest`, `tags`) and restarts `cape`; it is the only file in that directory (see [Several guests](#several-guests)). The `cape` program waits until a registered machine is defined, because `cuckoo.py` exits with "No machines available". |
 | `routing.conf` | `route = inetsim`; `no_local_routing = no` (`yes` needs a VRF and the host's `vrf` module); `internet = eth0`; RFC1918 and Docker `reject_segments`. Only the inetsim route is verified; `internet` is configured but unexercised. |
 | `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `[taskdelete] enabled = yes`, because `tasks/delete` answers "Task Deletion API is Disabled" by default; `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
 | `web.conf` | `[guacamole] enabled = yes` so CAPE records each guest's VNC port. `guacd` binds the internal address only. The backend uses `cape:4822` itself; CAPE's own Guacamole view is unused. |
@@ -52,17 +52,18 @@ it is provisioned into CAPE's `ApiKey` model (which stores a SHA-256 hash) for t
 
 **Start order matters.** CAPE's Django `settings.py` calls `init_rooter()` and `init_routing()`,
 so `cape-web`, `cape-processor` and token provisioning all wait for the rooter and `tt-guest`
-(`cape/bin/wait-then-exec`). And `cuckoo.py` powers off any running registered machine when it
-starts, so the wizard's order is: define the domain, register it, restart `cape`, only then boot
-and snapshot.
+(`cape/bin/wait-then-exec`). And `cape` powers off any running registered machine when it starts or
+stops (S0b), so a guest is registered only after its snapshot is taken and it is powered off: the build
+defines the domain, installs, provisions, snapshots, and only then registers it and restarts `cape`. The domain
+must exist before it is registered, and a guest is unregistered before it is undefined.
 
 ### Findings that need action
 
 | Finding | Why it matters | Resolve |
 |---|---|---|
-| **libvirt's TCP endpoint has no authentication, so it is off.** Resolved for now. | M0a ran it on the internal network: any container there (nginx, OpenSearch, Postgres) would get full control of libvirt, could define a VM that passes a host disk through, and because the container is privileged, that is host root. | `make verify-cape` now requires that nothing listens on `16509` and that another container's `qemu+tcp://cape/system` is refused. **Re-enabling it for the wizard (M6) needs** authentication (SASL or TLS client certificates) and a network shared only by `cape` and the backend, and the verifier's two checks changed to match. |
-| **The guest's SMBIOS still says QEMU.** `sys_vendor=QEMU`, `product_name=Standard PC (i440FX + PIIX, 1996)`. `kvm-qemu.sh` doesn't patch these. | A basic sandbox-detection check. | The guest's domain XML must set `<sysinfo>` and hide the hypervisor CPUID bit (already in wizard step 2). |
-| Other anti-VM gaps. | SeaBIOS keeps its "SeaBIOS (version …)" banner and some unused legacy `BXPC` ACPI blobs. | Check with pafish in the self-test; accepted for now. |
+| **libvirt's TCP endpoint has no authentication, so it is off.** **Resolved in M6.** | M0a ran it on the internal network: any container there (nginx, OpenSearch, Postgres) would get full control of libvirt, could define a VM that passes a host disk through, and because the container is privileged, that is host root. | `make verify-cape` requires that nothing listens on `16509` and that another container's `qemu+tcp://cape/system` is refused. The wizard did not need the endpoint: a narrow, token-authenticated [control service](#the-control-service) inside `cape`, on a network only `cape` and `backend` share, does the building, and libvirt-python is not used. The endpoint stays off and the two checks stand; the verifier gained the control-service checks. |
+| **The guest's SMBIOS still says QEMU.** `sys_vendor=QEMU`, `product_name=Standard PC (i440FX + PIIX, 1996)`. `kvm-qemu.sh` doesn't patch these. | A basic sandbox-detection check. | The guest's domain XML sets `<sysinfo>` and hides the hypervisor CPUID bit (done by the `define` step). |
+| Other anti-VM gaps. | SeaBIOS keeps its "SeaBIOS (version …)" banner and some unused legacy `BXPC` ACPI blobs. | Accepted for now. pafish was meant to be run as information only; it is not built. |
 | **Unpinned inputs at build time.** | `kvm-qemu.sh` doesn't verify the QEMU tarball (gpg reports "No public key" and continues); CAPE's community signatures come from master; the Suricata rules are a snapshot. Guacamole and Cirros are pinned by sha256. | Pin or verify when hardening the build. |
 | `yara-python` comes from the wheel, not rebuilt with `--enable-cuckoo`/`magic` as `cape2.sh` does. Missing optional CAPE dependencies: httpreplay, regex, DIE, de4dot, Volatility3. `/opt/CAPEv2/.git` is removed, so `analysisinfo` logs an error. | Possible gaps in analysis output. | Check during M0b; fix what matters. |
 | **`privileged: true` is probably broader than needed.** | Reasoned, not tested: libvirt/QEMU need the devices `/dev/kvm`, `/dev/net/tun`, `/dev/vhost-net` and capabilities `NET_ADMIN`, `SYS_ADMIN`, `SYS_RESOURCE`, `IPC_LOCK`, with seccomp (and AppArmor on such hosts) unconfined; the rooter and tcpdump need `NET_ADMIN` and `NET_RAW`. | Try `cap_add` plus those devices later; it would drop host block devices, `SYS_MODULE`, `SYS_RAWIO` and `SYS_PTRACE`. |
@@ -102,17 +103,20 @@ plus an overlay. Each revert replaces the overlay, so overlays don't pile up. Re
 `invtsc` flag blocks any memory save. **The base `win.qcow2` becomes a backing file and must never
 be written directly.** libvirt 10.10 or later would allow internal snapshots.
 
-**One registered guest at a time.** Each `kvm.conf.d/<label>.conf` sets `[kvm] machines` and the
-last file read wins. Supporting several guests later (post-v1) means one registration listing all
-machines; `make verify-cape` works around it for now.
+**One registered guest at a time (lifted in M6).** M0b registered the guest in `kvm.conf.d/win.conf`;
+each file sets `[kvm] machines` and the last file read wins, so two files cannot list two guests. M6 replaced
+the per-guest files with one `guests.conf` listing every guest, and the control service deletes every other
+`*.conf` (see [Several guests](#several-guests)). `make verify-cape` still stashes every `*.conf` around its
+throwaway probe guest.
 
 **Provisioning results.** Scripted: the local admin `Analyst` with autologon, OOBE skipped, static
 IP, Windows Update off, UAC off, firewall off with port 8000 open, sleep and hibernate off,
 SmartScreen off, 32-bit Python 3.11.9 with Pillow, and CAPE's agent as a logon task. Caveats:
 `AllowTelemetry=0` is honoured only on Enterprise and Education, so Pro keeps "Required"
-telemetry; Sysmon was skipped. **Defender and Tamper Protection cannot be turned off by script**
-by any documented means; `Set-MpPreference` reports success and changes nothing. The agent did
-not try methods that bypass Tamper Protection. Defender did not block the analysis or capemon.
+telemetry; Sysmon was skipped (M6 installs it, option on). **Defender and Tamper Protection cannot be turned
+off by any documented script**; `Set-MpPreference` reports success and changes nothing. M0b did not try methods
+that bypass Tamper Protection; M6 turns it off with a scripted click on its toggle (see
+[Defender](#defender)). Defender did not block the analysis or capemon.
 
 **Silent failures the wizard inherits** (none reported an error)
 1. A malformed answer file (an undeclared `wcm:` prefix): Setup exits silently and WinPE reboots
@@ -127,8 +131,9 @@ not try methods that bypass Tamper Protection. Defender did not block the analys
 
 **Fragile points.** The 20-second key window depends on firmware timing. The external-snapshot
 setup assumes libvirt 10.0's revert behaviour. swtpm's state on the volume is owned by uid 102.
-The default guest password `Tartarus1!` is in the repo and in plain text for autologon; it is a
-throwaway account in an isolated guest.
+The M0b guest's password `Tartarus1!` is in the repo and in plain text for autologon; it is a
+throwaway account in an isolated guest. Guests the wizard builds get a random password (still in plain text
+for autologon), so only the adopted `win` has this one.
 
 **M1 can rely on:** a registered machine `win` (tags `windows,win11`) at 192.168.150.10 with the
 snapshot `tartarus-clean`; tasks submitted with `machine=win`, `route=inetsim`, `package=exe`;
@@ -140,9 +145,9 @@ should set the backend's URL in `reporting.conf`).
 
 | Need | Mechanism |
 |---|---|
-| Submit | `POST apiv2/tasks/create/file/` with `file`, `timeout`, `route`, `package`, `options` (`interactive=1`, `memory=1` as chosen), `machine=win` |
+| Submit | `POST apiv2/tasks/create/file/` with `file`, `timeout`, `route`, `package`, `options` (the profile's interactive options, `memory=1` as chosen), `machine=<guest label>`, always sent. CAPE answers an unknown machine with HTTP 200 and `{"error": true, "error_value": "Machine 'x' does not exist..."}` and creates no task, so the backend reads `error`, not the status |
 | Status | `GET apiv2/tasks/status/{id}/`, polled every 2 s while active, plus the callback when reporting finishes |
-| Stop early | `POST http://cape:8001/tasks/{id}/finish` to `cape/bin/finish-run` (a supervisord program in the `cape` container, internal network only, `CAPE_CONTROL_URL`). The guest network exists only inside that container, so the helper does what the backend cannot: it asks the guest agent (`POST /mkdir`, `GUEST_AGENT_URL`, the guest's `:8000`) to create `C:\Windows\Temp\<md5("cape-<task id>")>`. CAPE's Windows analyzer (`analyzer.py`, `analysis_loop`) ends the analysis as soon as a folder of that name exists in `%TMP%` or `%SystemRoot%\Temp`, then uploads its results as for a timeout; the agent's `mkdir` is `os.makedirs(exist_ok=True)`, so asking twice is harmless. It answers `200 {"finished": true}`, `502 {"error"}` when the agent is unreachable or refuses, `400` for a task id that is not digits, `404` for any other route or method. |
+| Stop early | `POST http://cape-control:8002/tasks/{id}/finish` with `{"guest": "<name>"}` to the guest control service (bearer token, `tartarus-control` network). The guest network exists only inside the `cape` container, so the service does what the backend cannot: it looks up that guest's address, agent port and finish folder in its own record and profile (the backend never supplies an address, so there is nothing to validate and no path to inject) and asks the guest agent (`POST /mkdir`) to create `<finish folder>/<md5("cape-<task id>")>` (`C:\Windows\Temp` for Windows). CAPE's analyzer (`analyzer.py`, `analysis_loop`) ends the analysis as soon as a folder of that name exists in `%TMP%` or `%SystemRoot%\Temp`, then uploads its results as for a timeout; the agent's `mkdir` is `os.makedirs(exist_ok=True)`, so asking twice is harmless. It answers `200 {"finished": true}`, `502 {"error"}` when the agent is unreachable or refuses, `422` for a bad guest name, `400` for a task id that is not digits, `404` for an unknown guest. |
 | Extend | Interactive mode only. Implementation depends on CAPE support; if unavailable, "extend" is only offered before submission via the timeout. See open questions. |
 | Live data | Files in `storage/analyses/{id}/` (shared volume): `logs/*.bson`, `aux/*.json` |
 | Final data | `storage/analyses/{id}/reports/report.json`, `files/`, `CAPE/`, `procdump/`, `memory.dmp`, `dump.pcap`, `shots/`, `sysmon/`, `evtx/` |
@@ -153,78 +158,312 @@ should set the backend's URL in `reporting.conf`).
 
 ## Guest VM build wizard
 
-The goal is a hardened Windows guest built from an ISO the user supplies, with no manual CAPE
-configuration.
+Built and run for real in M6 ([plan](../plans/m6-guest-wizard.md), including what each wave proved and what
+is still open). The analyst builds, clones, checks and deletes guests from the GUI with no shell on the host;
+there can be several guests, and the analyst picks one for every detonation. **What is Windows-specific is a
+guest profile**; everything else on this page is generic and driven by it. How to add an operating system is
+in [guest profiles](guest-profiles.md).
+
+### The control service
+
+The backend must not hold libvirt or Docker credentials, so it asks a narrow service inside `cape`.
+`guest-control` (`cape/bin/guest-control`, a supervisord program) is a stdlib HTTP server over the guest
+engine (`cape/guest_engine/`). It replaces the plan to expose libvirt over TCP: **libvirt's TCP endpoint stays
+off and the Docker socket is never mounted.**
+
+- **Network.** It listens only on the `tartarus-control` network (port 8002), an `internal: true` compose
+  network that only `cape` and `backend` join. `cape` has the aliases `cape-internal` and `cape-control` on its
+  two networks, and the backend reaches the service as `cape-control`; the entrypoint tells the interfaces
+  apart by the address each alias resolves to.
+- **Authentication.** Every route but `GET /healthz` needs `Authorization: Bearer <GUEST_CONTROL_TOKEN>`
+  (`.env`, 32 characters at least, compared in constant time); without it the answer is `401`, and the
+  service will not start with a short or missing token. The request log never holds a header or a body.
+- **Narrow, validated operations only.** Routes: `GET /profiles`, `GET /media`, `GET /guests`, `GET` and
+  `DELETE /guests/{name}`, `POST /guests/{name}/check`, `POST /guests/{name}/clone`, `GET
+  /guests/{name}/display`, `GET /guests/{name}/selftest/sample`, `POST /guests/{name}/selftest/checks`,
+  `POST /builds`, `GET /builds/{id}` and `/log?tail=`, `POST /builds/{id}/resume|restart|continue|complete`,
+  and `POST /tasks/{id}/finish`. A refusal is `404` (unknown guest, build or profile), `409` (the current
+  state refuses, with a message for the analyst), `422` (a parameter is wrong, with `fields`), or `400` for a
+  guest name or build id that does not match its pattern; a sample that cannot be built is `500` and checks
+  that cannot run `502`, each with its message; anything else is a generic `500` with the detail in the log.
+  Values reach a step through files and the environment, never a command line.
+- **What it still is.** The container is privileged, so the service is root-equivalent on that namespace. A
+  compromised backend can build and delete guests; it cannot run anything else. `make verify-cape` proves the
+  control service answers the backend with the token, refuses a request with none or a wrong one, is on a
+  network only `cape` and `backend` are on, listens only on its control address, and cannot be reached from
+  `frontend`, `opensearch` or `postgres`; and that nothing listens on libvirt's `16509`.
+- **Lifetime.** The service owns the truth of every build. When it starts it removes loop mounts a killed
+  predecessor left, stops a step process the predecessor left running, marks that build `failed` (with a
+  "resume it" message), and adopts guests it finds registered but not recorded. When it is stopped (SIGTERM;
+  supervisord waits up to 30 s) it stops the running step, 5 s of grace and then a kill, and fails that build
+  so the next start can resume it. A paused build stays paused.
+
+The same engine is reachable from a shell: `docker compose exec cape guest-build` (what `make build-guest`
+wraps, with the `GUEST_*` variables of `.env`) starts a build through the running service and prints the log. A
+guest it builds is accepted without the backend's self-test, so `make verify-guest` is what proves it.
+
+### Several guests
+
+- **The registry.** Each guest has a directory on the `guest-images` volume,
+  `/var/lib/libvirt/tartarus/guests/<name>/`: `guest.json` (profile, media, options, identity, resources,
+  address, hardware identity, state, last self-test) is the one source of truth, and the libvirt domain, the
+  CAPE registration and the backend's view are derived from it; `builds/<id>/` holds each build's
+  `build.json`, `log` and `context.json`. Disks, the memory file of the snapshot and the nvram are under
+  `images/` and `nvram/`. A guest's **name** is a slug (2 to 32 lower-case letters, digits and hyphens); it is
+  the libvirt domain name and CAPE machine label and exists nowhere inside the guest.
+- **States.** `building` while a build or clone runs, `testing` once it has finished (registered with CAPE,
+  but not offered for analyses) until the backend's self-test gives its verdict, then `ready`, or `failed`
+  (unregistered, files kept so a step can be retried). Only `ready` guests run analyses. A record that cannot be
+  read is listed as `broken` so it can be deleted.
+- **At most five guests**, a failed one included. Each is a full, independent disk of about 22 GB (17 to 18 GB
+  of disk and 3 GB of memory image for Windows 11): nothing is shared, so deleting any guest is safe. A
+  linked clone would save the space and tie two guests' lifetimes; it is not built.
+- **Addresses.** Every guest gets its own static address, the lowest free one from `.10` to `.99` of the guest
+  /24, set at provisioning. The libvirt DHCP range is a separate pool, `.100` to `.119`, for guests that
+  cold-boot on DHCP (every clone does): a second cold-booting client got no reply while the first held the
+  single address the range used to be (S0b). CAPE accepts two machines with the same address without a
+  warning and then cannot tell them apart (its ResultServer maps a connection to a task by the guest's source
+  address), so the engine refuses duplicates itself.
+- **One registration.** The engine renders a single `kvm.conf.d/guests.conf` (`[kvm] machines = a,b,c` and
+  a section per guest) from every `testing` and `ready` guest and restarts `cape`; an empty list renders
+  `machines =`, which makes `cape` wait for a guest. S0b proved CAPE serves two registered machines and
+  routes each task by label, with its own revert, ResultServer connection, rooter rules, PCAP and callback.
+  Rules the engine keeps, each learned the hard way:
+  - it owns the **whole directory**: CAPE merges every `*.conf` in sorted order and the last `machines` key
+    wins, so a leftover `win.conf` would silently un-register the rest, and it deletes every other `*.conf`;
+  - **define the domain, then register, then restart `cape`, then check CAPE's `machines/list`**; never
+    trust `supervisorctl`, because a registered machine libvirt does not know leaves `cape` "RUNNING" with
+    every task pending; on deletion unregister before undefining;
+  - the backend keys on the **label**: CAPE recreates its machine rows and ids on every start, and the backend
+    always sends `machine` because CAPE alternates between machines when it is left out.
+- **Adoption.** The guest M0b built (`win`, `.10`) is adopted when the service first starts: its record is
+  written from the domain XML and the registration file, and nothing is rebuilt. It keeps the account
+  `Analyst`, the folder `C:\tartarus`, a firewall rule and other names that say what the machine is; the
+  card lists them. A clone of it keeps all of them except the computer name. Rebuild for a clean one.
+
+#### Building, checking, deleting and analysing exclude each other
+
+Registering or deleting a guest restarts `cape`, and S0b measured what that does: a graceful restart destroys
+the running guest 0.2 s after the signal, a kill is handled at the next start, and either way the task ends
+`failed_analysis` with no report and no callback; a task queued for a machine the new registration removes
+is failed too, and the sniffer's `tcpdump` can leak across the restart (the control service kills strays
+after it). So:
+
+- while a guest is `building` or `testing`, `POST /analyses` is `409` ("A guest is being built");
+- a build, clone, resume, restart, continue, delete and `[RUN CHECKS]` (which reverts a snapshot) are `409`
+  while an analysis is queued, starting or running;
+- the engine runs one thing at a time: one build or clone (a paused one included), and no check or self-test
+  check beside it.
+
+The cost is that no sample can be detonated for the minutes a build takes. One analysis at a time stays the
+rule, so two guests never run together.
 
 ### Supported guests
-Windows 10 22H2 x64 and Windows 11 23H2+ x64. Only one guest is registered at a time.
-Rebuilding replaces it after the new one passes its checks.
 
-### Inputs
-- An ISO placed in `./data/iso/`. The wizard lists the ISOs it finds and shows each one's
-  editions, build and language, read from the metadata of `sources/install.wim` (`wiminfo`).
-  Microsoft's retail ISOs keep their files in a UDF filesystem, and the ISO9660 view holds only a
-  README, so the reader must handle UDF (7-Zip does; `bsdtar` does not). Reading the metadata
-  means extracting the 7 GB image once, to scratch space inside a throwaway container.
-- Edition: any index of the image (a retail ISO has eight or more: Home, Pro, Education and their
-  N variants). Pro is the default. Product key is optional; installing without one works.
-- Language: the image's own. An ISO carries one language (e.g. pl-PL), so the guest's display
-  language is the ISO's and the wizard offers no other; the keyboard layout is a separate
-  setting. Local username (default: a realistic random first name) and password.
-- Resources: vCPUs (default 2), RAM (default 4 GB), disk (default 80 GB thin qcow2).
-- Optional: "make it look used" decoys (documents, browser history, recent files, installed
-  common apps) to defeat sandbox-detection checks for fresh systems.
+Windows 11 25H2 x64 is the verified guest: the user's `Win11_25H2_Polish_x64_v2.iso` (Pro, build 26200,
+pl-PL) built and cloned. The Windows profile accepts Windows 10 22H2 media, but neither it nor another UI
+language has been run, and the GUI does not say so. Only the Polish names of
+Windows Security were seen (see Defender below).
 
-### Steps (each shown with progress, log tail and status)
-1. **Preflight:** `/dev/kvm` present, CPU virtualization flags, free disk ≥ disk size + 20 GB,
-   ISO readable.
-2. **Define VM:** libvirt domain from `guest/domain.xml.j2`:
-   - `host-passthrough` CPU with the `hypervisor` feature disabled and KVM state hidden.
-   - SMBIOS (`<sysinfo>`: system and board vendor, product name, serial), disk-serial and NIC
-     strings set to realistic vendor values. The patched QEMU covers the BIOS, ACPI and device
-     strings but not SMBIOS (see Findings).
-   - A MAC address with a real vendor prefix (OUI).
-   - Q35/UEFI with emulated TPM for Windows 11.
-   - VNC display bound inside the container only.
-3. **Unattended install:** generate `autounattend.xml` (`guest/profiles/windows/autounattend.xml.tpl`) and attach it
-   with the provisioning scripts on a second ISO. Windows installs with no prompts.
-4. **Provision** (first-logon PowerShell, logged back to the wizard):
-   - Disable Windows Update, UAC prompts, the firewall, telemetry, sleep/hibernate and
-     SmartScreen.
-   - Defender is **the user's choice, on by default** (a wizard option). Left on, the build needs
-     no manual step. If the user chooses off: with Tamper Protection on (the default) the
-     documented policy keys and `Set-MpPreference` are silently ignored, so the wizard pauses for
-     a **manual step**: the user turns Tamper Protection off in Windows Security on the live
-     desktop, then the wizard re-applies the settings (see M0b findings). Why it is a choice:
-     samples may check whether Defender runs and behave differently when it doesn't, and leaving
-     it on shows how a sample gets past Defender; turning it off helps when Defender would remove
-     a sample before it runs.
-   - Install 32-bit Python 3.12 and Pillow.
-   - Install CAPE `agent.py` as a scheduled task that starts at logon with highest privileges.
-   - Install Sysmon with `guest/profiles/windows/sysmon-config.xml`.
-   - Set a static IP of `192.168.150.10` with gateway and DNS `192.168.150.1`.
-   - Apply the decoys if that option was chosen.
-5. **Snapshot:** shut down with ACPI (never `virsh destroy`, which loses Windows' unflushed writes),
-   boot the clean guest, wait until the agent answers on `:8000` and `C:\tartarus\provision.done`
-   exists, let it idle for 60 s, then take an external disk-and-memory snapshot named
-   `tartarus-clean` (see M0b findings).
-6. **Register:** write `kvm.conf.d/<label>.conf`, restart `cape` and check `apiv2/machines/list`.
-7. **Self-test:**
-   - Run a bundled benign test sample. It spawns a child process, writes a file, sets a registry
-     value and resolves a domain. Check that live events, the final report and the INetSim DNS
-     answer all arrive.
-   - Run pafish and show its results as information only. This does not fail the build.
+### Inputs (the Windows profile)
 
-The build can be **resumed** from the last completed step and **restarted** from scratch. A
-failed step shows its log and a Retry button.
+- **Installation media** in `./data/iso/`, mounted read-only into `cape`. The wizard lists what the scan
+  finds: for each file, which profile recognised it and, for Windows, its editions, build and language. The
+  scan mounts the image on a loop device and reads `sources/install.wim` with `wiminfo` (the `wimtools`
+  package in the image): about 4.6 MiB read and a few hundredths of a second, with nothing extracted. (The
+  first design extracted the 7 GB image, 6.4 s and 7 GiB of scratch; S0a showed that is unnecessary.)
+  Microsoft's retail ISOs are UDF, which the loop mount handles. The container has only `/dev/loop-control`,
+  so the scan makes the next free loop node itself, detaches in a `finally`, and clears mounts left by a
+  killed service at start. There is no cache: a scan costs less than a lookup. Not an ISO, a truncated or
+  damaged image and an image with no `install.wim` or `install.esd` are listed with a readable error. Not
+  tested: a real Microsoft ESD, another language, a host without the `udf` module.
+- **Edition:** any index of the image; Pro by default. **Product key:** optional, `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`;
+  installing without one works. **Language** is the image's own (an ISO carries one); the **keyboard layout**
+  is a separate setting chosen from a table of 13 layouts (Polish Programmers and 214, US, UK, German,
+  French, Spanish, Czech, Italian, Portuguese, Brazilian ABNT, Russian, Ukrainian).
+- **Identity** (see [Names and giveaways](#names-and-giveaways)): the Windows account, the computer name and
+  the password, each generated when left blank. **Resources:** vCPUs (2), RAM (4 GB) and disk (80 GB thin
+  qcow2, 64 GB at least).
+- **Options:** Defender (on), "make it look used" decoys (off), Sysmon (on).
 
-### Guest health (shown in the header and on the Guest page)
+### Build steps (an installer build)
+
+Each step is shown with progress and a log tail; the pipeline is `preflight`, `fetch`, `define`, `install`,
+`provision`, `tamper-off` (only when Defender is off), `snapshot`, `register`, and then the backend's
+self-test. Steps are idempotent, so a failed build can be resumed at the step that failed or restarted from
+the first.
+
+1. **preflight:** `/dev/kvm` and the CPU flags, free space for disk + scratch (20 GB) + 20 GB reserve (the
+   message gives the numbers), the media readable, a domain left by an earlier attempt of this very guest
+   removed, the address not held by another guest.
+2. **fetch:** downloads the pins of `manifest.sha256` (Python 3.11.9 32-bit, Pillow's Win32 wheel, Sysmon)
+   into a cache, each checked against its hash; nothing unverified is kept.
+3. **define:** the libvirt domain, from the profile's hardware block and the shared SMBIOS persona:
+   - `host-passthrough` CPU with the `hypervisor` feature disabled and KVM state hidden, `migratable='on'`
+     (an exposed `invtsc` blocks any memory save);
+   - SMBIOS (system, baseboard, chassis, BIOS) with a Dell OptiPlex persona, a disk serial and a NIC MAC with a
+     Dell prefix, all generated per guest; the patched QEMU covers BIOS, ACPI and device strings but not
+     SMBIOS;
+   - Q35, UEFI with Secure Boot (Microsoft keys), TPM 2.0 with its own state, SATA disk and e1000e NIC (no
+     virtio drivers needed), two optical drives, VNC bound inside the container.
+4. **install:** builds a disc holding `autounattend.xml` (rendered from `guest/profiles/windows/autounattend.xml.tpl`
+   with the edition index, the optional key, the keyboard, the account and the computer name, XML-escaped) and
+   the provisioning files, boots the installer with it as the second CD, sends Enter for the first 20 seconds
+   (see the silent failures below), resets and retries up to three times if the disk is still empty, and waits
+   for the guest to finish provisioning itself at first logon. The step may take up to 90 minutes; a build takes
+   about 16 minutes.
+5. **provision** (the guest's first-logon script, logged back to the build): static IP from the guest's
+   record, gateway and DNS `.1`; Windows Update, UAC prompts, firewall (with port 8000 open), telemetry
+   where the edition allows, sleep and hibernate and SmartScreen off; 32-bit Python 3.11.9 and Pillow; CAPE's
+   `agent.py` as a scheduled task at logon with the highest privileges; the Defender policy keys when Defender
+   is off; decoys and Sysmon when asked (Sysmon is checked by its running service and log entries). The host
+   then copies the log off the guest and removes the installers; the working folder keeps the agent, the done
+   marker and the log.
+6. **tamper-off** (Defender off only): see Defender below.
+7. **snapshot:** ACPI shutdown (never `virsh destroy`, which loses unflushed writes), boot the clean guest,
+   wait for the agent on `:8000`, idle 60 s, then take the external disk-and-memory snapshot
+   `tartarus-clean` and power off. Revert takes about 1.6 s.
+8. **register:** the engine writes `guests.conf`, restarts `cape`, and checks `machines/list`. The guest is
+   `testing`.
+9. **self-test** (the backend's, on the new guest): see Self-test below.
+
+### Clone steps
+
+`[CLONE]` makes a new guest from a `ready` one in minutes instead of a full build: `preflight`, `copy`,
+`define`, `reconfigure`, `tamper-off` or `defender-on` (by the Defender option), `snapshot`, `register`,
+then the same self-test. `preflight`, `define`, `snapshot` and `register` are the build's own step files.
+
+- **copy** takes the source's **base disk, never its snapshot**: the snapshot's memory image holds the
+  emulated hardware's state and cannot be restored under a new identity. The base is found through the
+  backing chain of the source's current disk (a revert leaves `win.<epoch>` on top and no `win-clean.qcow2`)
+  and converted sparsely with `qemu-img convert`, with the nvram copied beside it. The source must be powered
+  off; it is not written. A new swtpm state is created, never copied.
+- **define** gives the copy a new UUID, MAC, SMBIOS and board and disk serials, the next free address and, with
+  the Windows rules of a build, a new computer name (never the source's).
+- **reconfigure** cold-boots the copy, finds it by its new MAC in libvirt's DHCP lease table (a source's
+  base disk boots on DHCP, not on the static address it was given; an already-configured copy is found at its
+  final address) and, through the agent's **64-bit** PowerShell (`C:/Windows/Sysnative/...`: the agent's own is
+  32-bit and lacks `manage-bde` and the 64-bit registry view), sets the static address, the new computer name, a
+  fresh `MachineGuid`, empties the event logs, adds the decoys if asked, and reboots; the IP-changing call is
+  made asynchronously because it ends the agent's connection, and the host reads what it did from a log the
+  script writes. It then checks the hostname, address and `MachineGuid` at the final address.
+- **What a clone shares with its source:** the machine SID, the install date and ProductId, and what lived in
+  the disk (the account and its profile folder, which is why the username is inherited and a different one needs a
+  build). The hardware identity, which sandbox checks read, is new.
+- What S0d settled: the crash-consistent copy cold-boots with no repair screen, activation or Secure Boot
+  complaint; the fresh TPM is re-owned by Windows within about 45 s (no BitLocker key protector exists, so it
+  cannot lock the clone out); the adapter keeps its name and GUID across the MAC change; the new name and
+  address survive reboots and a snapshot revert. A clone takes about 5 minutes (convert 11 s, cold boot to agent
+  53 s, reconfigure and reboot under 50 s, shutdown 7 s, boot 24 s, idle 60 s, snapshot 2 s, then the
+  self-test).
+
+### Names and giveaways
+
+A sample must not recognise the sandbox by a name, so the username and computer name are the analyst's, or a
+realistic random one (a first name; `DESKTOP-` or `LAPTOP-` and seven letters or digits) by default, and
+nothing Tartarus puts in a guest carries the product's name.
+
+- **Refused names.** The Windows rules (an account `[A-Za-z][A-Za-z0-9_-]{0,19}`, not `Administrator`, `Guest`,
+  `DefaultAccount`, `SYSTEM` or `WDAGUtilityAccount`; a computer name of 1 to 15 letters, digits and hyphens, not
+  all digits, `localhost` reserved) and a list of words that tell a sample what the machine is: `tartarus`,
+  `sandbox`, `malware`, `virus` and `cuckoo` anywhere in the text; `cape`, `test`, `admin` and words starting
+  `analy` only as a whole word or path component (`cape` is inside `landscape`). One list
+  (`cape/guest_engine/giveaways.py`) serves the build, the clone, the generators and the guest-side scan.
+- **Neutral names inside the guest.** The per-guest working folder is `C:\ProgramData\<8 random letters>`; the
+  firewall rule, scheduled task, install-disc label and marker file, the first-logon description, the done marker
+  and the log file take neutral names from one table (`names.json`: "Windows Remote Assistance Service" and
+  similar). The install disc is ejected before the snapshot. The password is a random 16 characters unless
+  chosen, kept in `guest.json`, shown on the card so the analyst can log into the desktop, and in plain text in
+  the guest for autologon.
+- **The gate.** A test scans every file the profile ships, case-insensitively, for the words (with a short
+  allow-list: the sample's source, Microsoft's EICAR text, the adoption block), and the self-test runs the
+  facts script inside the guest, which looks for them in the computer name, accounts, scheduled tasks,
+  services, firewall rules, `Run` keys, installed programs and the top-level folders; any hit fails the build.
+- **What this does not remove:** CAPE's own traces during a run (its analyzer folder in `%TEMP%`, the agent
+  process and its `Server: CAPE Agent` header), the display adapter, timing. It removes the cheap checks, not
+  all of them; the list is one file, so it grows as tells are found.
+
+### Defender
+
+Defender is a per-guest option, **on by default**, and the state is baked into the guest's snapshot, so
+"Windows 11, Defender on" and "Windows 11, Defender off" are two guests and the analyst picks one at
+submission. Left on, a sample meets Defender the way it would on a real machine; off suits samples Defender
+would remove before they run or that behave differently when it is running. Several guests, rather than one,
+settled the old question of choosing per submission.
+
+- **Off is scripted.** With Tamper Protection on, the documented policy keys and `Set-MpPreference` are
+  silently ignored (M0b), and `Set-MpPreference` stays useless while a policy key is present: policy wins, both
+  ways. S0c found that one scripted click on Windows Security's Tamper Protection toggle (UI Automation through
+  the agent, in the logged-in user's session) turns Tamper Protection off, that the policy keys `provision.ps1`
+  already writes then take effect (real-time protection and behaviour monitoring off, a test file kept), and
+  that the state survives a memory save and restore and a reboot.
+- **The `tamper-off` step**, after provisioning and before the snapshot, so the state is in it, runs in the
+  64-bit PowerShell through the agent: (1) write the Defender policy keys; (2) open
+  `windowsdefender://threatsettings` (it opens only outside a monitored analysis, which a build is); (3) find
+  the Tamper Protection toggle by its known localized names (Polish, English), else as the fifth of the page's
+  five toggles, which all share one `AutomationId`; (4) switch it off and **verify with `IsTamperProtected = False`**,
+  which is language-independent, rereading once; (5) make sure real-time protection is off; (6) **prove it by
+  file, not by flag**: write the EICAR test string (two halves, joined at run time so no scanner on a dev machine
+  quarantines the repo), require the file to survive, then run a quick scan over its folder and require it to
+  survive again. One shared helper, `security-ui.ps1`, finds the window and the toggle; each script used to
+  carry its own copy, and the first real run of `defender-on` found the lookup bug that `tamper-off` had
+  already fixed.
+- **The pause is only the fallback.** If the window or toggle cannot be found (exit 10), the step prints
+  instructions and exits 75: the build is `paused`, the page shows them with the guest's desktop, and
+  `[CONTINUE]` runs the step again. A failed verification or proof (exit 20, 30) fails the build with the
+  evidence. This path was not exercised for real.
+- **Defender on in a clone** of a Defender-off guest is the reverse step, `defender-on`: remove the policy
+  keys, switch Tamper Protection on, require real-time protection and that the test file is removed. It
+  passed on a real clone (`lab5` from the Defender-off `lab3`, 5.5 minutes, the toggle found by its Polish
+  name).
+- **Not run:** another UI language (the toggle's name, whether it is still the fifth), Windows Update or a
+  later Defender platform update turning Tamper Protection back on, and "report what Defender did in an
+  analysis", which touches the ingest and the normalisers and is outside the wizard.
+
+### Self-test
+
+A built guest stays `testing` until the backend runs the profile's benign sample on it **as an ordinary
+analysis through Tartarus** (tag `self-test`, INetSim route, 60 s) and judges it (see
+[backend](backend.md#guests)). The sample (`benign.c`) is compiled by mingw in the `cape` image, served by the
+control service, and spawns a child process, writes a file, sets a registry value and resolves
+`tartarus-selftest.example`. Judged:
+
+- **from the analysis's own data:** a process (and its child), a file event, a registry event, a report, and the
+  DNS lookup. The lookup is required but its **answer is not**: INetSim answers every lookup in the packet
+  captures, while CAPE's report sometimes records `answers: []`, so a missing answer is reported, not failed.
+  This is CAPE's reporting, not a Tartarus bug;
+- **inside the guest,** by the profile's check step after restoring the snapshot: the facts script's
+  `FACT` lines (the verdict keeps the hostname, the user and the three Defender flags), its `GIVEAWAY` lines (none allowed),
+  and the Defender proof: the EICAR string is **removed within 15 s on a Defender-on guest and kept on a
+  Defender-off one**. A mismatch fails the guest.
+
+A failed self-test ends the guest `failed`, unregistered from CAPE (which keeps the others), with the reasons
+on its card; nothing else is disturbed. pafish, which the first design ran after the self-test as
+information only, is not built.
+
+### Restart and shutdown behaviour
+
+A step runs in a process group of its own with a minimal environment (no token of the service), is killed
+with its group at its timeout, and has its exit code read: 0 done, 75 waiting for the user, anything else
+failed. `[RESUME]` runs a failed or paused build again from the step that stopped it, `[RESTART]` from the
+first, `[CONTINUE]` carries on a paused one. When the control service is stopped mid-step, that step is
+stopped (no process is left) and the build is `failed` with "resume it"; resuming then finished the build and
+its self-test in a real run. Restarting the backend mid-build reattaches the build under a new job (see
+[backend](backend.md#guests)). One thing to know: a resume issued while the first run's `reconfigure` is
+still applying and rebooting the guest can fail ("did not start its reboot within 90 s"); the same resume a
+few minutes later, from a stable guest, worked.
+
+### Guest health (shown in the header and on the Guests page)
+
 | Check | OK when |
 |---|---|
 | VM defined | libvirt domain exists |
 | Snapshot | `tartarus-clean` exists |
-| Agent | Snapshot restore + agent `GET /status` succeeds (checked on demand and before each analysis) |
-| CAPE registration | Machine listed by apiv2 |
+| CAPE registration | the machine is listed by `apiv2/machines/list` |
+| Agent | the snapshot is restored and the agent answers (on demand only: CAPE reverts the snapshot before every task, so checking before each analysis would do it twice; the guest is left off) |
+
+The header dot is the aggregate of every guest's state: green when all are `ready`, amber when some are not
+(for example `lab4 is building` or `lab6 is failed`), red when none is.
 
 ## Interactive desktop
 
@@ -234,13 +473,15 @@ failed step shows its log and a Retry button.
   analyst stays in control.
 - The backend opens a Guacamole VNC connection through `guacd` and tunnels it over
   `WS /ws/analyses/{id}/desktop`. The GUI renders it with `guacamole-common-js`, with keyboard
-  and mouse enabled.
+  and mouse enabled. The same tunnel serves a guest's screen while a build is at a step that shows
+  one (`WS /ws/guests/{name}/desktop`, see [backend](backend.md#ws-wsguestsnamedesktop)); a build has no
+  monitor in the guest.
 - Available only while the task is `running`. When the task stops, the panel switches to the
   last screenshot.
 - Clipboard sync between the host and the guest is **disabled**, both ways. Drag-and-drop and
   file transfer are disabled too.
 
-### Store apps are not monitored in an interactive analysis
+### Store apps are not monitored in an interactive analysis, and Windows Security cannot be used
 
 Opening a text file from the desktop starts the packaged Windows 11 Notepad
 (`C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_...\Notepad.exe`; `HKCU\...\FileExts\.txt\UserChoice`
@@ -259,6 +500,14 @@ in ntdll lock waits): 7 threads instead of about 20, no window, no taskbar butto
   are its children. Processes whose image is outside `WindowsApps` are still injected, including
   `backgroundTaskHost.exe` (`System32`), which also fails to initialise the monitor; that one is not
   addressed and does not block anything visible.
+- **Windows Security cannot be opened from the desktop of a monitored interactive run** (S0c). Opened from
+  the Start menu or through the agent, `SecHealthUI.exe` runs and answers but **never draws a window**; the
+  shell then froze (the Start menu would not open) and ending the run hung in process termination for about
+  four minutes, until the guest was shut off. The analyzer logged that it was not injecting into the packaged
+  app, so the M1 patch skips the injection and the app still does not show; the monitor in the surrounding
+  processes is the likely cause (not proven). The same page opens normally in a guest restored from a snapshot
+  outside CAPE, with no monitor, which is why the scripted Tamper Protection step works at build time. Not
+  fixed: do not use Windows Security in a monitored run.
 - **Why not a monitor option:** `zerohook=1` (no hooks except the essential two) lets Notepad open
   with the monitor injected, so the hooks are what stops it, but it also leaves the sample
   unmonitored. No option that keeps the hooks was found (only `zerohook=1` was tried, on one run), so

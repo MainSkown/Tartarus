@@ -19,30 +19,33 @@ isolation and the tech stack. The details of each part are in the [specs](specs/
  │  │  ┌─ backend (FastAPI, Python) ────────────────────────────────────────────────┐          │  │
  │  │  │ REST /api · WS /ws                                                         │          │  │
  │  │  │ collector ─► normaliser (ECS) ─► Sigma matcher ─► bulk indexer ─► pub/sub  │          │  │
- │  │  │ report ingester · query compiler · export · guest builder · job runner     │          │  │
+ │  │  │ report ingester · query compiler · export · guest client · job runner      │          │  │
  │  │  └──┬────────────┬───────────────────┬────────────────────────┬───────────────┘          │  │
- │  │     │ SQL        │ HTTP              │ apiv2 · guacd · libvirt  │ read-only              │  │
+ │  │     │ SQL        │ HTTP              │ apiv2 · guacd · control  │ read-only              │  │
  │  │     ▼            ▼                   ▼                        ▼ storage volume           │  │
  │  │  ┌──────────┐ ┌────────────┐      ┌─ cape (privileged Ubuntu 24.04) ──────────────┐      │  │
  │  │  │ postgres │ │ opensearch │      │ cape · cape-processor · cape-web (apiv2)      │      │  │
  │  │  │ tartarus │ │ events     │      │ rooter · suricata · inetsim · guacd           │      │  │
- │  │  │ + cape DB│ │            │      │ libvirtd + patched QEMU · /dev/kvm            │      │  │
+ │  │  │ + cape DB│ │            │      │ libvirtd + QEMU · guest-control · /dev/kvm    │      │  │
  │  │  └──────────┘ └────────────┘      │        │ bridge "tt-guest" (isolated)         │      │  │
  │  │                                   │        ▼                                      │      │  │
- │  │                                   │ Windows 10/11 guest: capemon · agent · Sysmon │      │  │
+ │  │                                   │ guests (Windows 11): capemon · agent · Sysmon │      │  │
  │  │                                   └───────────────────────────────────────────────┘      │  │
  │  └──────────────────────────────────────────────────────────────────────────────────────────┘  │
  │                                                                                                │
  └────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+The diagram shows `tartarus-internal`. `backend` and `cape` also share a second network,
+`tartarus-control`, that nothing else joins: the guest control service in `cape` listens only there.
+
 ## Compose services
 
 | Service | Image | Purpose | Exposed to host |
 |---|---|---|---|
 | `frontend` | `tartarus/frontend` (built from `frontend/`; targets `dev-stage` = Vite dev server, `production-stage` = nginx) | Serves the Quasar PWA build and reverse-proxies `/api` and `/ws` to `backend:8000` | `127.0.0.1:8080` only (prod) |
-| `backend` | `tartarus/backend` (built from `backend/`; targets `dev` = uvicorn `--reload`, `prod`) | API, WebSocket, collector, ingester, rules, export, jobs | nothing in prod (dev: `127.0.0.1:8000`) |
-| `cape` | `tartarus/cape` (built from `cape/`) | CAPE + KVM/libvirt + rooter + Suricata + INetSim + guacd | nothing |
+| `backend` | `tartarus/backend` (built from `backend/`; targets `dev` = uvicorn `--reload`, `prod`) | API, WebSocket, collector, ingester, rules, export, jobs, the client of the guest control service | nothing in prod (dev: `127.0.0.1:8000`) |
+| `cape` | `tartarus/cape` (built from the repo root: `cape/` and `guest/`) | CAPE + KVM/libvirt + rooter + Suricata + INetSim + guacd + the guest control service | nothing |
 | `opensearch` | `opensearchproject/opensearch:3.9.0` (single node, security plugin disabled, internal network only) | Event store | nothing |
 | `postgres` | `postgres:16` | Two databases: `tartarus` (Tartarus metadata) and `cape` (CAPE's task DB) | nothing |
 
@@ -61,24 +64,38 @@ touch CAPE's SQL task DB, and the final report is read from `report.json` (writt
   `package.json` changes), and publishes debug ports on `127.0.0.1` only: Vite `5173` (proxies
   `/api` and `/ws` to the backend), backend `8000` (OpenAPI docs at `/docs`), Postgres `5432`,
   OpenSearch `9200`.
-- **Backend → libvirt (planned for M6, off until then):** the guest wizard will control the guest
-  VM with `libvirt-python` over `qemu+tcp://cape/system`. That endpoint has no authentication and
-  the container is privileged, so it is **switched off** (libvirtd runs without `--listen`) until
-  the wizard exists; M1 and M2 talk to CAPE's own token-authenticated HTTP API only. Turning it on
-  needs authentication and a network shared only by `cape` and the backend. The Docker socket is
-  **never** mounted into any container: it is root on the host, and the backend handles malware
-  artefacts and untrusted report data.
+- **Backend → guests (the control service):** the backend never talks to libvirt and has no Docker access.
+  Building, cloning, checking and deleting guests is done by `guest-control`, a small stdlib HTTP service
+  that runs in the `cape` container (a supervisord program) over the guest engine (`cape/guest_engine/`),
+  and exposes only those operations, with every parameter validated. It listens on a **second compose
+  network, `tartarus-control`** (`internal: true`, so it has no route out), that only `cape` and `backend`
+  join, and every request but its health probe needs the bearer token `GUEST_CONTROL_TOKEN` from `.env`. So
+  libvirt's unauthenticated TCP endpoint stays **off** (`libvirtd` runs without `--listen`), `libvirt-python`
+  is not used, and the Docker socket is **never** mounted into any container: it is root on the host, and the
+  backend handles malware artefacts and untrusted report data. `make verify-cape` enforces all of it: the
+  token is required, the service is unreachable from `frontend`, `opensearch` and `postgres`, and nothing
+  listens on `16509`. The container is privileged, so the service is root-equivalent there; a compromised
+  backend can build and delete guests, not run anything else. The design and the routes are in
+  [CAPE integration](specs/cape-integration.md#the-control-service); what differs between operating
+  systems is a guest profile, described in [guest profiles](specs/guest-profiles.md). The guest build runs in the control
+  service, not in the backend: a backend job only follows it, so a backend restart does not stop a build.
+- **Guests on disk:** the `guest-images` volume holds each guest's disk, snapshot files and nvram under
+  `images/` and `nvram/`, the registry of guests (`tartarus/guests/<name>/guest.json` and the builds'
+  records), the download cache, and the single CAPE registration file (`tartarus/kvm.conf.d/guests.conf`). The
+  registry is the one source of truth; the libvirt domains and the CAPE registration are derived from it.
 - **Host prerequisite for OpenSearch:** `vm.max_map_count ≥ 262144` (checked by the preflight
   script).
 - **Volumes:** `pg-data`, `os-data`, `cape-storage` (CAPE `storage/`; mounted
   read-write in `cape` and **read-only** in `backend`), `guest-images` (qcow2 disks and
-  snapshots), `./data/iso` (bind mount where the user drops Windows ISOs), `./rules`
-  (bind mount for Sigma rules).
+  snapshots, and the guest registry), `./data/iso` (bind mount, read-only in `cape`, where the user
+  drops installation media), `./rules` (bind mount for Sigma rules).
 - **Only the frontend (nginx) is reachable from the host**, and only on `127.0.0.1`. The backend,
   guacd, libvirtd, CAPE apiv2,
-  OpenSearch and the databases are reachable on the internal compose network only.
+  OpenSearch and the databases are reachable on the internal compose network only, and the guest
+  control service on `tartarus-control` only.
 - **Resources (defaults in `.env`):** OpenSearch heap 1.5 GB, guest 2 vCPU / 4 GB RAM, CAPE
   processing 2 workers. Minimum host 16 GB RAM, 4 cores and 200 GB free disk; recommended 32 GB.
+  Each guest is about 22 GB on disk and there can be at most five.
 
 ## Repository layout
 
@@ -92,12 +109,21 @@ tartarus/
 │   └── alembic/
 ├── frontend/           Quasar app, PWA mode (see specs/gui.md)
 │   └── src/api/             @hey-api/openapi-ts output (do not edit; `npm run api:sync`)
-├── cape/               Dockerfile, supervisord config, CAPE conf overrides, entrypoint
+├── cape/               Dockerfile (built from the repo root), supervisord config, CAPE conf overrides,
+│   │                   entrypoint
+│   ├── bin/                 guest-control (the control service), guest-build (its command-line client),
+│   │                        finish-run, wait-then-exec, ...
+│   ├── guest_engine/        the guest engine behind the control service: profiles, registry, sequencer,
+│   │                        validation, registration, self-test; it never names an operating system
 │   └── conf/
-├── guest/              guest-build assets: libvirt XML template, autounattend template,
-│                       provisioning scripts, Sysmon config
+├── guest/              what a guest is made of (copied into the cape image; see specs/guest-profiles.md)
+│   ├── profiles/<id>/       one directory per operating system: profile.json and its own steps and files
+│   │   └── windows/         the only profile so far
+│   ├── steps/               generic build and clone steps (preflight, fetch, define, copy, snapshot, ...)
+│   ├── domain/              libvirt domain template and the hardware fragments
+│   └── personas/            the SMBIOS persona shared by every profile
 ├── rules/sigma/        Sigma rules (bind-mounted, user-editable)
-├── data/iso/           user-supplied Windows ISOs (git-ignored)
+├── data/iso/           user-supplied installation media (git-ignored)
 └── docs/
 ```
 
@@ -106,7 +132,7 @@ tartarus/
 ### 1. Submission
 GUI → `POST /api/analyses` (multipart) → the backend stores the sample, writes an `analysis` row
 (`queued`) and, when the queue is free, calls CAPE `apiv2/tasks/create/file` with options
-(route, timeout, package, memory dump, interactive). It saves `cape_task_id` and starts watching
+(the guest to run on as the CAPE `machine`, route, timeout, package, memory dump, interactive). It saves `cape_task_id` and starts watching
 the task.
 
 ### 2. Live phase (while the guest runs)
@@ -151,8 +177,8 @@ aggregate events and report data.
 
 ## Network and isolation model
 
-- The guest's NIC is attached to bridge `tt-guest` (default `192.168.150.0/24`, host side `.1`,
-  guest `.10`). The bridge exists **only inside the `cape` container's network namespace** and is
+- Each guest's NIC is attached to bridge `tt-guest` (default `192.168.150.0/24`, host side `.1`, guests
+  on static addresses from `.10`, and a DHCP pool `.100` to `.119` only for a guest that cold-boots). The bridge exists **only inside the `cape` container's network namespace** and is
   never bridged to the host LAN.
 - CAPE's rooter (inside `cape`) applies the per-analysis route with iptables in that namespace:
   - `inetsim` (default): all guest traffic is DNAT'd to INetSim on the bridge gateway.
@@ -187,5 +213,9 @@ aggregate events and report data.
   when the current one reaches a terminal state.
 - Long jobs (guest build, PDF export, delete, re-ingest) go through a small **job runner**
   (asyncio tasks persisted in the `job` table) so progress survives a browser reload. If the
-  backend restarts, a running job is marked `interrupted` and can be resumed.
+  backend restarts, a running job is marked `interrupted`. A guest build is the exception that
+  shows why a job is only a follower: the build lives in the control service, and the backend
+  starts a new job for it at start-up. Builds, deletes and analyses exclude each other, because
+  registering or deleting a guest restarts `cape` (see
+  [CAPE integration](specs/cape-integration.md#building-checking-deleting-and-analysing-exclude-each-other)).
 - On backend start, the collector resumes any running analysis from the stored file offsets.
