@@ -416,6 +416,7 @@ import fake_guest_agent as fake
 class Agent(fake.Agent):
     applied = False
     gets = 0
+    retrievals = 0
     counts: dict = {}
 
     def alive(self):
@@ -442,9 +443,20 @@ class Agent(fake.Agent):
         if self.alive():
             super().do_POST()
 
+    def retrieve(self, form, files):
+        appears = self.behaviour().get("line_appears_on_retrieve")
+        if appears and form.get("filepath") == appears["path"]:
+            type(self).retrievals += 1
+            if self.retrievals == appears["after"]:
+                with fake.guest_path(self.root, appears["path"]).open("a") as log:
+                    log.write(appears["line"])
+        super().retrieve(form, files)
+
     def execute(self, form, files):
         driver = self.driver_text(form.get("command", ""))
         behaviour = self.behaviour()
+        if "-Phase 'Discard'" in driver and behaviour.get("discard_removes"):
+            fake.guest_path(self.root, behaviour["discard_removes"]).unlink(missing_ok=True)
         sequences = [(key, outputs) for key, outputs in behaviour.get("sequences", {}).items() if key in driver]
         if sequences:
             key, outputs = sequences[0]
@@ -527,6 +539,7 @@ new_sandbox() {
     BEFORE_NAME=DESKTOP-OLD BEFORE_IP=$LEASED_ADDRESS BEFORE_GUID=guid-before BEFORE_BOOT=boot-1
     AFTER_NAME=${CLONE_NAME^^} AFTER_IP=$GUEST_ADDRESS AFTER_GUID=guid-after AFTER_BOOT=boot-2
     OLD_BOOT_REPORTS=0 UNREADY_POLLS=0 SCENARIO_ALIVE_BEFORE="$LEASED_ADDRESS" APPLY_WRITES_LOG=yes REPORT_EXIT_CODE=0
+    REPORT_STARTS_AFTER=no LINE_APPEARS_AFTER=0
     GUEST_LOG_TEXT="static address set"
     echo '{}' >"$SB/behaviour.json"
     : >"$SB/requests.jsonl"
@@ -576,12 +589,17 @@ before = report(env["BEFORE_NAME"], env["BEFORE_IP"], env["BEFORE_GUID"], env["B
 still = report(env["BEFORE_NAME"], env["GUEST_ADDRESS"], env["BEFORE_GUID"], env["BEFORE_BOOT"])
 after = report(env["AFTER_NAME"], env["AFTER_IP"], env["AFTER_GUID"], env["AFTER_BOOT"])
 alive_before = env["SCENARIO_ALIVE_BEFORE"].split() or None
+reports = [after] if env["REPORT_STARTS_AFTER"] == "yes" else [before] + [still] * int(env["OLD_BOOT_REPORTS"]) + [after]
+guest_log = "C:\\ProgramData\\abcdefgh\\" + os.path.basename(sys.argv[2])
 behaviour = {
     "unready_polls": int(env["UNREADY_POLLS"]),
     "alive_before_apply": alive_before,
     "alive_after_apply": [env["GUEST_ADDRESS"]],
-    "sequences": {"-Phase 'Report'": [before] + [still] * int(env["OLD_BOOT_REPORTS"]) + [after]},
+    "sequences": {"-Phase 'Report'": reports},
+    "discard_removes": guest_log,
 }
+if int(env["LINE_APPEARS_AFTER"]):
+    behaviour["line_appears_on_retrieve"] = {"path": guest_log, "after": int(env["LINE_APPEARS_AFTER"]), "line": "rebooting a-token-of-the-earlier-run\r\n"}
 if env["APPLY_WRITES_LOG"] == "yes":
     content = f"{env['GUEST_LOG_TEXT']}\r\nrebooting {{token}}\r\n"
     behaviour["on_execute_write"] = {"-Phase 'Apply'": {"path": "C:\\ProgramData\\abcdefgh\\" + os.path.basename(sys.argv[2]), "content": content}}
@@ -591,7 +609,8 @@ PY
 
 run_reconfigure() {
     export GUEST_ADDRESS TOKEN LEASES BEFORE_NAME BEFORE_IP BEFORE_GUID BEFORE_BOOT AFTER_NAME AFTER_IP AFTER_GUID AFTER_BOOT \
-        OLD_BOOT_REPORTS UNREADY_POLLS SCENARIO_ALIVE_BEFORE APPLY_WRITES_LOG GUEST_LOG_TEXT REPORT_EXIT_CODE
+        OLD_BOOT_REPORTS UNREADY_POLLS SCENARIO_ALIVE_BEFORE APPLY_WRITES_LOG GUEST_LOG_TEXT REPORT_EXIT_CODE \
+        REPORT_STARTS_AFTER LINE_APPEARS_AFTER
     write_behaviour
     OUTPUT="$(env -i PATH="$SB/bin:$PATH" HOME="$SB" STUB_DIR="$STUB_DIR" \
         TT_GUEST_DIR="$SB/guestdir" TT_GUEST_JSON="$SB/ctx/guest.json" TT_PROFILE_DIR="$PROFILE" \
@@ -812,6 +831,135 @@ test_reconfigure_waits_for_the_guest_to_say_it_is_rebooting() {
     printf 'rebooting an-earlier-run\r\n' >"$WORK_ON_DISK/$LOG_FILE"
     run_reconfigure
     assert_status 1 && assert_contains "reboot"
+}
+
+# --- reconfigure: a resume after an earlier run already applied ------------------------------------
+
+BEFORE_FILE_NAME=reconfigure-before.json
+
+# What the guest script leaves in the log: the first line when it starts, the second just before the restart.
+APPLY_STARTED='2026-10-15 10:00:00  reconfiguring as DESKTOP-ABC1234\r\n'
+APPLY_REBOOTING='2026-10-15 10:00:09  rebooting an-earlier-run\r\n'
+
+leave_a_log_on_the_guest() {
+    mkdir -p "$WORK_ON_DISK"
+    printf '%b' "$1" >"$WORK_ON_DISK/$LOG_FILE"
+}
+
+save_the_identity_before() {
+    printf '{"machine_guid": "%s", "boot_time": "%s"}\n' "$1" "$2" >"$SB/build/$BEFORE_FILE_NAME"
+}
+
+phases_run() {
+    python3 -I -c '
+import json, re, sys
+for line in open(sys.argv[1]):
+    request = json.loads(line)
+    if request["path"] == "/execute":
+        print(re.search(r"-Phase .(\w+)", request["driver"]).group(1))
+' "$SB/requests.jsonl"
+}
+assert_phases() { [[ $(phases_run | paste -sd ' ') == "$1" ]] || { echo "  expected the phases '$1', got '$(phases_run | paste -sd ' ')'"; return 1; }; }
+
+test_reconfigure_applies_nothing_while_the_guest_is_still_rebooting_for_an_earlier_run() {
+    new_sandbox
+    leave_a_log_on_the_guest "$APPLY_STARTED$APPLY_REBOOTING"
+    save_the_identity_before "$BEFORE_GUID" "$BEFORE_BOOT"
+    run_reconfigure
+    assert_status 1 && assert_contains "come back" && assert_phases "" && [[ -f $WORK_ON_DISK/$LOG_FILE ]]
+}
+
+test_reconfigure_waits_for_an_apply_in_flight_to_announce_its_reboot_and_then_applies_nothing() {
+    new_sandbox
+    leave_a_log_on_the_guest "$APPLY_STARTED"
+    save_the_identity_before "$BEFORE_GUID" "$BEFORE_BOOT"
+    SCENARIO_ALIVE_BEFORE="$LEASED_ADDRESS $GUEST_ADDRESS" REPORT_STARTS_AFTER=yes LINE_APPEARS_AFTER=4
+    run_reconfigure
+    assert_status 0 && assert_phases "Report Discard" && assert_contains "verified"
+}
+
+test_reconfigure_verifies_a_guest_an_earlier_run_already_rebooted_against_the_saved_identity() {
+    new_sandbox
+    leave_a_log_on_the_guest "$APPLY_STARTED$APPLY_REBOOTING"
+    save_the_identity_before "$BEFORE_GUID" "$BEFORE_BOOT"
+    SCENARIO_ALIVE_BEFORE="$GUEST_ADDRESS" REPORT_STARTS_AFTER=yes
+    run_reconfigure
+    assert_status 0 && assert_phases "Report Discard" && assert_contains "machine_guid=$AFTER_GUID" && assert_absent "$WORK_ON_DISK/$LOG_FILE"
+}
+
+test_reconfigure_fails_a_guest_an_earlier_run_rebooted_whose_machine_guid_is_the_saved_one() {
+    new_sandbox
+    leave_a_log_on_the_guest "$APPLY_STARTED$APPLY_REBOOTING"
+    save_the_identity_before "$AFTER_GUID" "$BEFORE_BOOT"
+    SCENARIO_ALIVE_BEFORE="$GUEST_ADDRESS" REPORT_STARTS_AFTER=yes
+    run_reconfigure
+    assert_status 1 && assert_contains "MachineGuid" && assert_phases "Report Discard"
+}
+
+test_reconfigure_writes_the_identity_the_copy_came_with_before_it_applies() {
+    new_sandbox
+    run_reconfigure
+    assert_status 0 &&
+        python3 -I -c '
+import json, sys
+saved = json.load(open(sys.argv[1]))
+assert saved == {"machine_guid": sys.argv[2], "boot_time": sys.argv[3]}, saved
+' "$SB/build/$BEFORE_FILE_NAME" "$BEFORE_GUID" "$BEFORE_BOOT"
+}
+
+test_reconfigure_keeps_the_identity_of_the_first_run_for_a_resume_that_finishes_the_job() {
+    new_sandbox
+    OLD_BOOT_REPORTS=100000
+    run_reconfigure
+    assert_status 1 && assert_contains "come back" || return 1
+    OLD_BOOT_REPORTS=0 TOKEN=""
+    run_reconfigure
+    assert_status 0 && assert_contains "verified" &&
+        requests_satisfy '
+applies = [r for r in executes if "-Phase '"'"'Apply'"'"'" in r["driver"]]
+assert len(applies) == 1, len(applies)' &&
+        grep -q "\"machine_guid\": \"$BEFORE_GUID\"" "$SB/build/$BEFORE_FILE_NAME"
+}
+
+test_reconfigure_checks_a_guest_without_a_log_against_the_saved_identity_and_the_current_boot() {
+    new_sandbox
+    save_the_identity_before guid-original boot-0
+    BEFORE_GUID=guid-in-between AFTER_GUID=guid-original OLD_BOOT_REPORTS=2
+    run_reconfigure
+    assert_status 1 && assert_contains "MachineGuid" && assert_contains "guid-original" && assert_phases "Report Apply Report Report Report Discard" || return 1
+    new_sandbox
+    save_the_identity_before guid-original boot-0
+    BEFORE_GUID=guid-in-between OLD_BOOT_REPORTS=2
+    run_reconfigure
+    assert_status 0 && grep -q 'guid-original' "$SB/build/$BEFORE_FILE_NAME"
+}
+
+test_reconfigure_applies_afresh_when_an_older_run_left_a_log_and_no_saved_identity() {
+    new_sandbox
+    leave_a_log_on_the_guest "$APPLY_STARTED$APPLY_REBOOTING"
+    run_reconfigure
+    assert_status 0 && assert_phases "Discard Report Apply Report Discard" && [[ -f $SB/build/$BEFORE_FILE_NAME ]]
+}
+
+test_reconfigure_clears_the_log_of_an_apply_that_never_got_to_reboot_so_a_resume_applies_again() {
+    new_sandbox
+    leave_a_log_on_the_guest "$APPLY_STARTED"
+    save_the_identity_before "$BEFORE_GUID" "$BEFORE_BOOT"
+    run_reconfigure
+    assert_status 1 && assert_contains "start its reboot" && assert_absent "$WORK_ON_DISK/$LOG_FILE" || return 1
+    TOKEN=""
+    run_reconfigure
+    assert_status 0 && assert_contains "verified" &&
+        requests_satisfy '
+applies = [r for r in executes if "-Phase '"'"'Apply'"'"'" in r["driver"]]
+assert len(applies) == 1, len(applies)'
+}
+
+test_reconfigure_clears_the_log_of_a_finished_apply_whose_identity_is_wrong_so_a_resume_applies_again() {
+    new_sandbox
+    AFTER_NAME=WRONG
+    run_reconfigure
+    assert_status 1 && assert_contains "WRONG" && assert_absent "$WORK_ON_DISK/$LOG_FILE"
 }
 
 test_reconfigure_shows_the_guests_own_log() {

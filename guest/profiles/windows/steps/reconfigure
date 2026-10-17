@@ -6,6 +6,9 @@
 # and empty event logs (and decoys when asked for), is rebooted, and is checked at its final
 # address. The guest is left running for the steps that follow. Idempotent: every change is
 # skipped or redone harmlessly, and a copy that already has its final address is found there.
+# A resume never applies on top of an earlier run's apply: the log that apply leaves in the guest says
+# it began, so the step waits for that reboot and checks the result against the identity the copy came
+# with, which the first run saved.
 set -uo pipefail
 # shellcheck source=lib/windows.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
@@ -20,6 +23,7 @@ PREFIX=${SUBNET#*/}
 LOG_NAME=$(profile_name log_file)
 SCRIPT=reconfigure.ps1
 GUEST_LOG=$TT_BUILD_DIR/reconfigure-guest.log
+BEFORE_FILE=$TT_BUILD_DIR/reconfigure-before.json
 # Unique per run, so the log an earlier attempt left behind is never mistaken for this one's.
 TOKEN=${RECONFIGURE_TOKEN:-$(cat /proc/sys/kernel/random/uuid)}
 PROBE_S=${RECONFIGURE_PROBE_SECONDS:-5}
@@ -73,8 +77,23 @@ apply_in_guest() {
         --arg "Decoys=$DECOYS" --arg "Token=$TOKEN"
 }
 
+# guest_announced_the_reboot <line>: the guest's log has the line the script writes just before it
+# restarts. Looked for wherever the guest is, as it may not have taken its final address yet.
 guest_announced_the_reboot() {
-    guest_agent retrieve "$LOG_NAME" "$GUEST_LOG" 2>/dev/null && grep -qF "rebooting $TOKEN" "$GUEST_LOG"
+    find_agent_address &&
+        TT_AGENT_HOST=$AGENT_IP guest_agent retrieve "$LOG_NAME" "$GUEST_LOG" 2>/dev/null &&
+        grep -qF "$1" "$GUEST_LOG"
+}
+
+# Sets EARLIER_APPLY to yes or no. Fails while the agent cannot be asked, as a guest going down cannot.
+look_for_the_log_of_an_earlier_apply() {
+    find_agent_address || return 1
+    TT_AGENT_HOST=$AGENT_IP guest_agent exists "$LOG_NAME"
+    case $? in
+        0) EARLIER_APPLY=yes ;;
+        1) EARLIER_APPLY=no ;;
+        *) return 1 ;;
+    esac
 }
 
 # The restart must have happened, not only the address changed: the boot time is what tells.
@@ -82,7 +101,26 @@ guest_is_back_from_the_reboot() {
     report_from "$GUEST_IP" 2>/dev/null && [[ -n $(result_field "$REPORT" boot_time) && $(result_field "$REPORT" boot_time) != "$BOOT_BEFORE" ]]
 }
 
-discard_guest_log() { guest_agent run "$SCRIPT" --arg Phase=Discard --arg "LogName=$LOG_NAME" >/dev/null; }
+# discard_guest_log [address]: at the final address unless told where the guest is.
+discard_guest_log() { TT_AGENT_HOST=${1:-$GUEST_IP} guest_agent run "$SCRIPT" --arg Phase=Discard --arg "LogName=$LOG_NAME" >/dev/null; }
+
+# The discarded log is how the next resume knows it has to apply again; the build log has its text already.
+fail_and_let_a_resume_apply_again() {
+    discard_guest_log "${1:-$GUEST_IP}"
+    fail "$2"
+}
+
+saved_before() {
+    python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$BEFORE_FILE" "$1"
+}
+
+# Written once, from the copy as it came, before the first apply; written whole so a kill leaves no half file.
+save_before() {
+    python3 -I -c '
+import json, sys
+json.dump({"machine_guid": sys.argv[2], "boot_time": sys.argv[3]}, open(sys.argv[1] + ".part", "w"))
+' "$BEFORE_FILE" "$GUID_BEFORE" "$BOOT_BEFORE" && mv "$BEFORE_FILE.part" "$BEFORE_FILE"
+}
 
 verify_identity() {
     local hostname address guid problems=()
@@ -92,7 +130,8 @@ verify_identity() {
     [[ ${hostname,,} == "${MACHINE_NAME,,}" ]] || problems+=("the computer name is '$hostname', not '$MACHINE_NAME'")
     [[ $address == "$GUEST_IP" ]] || problems+=("the address is '$address', not '$GUEST_IP'")
     [[ -n $guid && ${guid,,} != "${GUID_BEFORE,,}" ]] || problems+=("the MachineGuid is '$guid' and was '$GUID_BEFORE' before: it has to change")
-    ((${#problems[@]} == 0)) || fail "the clone's identity is not what was asked for: $(printf '%s; ' "${problems[@]}")"
+    ((${#problems[@]} == 0)) ||
+        fail_and_let_a_resume_apply_again "$GUEST_IP" "the clone's identity is not what was asked for: $(printf '%s; ' "${problems[@]}")"
     log "verified: hostname=$hostname ip=$address machine_guid=$guid"
 }
 
@@ -108,18 +147,41 @@ progress 25
 wait_for "$AGENT_WAIT_S" "$PROBE_S" agent_answers_at "$AGENT_IP" || fail "the guest agent at $AGENT_IP did not answer within ${AGENT_WAIT_S}s"
 progress 35
 
-step "Reading the identity the copy came with"
-report_from "$AGENT_IP" || fail "the copy could not report its identity (exit code $?)"
-GUID_BEFORE=$(result_field "$REPORT" machine_guid)
-BOOT_BEFORE=$(result_field "$REPORT" boot_time)
-log "before: hostname=$(result_field "$REPORT" hostname) ip=$(result_field "$REPORT" ip) machine_guid=$GUID_BEFORE"
-progress 45
+step "Looking for an earlier attempt"
+wait_for "$AGENT_WAIT_S" "$PROBE_S" look_for_the_log_of_an_earlier_apply ||
+    fail "the guest agent could not be asked for the log of an earlier attempt within ${AGENT_WAIT_S}s"
+if [[ $EARLIER_APPLY == yes && ! -f $BEFORE_FILE ]]; then
+    log "an earlier attempt left a log but the identity before it was not saved: applying again"
+    discard_guest_log "$AGENT_IP"
+    EARLIER_APPLY=no
+fi
+progress 40
 
-step "Giving the copy its own identity"
-apply_in_guest || fail "the identity script could not be started in the guest"
+if [[ $EARLIER_APPLY == yes ]]; then
+    GUID_BEFORE=$(saved_before machine_guid)
+    BOOT_BEFORE=$(saved_before boot_time)
+    log "an earlier attempt already applied; waiting for its reboot, not applying again"
+    ANNOUNCEMENT="rebooting "
+else
+    step "Reading the identity the copy came with"
+    report_from "$AGENT_IP" || fail "the copy could not report its identity (exit code $?)"
+    GUID_BEFORE=$(result_field "$REPORT" machine_guid)
+    BOOT_BEFORE=$(result_field "$REPORT" boot_time)
+    log "before: hostname=$(result_field "$REPORT" hostname) ip=$(result_field "$REPORT" ip) machine_guid=$GUID_BEFORE"
+    if [[ -f $BEFORE_FILE ]]; then
+        GUID_BEFORE=$(saved_before machine_guid)
+    else
+        save_before
+    fi
+    progress 45
+
+    step "Giving the copy its own identity"
+    apply_in_guest || fail "the identity script could not be started in the guest"
+    ANNOUNCEMENT="rebooting $TOKEN"
+fi
 progress 55
-wait_for "$APPLY_WAIT_S" "$PROBE_S" guest_announced_the_reboot ||
-    fail "the guest did not start its reboot within ${APPLY_WAIT_S}s; its log, if it wrote one, is in the build directory"
+wait_for "$APPLY_WAIT_S" "$PROBE_S" guest_announced_the_reboot "$ANNOUNCEMENT" ||
+    fail_and_let_a_resume_apply_again "$AGENT_IP" "the guest did not start its reboot within ${APPLY_WAIT_S}s; its log, if it wrote one, is in the build directory"
 log_guest_file "$GUEST_LOG"
 progress 70
 
