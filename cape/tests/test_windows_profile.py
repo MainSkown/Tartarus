@@ -770,8 +770,8 @@ class TestDefenderSettingsScript:
 
 
 class TestSecurityWindowLookup:
-    """One helper finds the Windows Security window and its Tamper Protection switch, because a copy in
-    each script is how a bug fixed in tamper-off.ps1 survived in defender-on.ps1."""
+    """One helper finds the Windows Security window and its Tamper Protection switch, because a
+    copy in each script is how a bug fixed in tamper-off.ps1 survived in defender-on.ps1."""
 
     def test_the_helper_finds_the_app_frame_by_title_not_a_core_window(self):
         text = script_text("security-ui.ps1")
@@ -782,19 +782,31 @@ class TestSecurityWindowLookup:
 
     def test_the_helper_knows_the_localized_switch_names_and_the_fifth_toggle_fallback(self):
         text = script_text("security-ui.ps1")
-        for name in ("Ochrona przed naruszeniami", "Ochrona przed manipulacją", "Tamper Protection"):
+        for name in (
+            "Ochrona przed naruszeniami",
+            "Ochrona przed manipulacją",
+            "Tamper Protection",
+        ):
             assert name in text
         assert "settingToggle" in text
         assert "TogglePattern" in text
 
     def test_the_helper_loads_ui_automation(self):
-        assert "Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes" in script_text("security-ui.ps1")
+        assert "Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes" in script_text(
+            "security-ui.ps1"
+        )
 
     @pytest.mark.parametrize("script", ["tamper-off.ps1", "defender-on.ps1"])
     def test_both_scripts_load_the_helper_and_carry_no_lookup_of_their_own(self, script):
         text = script_text(script)
         assert "security-ui.ps1" in text
-        for own_copy in ("ApplicationFrameWindow", "CoreWindow", "settingToggle", "TogglePattern", "$KnownNames"):
+        for own_copy in (
+            "ApplicationFrameWindow",
+            "CoreWindow",
+            "settingToggle",
+            "TogglePattern",
+            "$KnownNames",
+        ):
             assert own_copy not in text, own_copy
 
     @pytest.mark.parametrize("script", ["tamper-off.ps1", "defender-on.ps1"])
@@ -804,7 +816,9 @@ class TestSecurityWindowLookup:
         assert len(re.findall(r"\bexit 10\b", text)) >= 2
 
     def test_the_steps_upload_the_helper_with_the_script(self):
-        assert "--with security-ui.ps1" in (PROFILE_DIR / "steps" / "lib" / "windows.sh").read_text()
+        assert (
+            "--with security-ui.ps1" in (PROFILE_DIR / "steps" / "lib" / "windows.sh").read_text()
+        )
 
 
 class TestDefenderScripts:
