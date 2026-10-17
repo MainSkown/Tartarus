@@ -8,8 +8,14 @@ confirmed, a `[CANCEL]` button on the build page.
 
 ## Status
 
-Planned 2026-10-17 from the finish-line roadmap and a read of the code the tasks touch. Not started. Decisions
+Planned 2026-10-17 from the finish-line roadmap and a read of the code the tasks touch. Decisions
 marked **Confirm** change scope or a spec and wait for the user before their wave starts.
+
+**Wave 1 done 2026-10-17** (C1, D1, R1; commits 5e3fb3e, 56724c7): failed guests are off the cap, `finish-run` is
+gone, and a resumed `reconfigure` waits for an earlier apply instead of racing it (tested against the bash suite's
+fake agent; the real-guest drill is P1). The `cape` image was rebuilt and the container recreated; `win`, `lab1`,
+`lab3` and `lab5` are ready. **S1 done 2026-10-17** ([findings](m7-spikes/S1-findings.md)): `+60s` is a go, with the
+reference point and cap now in decision 5. S2 is next; wave 3 waits for it and for the answer to decision 4.
 
 ## Outcome
 
@@ -68,26 +74,48 @@ marked **Confirm** change scope or a spec and wait for the user before their wav
    deleted. It is also what an analyst needs after a typo in a 14-minute install. **If declined,** the e2e covers
    the fields, the validation errors and a 409 (cap or name taken) hand-over, and the real hand-over stays in
    `make verify-wizard`.
-5. **`+60s` is enforced by the existing runner loop, not a new timer.** The runner already polls every active
-   analysis every 2 s and re-reads it from the database after a restart, so a deadline kept in the analysis
-   record is enforced and survives a restart with no extra component (the roadmap's "reattached like the guest
-   builds" is this). Design, to be confirmed or changed by the spike (S1):
-   - **Storage:** a nullable `deadline_at` on `analysis` (Alembic migration), set when an *interactive* analysis
-     reaches `running` to the reference point plus `options.timeout`. `options` stays what the analyst asked for.
+5. **`+60s` is enforced by the existing runner loop, not a new timer. Go, per the S1 spike
+   ([findings](m7-spikes/S1-findings.md)).** The runner already polls every active analysis every 2 s and
+   re-reads it from the database after a restart, so a deadline kept in the analysis record is enforced and
+   survives a restart with no extra component (S1 restarted the backend mid-run: the analysis stayed `running`,
+   the live socket reattached after 8 s, and a finish call 45 s later ended it like any other). What S1
+   measured, and the design that follows from it:
+   - **Equivalence.** A task submitted with `timeout=1200` and ended by the finish call gives the same result as
+     one CAPE ends itself: the same 13 signatures, 12 techniques, 14 detections, score, artifact names, report,
+     pcap and status path in all four runs; event and process counts vary as much between two CAPE-ended runs
+     (4415 and 4175 events) as between a CAPE-ended and a finish-ended one.
+   - **CAPE's own timeout counts from the sample's execution in the guest, not from `started_at`.** The sample
+     starts 20.6 to 24.5 s after `started_at` (5 to 6 s after the first `logs/*.bson`). A deadline measured from
+     `started_at` would cost the analyst about 22 s of sample time, so **the reference point is the moment the
+     runner first sees the monitor started** (the same test `POST /finish` uses).
+   - **The 409 window is shorter than documented:** the finish call is accepted from 16.0 to 17.5 s after
+     `started_at` (first bson 15.3 to 19.6 s), not 25 s. A 60 s deadline is always past it, and a finish call
+     that comes early still ends the run normally, so a retry on 409 at the next poll is all the runner needs.
+   - **End latency:** the status leaves `running` 3.6 to 4.6 s after a finish call at a real deadline (11.7 to
+     14.7 s when the sample has not started yet), `done` follows in about 87 s. The countdown stops at 0 and reads
+     "ending"; it does not add the latency.
+   - **CAPE's own 1200 s limit fires at `started_at` + 1222.6 s at the earliest** (measured once at 1223.7 s; the
+     status left `running` at 1244.5 s because the guest took 16 s to shut down 45 processes).
+   Design:
+   - **Storage:** a nullable `deadline_at` on `analysis` (Alembic migration), set by the runner the first poll it
+     sees the monitor started on an *interactive* analysis, to that moment plus `options.timeout`, but never past
+     the cap below. `options` stays what the analyst asked for.
    - **Submit:** an interactive task goes to CAPE with `timeout=1200` whatever `options.timeout` says; other
      tasks are unchanged.
    - **Enforce:** when `now >= deadline_at` and the analysis is `running`, the runner calls the same finish path
-     as `POST /finish` (idempotent). While the monitor has not started the call is refused (the 409 window), so
-     the runner retries on the next poll instead of giving up.
-   - **Extend:** `POST /analyses/{id}/extend` with `{seconds}`; `409` unless `running` and interactive; the
-     deadline moves later, never beyond `started + 1200 s` minus a margin S1 measures; the answer is the
-     `AnalysisRead` with the new deadline. The live socket sends a `status` message at once so every open page
-     updates its countdown.
-   - **Read model and live status:** `deadline_at` in `AnalysisRead`; `remaining_s` is `deadline_at - now` when
-     there is a deadline, else `options.timeout - elapsed` as today.
+     as `POST /finish` (idempotent), and retries on the next poll while that is refused.
+   - **The cap:** `deadline_at <= started_at + 1200 s`, which leaves CAPE at least 22 s of margin before its own
+     timer. A 1200 s request on an interactive run therefore ends at the cap, about 17 s short of 1200 s of
+     monitored time; the Submit dialog's interactive hint says the run lasts "up to" the timeout.
+   - **Extend:** `POST /analyses/{id}/extend` with `{seconds}`; `409` unless `running`, interactive and
+     `deadline_at` already set; the deadline moves later up to the cap; the answer is the `AnalysisRead` with the
+     new deadline. The live socket sends a `status` message at once so every open page updates its countdown.
+   - **Read model and live status:** `deadline_at` in `AnalysisRead`; `remaining_s` is `deadline_at - now` once
+     there is a deadline; before the monitor is up (or for a non-interactive run) it is `options.timeout -
+     elapsed` as today.
    - **Frontend:** `+60s` beside END RUN on the LIVE tab and in the header (interactive and `running` only,
      disabled at the cap with the reason as its title); the countdown in the header and in `LiveStatusBar`
-     switches to the warning colour for the last 30 s and follows an extension.
+     switches to the warning colour for the last 30 s, follows an extension, and reads "ending" at 0.
 6. **The display adapter ships only if a spike proves it breaks nothing; the drives ship alone otherwise**
    (already the finish-line risk handling). "Breaks nothing" is a list that can fail: `make verify-guest`
    12 of 12, an analysis with capemon's events as before, the Guacamole desktop drawn and usable, the snapshot
@@ -124,7 +152,7 @@ Start from a rebuilt `cape` image with wave 1 in it. Check `df` on the guest vol
 
 | ID | Task | Model | Question and check |
 |---|---|---|---|
-| **S1** | `+60s` | Sonnet, **care** | On a real interactive run (the benign sample on a Defender-off guest): (1) submit with `timeout=1200`, let the backend, by hand through `POST /finish`, end it at 120 s, and compare with an identical run that CAPE ends at `timeout=120`: processes, per-lane event counts, files, screenshots, PCAP, report fields, the status path; (2) the 409 window: how long after CAPE says `running` the monitor starts, and what a deadline of 60 s (the minimum) does against it; (3) how long after the finish call the status leaves `running` (measured before: 11 to 18 s) and whether the countdown should read "ends at" the deadline or the deadline plus that; (4) one run left to CAPE's own 1200 s limit, to learn how close to `started + 1200` an extension may go before CAPE itself ends the run (the margin in decision 5); (5) restart the backend mid-run: is the run still ended at the deadline. Output: findings file; decision 5 amended |
+| **S1** (done) | `+60s` | Sonnet, **care** | On a real interactive run (the benign sample on a Defender-off guest): (1) submit with `timeout=1200`, let the backend, by hand through `POST /finish`, end it at 120 s, and compare with an identical run that CAPE ends at `timeout=120`: processes, per-lane event counts, files, screenshots, PCAP, report fields, the status path; (2) the 409 window: how long after CAPE says `running` the monitor starts, and what a deadline of 60 s (the minimum) does against it; (3) how long after the finish call the status leaves `running` (measured before: 11 to 18 s) and whether the countdown should read "ends at" the deadline or the deadline plus that; (4) one run left to CAPE's own 1200 s limit, to learn how close to `started + 1200` an extension may go before CAPE itself ends the run (the margin in decision 5); (5) restart the backend mid-run: is the run still ended at the deadline. Output: findings file; decision 5 amended |
 | **S2** | Anti-VM tells | Sonnet, **care** | On a throwaway **clone** of a ready guest (never the only good guest): (a) render the run-mode domain without the two cdrom `<disk>` elements and the `sata` controller kept: `Win32_CDROMDrive` empty, the snapshot taken, the revert, `verify-guest`, an analysis; (b) display adapter candidates, each judged by what `Win32_VideoController` (`Name`, `AdapterCompatibility`, `PNPDeviceID`) reports to a sample and by the break list in decision 6: the current `vga`, `bochs` (`bochs-display`), `virtio` (no driver, so Basic Display again), `qxl` (its Red Hat driver is a tell of its own), the standard VGA with a real vendor's PCI IDs set through QEMU device properties (check that they exist in the patched QEMU under `cape/build`), and any candidate that needs a driver inside the guest, with where that driver would come from (the `fetch` step's pinned, hashed downloads) and whether it loads at all. Output: a table of candidate against result, one chosen or none |
 
 ### Wave 3 (parallel, disjoint files)
@@ -156,14 +184,14 @@ Wait for and address comments on both Artifacts before wave 5 (rule 4, steps 5 a
 | **P1** | The stop-and-resume drill again | Sonnet, **care** | On a real clone: start it, stop `guest-control` (or restart the backend) while `reconfigure` is applying, resume at once, then after it settled; both end `ready` with the self-test passed. This is the drill that failed in M6 |
 | **P2** | Real `+60s` run | Haiku, driven by a script; the planner re-runs it | An interactive run through the public API: `extend` twice, the run ends at the moved deadline, the report has the same sections as a normal run, and a backend restart in the middle still ends it |
 | **P3** | The suites | planner | `make e2e` (with the wizard flow), `make verify-guest` and `make verify-wizard` on a guest built or cloned after X2; the new guest has no optical drive and the facts check holds |
-| **D2** | Close the questions in the docs | Haiku | `tartarus-v1.md` open questions 2, 3 and 10 say what was built; specs: `backend.md` (`/extend` row, the cancel route, the deadline field), `cape-integration.md` ("Extend" row, the cap, drives and display, **Sysmon is collected at the end of the run**), `data-model.md` (Sysmon is a final-phase source, no live forwarder), `gui.md` (the button and countdown), `guest-profiles.md` (the `hardware` block's new field), `overview.md` (M7 row), `finish-line.md` (status, and the roadmap's M7 list ticked), the README's `make` list if it changed, and this plan's Status filled in as M6's was |
+| **D2** | Close the questions in the docs | Haiku | `tartarus-v1.md` open questions 2, 3 and 10 say what was built; specs: `backend.md` (`/extend` row, the cancel route, the deadline field), `cape-integration.md` ("Extend" row, the cap, drives and display, **Sysmon is collected at the end of the run**), `data-model.md` (Sysmon is a final-phase source, no live forwarder), `gui.md` (the button and countdown), `guest-profiles.md` (the `hardware` block's new field), `overview.md` (M7 row), `finish-line.md` (status, and the roadmap's M7 list ticked), the "CAPE says `running` about 25 s earlier" statements in `backend/app/api/analyses.py` (docstring) and `backend.md` (S1 measured 13 to 14 s), the README's `make` list if it changed, and this plan's Status filled in as M6's was |
 
 ## Risks
 
 | Risk | Handling |
 |---|---|
-| CAPE ends an interactive run at 1200 s before the analyst's last extension would | S1 measures the margin; the cap is `started + 1200 - margin`, and the button says so when disabled |
-| A task ended through the finish call yields less than one CAPE ended itself | S1 compares the two runs first; if they differ, the deadline is not built and `+60s` is reported back to the user as impossible without a CAPE patch |
+| CAPE ends an interactive run at 1200 s before the analyst's last extension would | The cap is `started_at + 1200 s`, 22 s before CAPE's earliest measured end (S1, one 1200 s run); the button says so when disabled |
+| A task ended through the finish call yields less than one CAPE ended itself | **Measured by S1: it does not** (decision 5); the planner re-checks it in P2 |
 | The display adapter breaks capemon or the desktop | S2 runs on a throwaway clone; the drives ship alone (decision 6) |
 | Removing the drives disturbs the snapshot or the agent | The same S2 break list; decision 7 keeps old guests as they are |
 | Two spikes want the one stack | Wave 2 is sequential, S1 then S2; neither runs while a build or a clone does |
