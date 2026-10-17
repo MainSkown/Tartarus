@@ -33,6 +33,15 @@ describe('GuestHealthMenu', () => {
     expect(wrapper.find('.guest-health-menu__message').exists()).toBe(false)
   })
 
+  it('scrolls only the guest list, so the link stays in reach however many guests there are', async () => {
+    const wrapper = await mountMenu()
+    const list = wrapper.find('.guest-health-menu__list')
+    expect(list.exists()).toBe(true)
+    expect(list.text()).toContain('lab1')
+    expect(list.find('a').exists()).toBe(false)
+    expect(wrapper.find('a[href="/guest"]').element.closest('.guest-health-menu__list')).toBeNull()
+  })
+
   it('links to the Guest VM page', async () => {
     const wrapper = await mountMenu()
     expect(wrapper.find('a[href="/guest"]').text()).toContain('OPEN GUEST VM')

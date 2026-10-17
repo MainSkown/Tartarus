@@ -17,12 +17,18 @@ defineProps<{ guests: readonly Guest[] }>()
       :key="guest.name"
       class="guest-state-list__row"
     >
-      <span
-        class="guest-state-list__name text-mono"
-        :title="guest.name"
-      >{{ guest.name }}</span>
-      <StatusBadge :guest-state="guest.state" />
-      <GuestBadges :badges="guest.badges ?? []" />
+      <div class="guest-state-list__head">
+        <span
+          class="guest-state-list__name text-mono"
+          :title="guest.name"
+        >{{ guest.name }}</span>
+        <StatusBadge :guest-state="guest.state" />
+      </div>
+      <GuestBadges
+        v-if="(guest.badges ?? []).length > 0"
+        class="guest-state-list__tags"
+        :badges="guest.badges ?? []"
+      />
     </li>
   </ul>
   <TerminalEmpty
@@ -35,22 +41,35 @@ defineProps<{ guests: readonly Guest[] }>()
 .guest-state-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  align-self: stretch;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* A divider and a name-and-state line of their own keep a guest with many badges from reading as part of its neighbour. */
 .guest-state-list__row {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.guest-state-list__row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.guest-state-list__head {
+  display: flex;
   align-items: center;
-  gap: var(--spacing-xs) var(--spacing-sm);
+  justify-content: space-between;
+  gap: var(--spacing-sm);
 }
 
 .guest-state-list__name {
   min-width: 0;
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -16,7 +16,9 @@ defineProps<{ guests: readonly Guest[]; message?: string | null }>()
     >
       {{ message }}
     </p>
-    <GuestStateList :guests="guests" />
+    <div class="guest-health-menu__list">
+      <GuestStateList :guests="guests" />
+    </div>
     <q-btn
       v-close-popup
       outline
@@ -49,6 +51,14 @@ defineProps<{ guests: readonly Guest[]; message?: string | null }>()
   margin: 0;
   font-size: 0.8rem;
   overflow-wrap: anywhere;
+}
+
+/* Only the list scrolls: the title, the message and the link to the page stay where they are. */
+.guest-health-menu__list {
+  align-self: stretch;
+  min-height: 0;
+  max-height: clamp(10rem, calc(100vh - 27rem), 24rem);
+  overflow-y: auto;
 }
 
 .guest-health-menu__open {

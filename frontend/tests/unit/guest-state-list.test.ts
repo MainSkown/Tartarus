@@ -26,6 +26,20 @@ describe('GuestStateList', () => {
     expect(wrapper.find('li .q-icon').text()).toBe(guestStateMeta('ready').icon)
   })
 
+  it('keeps the name and the state on one line and the badges on their own, so a long row cannot run together', () => {
+    const wrapper = mountList([guestFixture({ badges: ['DEFENDER ON', 'DECOYS'] })])
+    const row = wrapper.find('.guest-state-list__row')
+    expect(row.find('.guest-state-list__head .guest-state-list__name').exists()).toBe(true)
+    expect(row.find('.guest-state-list__head').text()).toContain('READY')
+    expect(row.find('.guest-state-list__tags').text()).toContain('DECOYS')
+    expect(row.find('.guest-state-list__head').text()).not.toContain('DECOYS')
+  })
+
+  it('has no badge block for a guest without badges', () => {
+    const wrapper = mountList([guestFixture({ badges: [] })])
+    expect(wrapper.find('.guest-state-list__tags').exists()).toBe(false)
+  })
+
   it('says so when there is no guest', () => {
     const wrapper = mountList([])
     expect(wrapper.text()).toContain('no guests')
