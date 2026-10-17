@@ -192,6 +192,12 @@ export function actionRefusal(status: number | undefined, error: unknown): strin
   return errorMessage(error)
 }
 
+export const cancelConfirmation: ConfirmOptions = {
+  title: 'Cancel this build?',
+  message: 'The running step is stopped. The guest is kept as failed and can be resumed, restarted or deleted.',
+  confirmLabel: 'CANCEL BUILD',
+}
+
 export function restartConfirmation(build: Pick<BuildView, 'guest' | 'kind'>): ConfirmOptions {
   return {
     title: `Restart the ${build.kind} of ${build.guest}`,

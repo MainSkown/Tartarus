@@ -1,9 +1,11 @@
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
-import { guestsActiveBuild, guestsContinueBuild, guestsReadBuild, guestsResumeBuild, guestsRestartBuild, jobsRead } from '@/api'
+import { Notify } from 'quasar'
+import { guestsActiveBuild, guestsCancelBuild, guestsContinueBuild, guestsReadBuild, guestsResumeBuild, guestsRestartBuild, jobsRead } from '@/api'
 import type { BuildStarted, BuildView, Guest, JobProgress } from '@/api'
 import { confirmDestructive } from '@/services/confirm'
 import {
   actionRefusal,
+  cancelConfirmation,
   phaseOf,
   progressShown,
   restartConfirmation,
@@ -29,7 +31,7 @@ const READ_QUIET = quietOn(404, 500, 502, 503, 504)
 const ACTION_QUIET = quietOn(409, 500, 502, 503, 504)
 const POLLED_PHASES: readonly BuildPhase[] = ['loading', 'unreachable', 'running', 'paused', 'selftest']
 
-export type BuildAction = 'resume' | 'restart' | 'continue'
+export type BuildAction = 'resume' | 'restart' | 'continue' | 'cancel'
 
 export interface GuestBuild {
   build: Ref<BuildView | undefined>
@@ -42,14 +44,18 @@ export interface GuestBuild {
   /** The last read failed while an earlier answer is still on screen. */
   connectionLost: Ref<boolean>
   hasDesktop: ComputedRef<boolean>
+  /** Offered while the build runs or is paused; the control service refuses it otherwise. */
+  cancellable: ComputedRef<boolean>
   busy: Ref<BuildAction | undefined>
   actionError: Ref<string | undefined>
   resume: () => Promise<void>
   restart: () => Promise<void>
   continueBuild: () => Promise<void>
+  cancel: () => Promise<void>
 }
 
-type Started = { data?: BuildStarted; error?: unknown; response?: Response }
+type Outcome<T> = { data?: T; error?: unknown; response?: Response }
+type Refused = (message: string) => void
 
 /**
  * What the build page shows and does: the build read every two seconds while it runs, the job
@@ -77,7 +83,8 @@ export function useGuestBuild(buildId: () => string): GuestBuild {
   const progress = computed(() => progressShown(phase.value, build.value, job.value))
   const verdict = computed(() => selfTestVerdictOf(job.value, guest.value))
   const failureMessage = computed(() => selfTestFailureMessage(job.value, verdict.value))
-  const hasDesktop = computed(() => build.value?.desktop === true && (phase.value === 'running' || phase.value === 'paused'))
+  const underway = computed(() => phase.value === 'running' || phase.value === 'paused')
+  const hasDesktop = computed(() => build.value?.desktop === true && underway.value)
 
   async function readBuild(): Promise<void> {
     const id = buildId()
@@ -158,16 +165,23 @@ export function useGuestBuild(buildId: () => string): GuestBuild {
     kick()
   }
 
-  async function act(action: BuildAction, call: () => Promise<Started>): Promise<void> {
+  async function act<T>(
+    action: BuildAction,
+    call: () => Promise<Outcome<T>>,
+    accepted: (data: T | undefined) => void,
+    refused: Refused = (message) => (actionError.value = message),
+  ): Promise<void> {
     if (busy.value) return
     busy.value = action
     actionError.value = undefined
     const { data, error, response } = await call()
     busy.value = undefined
-    if (!data || error) {
-      actionError.value = actionRefusal(response?.status, error)
-      return
-    }
+    if (error) refused(actionRefusal(response?.status, error))
+    else accepted(data)
+  }
+
+  function followJob(data: BuildStarted | undefined): void {
+    if (!data) return
     jobId = data.job_id
     job.value = undefined
     kick()
@@ -177,7 +191,14 @@ export function useGuestBuild(buildId: () => string): GuestBuild {
 
   async function restart(): Promise<void> {
     if (!build.value || busy.value) return
-    if (await confirmDestructive(restartConfirmation(build.value))) await act('restart', () => guestsRestartBuild(path()))
+    if (await confirmDestructive(restartConfirmation(build.value))) await act('restart', () => guestsRestartBuild(path()), followJob)
+  }
+
+  // The page shows no inline place for this refusal while the build runs, so it is a toast like the END RUN one.
+  async function cancel(): Promise<void> {
+    if (!underway.value || busy.value) return
+    if (!(await confirmDestructive(cancelConfirmation))) return
+    await act('cancel', () => guestsCancelBuild(path()), kick, (message) => Notify.create({ type: 'tt-warning', message }))
   }
 
   watch(buildId, reset, { immediate: true })
@@ -201,10 +222,12 @@ export function useGuestBuild(buildId: () => string): GuestBuild {
     failureMessage,
     connectionLost,
     hasDesktop,
+    cancellable: underway,
     busy,
     actionError,
-    resume: () => act('resume', () => guestsResumeBuild(path())),
+    resume: () => act('resume', () => guestsResumeBuild(path()), followJob),
     restart,
-    continueBuild: () => act('continue', () => guestsContinueBuild(path())),
+    continueBuild: () => act('continue', () => guestsContinueBuild(path()), followJob),
+    cancel,
   }
 }

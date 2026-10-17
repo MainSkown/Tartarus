@@ -89,6 +89,8 @@ class GuestControl(Protocol):
 
     async def restart(self, build_id: str) -> None: ...
 
+    async def cancel_build(self, build_id: str) -> None: ...
+
     async def continue_(self, build_id: str) -> None: ...
 
     async def complete(
@@ -186,6 +188,9 @@ class HttpGuestControl:
 
     async def restart(self, build_id: str) -> None:
         await self._send("restart", "POST", f"/builds/{build_id}/restart")
+
+    async def cancel_build(self, build_id: str) -> None:
+        await self._send("cancel_build", "POST", f"/builds/{build_id}/cancel")
 
     async def continue_(self, build_id: str) -> None:
         await self._send("continue", "POST", f"/builds/{build_id}/continue")

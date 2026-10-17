@@ -53,7 +53,8 @@ def test_the_guest_build_endpoints_are_served_under_api_and_answer_202_to_a_star
 
     starts = ["/api/guests/build", "/api/guests/{name}/clone"]
     starts += [
-        f"/api/guests/builds/{{build_id}}/{action}" for action in ("resume", "restart", "continue")
+        f"/api/guests/builds/{{build_id}}/{action}"
+        for action in ("resume", "restart", "continue", "cancel")
     ]
     for path in starts:
         assert set(paths[path]) == {"post"}

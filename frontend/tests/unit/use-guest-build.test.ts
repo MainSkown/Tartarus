@@ -1,5 +1,6 @@
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { Notify } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref, type EffectScope } from 'vue'
 import type { BuildStep, JobProgress } from '@/api'
@@ -14,6 +15,7 @@ const api = vi.hoisted(() => ({
   guestsResumeBuild: vi.fn(),
   guestsRestartBuild: vi.fn(),
   guestsContinueBuild: vi.fn(),
+  guestsCancelBuild: vi.fn(),
   jobsRead: vi.fn(),
   systemHealth: vi.fn(),
 }))
@@ -50,6 +52,8 @@ function job(overrides: Partial<JobProgress> = {}): JobProgress {
 }
 const jobRead = (overrides: Partial<JobProgress> = {}) => succeeded({ ...job(overrides), log: '', created_at: '', updated_at: '' })
 const accepted = (jobId = 9) => ({ data: { job_id: jobId, build_id: 'b1', guest: 'lab4' }, error: undefined, response: { status: 202 } })
+// The cancel route answers 202 with no body and starts no job.
+const cancelAccepted = { data: undefined, error: undefined, response: { status: 202 } }
 
 let scope: EffectScope
 const buildId = ref('b1')
@@ -73,6 +77,7 @@ beforeEach(() => {
   api.guestsResumeBuild.mockReset().mockResolvedValue(accepted())
   api.guestsRestartBuild.mockReset().mockResolvedValue(accepted())
   api.guestsContinueBuild.mockReset().mockResolvedValue(accepted())
+  api.guestsCancelBuild.mockReset().mockResolvedValue(cancelAccepted)
   api.jobsRead.mockReset().mockResolvedValue(jobRead())
   confirmDestructive.mockReset().mockResolvedValue(true)
 })
@@ -392,5 +397,83 @@ describe('useGuestBuild actions', () => {
     await flushPromises()
     expect(api.jobsRead).toHaveBeenCalledWith(expect.objectContaining({ path: { job_id: 9 } }))
     expect(state.phase.value).toBe('selftest')
+  })
+})
+
+describe('useGuestBuild cancelling', () => {
+  beforeEach(() => {
+    Notify.create = vi.fn()
+  })
+
+  it.each([
+    { name: 'running', view: running, offered: true },
+    { name: 'paused', view: paused, offered: true },
+    { name: 'failed', view: failedBuild, offered: false },
+    { name: 'succeeded', view: succeededBuild, offered: false },
+  ])('is offered only while the build runs or is paused: $name', async ({ view, offered }) => {
+    api.guestsReadBuild.mockResolvedValue(succeeded(view))
+    const state = start()
+    await flushPromises()
+    expect(state.cancellable.value).toBe(offered)
+  })
+
+  it('asks before it cancels, and sends nothing when the analyst declines', async () => {
+    const state = start()
+    await flushPromises()
+    confirmDestructive.mockResolvedValue(false)
+    await state.cancel()
+    expect(confirmDestructive).toHaveBeenCalledWith({
+      title: 'Cancel this build?',
+      message: 'The running step is stopped. The guest is kept as failed and can be resumed, restarted or deleted.',
+      confirmLabel: 'CANCEL BUILD',
+    })
+    expect(api.guestsCancelBuild).not.toHaveBeenCalled()
+  })
+
+  it('sends the cancel request once when confirmed, and then reads the build again', async () => {
+    const state = start()
+    await flushPromises()
+    api.guestsReadBuild.mockResolvedValue(succeeded(failedBuild))
+    await state.cancel()
+    await flushPromises()
+    expect(api.guestsCancelBuild).toHaveBeenCalledTimes(1)
+    expect(api.guestsCancelBuild).toHaveBeenCalledWith(expect.objectContaining({ path: { build_id: 'b1' } }))
+    expect(state.phase.value).toBe('failed')
+    expect(api.jobsRead).not.toHaveBeenCalled()
+  })
+
+  it('is busy while the request is out, and ignores a second press', async () => {
+    const state = start()
+    await flushPromises()
+    let release: (value: unknown) => void = () => undefined
+    api.guestsCancelBuild.mockReturnValue(new Promise((resolve) => (release = resolve)))
+    const first = state.cancel()
+    await flushPromises()
+    expect(state.busy.value).toBe('cancel')
+    await state.cancel()
+    expect(confirmDestructive).toHaveBeenCalledTimes(1)
+    release(cancelAccepted)
+    await first
+    expect(state.busy.value).toBeUndefined()
+    expect(api.guestsCancelBuild).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the 409 reason as a warning toast and leaves the running build as it is', async () => {
+    api.guestsCancelBuild.mockResolvedValue(failed('the build is not running', 409))
+    const state = start()
+    await flushPromises()
+    await state.cancel()
+    expect(Notify.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'tt-warning', message: 'the build is not running' }))
+    expect(state.actionError.value).toBeUndefined()
+    expect(state.phase.value).toBe('running')
+    expect(state.busy.value).toBeUndefined()
+  })
+
+  it('says the control service is not reachable (502) in a warning toast', async () => {
+    api.guestsCancelBuild.mockResolvedValue(failed('guest control: unreachable (connection refused)', 502))
+    const state = start()
+    await flushPromises()
+    await state.cancel()
+    expect(Notify.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'tt-warning', message: expect.stringContaining('not reachable') }))
   })
 })

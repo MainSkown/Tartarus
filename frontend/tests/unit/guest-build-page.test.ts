@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   guestsResumeBuild: vi.fn(),
   guestsRestartBuild: vi.fn(),
   guestsContinueBuild: vi.fn(),
+  guestsCancelBuild: vi.fn(),
   jobsRead: vi.fn(),
   systemHealth: vi.fn(),
 }))
@@ -101,6 +102,7 @@ beforeEach(() => {
   api.guestsResumeBuild.mockReset().mockResolvedValue({ data: { job_id: 9, build_id: 'b1', guest: 'lab4' }, error: undefined })
   api.guestsRestartBuild.mockReset().mockResolvedValue({ data: { job_id: 9, build_id: 'b1', guest: 'lab4' }, error: undefined })
   api.guestsContinueBuild.mockReset().mockResolvedValue({ data: { job_id: 9, build_id: 'b1', guest: 'lab4' }, error: undefined })
+  api.guestsCancelBuild.mockReset().mockResolvedValue({ data: undefined, error: undefined, response: { status: 202 } })
   api.jobsRead.mockReset().mockResolvedValue(job())
   confirmDestructive.mockReset().mockResolvedValue(true)
 })
@@ -338,5 +340,72 @@ describe('GuestBuildPage', () => {
       expect(wrapper.find('[data-build="header"]').exists()).toBe(true)
       expect(wrapper.find('[data-build="connection-note"]').text()).toContain('trying again')
     })
+  })
+})
+
+describe('GuestBuildPage cancelling', () => {
+  const runningView = () => running({ status: 'running' })
+  const pausedView = () => running({ status: 'paused', desktop: true, pause: { instructions: 'Switch the toggle off, then continue.' }, steps: [step('tamper-off', 'paused')] })
+  const failedView = () => running({ status: 'failed', message: 'the build was cancelled' })
+
+  beforeEach(() => {
+    Notify.create = vi.fn()
+  })
+
+  it('offers [CANCEL BUILD] while the build runs', async () => {
+    const wrapper = await show(succeeded(runningView()))
+    expect(button(wrapper, '[CANCEL BUILD]').exists()).toBe(true)
+  })
+
+  it('offers [CANCEL BUILD] while the build is paused, beside its CONTINUE', async () => {
+    const wrapper = await show(succeeded(pausedView()))
+    expect(button(wrapper, '[CANCEL BUILD]').exists()).toBe(true)
+    expect(button(wrapper, '[CONTINUE]').exists()).toBe(true)
+  })
+
+  it('does not offer it once the build failed or the self-test follows', async () => {
+    const failedPage = await show(succeeded(failedView()))
+    expect(buttons(failedPage).join(' ')).not.toContain('CANCEL BUILD')
+    mounted.splice(0).forEach((wrapper) => wrapper.unmount())
+    const succeededPage = await show(succeeded(running({ status: 'succeeded', percent: 100 })))
+    expect(buttons(succeededPage).join(' ')).not.toContain('CANCEL BUILD')
+  })
+
+  it('cancels once confirmed and then shows the failed build with its RESUME and RESTART', async () => {
+    const wrapper = await show(succeeded(runningView()))
+    api.guestsReadBuild.mockResolvedValue(succeeded(failedView()))
+    await button(wrapper, '[CANCEL BUILD]').trigger('click')
+    await flushPromises()
+    expect(api.guestsCancelBuild).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('.status-badge').text()).toContain('FAILED')
+    expect(wrapper.find('.build-notice--red').text()).toContain('the build was cancelled')
+    expect(buttons(wrapper).join(' ')).toContain('[RESUME]')
+  })
+
+  it('shows the button busy as [CANCELLING...] while the request is out', async () => {
+    const wrapper = await show(succeeded(runningView()))
+    let release: (value: unknown) => void = () => undefined
+    api.guestsCancelBuild.mockReturnValue(new Promise((resolve) => (release = resolve)))
+    await button(wrapper, '[CANCEL BUILD]').trigger('click')
+    await flushPromises()
+    expect(button(wrapper, '[CANCELLING...]').attributes('disabled')).toBeDefined()
+    release({ data: undefined, error: undefined, response: { status: 202 } })
+    await flushPromises()
+  })
+
+  it('does not send anything when the analyst declines the confirmation', async () => {
+    const wrapper = await show(succeeded(runningView()))
+    confirmDestructive.mockResolvedValue(false)
+    await button(wrapper, '[CANCEL BUILD]').trigger('click')
+    await flushPromises()
+    expect(api.guestsCancelBuild).not.toHaveBeenCalled()
+  })
+
+  it('shows a 409 refusal as a warning toast', async () => {
+    const wrapper = await show(succeeded(runningView()))
+    api.guestsCancelBuild.mockResolvedValue(failed('the build is not running', 409))
+    await button(wrapper, '[CANCEL BUILD]').trigger('click')
+    await flushPromises()
+    expect(Notify.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'tt-warning', message: 'the build is not running' }))
   })
 })

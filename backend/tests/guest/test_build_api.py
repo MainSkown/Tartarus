@@ -297,6 +297,64 @@ async def test_a_build_action_the_control_service_refuses_passes_its_answer_on_a
     assert await jobs_of(harness) == []
 
 
+# --- POST /guests/builds/{build_id}/cancel --------------------------------------------------------
+
+
+async def test_cancelling_a_build_is_asked_of_the_control_service_and_starts_no_job(
+    harness: Harness,
+) -> None:
+    started(harness)
+
+    response = await harness.client.post(f"/api/guests/builds/{BUILD_ID}/cancel")
+
+    assert response.status_code == 202
+    assert harness.control.calls_named("cancel") == [BUILD_ID]
+    assert await jobs_of(harness) == []
+
+
+async def test_cancelling_leaves_the_job_that_already_follows_the_build_in_place(
+    harness: Harness,
+) -> None:
+    started(harness)
+    first = await harness.client.post("/api/guests/build", json=BUILD_BODY)
+
+    await harness.client.post(f"/api/guests/builds/{BUILD_ID}/cancel")
+
+    [job] = await jobs_of(harness)
+    assert job.id == first.json()["job_id"]
+
+
+async def test_cancelling_is_refused_with_409_while_an_analysis_needs_a_guest(
+    harness: Harness,
+) -> None:
+    await harness.set_analysis_status(AnalysisStatus.RUNNING)
+
+    response = await harness.client.post(f"/api/guests/builds/{BUILD_ID}/cancel")
+
+    assert response.status_code == 409
+    assert harness.control.calls == []
+
+
+@pytest.mark.parametrize(("status", "code"), [(404, "not_found"), (409, "conflict")])
+async def test_a_cancel_the_control_service_refuses_passes_its_answer_on(
+    harness: Harness, status: int, code: str
+) -> None:
+    harness.control.error_by_call["cancel"] = GuestControlRejected("cancel", status, "not now")
+
+    response = await harness.client.post(f"/api/guests/builds/{BUILD_ID}/cancel")
+
+    assert (response.status_code, error_of(response)["code"]) == (status, code)
+    assert await jobs_of(harness) == []
+
+
+async def test_cancelling_while_the_control_service_is_down_is_a_502(harness: Harness) -> None:
+    harness.use(FakeGuestControl(error=GuestControlUnreachable("cancel", "ReadTimeout")))
+
+    response = await harness.client.post(f"/api/guests/builds/{BUILD_ID}/cancel")
+
+    assert response.status_code == 502
+
+
 # --- routing --------------------------------------------------------------------------------------
 
 

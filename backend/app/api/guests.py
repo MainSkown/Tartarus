@@ -132,6 +132,22 @@ async def restart_build(
     return await _follow(control, tracking, build_id)
 
 
+@router.post("/builds/{build_id}/cancel", status_code=202)
+async def cancel_build(
+    build_id: str,
+    control: GuestControlDependency,
+    session: SessionDependency,
+) -> Response:
+    """Cancels a running or paused build or clone: the running step is stopped and the build ends
+    failed ('the build was cancelled'), after which it can be resumed, restarted, or its guest
+    deleted. `409` while an analysis is queued, starting or running, or when the build is not
+    running or paused; `404` for an unknown build.
+    """
+    await require_no_analysis_needing_a_guest(session, "built")
+    await control.cancel_build(build_id)
+    return Response(status_code=202)
+
+
 @router.post("/builds/{build_id}/continue", status_code=202)
 async def continue_build(
     build_id: str,

@@ -364,4 +364,5 @@ def test_the_routes_have_the_operation_ids_the_generated_client_is_named_after(
         ("/api/guests/builds/{build_id}/resume", "post"): "guests_resume_build",
         ("/api/guests/builds/{build_id}/restart", "post"): "guests_restart_build",
         ("/api/guests/builds/{build_id}/continue", "post"): "guests_continue_build",
+        ("/api/guests/builds/{build_id}/cancel", "post"): "guests_cancel_build",
     }

@@ -111,6 +111,9 @@ class FakeGuestControl:
     async def restart(self, build_id: str) -> None:
         self._record("restart", build_id)
 
+    async def cancel_build(self, build_id: str) -> None:
+        self._record("cancel", build_id)
+
     async def continue_(self, build_id: str) -> None:
         self._record("continue", build_id)
 

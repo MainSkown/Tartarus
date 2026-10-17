@@ -37,6 +37,22 @@ const busy = computed(() => state.busy.value !== undefined)
           :back-link="!verdictShown"
         />
 
+        <div
+          v-if="state.cancellable.value"
+          class="build-page__cancel"
+        >
+          <q-btn
+            outline
+            square
+            no-caps
+            :label="state.busy.value === 'cancel' ? '[CANCELLING...]' : '[CANCEL BUILD]'"
+            class="build-page__cancel-button text-mono"
+            data-build="cancel"
+            :disable="busy"
+            @click="state.cancel"
+          />
+        </div>
+
         <p
           v-if="state.connectionLost.value"
           class="build-page__note text-mono"
@@ -199,8 +215,14 @@ const busy = computed(() => state.busy.value !== undefined)
   color: var(--blue-primary);
 }
 
-.build-page__restart {
+.build-page__restart,
+.build-page__cancel-button {
   color: var(--status-critical);
+}
+
+.build-page__cancel {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .build-page__grid {

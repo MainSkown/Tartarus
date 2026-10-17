@@ -170,6 +170,14 @@ async def test_resume_restart_and_continue_post_to_the_builds_routes(action: str
     assert control.only_request.method == "POST"
 
 
+async def test_cancel_build_posts_to_the_builds_cancel_route() -> None:
+    control = serving("POST", "/builds/b1/cancel", json_response({"id": "b1"}, status_code=202))
+
+    assert await control_with(control).cancel_build("b1") is None
+
+    assert control.only_request.method == "POST"
+
+
 async def test_complete_posts_the_verdict_and_the_selftest_record() -> None:
     control = serving("POST", "/builds/b1/complete", httpx.Response(204))
 

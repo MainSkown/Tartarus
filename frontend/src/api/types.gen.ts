@@ -3191,6 +3191,34 @@ export type GuestsRestartBuildResponses = {
 
 export type GuestsRestartBuildResponse = GuestsRestartBuildResponses[keyof GuestsRestartBuildResponses];
 
+export type GuestsCancelBuildData = {
+    body?: never;
+    path: {
+        /**
+         * Build Id
+         */
+        build_id: string;
+    };
+    query?: never;
+    url: '/api/guests/builds/{build_id}/cancel';
+};
+
+export type GuestsCancelBuildErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsCancelBuildError = GuestsCancelBuildErrors[keyof GuestsCancelBuildErrors];
+
+export type GuestsCancelBuildResponses = {
+    /**
+     * Successful Response
+     */
+    202: unknown;
+};
+
 export type GuestsContinueBuildData = {
     body?: never;
     path: {
