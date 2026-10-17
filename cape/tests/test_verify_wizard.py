@@ -113,3 +113,27 @@ def test_the_report_line_format_matches_the_other_verify_scripts():
     module = load()
     assert module.format_result(module.Result("x", True, "fine")).startswith("[ OK ] ")
     assert module.format_result(module.Result("x", False, "bad")).startswith("[FAIL] ")
+
+
+def test_a_guest_that_carries_giveaways_is_not_chosen_as_the_source():
+    answers = happy_answers()
+    adopted = {"name": "win", "state": "ready", "badges": [], "giveaways": ["account Analyst"]}
+    answers[("GET", "/guests")][0] = (200, [adopted, READY])
+    api = FakeApi(answers)
+    results = run(api)
+    assert failed(results) == [], [(r.name, r.message) for r in failed(results)]
+    assert ("POST", "/guests/lab1/clone") in api.calls
+    assert ("POST", "/guests/win/clone") not in api.calls
+
+
+def test_a_named_source_is_used_even_when_it_carries_giveaways():
+    answers = happy_answers()
+    adopted = {"name": "win", "state": "ready", "badges": [], "giveaways": ["account Analyst"]}
+    answers[("GET", "/guests")][0] = (200, [adopted, READY])
+    answers[("POST", "/guests/win/clone")] = [
+        (202, {"job_id": 7, "build_id": "b1", "guest": "vw-test"})
+    ]
+    api = FakeApi(answers)
+    module = load()
+    module.verify(api, source="win", name="vw-test", sample=b"MZ", sleep=lambda _s: None)
+    assert ("POST", "/guests/win/clone") in api.calls

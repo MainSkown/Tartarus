@@ -147,7 +147,11 @@ def verify(
 
     status, guests = api.request("GET", "/guests")
     ready = [g for g in guests if g.get("state") == "ready"] if status == HTTPStatus.OK else []
-    chosen = next((g for g in ready if source in (None, g["name"])), None)
+    # An adopted guest carries giveaways that fail its clone's self-test on purpose.
+    chosen = next(
+        (g for g in ready if g["name"] == source or (source is None and not g.get("giveaways"))),
+        None,
+    )
     if not check("a ready guest to clone", chosen is not None, f"{len(ready)} ready"):
         return results
     defender_on = "DEFENDER ON" in (chosen.get("badges") or [])
