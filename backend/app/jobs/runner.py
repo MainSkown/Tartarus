@@ -25,6 +25,11 @@ type ProgressReporter = Callable[[str, int], None]
 type JobResult = dict[str, Any]
 
 
+class ExpectedJobError(Exception):
+    """A failure that is an outcome of the job, not a bug: the job ends FAILED with its message
+    and the runner logs it without a traceback."""
+
+
 def _ignore(*_: object) -> None:
     pass
 
@@ -223,7 +228,10 @@ class JobRunner:
             await self._end(job_id, JobStatus.INTERRUPTED, {})
             raise
         except Exception as error:
-            logger.exception("Job %s (%s) failed", job_id, submission.job_type)
+            if isinstance(error, ExpectedJobError):
+                logger.info("Job %s (%s) ended: %s", job_id, submission.job_type, error)
+            else:
+                logger.exception("Job %s (%s) failed", job_id, submission.job_type)
             relay.close()
             await relay_task
             reason = str(error) or type(error).__name__

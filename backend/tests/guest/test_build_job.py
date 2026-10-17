@@ -1,11 +1,13 @@
 import asyncio
 import dataclasses
-from collections.abc import Awaitable, Callable
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from app.db.models.job import JobStatus, JobType
 from app.guest.build_job import (
     BUILD_SHARE_PERCENT,
     LOG_WINDOW,
@@ -17,7 +19,7 @@ from app.guest.errors import GuestControlRejected, GuestControlUnreachable
 from app.guest.selftest import NoSelfTest, SelfTestVerdict
 from app.jobs.runner import JobContext, JobRunner, ProgressReporter
 from tests.guest.fakes import BUILD_ID, FakeGuestControl, Poll, a_build
-from tests.guest.harness import Harness
+from tests.guest.harness import Harness, wait_until_ended
 
 type Event = tuple[Any, ...]
 
@@ -320,6 +322,37 @@ async def test_a_refusal_that_is_not_an_outage_fails_the_job_at_once(rig: Rig) -
         await rig.run()
 
     assert rig.control.polled == 1
+
+
+@pytest.fixture
+async def started_runner(harness: Harness, tmp_path: Path) -> AsyncIterator[JobRunner]:
+    runner = JobRunner(harness.factory, tmp_path)
+    await runner.start()
+    yield runner
+    await runner.stop()
+
+
+async def test_a_build_removed_after_the_job_read_it_ends_the_job_failed_without_a_traceback(
+    harness: Harness,
+    started_runner: JobRunner,
+    rig: Rig,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    rig.control.polls = [
+        Poll(a_build("running", percent=10, message="install")),
+        Poll(GuestControlRejected("build", 404, "no build called b2f48f9dcd08a")),
+    ]
+    rig.tracking = BuildTracking(started_runner)
+    started_runner.register(JobType.GUEST_BUILD, rig.handler(poll_interval_s=0.001))
+    with caplog.at_level(logging.INFO):
+        tracked = await rig.tracking.track("lab1", BUILD_ID, "build")
+        job = await wait_until_ended(harness)
+
+    assert job.id == tracked.job_id
+    assert job.status is JobStatus.FAILED
+    assert job.result == {"error": "the build was removed before it finished"}
+    assert rig.tracking.active() is None
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
 
 
 # --- cancellation and the registry ------------------------------------------------------------

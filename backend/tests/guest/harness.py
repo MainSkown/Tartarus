@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.dependencies import get_guest_control
@@ -13,7 +14,9 @@ from app.api.guests import router as guests_router
 from app.api.operation_ids import generate_operation_id
 from app.db import analysis_repository as repository
 from app.db.base import Base
+from app.db.models import Job
 from app.db.models.analysis import AnalysisStatus
+from app.db.models.job import JobStatus
 from app.errors import install_error_handlers
 from app.guest.build_job import BuildTracking
 from app.guest.http_errors import install_guest_control_error_handler
@@ -71,3 +74,19 @@ async def harness(
     async with make_client(app) as client:
         yield Harness(client, app, factory, control, tracking)
     await engine.dispose()
+
+
+async def jobs_of(harness: Harness) -> list[Job]:
+    async with harness.factory() as session:
+        return list(await session.scalars(select(Job)))
+
+
+async def wait_until_ended(harness: Harness) -> Job:
+    async def poll() -> Job:
+        while True:
+            [job] = await jobs_of(harness)
+            if job.status in (JobStatus.DONE, JobStatus.FAILED):
+                return job
+            await asyncio.sleep(0.005)
+
+    return await asyncio.wait_for(poll(), 5.0)

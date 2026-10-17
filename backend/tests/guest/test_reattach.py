@@ -1,19 +1,16 @@
-import asyncio
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
 
-from app.db.models import Job
 from app.db.models.job import JobStatus, JobType
 from app.guest.build_job import BuildTracking, guest_build_handler, reattach_guest_builds
 from app.guest.errors import GuestControlUnreachable
 from app.guest.schemas import Guest
 from app.jobs.runner import JobRunner
 from tests.guest.fakes import FakeGuestControl, Poll, a_build
-from tests.guest.harness import Harness
+from tests.guest.harness import Harness, jobs_of, wait_until_ended
 
 
 @pytest.fixture
@@ -22,11 +19,6 @@ async def runner(harness: Harness, tmp_path: Path) -> AsyncIterator[JobRunner]:
     await job_runner.start()
     yield job_runner
     await job_runner.stop()
-
-
-async def jobs_of(harness: Harness) -> list[Job]:
-    async with harness.factory() as session:
-        return list(await session.scalars(select(Job)))
 
 
 @pytest.fixture
@@ -144,14 +136,3 @@ async def test_a_reattached_build_is_followed_to_the_end_by_the_registered_handl
     assert job.status is JobStatus.DONE
     assert job.result == {"guest": "lab1", "state": "testing", "selftest": "not run"}
     assert tracking.active() is None
-
-
-async def wait_until_ended(harness: Harness) -> Job:
-    async def poll() -> Job:
-        while True:
-            [job] = await jobs_of(harness)
-            if job.status in (JobStatus.DONE, JobStatus.FAILED):
-                return job
-            await asyncio.sleep(0.005)
-
-    return await asyncio.wait_for(poll(), 5.0)

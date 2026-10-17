@@ -16,11 +16,11 @@ from pydantic import BaseModel
 
 from app.db.models.job import JobType
 from app.guest.client import GuestControl
-from app.guest.errors import GuestControlError, GuestControlUnreachable
+from app.guest.errors import GuestControlError, GuestControlRejected, GuestControlUnreachable
 from app.guest.log_tail import lines_after
 from app.guest.schemas import BuildStatus
 from app.guest.selftest import NoSelfTest, SelfTestRunner, SelfTestVerdict
-from app.jobs.runner import AsyncJobHandler, JobContext, JobResult, JobRunner
+from app.jobs.runner import AsyncJobHandler, ExpectedJobError, JobContext, JobResult, JobRunner
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,8 @@ LOG_WINDOW = 300
 BUILD_SHARE_PERCENT = 90
 SELFTEST_END_PERCENT = 99
 DETAILS_LIMIT = 500
+NOT_FOUND = 404
+BUILD_REMOVED_MESSAGE = "the build was removed before it finished"
 
 
 class GuestBuildError(Exception):
@@ -132,10 +134,12 @@ class _BuildFollower:
         self._last_progress: tuple[str, int] | None = None
         self._paused_with: str | None = None
         self._outage_began: float | None = None
+        self._read_once = False
 
     async def follow(self) -> BuildStatus:
         while True:
-            status = await self._ask(lambda: self._control.build(self._params.build_id))
+            status = await self._ask_build(lambda: self._control.build(self._params.build_id))
+            self._read_once = True
             await self._relay(status)
             if status.status == "failed":
                 raise GuestBuildError(_failure_of(status))
@@ -166,7 +170,7 @@ class _BuildFollower:
 
     async def _relay_log(self) -> None:
         build_id = self._params.build_id
-        fetched = await self._ask(lambda: self._control.build_log(build_id, LOG_WINDOW))
+        fetched = await self._ask_build(lambda: self._control.build_log(build_id, LOG_WINDOW))
         if new_lines := lines_after(self._seen_log, fetched):
             self._context.append_log("\n".join(new_lines))
         self._seen_log = fetched
@@ -191,6 +195,15 @@ class _BuildFollower:
         share = SELFTEST_END_PERCENT - BUILD_SHARE_PERCENT
         clamped = max(0, min(100, percent))
         self._context.report_progress(step, BUILD_SHARE_PERCENT + share * clamped // 100)
+
+    async def _ask_build[T](self, call: Callable[[], Awaitable[T]]) -> T:
+        """A build that was read and is then answered 404 has been deleted, which ends the job."""
+        try:
+            return await self._ask(call)
+        except GuestControlRejected as error:
+            if error.status == NOT_FOUND and self._read_once:
+                raise ExpectedJobError(BUILD_REMOVED_MESSAGE) from error
+            raise
 
     async def _ask[T](self, call: Callable[[], Awaitable[T]]) -> T:
         """Retries `call` while the control service does not answer, for up to the grace period."""
