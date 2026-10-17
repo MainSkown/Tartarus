@@ -149,9 +149,14 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 2. **Stop and extend a running task. Decided 2026-10-17: keep `+60s`, for interactive runs only.** Stop works
    (END RUN). CAPE cannot extend a running task, so Tartarus enforces the deadline itself: the task is submitted
    with CAPE's maximum timeout (1200 s) as a safety net, the backend ends the run at the analyst's deadline through
-   the finish call, and `+60s` moves that deadline later, up to 1200 s. Built in M7, after a spike on a real run.
+   the finish call, and `+60s` moves that deadline later, up to 1200 s. Built in M7. The deadline is the oldest
+   monitor log's mtime plus the timeout, capped at `started_at` + 1200 s. The S1 spike
+   ([findings](../plans/m7-spikes/S1-findings.md)) found the finish call accepted from 16.0 to 17.5 s after
+   `started_at` (about 14 s after CAPE says `running`), a run ended that way as complete as one CAPE ends itself,
+   and CAPE's own timer firing no earlier than `started_at` + 1222 s.
 3. **Sysmon timing. Decided 2026-10-17: final phase only.** CAPE collects the Sysmon EVTX at the end of the run;
-   capemon gives the live events. No live forwarder.
+   capemon gives the live events. No live forwarder. The specs say so ([CAPE integration](../specs/cape-integration.md),
+   [data model](../specs/data-model.md)); the Sysmon normaliser itself is M8.
 4. **Default Sigma ruleset (decided 2026-10-14: a curated SigmaHQ subset, see [M4](../plans/m4-sigma.md)).**
 5. **Defender: how the choice is offered. Resolved in M6, except one item.** It is a per-guest option,
    on by default, and there are several guests, so the analyst picks "Defender on" or "Defender off" at
@@ -168,9 +173,10 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 7. **App icon. The user supplies the logo later;** wiring it in (favicon, PWA manifest, header) is part of the release (M11).
 8. **PDF report styling. Closed:** the print variant (white background, blue accents) shipped in M5.
 9. **Maximum sample upload size. Decided: 512 MB** (nginx `client_max_body_size` on `/api/`).
-10. **Remaining sandbox-detection tells (from M0b). Decided 2026-10-17: fix both** (the two empty optical
-    drives and the "Microsoft Basic Display Adapter"), after a real-guest spike in M7 that checks the display
-    adapter against capemon, the Guacamole desktop and the snapshot.
+10. **Remaining sandbox-detection tells (from M0b). Done in M7: the two empty optical drives are gone from the
+    run-mode domain, and a pre-snapshot step removes the ghost drive nodes Windows keeps.** The "Microsoft Basic
+    Display Adapter" stays: the S2 spike ([findings](../plans/m7-spikes/S2-findings.md)) found that no emulated
+    adapter that boots and draws gets a different name, and a real GPU name needs passthrough of a physical card.
 11. **The guest's default password. Closed.** Wizard builds get a random password; only the adopted `win` guest
     keeps `Tartarus1!`, a throwaway account on an isolated machine.
 

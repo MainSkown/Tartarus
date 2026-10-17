@@ -73,7 +73,7 @@ Unknown fields are rejected; every field below is required unless a default is g
 | `agent.work_root` | Where a guest's neutral working folder is made; the folder name is random per guest |
 | `agent.shutdown` | `acpi` or `agent-command`. Parsed; the generic `snapshot` step always shuts down with ACPI, so `agent-command` is not implemented |
 | `agent.interactive` | `{options, task_fields}`: the CAPE task options string and extra task fields for a run the analyst drives. Windows: `interactive=1,nohuman=yes` and no fields |
-| `agent.pre_snapshot` | A step name run by `snapshot` just before it takes the snapshot (a `sync` on Linux), or `null` |
+| `agent.pre_snapshot` | A step name run by `snapshot` just before it takes the snapshot (a `sync` on Linux), or `null`. The Windows profile sets `remove-ghost-drives`, which removes the non-present CD-ROM device nodes the install left ([CAPE integration](cape-integration.md#self-test)) |
 | `selftest.sample` | `{source, build, output}`: the benign sample's source file, the build command as an argument list holding `{source}` and `{output}` exactly once each, and the file it produces. Optional |
 | `selftest.signals[]` | The signals the analysis of the sample must show. See [Self-test](#self-test) |
 | `selftest.facts.script` | The guest-side script that prints facts and giveaways, a file in the profile directory. Optional |
@@ -242,7 +242,10 @@ A guest's domain is rendered from `guest/domain/domain.xml.tpl`: the profile's `
 file for each choice from `guest/domain/fragments/` (`boot`, `secure_boot`, `tpm`, `disk_bus`,
 `nic_model`, `clock`, `machine`; a value with no fragment is refused by name), and the persona supplies
 the SMBIOS strings, the NIC's vendor prefix and the disk and board serial formats. The CPU hides the
-hypervisor bit and KVM's state. New hardware is a new fragment file, not a template per profile, and the
+hypervisor bit and KVM's state. The template's optical drives are `${install_drives}`: install mode fills them,
+run mode leaves them out. `hardware` has no display field, because the display adapter is the QEMU standard VGA
+fixed in the template: the [S2 spike](../plans/m7-spikes/S2-findings.md) found no candidate that Windows names
+differently. New hardware is a new fragment file, not a template per profile, and the
 generic steps read the disk target, nvram and TPM from the domain, never from a constant.
 
 ## Checklist for a new OS

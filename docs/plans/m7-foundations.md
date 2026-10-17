@@ -8,17 +8,120 @@ confirmed, a `[CANCEL]` button on the build page.
 
 ## Status
 
-Planned 2026-10-17 from the finish-line roadmap and a read of the code the tasks touch. Decisions
-marked **Confirm** change scope or a spec and wait for the user before their wave starts.
+Planned 2026-10-17 from the finish-line roadmap and a read of the code the tasks touch. Decision 4 (the cancel)
+went ahead, so W1 and E1 were built. **Closed 2026-10-17**, with one item left open: the exit checks, on the last
+line of this section.
 
-**Wave 1 done 2026-10-17** (C1, D1, R1; commits 5e3fb3e, 56724c7): failed guests are off the cap, `finish-run` is
-gone, and a resumed `reconfigure` waits for an earlier apply instead of racing it (tested against the bash suite's
-fake agent; the real-guest drill is P1). The `cape` image was rebuilt and the container recreated; `win`, `lab1`,
-`lab3` and `lab5` are ready. **S1 done 2026-10-17** ([findings](m7-spikes/S1-findings.md)): `+60s` is a go, with the
-reference point and cap now in decision 5. **X1a, X1b, F1 and F2 done 2026-10-17** (commits 48c781f, 11c5a57, 222396f,
-3297ee1, c954aa4): the `+60s` backend, the `[+60S]` button (right after the RUNNING badge in the LIVE status bar, as
-the user asked in review) and the shared countdown; the user approved the button from the screenshot Artifact after one
-round. The real-stack proof is P2. **S2 done 2026-10-17** ([findings](m7-spikes/S2-findings.md)): the drives ship, no display adapter does (decision 6). X2 is next; W1 and E1 wait for the answer to decision 4.
+What each wave proved on the real stack, with the numbers from the results files:
+
+**Wave 1 (C1, D1, R1), done 2026-10-17.** Failed guests are off the cap and `finish-run` is gone. The resume race
+is fixed in the step: a resumed `reconfigure` waits for an earlier apply instead of applying on top of it. The bash
+suite proved this against a fake agent; the two real drills below proved it on clones.
+
+**Wave 2 (spikes), done 2026-10-17.**
+- **S1, `+60s` is a go** ([findings](m7-spikes/S1-findings.md)). A run submitted with `timeout=1200` and ended by
+  the finish call matched one CAPE ended itself in all four runs (13 signatures, 12 techniques, 14 detections,
+  score 6.0). The sample starts 20.6 to 24.5 s after `started_at`; the finish call is accepted from 16.0 to 17.5 s
+  after it; CAPE's own timer fired no earlier than `started_at` + 1222.6 s. A backend restart mid-run did not lose
+  the run.
+- **S2, the anti-VM tells** ([findings](m7-spikes/S2-findings.md)). The drives ship: a run-mode domain without the
+  two CD-ROMs boots, reverts in 2 s and gives the same capemon analysis as the baseline (12 signatures, 13
+  detections). No display adapter does: `vga`, `bochs`, `virtio` and `qxl` all bind the inbox Basic Display
+  driver, `virtio` and `qxl` name the hypervisor in their PCI id, `ati-vga` gives Code 43 and a black screen, and
+  a standard VGA with a real vendor id cannot be made in this QEMU build.
+
+**Wave 3 (X1a, X1b, X1c, X2, W1a, W1b, E1), built 2026-10-17.** The `+60s` backend, the drive-less domain with the
+pre-snapshot step, the cancel and the wizard's browser test were built and tested. The `+60s` and drive-less paths
+were then run on real guests in wave 5. The wizard's browser test ran while it was written and found X3 and X4; its
+final pass in `make e2e` is part of the exit run. X1c came from P2 round 1, and X5 from a review of the guest names.
+
+**Wave 4 (F1, F2, F3), done 2026-10-17.** The `+60S` button and the countdown were reviewed from a screenshot
+Artifact, and the user approved them after one round (commit 7d16ba8). The button sits right after the RUNNING badge
+in the LIVE status bar, as the user asked in review (c954aa4), not in the header. The `[CANCEL BUILD]` button (F3)
+was reviewed from a second screenshot Artifact and approved by the user after one round (3e85bca). Two problems
+were found by looking at the first captures and fixed before the review: the button had a row of its own with a band
+of dead space, and a cancelled build was titled after the step it stopped in.
+
+**Wave 5 (P1, P2, P3), done 2026-10-17.**
+- **P1, the stop-and-resume drills** ([results](m7-spikes/P1-P3-results.md)), on clones `m7-a` and `m7-b` of `lab3`.
+  Drill A stopped `guest-control` while `reconfigure` applied, and resumed 3.1 s later: the resumed step found the
+  earlier apply's log, waited for its reboot and did not apply again; the identity verified. Drill B resumed after a
+  finished apply: the step verified against the before-identity saved in the build directory. Both clones ended
+  `ready` with the self-test passed (6 min 8 s and 8 min 3 s).
+- **P3, the drive-less clones.** `remove-ghost-drives` found 2 and removed 2 on each clone, the first real run of
+  the `agent.pre_snapshot` hook. After a revert there is no CD-ROM PnP device, no `Enum\SCSI\CdRom` key and no
+  `Win32_CDROMDrive` row; the facts check reads `cdrom.name` empty and `video.pnp` as `VEN_1234`, with no giveaway.
+  An ordinary analysis on `m7-a` matched `lab3` (12 signatures, 13 detections, score 6.0), and the desktop lit
+  with 1 022 831 pixels and changed on the Start click. `verify-guest` checks 8 to 12 were reproduced by hand; the
+  script itself is hard-wired to `win`.
+- **P2, the `+60s` run on the real stack** ([results](m7-spikes/P2-results.md)), on `lab3` with the benign sample.
+  Round 1: a 120 s run with no call ended at its deadline and reached `done` (4158 events, 6 processes); a 240 s run
+  with two extensions of +60 s moved its deadline each time and ended at 240.0 s; the refusals answered 409 (not
+  interactive, at the 20-minute cap, finished), 422 (`seconds` 0 and 601) and 404. A backend restart before the
+  sample ran did not change the run. Round 2: a restart at monitor + 45 s, while the run was `running` and before its
+  deadline, left the run ending at its deadline (`done`, 4129 events, score 6.0); a normal run with no call ended at
+  its deadline as well.
+
+**Decisions as built.** Decision 5's cap is `started_at` + 1200 s, the text of the decision, and not the 1190 s
+after the monitor that S1's findings suggested. The S1 figure would move the cap to about 1205 to 1210 s after
+`started_at`, leaving CAPE 12 to 18 s of margin; the built cap keeps the 22 s S1 measured.
+
+**Commits, by task** (`git log --oneline 730cc31..HEAD`):
+- **C1, D1:** 5e3fb3e (failed guests off the cap; `finish-run` removed).
+- **R1:** 56724c7 (resumed reconfigure waits for an earlier apply).
+- **S1:** a52cb1b. **S2:** 0e01be5.
+- **X1a:** 48c781f (deadline_at, `timeout=1200` for interactive tasks, `POST /analyses/{id}/extend`).
+- **X1b:** 11c5a57 (the runner sets the deadline and ends the run at it).
+- **X1c:** 41594a2 (no end request after the guest accepted it; found by P2 round 1).
+- **X2:** ece63ea (drive-less run mode, pre-snapshot step, facts check), with db7eccf (a ruff fix to its test).
+- **X3:** 03c0ad1 (a build deleted under its job ends the job failed, without a traceback; found by E1).
+- **X4:** 2d23a3c (delete removes the four fixed per-guest files; found by E1).
+- **X5:** 4e711dc (a guest name ending in `-clean` is refused).
+- **F1:** 222396f (`+60S`, the countdown). **F2:** 3297ee1 (screenshot spec), c954aa4 (button after the RUNNING
+  badge). **F3:** 3e85bca (`[CANCEL BUILD]` in the header, BUILD CANCELLED).
+- **W1a:** 0818588 (cancel in the engine). **W1b:** 0303e50 (route, client, button).
+- **E1:** adae958 (wizard browser e2e, `E2E_WIZARD=0` skips it).
+- **P1, P3:** 59fce37 (results). **P2:** c356c82 and 3c6cb1c (results, round 2).
+- **T1:** 2d3cb43 (the three tests that leaked an unhandled `guestsMedia` rejection mock it; `npm run test:unit`
+  passed every test but exited 1 before).
+- **Not tied to a task:** 4193372 (plan), 7d16ba8 (status, `+60S` approved), 0e01be5 (S2 status), 1303d36 (Settings
+  offers only the built routes), dbacada and 5e4917a (header and label polish).
+
+**Findings that stay open:**
+- The display adapter cannot be changed: a real GPU name needs vfio passthrough, which is out of scope for v1.
+- Six of the eleven PCI devices carry the QEMU subsystem id `1af4:1100` (S2), which a sample can read.
+- Libvirt and swtpm log files of deleted guests stay on the host.
+- `*.<epoch>` snapshot overlays are not removed by name.
+- An existing guest's memory snapshot breaking when its drives are removed under it was not tried (decision 7's
+  premise is not measured).
+- The stray libvirt domain `win2` (about 18 GB) is on the host and unknown to the API; it was left alone.
+- Processing took 3 to 9 s in P2 against 83 to 88 s in S1. The difference is not explained, and S1's processing
+  figure may be wrong for this stack.
+- The 240 s run's extra detections (P2: `creates_suspended_process` and three others) were not attributed to the
+  sample or to Windows.
+- An old `reconfigure` was never run against the race, so the fix is shown right, not the old one shown wrong.
+- A restart of the backend during `reconfigure` was not drilled (P1 stopped `guest-control` instead).
+- A backend restart in the middle of the sample's run was not verified: P2 round 1 restarted before the sample ran,
+  and round 2 did not measure when the sample started.
+- The cancel of a real 14-minute install step was not run; the wizard e2e cancels in the first seconds.
+- `make verify-guest` is hard-wired to `win`; checks 8 to 12 were reproduced by hand.
+- Analysis extension events during a live-view outage were not checked; after a restart the event counts were not
+  compared with the index.
+- In P2 round 1 the run left `running` 5.9 to 10.7 s after its deadline (round 2: 4.5 to 4.9 s). One finish call
+  logged a 502 and was retried. The lag is not attributed.
+- A non-interactive run with a 60 s timeout ended at about 31 s with 561 events (P2 anomaly 5). Not investigated.
+- The `+60s` status push after an extension was not timed beyond the one-second tick (P2 saw it 0.9 s after the call).
+
+**Exit run, 2026-10-17, on a stack rebuilt with every M7 commit (17:34 to 17:50 UTC), all through the public API and
+the browser:** `make verify-guest` 12 of 12 OK (including the snapshot revert, the live capemon logs, the callback and a
+container recreate); `make verify-wizard` 12 of 12 OK (a clone of a ready guest reached `ready`, analyses were refused
+and a second clone refused while it ran, an analysis ran on the clone, the clone was deleted); `make e2e` 129 checks OK,
+none failed, including the new wizard step `(w)` (3 s: it lists the ISO, refuses a bad name and a giveaway, builds,
+cancels and deletes `e2e-wizard`, and leaves the four guests as they were) and the ending of a run through the finish
+call. The backend logged no ERROR or traceback during the run. Afterwards `win`, `lab1`, `lab3` and `lab5` were `ready`,
+no guest or image of the e2e or wizard runs was left (only the libvirt and swtpm log files of `vw-3685ca`, which stay
+for every deleted guest), and the two analyses of `verify-wizard`'s throwaway guest were kept, as that check
+designs it.
 
 ## Outcome
 

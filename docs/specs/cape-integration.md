@@ -41,7 +41,7 @@ the entrypoint exports.
 | `routing.conf` | `route = inetsim`; `no_local_routing = no` (`yes` needs a VRF and the host's `vrf` module); `internet = eth0`; RFC1918 and Docker `reject_segments`. Only the inetsim route is verified; `internet` is configured but unexercised. |
 | `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `[taskdelete] enabled = yes`, because `tasks/delete` answers "Task Deletion API is Disabled" by default; `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
 | `web.conf` | `[guacamole] enabled = yes` so CAPE records each guest's VNC port. `guacd` binds the internal address only. The backend uses `cape:4822` itself; CAPE's own Guacamole view is unused. |
-| `auxiliary.conf` | Sysmon, ETW modules and `QemuScreenshots`: **deferred to M0b/M1**, they need a Windows guest. |
+| `auxiliary.conf` | Sysmon, ETW modules and `QemuScreenshots`: **deferred to M0b/M1**, they need a Windows guest. Sysmon's EVTX is collected at the end of the run only: a final-phase source with no live forwarder (decided 2026-10-17, [v1 open question 3](../features/tartarus-v1.md#open-questions)). |
 | `processing.conf`, `memory.conf` | **Deferred.** Volatility3 and its symbol tables are not installed yet. `virustotal` stays off (no data leaves the host). |
 | `reporting.conf` | `jsondump` on (its default), `mongodb` off, and the `callback` module enabled with `url = http://backend:8000/internal/cape/callback`. The module runs after the report is written, sets the task to `reported` itself, and catches its own failures: an unreachable backend is logged and changes neither the task nor the report (checked with the backend stopped and with a 404). `scripts/verify-guest.sh` layers a temporary listener over it through `reporting.conf.d/callback.conf`; CAPE loads that later, and the script removes only that file. |
 
@@ -93,8 +93,8 @@ timing around a forced VM exit. A pafish run outside a CAPE task found no identi
   installing the package conflicts with the custom `qemu.deb`. The OVMF files are not pinned.
 - libvirt 10.0 rejects every firmware lookup because of QEMU's loongarch64 descriptor, so only
   x86_64 descriptors are kept. swtpm runs as user `swtpm`.
-- The domain uses Q35 and UEFI, SATA disk and CD-ROMs, e1000e and VGA, so no virtio drivers are
-  needed. The libvirt element is `<baseBoard>`; lowercase `<baseboard>` is silently dropped.
+- The domain uses Q35 and UEFI, SATA disk, e1000e and VGA, so no virtio drivers are needed. Its two
+  CD-ROMs are attached in install mode only: a run-mode domain has none (see [Self-test](#self-test)). The libvirt element is `<baseBoard>`; lowercase `<baseboard>` is silently dropped.
 
 **Snapshots are external.** libvirt 10.0 refuses internal snapshots of UEFI domains, so
 `tartarus-clean` is an external disk-and-memory snapshot (`--memspec`/`--diskspec`): a memory file
@@ -148,7 +148,7 @@ should set the backend's URL in `reporting.conf`).
 | Submit | `POST apiv2/tasks/create/file/` with `file`, `timeout`, `route`, `package`, `options` (the profile's interactive options, `memory=1` as chosen), `machine=<guest label>`, always sent. CAPE answers an unknown machine with HTTP 200 and `{"error": true, "error_value": "Machine 'x' does not exist..."}` and creates no task, so the backend reads `error`, not the status |
 | Status | `GET apiv2/tasks/status/{id}/`, polled every 2 s while active, plus the callback when reporting finishes |
 | Stop early | `POST http://cape-control:8002/tasks/{id}/finish` with `{"guest": "<name>"}` to the guest control service (bearer token, `tartarus-control` network). The guest network exists only inside the `cape` container, so the service does what the backend cannot: it looks up that guest's address, agent port and finish folder in its own record and profile (the backend never supplies an address, so there is nothing to validate and no path to inject) and asks the guest agent (`POST /mkdir`) to create `<finish folder>/<md5("cape-<task id>")>` (`C:\Windows\Temp` for Windows). CAPE's analyzer (`analyzer.py`, `analysis_loop`) ends the analysis as soon as a folder of that name exists in `%TMP%` or `%SystemRoot%\Temp`, then uploads its results as for a timeout; the agent's `mkdir` is `os.makedirs(exist_ok=True)`, so asking twice is harmless. It answers `200 {"finished": true}`, `502 {"error"}` when the agent is unreachable or refuses, `422` for a bad guest name, `400` for a task id that is not digits, `404` for an unknown guest. |
-| Extend | Interactive runs only, and not a CAPE feature: the task is submitted with CAPE's maximum timeout (1200 s) and the backend ends the run at the analyst's deadline through the finish call; `+60s` moves the deadline later, up to 1200 s. Planned for M7 ([finish line](../plans/finish-line.md)); a spike on a real run comes first. |
+| Extend | Interactive runs only, and not a CAPE feature. **Built in M7** ([M7 plan](../plans/m7-foundations.md), decision 5): the task is submitted with CAPE's maximum timeout (1200 s), and the backend ends the run at the analyst's deadline through the finish call. The deadline is the oldest `logs/*.bson` modification time plus the analyst's timeout, set once the monitor has started, and is capped at `started_at` + 1200 s, which keeps the backend ahead of CAPE's own timer (measured in S1: no earlier than `started_at` + 1222 s). `POST /analyses/{id}/extend` moves it later by up to 600 s at a time. |
 | Live data | Files in `storage/analyses/{id}/` (shared volume): `logs/*.bson`, `aux/*.json` |
 | Final data | `storage/analyses/{id}/reports/report.json`, `files/`, `CAPE/`, `procdump/`, `memory.dmp`, `dump.pcap`, `shots/`, `sysmon/`, `evtx/` |
 | File access | The backend mounts the storage read-only as another user. CAPE saves uploaded files (`files/`, `procdump/`, `shots/`) through Python's temporary-file API, always mode `0600`, so `cape/bin/share-storage` (a supervisord program in the `cape` container) adds read and directory-search bits for others within seconds of a file appearing. Found on the real stack by `make e2e`: before it, artifact downloads answered 500 and screenshots broke mid-response. |
@@ -181,7 +181,7 @@ off and the Docker socket is never mounted.**
 - **Narrow, validated operations only.** Routes: `GET /profiles`, `GET /media`, `GET /guests`, `GET` and
   `DELETE /guests/{name}`, `POST /guests/{name}/check`, `POST /guests/{name}/clone`, `GET
   /guests/{name}/display`, `GET /guests/{name}/selftest/sample`, `POST /guests/{name}/selftest/checks`,
-  `POST /builds`, `GET /builds/{id}` and `/log?tail=`, `POST /builds/{id}/resume|restart|continue|complete`,
+  `POST /builds`, `GET /builds/{id}` and `/log?tail=`, `POST /builds/{id}/resume|restart|continue|complete|cancel`,
   and `POST /tasks/{id}/finish`. A refusal is `404` (unknown guest, build or profile), `409` (the current
   state refuses, with a message for the analyst), `422` (a parameter is wrong, with `fields`), or `400` for a
   guest name or build id that does not match its pattern; a sample that cannot be built is `500` and checks
@@ -234,7 +234,9 @@ guest it builds is accepted without the backend's self-test, so `make verify-gue
     wins, so a leftover `win.conf` would silently un-register the rest, and it deletes every other `*.conf`;
   - **define the domain, then register, then restart `cape`, then check CAPE's `machines/list`**; never
     trust `supervisorctl`, because a registered machine libvirt does not know leaves `cape` "RUNNING" with
-    every task pending; on deletion unregister before undefining;
+    every task pending; on deletion unregister before undefining, then remove the files the guest's build laid down under their fixed
+    names (`images/<name>.qcow2`, `images/<name>-clean.mem`, `images/<name>-clean.qcow2`, `nvram/<name>_VARS.fd`),
+    even when the domain is already gone, because undefining forgets them;
   - the backend keys on the **label**: CAPE recreates its machine rows and ids on every start, and the backend
     always sends `machine` because CAPE alternates between machines when it is left out.
 - **Adoption.** The guest M0b built (`win`, `.10`) is adopted when the service first starts: its record is
@@ -306,7 +308,8 @@ the first.
      Dell prefix, all generated per guest; the patched QEMU covers BIOS, ACPI and device strings but not
      SMBIOS;
    - Q35, UEFI with Secure Boot (Microsoft keys), TPM 2.0 with its own state, SATA disk and e1000e NIC (no
-     virtio drivers needed), two optical drives, VNC bound inside the container.
+     virtio drivers needed), two optical drives in install mode (the run-mode domain has none), VNC bound
+     inside the container.
 4. **install:** builds a disc holding `autounattend.xml` (rendered from `guest/profiles/windows/autounattend.xml.tpl`
    with the edition index, the optional key, the keyboard, the account and the computer name, XML-escaped) and
    the provisioning files, boots the installer with it as the second CD, sends Enter for the first 20 seconds
@@ -438,6 +441,20 @@ control service, and spawns a child process, writes a file, sets a registry valu
   and the Defender proof: the EICAR string is **removed within 15 s on a Defender-on guest and kept on a
   Defender-off one**. A mismatch fails the guest.
 
+**Anti-VM tells (M7).** A run-mode domain has no optical drive, because an empty one is a tell. Guests built before
+M7 keep their drives: their memory snapshot was taken with that hardware, and the domain is not redefined under it
+(not tried, kept as a rule). A clone of such a guest is rendered from the current template and takes its own snapshot,
+so cloning is the way to a guest without drives. Windows keeps a
+device node and an `Enum\SCSI\CdRom` key for each drive the install saw, and a sample can still read them, so the
+Windows profile's `agent.pre_snapshot` step, `remove-ghost-drives`, removes every non-present CD-ROM device before the
+snapshot is taken; the removal survived a snapshot and a revert in the real-guest proofs. The facts script
+(`guest-facts.ps1`) reports two giveaways: `optical drive` for a CD-ROM drive that is still present, and
+`display adapter` for a display device from a hypervisor vendor (`PCI\VEN_1AF4`, `VEN_1B36`, `VEN_15AD`, `VEN_80EE`,
+`VEN_1013`) or one whose `ConfigManagerErrorCode` is not 0. The inbox Basic Display Adapter and the QEMU standard VGA
+(`PCI\VEN_1234&DEV_1111`) are reported as known tells, not giveaways, because every guest reads them, and `video.name`
+is localised, so it is reported and never judged. These facts run in a new build's or clone's self-test, not in
+`[RUN CHECKS]`.
+
 A failed self-test ends the guest `failed`, unregistered from CAPE (which keeps the others), with the reasons
 on its card; nothing else is disturbed. pafish, which the first design ran after the self-test as
 information only, is not built.
@@ -450,9 +467,14 @@ failed. `[RESUME]` runs a failed or paused build again from the step that stoppe
 first, `[CONTINUE]` carries on a paused one. When the control service is stopped mid-step, that step is
 stopped (no process is left) and the build is `failed` with "resume it"; resuming then finished the build and
 its self-test in a real run. Restarting the backend mid-build reattaches the build under a new job (see
-[backend](backend.md#guests)). One thing to know: a resume issued while the first run's `reconfigure` is
-still applying and rebooting the guest can fail ("did not start its reboot within 90 s"); the same resume a
-few minutes later, from a stable guest, worked.
+[backend](backend.md#guests)). A resume of a clone's `reconfigure` never applies on top of an earlier run's
+apply: that apply leaves a log in the guest, and the resumed step, finding it, waits for the reboot it announced and
+checks the result against the identity the copy came with, which the first run saved in the build directory
+(M6 saw a resume during the apply fail with "did not start its reboot within 90 s"; the M7 drills resumed 3 s after
+an interruption and after a finished apply, and both clones reached `ready`). `[CANCEL BUILD]` stops the running
+step's process group and ends the build `failed` with "the build was cancelled"; a paused build can be cancelled
+too, the sequencer stays open, and the build stays resumable and its guest deletable. The request answers once the
+step is gone, which can take about 15 s.
 
 ### Guest health (shown in the header and on the Guests page)
 

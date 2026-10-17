@@ -133,8 +133,8 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 **Header (all tabs)**
 
 ```
-#42  invoice.exe   sha256 9f2c…a1 ⧉   ● LIVE 01:12 / 03:00   SCORE –   ⚠ HIGH   [phishing ×][+]
-                                                       [⏹ STOP] [+60s] [⇩ EXPORT ▾] [🗑]
+#42  invoice.exe   sha256 9f2c…a1 ⧉   ● LIVE   REMAINING 01:48   SCORE –   ⚠ HIGH   [phishing ×][+]
+                                                       [⇩ EXPORT ▾] [🗑]
 [ LIVE ][ OVERVIEW ][ PROCESSES ][ TIMELINE ][ EVENTS ][ NETWORK ][ ARTIFACTS ][ DETECTIONS ][ NOTES ]
 > process.name:cmd.exe AND lane:network                                              [?] [✕]
 [proc: cmd.exe ×] [NOT api: NtDelayExecution ×]
@@ -142,6 +142,14 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 
 - **Guest chip:** `GUEST lab1 DEFENDER ON`, the guest the analysis ran on, in the header's detail line
   (absent for an analysis from before guests).
+- **Remaining time:** for a running interactive run the header's details show `REMAINING`, a countdown to the
+  analysis's `deadline_at`, and the LIVE status bar shows the same countdown. Both use one countdown helper. It turns
+  amber (the warning colour) for the last 30 s and reads `ending` at zero, and stays there until the run leaves
+  `running`; the end latency is not added to the number.
+- **`[+60S]` and `[END RUN]`:** on the LIVE tab's status bar, `[+60S]` sits right after the `RUNNING` badge and
+  `[END RUN]` at the end of the bar. `[+60S]` adds 60 seconds to the deadline. It is shown only for an interactive run
+  that is running, and it is disabled at the 20-minute limit, with the reason as its tooltip ("The run is already at
+  its longest (20 minutes)"). A refused extension shows the server's reason as a warning.
 - **Phase indicator:**
   - `● LIVE` while running.
   - `PROCESSING…` with an indeterminate progress bar while CAPE processes the task.
@@ -416,6 +424,10 @@ through the control service and the build job.
   could not find the toggle.
 - **Failed:** a red block naming the failed step with the error, and `[RESUME]` (runs the failed step again)
   and `[RESTART]` (from the first step, discarding what was done).
+- **Cancel:** `[CANCEL BUILD]` in the header while the build runs or is paused. It asks first ("Cancel this build?":
+  the running step is stopped, and the guest is kept as failed and can be resumed, restarted or deleted). The build
+  then ends failed, and its page is titled `BUILD CANCELLED` instead of naming the step that failed. While the cancel
+  is being sent the button reads `[CANCELLING...]`.
 - **Self-test:** while it runs the page says so and shows its progress; the verdict then appears as a panel,
   passed ("The guest was built and is ready.") or failed, with one row per signal (process, file, registry,
   DNS, report), the proofs, any giveaways, and a link to the self-test analysis. A failed one lists why and

@@ -5,9 +5,10 @@ Drop in a Windows sample, watch it detonate **live** in an isolated, hardened Wi
 with the guest desktop, then dig through processes, timeline, network and detections with a
 query bar, and export IOCs and reports.
 
-> **Status:** milestones M0 to M6 are built: submitting a sample from the UI, live monitoring and
+> **Status:** milestones M0 to M7 are built: submitting a sample from the UI, live monitoring and
 > the interactive desktop, the analysis views, the query bar and timeline, Sigma detections, tags,
-> notes and exports, and building, cloning and choosing guests from the GUI. See the
+> notes and exports, building, cloning and choosing guests from the GUI, cancelling a build, and
+> extending an interactive run. See the
 > [overview](docs/overview.md#roadmap) for what each milestone proved and what was not run.
 
 ## Documentation

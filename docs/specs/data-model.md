@@ -166,6 +166,10 @@ becomes in the event document.
 | YARA hit (file, memory or payload) | n/a | detection, `rule.ruleset: yara` | file or memory |
 | Volatility3 findings (malfind, hollowprocesses, …) | n/a | `memory-finding` | memory |
 
+The Sysmon rows are final-phase sources: CAPE collects the Sysmon EVTX at the end of the run, and there is no
+live forwarder, so these events arrive with the final report, never in the live stream (decided 2026-10-17; the
+normaliser is M8).
+
 "Derived" means the raw API call stays in the `api` lane, and the backend also emits a
 higher-level event in the semantic lane. That derived event links back through
 `related.events`. This way the process, file, registry and network views work from capemon

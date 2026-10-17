@@ -1,6 +1,6 @@
 # Plan: the finish line of v1
 
-M0 to M6 are built and approved. This is what is left before Tartarus v1 is finished, decided with the user
+M0 to M7 are built (M7 closed 2026-10-17 after its exit run passed, see its plan). This is what is left before Tartarus v1 is finished, decided with the user
 on 2026-10-17 by going through every open question and every unfinished feature one by one. Milestones M7 to
 M11 follow the order the user chose: **foundations, features, guest proofs, hardening, release**. Each
 milestone gets its own plan file (`m7-*.md` and so on) with waves and a test-first task table when it starts,
@@ -63,25 +63,20 @@ who use or contribute to the project replace them.
 ## Milestones
 
 ### M7: Foundations (small fixes, closing questions)
-Planned in [m7-foundations.md](m7-foundations.md).
-- **Fix the resume race** (test-first, then the stop-and-resume drill again on a real clone).
-- **Failed guests do not count towards the cap** (control service validation, the backend's error text, the
-  wizard's messages, tests).
-- **Remove `finish-run`:** the program, its supervisor entry, `GUEST_IP`'s last use, `test_finish_run.sh`, and the
-  verify-cape and e2e references.
-- **Anti-VM tells spike, then the fix:** remove the empty drives in the snapshot step; try a display adapter
-  that a sample reads as a real GPU without breaking capemon, the Guacamole desktop or the snapshot; keep the
-  facts script's check of both.
-- **The wizard's browser e2e** in `make e2e`.
-- **The `+60s` button** (interactive runs): a spike first on a real interactive run (does a task submitted with
-  `timeout=1200` that the backend finishes at its own deadline give the same complete results as CAPE's own timeout;
-  what the finish call's 409 window in the first seconds means for a short deadline), then test-first: the
-  deadline kept in the analysis record, a backend timer that survives a restart (reattached like the guest builds),
-  the `+60s` endpoint with its cap, the button and the running-out countdown in the analysis header and the LIVE
-  status bar, screenshots for the Artifact review.
-- **Close the questions in the docs:** update `tartarus-v1.md` open questions and note final-phase Sysmon in the
-  specs.
-- Exit: `make e2e`, `make verify-guest` and `make verify-wizard` pass on the real stack.
+Done 2026-10-17. The plan with its decisions and what each wave proved is in [m7-foundations.md](m7-foundations.md).
+- **Fix the resume race:** done. A resumed clone reconfigure waits for an earlier apply instead of racing it; two
+  stop-and-resume drills passed on real clones.
+- **Failed guests do not count towards the cap:** done. The cap counts building, testing and ready guests.
+- **Remove `finish-run`:** done. The backend still ends runs through `guest-control`.
+- **Anti-VM tells spike, then the fix:** done for the drives. Run-mode guests have no optical drives and a
+  pre-snapshot step removes the ghost ones. The display adapter stays the Basic Display Adapter: no candidate
+  changed its name (spike S2).
+- **The wizard's browser e2e** in `make e2e`: done. It builds, cancels and deletes a guest; `E2E_WIZARD=0` skips it.
+- **The `+60s` button** (interactive runs): done. The spike S1 measured the design and the proof P2 ran it on the real
+  stack, with a backend restart in the middle.
+- **Close the questions in the docs:** done for `tartarus-v1.md` questions 2, 3 and 10, and the specs.
+- Exit: passed on 2026-10-17 on the real stack: `make verify-guest` 12 of 12, `make verify-wizard` 12 of 12 and
+  `make e2e` 129 checks, none failed; see the Status of [m7-foundations.md](m7-foundations.md).
 
 ### M8: More event sources and Defender's verdict
 - **Sysmon normaliser:** CAPE's collected Sysmon EVTX to process, network, file and registry events; Sigma rules
