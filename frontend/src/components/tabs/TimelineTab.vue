@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AnalysisRead } from '@/api'
+import { t, type MessageKey } from '@/i18n'
 import EventDetailDrawer from '@/components/EventDetailDrawer.vue'
 import EventTable from '@/components/EventTable.vue'
 import Timeline from '@/components/Timeline.vue'
@@ -21,11 +22,11 @@ const CANVAS_HEIGHT = 248
 const MIN_BODY_HEIGHT = 380
 const BOTTOM_GAP = 16
 
-const ZOOM_OPTIONS: { label: string; value: ZoomPreset }[] = [
-  { label: 'FIT', value: 'fit' },
-  { label: '1M', value: '1m' },
-  { label: '10S', value: '10s' },
-  { label: '1S', value: '1s' },
+const ZOOM_OPTIONS: { label: MessageKey; value: ZoomPreset }[] = [
+  { label: 'timeline.zoom.fit', value: 'fit' },
+  { label: 'timeline.zoom.oneMinute', value: '1m' },
+  { label: 'timeline.zoom.tenSeconds', value: '10s' },
+  { label: 'timeline.zoom.oneSecond', value: '1s' },
 ]
 
 defineProps<{ analysis: AnalysisRead }>()
@@ -44,7 +45,7 @@ const visibleRange = computed(() => (timeline.view ? formatVisibleRange(timeline
 const canZoom = computed(() => timeline.status === 'ready')
 const tableLoading = computed(() => events.loading || (!events.loaded && events.error === undefined))
 const tableFiltered = computed(() => !query.isEmpty || timeline.tableRange !== null)
-const canvasError = computed(() => (timeline.status === 'error' ? (timeline.error?.message ?? 'unknown error') : undefined))
+const canvasError = computed(() => (timeline.status === 'error' ? (timeline.error?.message ?? t('timeline.tab.unknownError')) : undefined))
 
 const selectedTime = computed<number | null>(() => {
   if (selectedId.value === null) return null
@@ -113,7 +114,7 @@ onBeforeUnmount(() => {
         <div
           class="radio-group timeline-tab__zoom"
           role="radiogroup"
-          aria-label="Zoom"
+          :aria-label="t('timeline.zoom.group')"
         >
           <template
             v-for="option in ZOOM_OPTIONS"
@@ -132,7 +133,7 @@ onBeforeUnmount(() => {
             <label
               :for="`timeline-zoom-${option.value}`"
               class="radio-label text-mono"
-            >{{ option.label }}</label>
+            >{{ t(option.label) }}</label>
           </template>
         </div>
         <span
@@ -146,7 +147,7 @@ onBeforeUnmount(() => {
           :loading="timeline.status === 'loading'"
           :error="canvasError"
           :empty="timeline.status === 'empty'"
-          empty-message="no events in this analysis"
+          :empty-message="t('timeline.tab.emptyMessage')"
           @retry="timeline.retry()"
         >
           <Timeline

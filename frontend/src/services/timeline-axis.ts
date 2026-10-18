@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { formatDuration } from '@/services/format-duration'
 import type { Span } from '@/services/timeline-scale'
 import { spanLength } from '@/services/timeline-scale'
@@ -60,9 +61,9 @@ export function ticksFor(view: Span, width: number, minDistancePx = MIN_TICK_DIS
 
 /** A length of time with the unit that keeps it short: `250 ms`, `3.25 s`, `42.5 s`, `4m 12s`. */
 export function formatSpanLength(ms: number): string {
-  if (ms < SECOND) return `${Math.round(ms)} ms`
-  if (ms < 10 * SECOND) return `${(ms / SECOND).toFixed(2)} s`
-  if (ms < MINUTE) return `${(ms / SECOND).toFixed(1)} s`
+  if (ms < SECOND) return t('timeline.span.milliseconds', { value: Math.round(ms) })
+  if (ms < 10 * SECOND) return t('timeline.span.seconds', { value: (ms / SECOND).toFixed(2) })
+  if (ms < MINUTE) return t('timeline.span.seconds', { value: (ms / SECOND).toFixed(1) })
   return formatDuration(ms / SECOND)
 }
 
@@ -75,10 +76,18 @@ function instantText(time: number, withDay: boolean): string {
 export function formatVisibleRange(view: Span): string {
   if (!Number.isFinite(view.start) || !Number.isFinite(view.end)) return ''
   const crossesDays = new Date(view.start).toISOString().slice(0, 10) !== new Date(view.end).toISOString().slice(0, 10)
-  return `${instantText(view.start, true)} - ${instantText(view.end, crossesDays)} UTC · ${formatSpanLength(spanLength(view))}`
+  return t('timeline.range.visible', {
+    start: instantText(view.start, true),
+    end: instantText(view.end, crossesDays),
+    span: formatSpanLength(spanLength(view)),
+  })
 }
 
 /** `15:39:50.100 - 15:39:53.350 · 3.25 s`, what is shown on the axis while a range is being brushed. */
 export function formatBrushLabel(span: Span): string {
-  return `${instantText(span.start, false)} - ${instantText(span.end, false)} · ${formatSpanLength(spanLength(span))}`
+  return t('timeline.range.brushed', {
+    start: instantText(span.start, false),
+    end: instantText(span.end, false),
+    span: formatSpanLength(spanLength(span)),
+  })
 }

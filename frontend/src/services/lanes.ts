@@ -1,3 +1,4 @@
+import { t, type MessageKey } from '@/i18n'
 export interface LaneMeta {
   label: string
   /** Name of a CSS custom property from app.css, without the `var()` wrapper. */
@@ -13,20 +14,27 @@ export interface LaneBar extends LaneMeta {
   share: number
 }
 
-// The design system fixes this order; a seventh category goes into the neutral api lane.
-const LANE_META: Record<string, LaneMeta> = {
-  process: { label: 'PROCESS', color: '--cat-process', icon: 'terminal' },
-  file: { label: 'FILE', color: '--cat-file', icon: 'description' },
-  registry: { label: 'REGISTRY', color: '--cat-registry', icon: 'account_tree' },
-  network: { label: 'NETWORK', color: '--cat-network', icon: 'lan' },
-  memory: { label: 'MEMORY', color: '--cat-memory', icon: 'memory' },
-  api: { label: 'API', color: '--cat-api', icon: 'functions' },
+interface LaneStyle extends Omit<LaneMeta, 'label'> {
+  labelKey: MessageKey
 }
 
-export const LANE_ORDER = Object.keys(LANE_META)
+// The design system fixes this order; a seventh category goes into the neutral api lane.
+const LANE_STYLE: Record<string, LaneStyle> = {
+  process: { labelKey: 'timeline.lane.process', color: '--cat-process', icon: 'terminal' },
+  file: { labelKey: 'timeline.lane.file', color: '--cat-file', icon: 'description' },
+  registry: { labelKey: 'timeline.lane.registry', color: '--cat-registry', icon: 'account_tree' },
+  network: { labelKey: 'timeline.lane.network', color: '--cat-network', icon: 'lan' },
+  memory: { labelKey: 'timeline.lane.memory', color: '--cat-memory', icon: 'memory' },
+  api: { labelKey: 'timeline.lane.api', color: '--cat-api', icon: 'functions' },
+}
+
+export const LANE_ORDER = Object.keys(LANE_STYLE)
 
 export function laneMeta(lane: string): LaneMeta {
-  return LANE_META[lane] ?? { ...LANE_META.api!, label: lane.toUpperCase() }
+  const style = LANE_STYLE[lane]
+  if (style) return { label: t(style.labelKey), color: style.color, icon: style.icon }
+  const neutral = LANE_STYLE.api!
+  return { label: lane.toUpperCase(), color: neutral.color, icon: neutral.icon }
 }
 
 function laneRank(lane: string): number {

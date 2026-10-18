@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { Hit } from '@/services/timeline-hit-test'
 import { CLUSTER_SIZE, MARK_RING, MARK_SIZE, type Band, type Bar, type ClusterMark, type DetectionMark, type EventMark, type Scene } from '@/services/timeline-layout'
 import type { TimelinePalette } from '@/services/timeline-palette'
@@ -120,7 +121,7 @@ function drawBars(ctx: CanvasRenderingContext2D, bars: Bar[], palette: TimelineP
 }
 
 function countText(count: number): string {
-  return count < 1000 ? String(count) : `${(count / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return count < 1000 ? String(count) : t('timeline.count.thousands', { value: (count / 1000).toFixed(1).replace(/\.0$/, '') })
 }
 
 function drawClusters(ctx: CanvasRenderingContext2D, clusters: ClusterMark[], palette: TimelinePalette): void {

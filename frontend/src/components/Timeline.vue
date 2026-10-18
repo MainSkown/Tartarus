@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import LaneIcon from '@/components/LaneIcon.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
+import { t } from '@/i18n'
 import { formatBrushLabel } from '@/services/timeline-axis'
 import { laneMeta } from '@/services/lanes'
 import { drawTimeline, type DrawState } from '@/services/timeline-draw'
@@ -21,9 +22,7 @@ const LINE_SCROLL_PX = 16
 const PAGE_SCROLL_PX = 100
 // A count mark opens to this many times the span of the events it holds, so they land well apart.
 const CLUSTER_ZOOM_SPREAD = 1.5
-const DETECTION_LABEL = 'DETECTIONS'
 const DETECTION_ICON = 'flag'
-const CLOCK_LABEL = 'UTC'
 
 const props = defineProps<{
   view: Span
@@ -291,8 +290,8 @@ watch([scene, drawState, palette], schedulePaint, { flush: 'post' })
       :height="Math.round(layout.height * pixelRatio())"
       :style="{ width: `${layout.width}px`, height: `${layout.height}px` }"
       tabindex="0"
-      aria-label="Timeline of the analysis's events, one lane per category"
-      aria-description="Arrow left and right pan, plus and minus zoom, 0 fits the whole run, Home and End jump to the start and the end, Escape clears the selected range"
+      :aria-label="t('timeline.canvas.ariaLabel')"
+      :aria-description="t('timeline.canvas.ariaDescription')"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -316,7 +315,7 @@ watch([scene, drawState, palette], schedulePaint, { flush: 'post' })
           :name="DETECTION_ICON"
           size="16px"
         />
-        <span class="timeline__gutter-label">{{ DETECTION_LABEL }}</span>
+        <span class="timeline__gutter-label">{{ t('timeline.gutter.detections') }}</span>
       </div>
       <div
         v-for="lane in layout.lanes"
@@ -331,7 +330,7 @@ watch([scene, drawState, palette], schedulePaint, { flush: 'post' })
         class="timeline__gutter-row timeline__gutter-row--axis"
         :style="{ top: `${layout.axis.top}px`, height: `${layout.axis.height}px` }"
       >
-        <span class="timeline__gutter-label">{{ CLOCK_LABEL }}</span>
+        <span class="timeline__gutter-label">{{ t('timeline.gutter.clock') }}</span>
       </div>
     </div>
 
@@ -339,7 +338,7 @@ watch([scene, drawState, palette], schedulePaint, { flush: 'post' })
       v-if="loading"
       class="timeline__loading"
       role="status"
-      aria-label="Loading the range"
+      :aria-label="t('timeline.canvas.loading')"
     />
 
     <p
@@ -347,7 +346,7 @@ watch([scene, drawState, palette], schedulePaint, { flush: 'post' })
       class="timeline__empty text-mono text-gray"
       :style="{ left: `${layout.gutter}px`, top: `${layout.lanes[0]!.top}px`, width: `${layout.plotWidth}px`, height: `${layout.axis.top - layout.lanes[0]!.top}px` }"
     >
-      &gt; no events in this range
+      {{ t('timeline.canvas.empty') }}
     </p>
 
     <div

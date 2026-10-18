@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import type { LaneBar } from '@/services/lanes'
 
 defineProps<{ bars: LaneBar[] }>()
@@ -7,7 +8,7 @@ defineProps<{ bars: LaneBar[] }>()
 <template>
   <ul
     class="lane-bars"
-    aria-label="Events by lane"
+    :aria-label="t('timeline.laneBars.ariaLabel')"
   >
     <li
       v-for="bar in bars"
