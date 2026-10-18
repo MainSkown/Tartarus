@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref, watch, type ComputedRef } from 'vue'
 import { Notify } from 'quasar'
 import { analysesFinish, type AnalysisStatus } from '@/api'
+import { t } from '@/i18n'
 import { errorMessage } from '@/services/api-error'
 import { confirmDestructive } from '@/services/confirm'
 import { endRunLabel, endRunPhase, endRunTitle, type EndRunPhase } from '@/services/end-run'
@@ -54,7 +55,7 @@ export function useEndRun(options: EndRunOptions): EndRun {
 
   function giveUp(): void {
     ending.value = false
-    Notify.create({ type: 'tt-warning', message: 'The run is taking long to end' })
+    Notify.create({ type: 'tt-warning', message: t('live.endRun.takingLong') })
   }
 
   function holdOffAfter(message: string): void {
@@ -80,9 +81,9 @@ export function useEndRun(options: EndRunOptions): EndRun {
     if (phase.value !== 'ready') return
     confirming.value = true
     const confirmed = await confirmDestructive({
-      title: 'End the run now?',
-      message: 'The guest stops at once and CAPE processes what was collected so far. This cannot be resumed.',
-      confirmLabel: 'END RUN',
+      title: t('live.endRun.confirm.title'),
+      message: t('live.endRun.confirm.message'),
+      confirmLabel: t('live.endRun.confirm.action'),
     })
     confirming.value = false
     if (confirmed) await ask()

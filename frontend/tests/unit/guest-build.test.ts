@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest'
 import type { BuildStep, StepProgress } from '@/api'
 import {
   BUILD_PHASES,
+  actionRefusal,
   STEP_STATUSES,
   buildKindLabel,
   buildPhaseMeta,
+  cancelConfirmation,
   failedStep,
   failureTitle,
   humanStepName,
   phaseOf,
   progressShown,
+  restartConfirmation,
   selfTestFailureMessage,
   selfTestVerdictOf,
   signalLabel,
@@ -330,5 +333,33 @@ describe('stepsWithSelfTest', () => {
 
   it('adds nothing before the steps are known', () => {
     expect(stepsWithSelfTest([], 'loading')).toEqual([])
+  })
+})
+
+describe('actionRefusal', () => {
+  it.each([502, 503, 504])('names the control service for a %i gateway error', (status) => {
+    expect(actionRefusal(status, undefined)).toBe('The guest control service is not reachable; try again in a moment.')
+  })
+
+  it('is the backend’s own sentence for any other refusal', () => {
+    expect(actionRefusal(409, { error: { code: 'conflict', message: 'An analysis is active', details: {} } })).toBe('An analysis is active')
+  })
+})
+
+describe('the confirmations', () => {
+  it('asks before cancelling a build', () => {
+    expect(cancelConfirmation()).toEqual({
+      title: 'Cancel this build?',
+      message: 'The running step is stopped. The guest is kept as failed and can be resumed, restarted or deleted.',
+      confirmLabel: 'CANCEL BUILD',
+    })
+  })
+
+  it('names the kind and the guest when asking before a restart', () => {
+    expect(restartConfirmation({ guest: 'lab1', kind: 'clone' })).toEqual({
+      title: 'Restart the clone of lab1',
+      message: 'Restart the clone of lab1 from the first step? What the clone has done so far is discarded and cannot be recovered.',
+      confirmLabel: 'RESTART',
+    })
   })
 })

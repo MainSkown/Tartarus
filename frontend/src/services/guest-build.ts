@@ -1,4 +1,5 @@
 import type { BuildStep, BuildView, Guest, GuestState, JobRead, StepProgress } from '@/api'
+import { t, type MessageKey } from '@/i18n'
 import { errorMessage } from '@/services/api-error'
 import type { ConfirmOptions } from '@/services/confirm'
 import { formatDuration } from '@/services/format-duration'
@@ -22,20 +23,23 @@ interface StepMeta {
   color: string
 }
 
-// A Record, so a status the backend adds is a compile error here.
-const STEP_META: Record<StepProgress, StepMeta> = {
-  pending: { label: 'PENDING', icon: 'radio_button_unchecked', color: '--text-gray-dark' },
-  running: { label: 'RUNNING', icon: 'play_arrow', color: '--blue-primary' },
-  succeeded: { label: 'DONE', icon: 'check_circle', color: '--status-success' },
-  failed: { label: 'FAILED', icon: 'dangerous', color: '--status-critical' },
-  paused: { label: 'PAUSED', icon: 'pause_circle', color: '--status-medium' },
+// A Record, so a status the backend adds is a compile error here. The label is a key, translated when read.
+const STEP_META: Record<StepProgress, Omit<StepMeta, 'label'> & { labelKey: MessageKey }> = {
+  pending: { labelKey: 'guests.build.step.pending', icon: 'radio_button_unchecked', color: '--text-gray-dark' },
+  running: { labelKey: 'guests.build.step.running', icon: 'play_arrow', color: '--blue-primary' },
+  succeeded: { labelKey: 'guests.build.step.succeeded', icon: 'check_circle', color: '--status-success' },
+  failed: { labelKey: 'guests.build.step.failed', icon: 'dangerous', color: '--status-critical' },
+  paused: { labelKey: 'guests.build.step.paused', icon: 'pause_circle', color: '--status-medium' },
 }
 
 export const STEP_STATUSES = Object.keys(STEP_META) as StepProgress[]
 
 export function stepMeta(status: StepProgress): StepMeta {
+  const known = STEP_META[status]
   // The control service may be newer than this build of the GUI.
-  return STEP_META[status] ?? { label: String(status).toUpperCase(), icon: 'help_outline', color: '--text-gray' }
+  if (!known) return { label: String(status).toUpperCase(), icon: 'help_outline', color: '--text-gray' }
+  const { labelKey, ...rest } = known
+  return { label: t(labelKey), ...rest }
 }
 
 /** How long a step took, or has taken so far when it is still running or waiting for the analyst. */
@@ -53,9 +57,9 @@ export function failedStep(build: BuildView): BuildStep | undefined {
 export const CANCELLED_BUILD_MESSAGE = 'the build was cancelled'
 
 export function failureTitle(build: BuildView): string {
-  if (build.message === CANCELLED_BUILD_MESSAGE) return 'BUILD CANCELLED'
+  if (build.message === CANCELLED_BUILD_MESSAGE) return t('guests.build.failure.cancelled')
   const failing = failedStep(build)
-  return failing ? `${humanStepName(failing.name)} FAILED` : 'BUILD FAILED'
+  return failing ? t('guests.build.failure.step', { step: humanStepName(failing.name) }) : t('guests.build.failure.build')
 }
 
 export type BuildPhase = 'loading' | 'not-found' | 'unreachable' | 'running' | 'paused' | 'failed' | 'selftest' | 'ready' | 'selftest-failed'
@@ -67,22 +71,23 @@ export interface PhaseMeta {
   active: boolean
 }
 
-const PHASE_META: Record<BuildPhase, PhaseMeta> = {
-  loading: { label: 'LOADING', icon: 'hourglass_empty', color: '--text-gray', active: true },
-  'not-found': { label: 'NOT FOUND', icon: 'search_off', color: '--text-gray', active: false },
-  unreachable: { label: 'UNREACHABLE', icon: 'cloud_off', color: '--status-medium', active: false },
-  running: { label: 'RUNNING', icon: 'construction', color: '--blue-primary', active: true },
-  paused: { label: 'PAUSED', icon: 'pause_circle', color: '--status-medium', active: false },
-  failed: { label: 'FAILED', icon: 'dangerous', color: '--status-critical', active: false },
-  selftest: { label: 'SELF-TEST', icon: 'science', color: '--blue-primary', active: true },
-  ready: { label: 'READY', icon: 'check_circle', color: '--status-success', active: false },
-  'selftest-failed': { label: 'SELF-TEST FAILED', icon: 'dangerous', color: '--status-critical', active: false },
+const PHASE_META: Record<BuildPhase, Omit<PhaseMeta, 'label'> & { labelKey: MessageKey }> = {
+  loading: { labelKey: 'guests.build.phase.loading', icon: 'hourglass_empty', color: '--text-gray', active: true },
+  'not-found': { labelKey: 'guests.build.phase.notFound', icon: 'search_off', color: '--text-gray', active: false },
+  unreachable: { labelKey: 'guests.build.phase.unreachable', icon: 'cloud_off', color: '--status-medium', active: false },
+  running: { labelKey: 'guests.build.phase.running', icon: 'construction', color: '--blue-primary', active: true },
+  paused: { labelKey: 'guests.build.phase.paused', icon: 'pause_circle', color: '--status-medium', active: false },
+  failed: { labelKey: 'guests.build.phase.failed', icon: 'dangerous', color: '--status-critical', active: false },
+  selftest: { labelKey: 'guests.build.phase.selfTest', icon: 'science', color: '--blue-primary', active: true },
+  ready: { labelKey: 'guests.build.phase.ready', icon: 'check_circle', color: '--status-success', active: false },
+  'selftest-failed': { labelKey: 'guests.build.phase.selfTestFailed', icon: 'dangerous', color: '--status-critical', active: false },
 }
 
 export const BUILD_PHASES = Object.keys(PHASE_META) as BuildPhase[]
 
 export function buildPhaseMeta(phase: BuildPhase): PhaseMeta {
-  return PHASE_META[phase]
+  const { labelKey, ...rest } = PHASE_META[phase]
+  return { label: t(labelKey), ...rest }
 }
 
 export interface PhaseInput {
@@ -116,14 +121,11 @@ export interface ShownProgress {
   message: string
 }
 
-const SELFTEST_STARTING = 'Self-test starting'
-const READY_MESSAGE = 'Guest ready'
-
 export function progressShown(phase: BuildPhase, build: BuildView | undefined, job: FollowedJob | undefined): ShownProgress {
   if (!build) return { percent: 0, message: '' }
-  if (phase === 'ready') return { percent: 100, message: READY_MESSAGE }
+  if (phase === 'ready') return { percent: 100, message: t('guests.build.progress.guestReady') }
   if (phase === 'selftest' || phase === 'selftest-failed') {
-    return job ? { percent: job.progress, message: job.step } : { percent: build.percent, message: SELFTEST_STARTING }
+    return job ? { percent: job.progress, message: job.step } : { percent: build.percent, message: t('guests.build.progress.selfTestStarting') }
   }
   return { percent: build.percent, message: build.message ?? '' }
 }
@@ -144,16 +146,18 @@ export interface SelfTestVerdict {
   giveaways: string[]
 }
 
-const SIGNAL_LABELS: Record<string, string> = {
-  'events.process': 'PROCESS EVENTS',
-  'events.file': 'FILE EVENTS',
-  'events.registry': 'REGISTRY EVENTS',
-  'report.present': 'REPORT',
-  'report.dns_answer': 'DNS LOOKUP',
+// The ids are the control service's; one it does not know yet is shown as its id, formatted.
+const SIGNAL_LABEL_KEYS: Record<string, MessageKey> = {
+  'events.process': 'guests.build.signal.processEvents',
+  'events.file': 'guests.build.signal.fileEvents',
+  'events.registry': 'guests.build.signal.registryEvents',
+  'report.present': 'guests.build.signal.report',
+  'report.dns_answer': 'guests.build.signal.dnsLookup',
 }
 
 export function signalLabel(id: string): string {
-  return SIGNAL_LABELS[id] ?? id.replace(/[._-]+/g, ' ').toUpperCase()
+  const key = SIGNAL_LABEL_KEYS[id]
+  return key ? t(key) : id.replace(/[._-]+/g, ' ').toUpperCase()
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -186,9 +190,9 @@ export function selfTestVerdictOf(job: FollowedJob | undefined, guest: Pick<Gues
 
 export function selfTestFailureMessage(job: FollowedJob | undefined, verdict: SelfTestVerdict | undefined): string {
   if (verdict) return verdict.message
-  if (job?.status === 'interrupted') return 'The self-test was interrupted before it finished.'
+  if (job?.status === 'interrupted') return t('guests.build.selfTest.interrupted')
   const error = job?.result?.error
-  return typeof error === 'string' ? error : 'The self-test did not pass.'
+  return typeof error === 'string' ? error : t('guests.build.selfTest.notPassed')
 }
 
 const GATEWAY_STATUSES = [502, 503, 504]
@@ -196,22 +200,24 @@ const GATEWAY_STATUSES = [502, 503, 504]
 /** A conflict (an analysis is active) says why in the backend's own words; a gateway error is the control service. */
 export function actionRefusal(status: number | undefined, error: unknown): string {
   if (status !== undefined && GATEWAY_STATUSES.includes(status)) {
-    return 'The guest control service is not reachable; try again in a moment.'
+    return t('guests.build.controlServiceUnreachable')
   }
   return errorMessage(error)
 }
 
-export const cancelConfirmation: ConfirmOptions = {
-  title: 'Cancel this build?',
-  message: 'The running step is stopped. The guest is kept as failed and can be resumed, restarted or deleted.',
-  confirmLabel: 'CANCEL BUILD',
+export function cancelConfirmation(): ConfirmOptions {
+  return {
+    title: t('guests.build.cancel.title'),
+    message: t('guests.build.cancel.message'),
+    confirmLabel: t('guests.build.cancel.confirm'),
+  }
 }
 
-export function restartConfirmation(build: Pick<BuildView, 'guest' | 'kind'>): ConfirmOptions {
+export function restartConfirmation({ guest, kind }: Pick<BuildView, 'guest' | 'kind'>): ConfirmOptions {
   return {
-    title: `Restart the ${build.kind} of ${build.guest}`,
-    message: `Restart the ${build.kind} of ${build.guest} from the first step? What the ${build.kind} has done so far is discarded and cannot be recovered.`,
-    confirmLabel: 'RESTART',
+    title: t('guests.build.restart.title', { kind, guest }),
+    message: t('guests.build.restart.message', { kind, guest }),
+    confirmLabel: t('guests.build.restart.confirm'),
   }
 }
 

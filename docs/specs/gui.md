@@ -458,6 +458,58 @@ through the control service and the build job.
 | Analysis failed | A red banner in the workspace header with the error, `[RE-INGEST]` if it was a report failure, and the live data still viewable |
 | Disconnected | Amber top bar "Reconnecting…". Live views resume and backfill on reconnect |
 
+## Internationalisation
+
+Every string the user reads comes from a locale catalogue; only `en-US` ships (no language switcher, no translations in
+v1). The English text must come out exactly as it was written inline: same words, same case, same punctuation.
+
+- **Library.** `vue-i18n` 11, Composition API (`legacy: false`). `src/i18n/index.ts` creates the one instance and exports
+  `t`, `n`, `d`, `I18nT`, `i18n` and the types `MessageKey` and `MessageSchema`. `src/boot/i18n.ts` installs the plugin
+  (first in `boot`). Quasar's own component strings come from `framework.lang: 'en-US'` in `quasar.config.ts`.
+- **Catalogue layout.** One file per area, `src/i18n/en-US/<area>.ts`, default-exporting a nested object; `en-US/index.ts`
+  composes them, the file name is the top-level key. A task adds keys only to its own area's file. `common.ts` (generic
+  words such as OK or CLOSE) is written once up front; share a key inside an area, never across areas.
+- **Key scheme.** `area.screen.thing`, camelCase segments, nesting where it reads naturally: `guests.build.cancel.title`.
+  Name the thing, not the English text. Write the text exactly as shown, upper case included (do not rely on
+  `text-transform`).
+- **One source of the key list: the `en-US` object.** `MessageKey` is the union of its dotted leaf paths, and `t` accepts only
+  a `MessageKey`, so `vue-tsc` fails on an unknown key in a template, a service or a composable; so does the `keypath` of
+  `I18nT`, and a template-literal key such as `` t(`guests.build.step.${status}`) `` is checked against every value of
+  `status`. vue-i18n's own `$t` and `useI18n().t` accept any string: **never use them**, always `import { t } from '@/i18n'`,
+  in `<script setup>` templates as well as in code.
+- **Outside a component** (services, composables, stores, canvas drawing) it is the same import. Never call `t` at module
+  top level, and never keep translated text in a module-level constant: a constant holds a `MessageKey` (a
+  `Record<Status, MessageKey>` is how a table stays exhaustive) or becomes a function, and `t` runs where the text is read.
+  A lookup by a string the backend sends is `Record<string, MessageKey>` with a fallback for an id it does not know.
+- **Plurals.** One message, forms separated by `|`: `'{count} process | {count} processes'`, called as `t(key, count)`.
+  With two forms 0 and 2 and above take the second, 1 the first, which is what `n === 1 ? singular : plural` did; write
+  three forms (`'no events | {count} event | {count} events'`) only where zero reads differently. A count shown with grouping
+  is passed formatted, `t(key, { count: formatCount(total) }, total)`.
+- **Interpolation.** `{name}` with a named value: `t('guests.build.failure.step', { step })`. A sentence is one message; never
+  join pieces (word order is the translator's). A value that is itself user-readable text (a noun for a sentence) is a
+  translated string passed in, not a key. A missing named value renders as empty without an error, so cover each
+  interpolated message with a test.
+- **Characters.** `@`, `|`, `{` and `}` are syntax in a message. Write them as literal interpolations: `{'@'}`, `{'|'}`.
+  `#`, `$`, `%`, `<` and quotes are plain text.
+- **No HTML in a message.** Text with a link or a bold part uses component interpolation: the message
+  `'Read {guide} first'` and `<I18nT keypath="x.y.intro" scope="global" tag="p"><template #guide><a ...>...</a></template></I18nT>`
+  (`I18nT` is imported from `@/i18n`; `scope="global"` is always passed). Never `v-html`.
+- **Numbers and dates.** `n(value, 'count')` (and `formatCount` in `services/format-number.ts`, which uses it) for grouped
+  integers; named formats live in `src/i18n/en-US/formats.ts`. Instants are shown in UTC for every viewer:
+  `services/format-time.ts` keeps producing `YYYY-MM-DD HH:mm:ss UTC` and is not translated, and any named datetime format
+  for `d()` must set `timeZone: 'UTC'`. Never call `toLocaleString`, `toLocaleDateString` or `Intl.*` directly.
+- **Tests.** `tests/setup/i18n.ts` (the one vitest `setupFiles` entry) puts the plugin in `config.global.plugins` of
+  `@vue/test-utils`, which concatenates it with the plugins a mount passes itself, so a mount needs nothing extra and
+  `global: { plugins: [Quasar, router] }` keeps working. Code that imports `t` needs no plugin at all. Assertions stay on
+  the English text; split or pluralised messages are the only reason to edit one.
+- **Not translated:** text the API sends (error messages, validation messages, profile and step names) shown as received;
+  identifiers, ids and hashes; CSS classes and `data-test` ids; query-grammar tokens and field names (`process.name`, `AND`);
+  log and terminal text; keyboard key names in `@keydown` handlers (not the key hints shown to the user, which are text);
+  icon names; `console` and thrown `Error` messages; test fixtures.
+- **A string that is both a label and a selector.** Tests may keep finding a control by its English label. Code under
+  `src/` must not: if logic matches on displayed text, match on an id or a value instead and translate the text beside it.
+  New tests select by `data-test` or role.
+
 ## Frontend structure (`frontend/src/`)
 
 | Path | Content |
@@ -467,7 +519,8 @@ through the control service and the build job.
 | `stores/` | Pinia: `system`, `analyses`, `analysis` (current workspace: detail, query state, selection), `live`, `rules`, `guests` (the guest list and profiles) |
 | `pages/` | One page component per route/tab |
 | `components/` | `QueryBar`, `FilterChips`, `EventTable`, `EventDetailDrawer`, `ProcessGraph`, `ProcessTree`, `Timeline` (canvas), `DesktopPanel` (guacamole-common-js; an analysis's and a build's), `SeverityBadge`, `LaneIcon`, `StatTile`, `AttackMatrix`, `CodeBlock`, `TerminalEmpty`, `GuestChip` (name and badges, used on the Dashboard row, the workspace header and the Submit dialog), and `guest/` (the cards, the option controls rendered from a profile, the build page's parts) |
-| `boot/` | `notify.ts` (toast types), `api.ts` (client base URL, error interceptor that raises toasts) |
+| `boot/` | `i18n.ts` (installs the vue-i18n plugin), `notify.ts` (toast types), `api.ts` (client base URL, error interceptor that raises toasts) |
+| `i18n/` | The shared `t`, `n`, `d` and `I18nT` (`index.ts`), and the `en-US/` catalogue, one file per area; see [Internationalisation](#internationalisation) |
 | `css/` | `app.css` (the theme stylesheet, single source of the design tokens), `quasar.variables.scss` |
 
 The PWA manifest:

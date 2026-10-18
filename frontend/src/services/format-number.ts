@@ -1,3 +1,5 @@
+import { n } from '@/i18n'
+
 export function formatCount(value: number): string {
-  return value.toLocaleString('en-US')
+  return n(value, 'count')
 }

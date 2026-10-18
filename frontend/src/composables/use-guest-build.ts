@@ -197,7 +197,7 @@ export function useGuestBuild(buildId: () => string): GuestBuild {
   // The page shows no inline place for this refusal while the build runs, so it is a toast like the END RUN one.
   async function cancel(): Promise<void> {
     if (!underway.value || busy.value) return
-    if (!(await confirmDestructive(cancelConfirmation))) return
+    if (!(await confirmDestructive(cancelConfirmation()))) return
     await act('cancel', () => guestsCancelBuild(path()), kick, (message) => Notify.create({ type: 'tt-warning', message }))
   }
 

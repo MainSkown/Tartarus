@@ -7,6 +7,7 @@ import GuestChecks from '@/components/guest/GuestChecks.vue'
 import GuestField from '@/components/guest/GuestField.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import type { CheckState } from '@/composables/use-guest-list'
+import { t } from '@/i18n'
 import { formatTimestamp } from '@/services/format-time'
 import { isInProgress } from '@/services/guest-state'
 import { GIVEAWAY_ADVICE, guestActions, kindLabel, resourcesLabel, selfTestOf, systemLabel } from '@/services/guest-view'
@@ -48,14 +49,14 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
       <span
         v-if="isDefault"
         class="guest-card__default text-mono"
-        title="Analyses run on this guest unless another is chosen"
+        :title="t('guests.card.defaultTitle')"
       >
         <q-icon
           name="star"
           size="14px"
           aria-hidden="true"
         />
-        DEFAULT
+        {{ t('guests.card.default') }}
       </span>
       <StatusBadge
         class="guest-card__state"
@@ -85,58 +86,58 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
       <progress
         :value="build?.percent"
         max="100"
-        :aria-label="`${guest.name} ${guest.state}`"
+        :aria-label="t('guests.card.progressLabel', { name: guest.name, state: guest.state })"
       />
       <p class="guest-card__progress-text text-mono text-gray">
         <span v-if="build">{{ build.percent }}%</span>
-        <span>{{ build?.message || `${guest.state}…` }}</span>
+        <span>{{ build?.message || t('guests.card.progressFallback', { state: guest.state }) }}</span>
       </p>
     </div>
 
     <dl class="guest-card__fields">
       <GuestField
         v-if="systemLabel(guest, profile, edition)"
-        label="SYSTEM"
+        :label="t('guests.card.field.system')"
       >
         {{ systemLabel(guest, profile, edition) }}
       </GuestField>
       <GuestField
         v-if="kindLabel(guest)"
-        label="KIND"
+        :label="t('guests.card.field.kind')"
       >
         <span class="text-mono">{{ kindLabel(guest) }}</span>
       </GuestField>
       <GuestField
         v-if="guest.resources"
-        label="RESOURCES"
+        :label="t('guests.card.field.resources')"
       >
         {{ resourcesLabel(guest.resources) }}
       </GuestField>
       <GuestField
         v-if="guest.ip"
-        label="IP"
+        :label="t('guests.card.field.ip')"
       >
         <span class="text-mono">{{ guest.ip }}</span>
       </GuestField>
       <template v-if="guest.identity">
-        <GuestField label="ACCOUNT">
+        <GuestField :label="t('guests.card.field.account')">
           <span class="text-mono">{{ guest.identity.account }}</span>
         </GuestField>
-        <GuestField label="COMPUTER">
+        <GuestField :label="t('guests.card.field.computer')">
           <span class="text-mono">{{ guest.identity.machine }}</span>
         </GuestField>
-        <GuestField label="PASSWORD">
+        <GuestField :label="t('guests.card.field.password')">
           <span class="guest-card__password">
             <span class="guest-card__secret text-mono">{{ passwordRevealed ? guest.identity.password : MASKED_PASSWORD }}</span>
             <CopyButton
               :text="guest.identity.password"
-              what="password"
+              :what="t('guests.card.passwordNoun')"
             />
             <q-btn
               flat
               dense
               square
-              :label="passwordRevealed ? '[HIDE]' : '[REVEAL]'"
+              :label="passwordRevealed ? t('guests.card.hide') : t('guests.card.reveal')"
               :aria-pressed="passwordRevealed"
               class="guest-card__reveal text-mono"
               @click="passwordRevealed = !passwordRevealed"
@@ -146,19 +147,19 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
       </template>
       <GuestField
         v-if="guest.snapshot"
-        label="SNAPSHOT"
+        :label="t('guests.card.field.snapshot')"
       >
         <span class="text-mono">{{ guest.snapshot }}</span>
       </GuestField>
       <GuestField
         v-if="guest.created"
-        label="CREATED"
+        :label="t('guests.card.field.created')"
       >
         <span class="text-mono">{{ formatTimestamp(guest.created) }}</span>
       </GuestField>
       <GuestField
         v-if="selfTest"
-        label="SELF-TEST"
+        :label="t('guests.card.field.selfTest')"
       >
         <span>{{ selfTest.message }}</span>
         <router-link
@@ -166,7 +167,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
           :to="`/analyses/${selfTest.analysisId}`"
           class="guest-card__analysis text-mono"
         >
-          analysis #{{ selfTest.analysisId }}
+          {{ t('guests.card.analysisLink', { id: selfTest.analysisId }) }}
         </router-link>
       </GuestField>
     </dl>
@@ -183,7 +184,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
       />
       <div>
         <p class="guest-card__giveaways-title text-mono">
-          A SAMPLE CAN TELL THIS IS A SANDBOX
+          {{ t('guests.card.giveawaysTitle') }}
         </p>
         <ul>
           <li
@@ -223,7 +224,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
         v-if="actions.runChecks"
         outline
         square
-        label="[RUN CHECKS]"
+        :label="t('guests.card.action.runChecks')"
         class="guest-card__action text-mono"
         :loading="check?.busy"
         :disable="check?.busy"
@@ -233,7 +234,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
         v-if="actions.clone"
         outline
         square
-        label="[CLONE]"
+        :label="t('guests.card.action.clone')"
         class="guest-card__action text-mono"
         :to="`/guest/clone/${guest.name}`"
       />
@@ -241,7 +242,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
         v-if="actions.viewBuild"
         outline
         square
-        label="[VIEW BUILD]"
+        :label="t('guests.card.action.viewBuild')"
         class="guest-card__action text-mono"
         :to="`/guest/builds/${guest.build_id}`"
       />
@@ -249,7 +250,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
         v-if="actions.remove"
         outline
         square
-        label="[DELETE]"
+        :label="t('guests.card.action.delete')"
         class="guest-card__delete text-mono"
         :loading="deleting"
         :disable="deleting"

@@ -7,7 +7,7 @@ const apiProxyTarget = process.env.API_PROXY_TARGET ?? 'http://backend:8000'
 const devServerPort = Number(process.env.DEV_SERVER_PORT ?? 5173)
 
 export default defineConfig(() => ({
-  boot: ['notify', 'api'],
+  boot: ['i18n', 'notify', 'api'],
 
   css: ['app.css'],
 
@@ -49,6 +49,7 @@ export default defineConfig(() => ({
 
   framework: {
     config: { dark: true },
+    lang: 'en-US',
     plugins: ['Notify', 'Dialog', 'Loading', 'LocalStorage'],
   },
 

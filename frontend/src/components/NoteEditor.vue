@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Notify } from 'quasar'
+import { t } from '@/i18n'
+import { formatCount } from '@/services/format-number'
 import { MAX_NOTE_LENGTH, NOTE_COUNTER_FROM } from '@/services/note-body'
 import { useAnnotationsStore, type AnnotationTarget } from '@/stores/annotations'
 
@@ -29,7 +31,7 @@ watch(savedBody, (next, previous) => {
 })
 
 const showCounter = computed(() => draft.value.length >= NOTE_COUNTER_FROM)
-const counter = computed(() => `${draft.value.length.toLocaleString('en-US')} / ${MAX_NOTE_LENGTH.toLocaleString('en-US')}`)
+const counter = computed(() => t('notes.editor.counter', { current: formatCount(draft.value.length), max: formatCount(MAX_NOTE_LENGTH) }))
 
 async function save(): Promise<void> {
   if (draft.value === savedBody.value) return
