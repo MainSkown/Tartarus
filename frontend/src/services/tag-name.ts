@@ -13,7 +13,7 @@ export type TagNameCheck = { name: string } | { problem: string | null }
 export function checkTagName(raw: string): TagNameCheck {
   const name = raw.trim().toLowerCase()
   if (name === '') return { problem: null }
-  if (name.length > MAX_TAG_NAME_LENGTH) return { problem: t('tags.check.tooLong', { max: MAX_TAG_NAME_LENGTH }) }
+  if (name.length > MAX_TAG_NAME_LENGTH) return { problem: t('tags.check.tooLong', { max: MAX_TAG_NAME_LENGTH }, MAX_TAG_NAME_LENGTH) }
   const parts = name.split(':')
   if (parts.length > 2 || parts.some((part) => part === '')) return { problem: t('tags.check.separator') }
   if (!parts.every((part) => PART.test(part))) return { problem: t('tags.check.characters') }

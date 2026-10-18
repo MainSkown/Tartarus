@@ -80,6 +80,16 @@ describe('LiveStatusBar', () => {
     expect(wrapper.find('[data-field="events"]').text()).toContain('3,202/min')
   })
 
+  it.each([
+    [0, '0 events'],
+    [1, '1 event'],
+    [2, '2 events'],
+  ])('uses the singular for exactly one event (total: %s)', (total, expected) => {
+    const text = mountBar({ total, listed: undefined }).find('[data-field="events"]').text()
+    expect(text).toContain(expected)
+    if (total === 1) expect(text).not.toContain('1 events')
+  })
+
   it('says how many of the events are in the stream when the stream shows fewer', () => {
     const wrapper = mountBar({ total: 481, listed: 8 })
     expect(wrapper.find('[data-field="events"]').text()).toContain('481 events (8 shown)')

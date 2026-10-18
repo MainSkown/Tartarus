@@ -14,7 +14,7 @@ export function cloneSummary(sourceName: string): string {
 
 export function blockingWarning(kind: 'build' | 'clone'): string {
   const minutes = kind === 'build' ? BUILD_MINUTES : CLONE_MINUTES
-  return t('guests.wizard.blockingWarning', { kind: t(KIND_NOUN[kind]), minutes })
+  return t('guests.wizard.blockingWarning', { kind: t(KIND_NOUN[kind]), minutes }, minutes)
 }
 
 export function sourceNotReadyMessage(name: string, state: GuestState): string {

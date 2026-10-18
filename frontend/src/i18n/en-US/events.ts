@@ -51,7 +51,7 @@ export default {
     chooseTitle: 'Choose columns',
     searchPlaceholder: 'find a field',
     searchLabel: 'Find a field',
-    limit: '{max} columns is the most a search returns: remove one to add another',
+    limit: '{max} column is the most a search returns: remove one to add another | {max} columns is the most a search returns: remove one to add another',
     loading: '> loading fields',
     noMatch: '> no field matches',
     footer: 'fields the table can show',

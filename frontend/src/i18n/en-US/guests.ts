@@ -63,8 +63,7 @@ export default {
     runningNote: 'running the checks, this takes up to 2 minutes',
     passed: 'passed',
     failed: 'failed',
-    noun: 'check | checks',
-    summary: '{passed} of {total} {checks} passed',
+    summary: '{passed} of {total} check passed | {passed} of {total} checks passed',
   },
   stateList: {
     empty: 'no guests',
@@ -152,7 +151,7 @@ export default {
     passwordHint: 'A random one is chosen when this is left blank; the Guest page shows it.',
     noProfile: 'No installed profile reads this image ({profile})',
     cloneSummary: "Copies {source}'s disk, gives the copy its own identity, takes about {minutes} minutes and about {disk} GB.",
-    blockingWarning: 'The {kind} takes about {minutes} minutes. No analysis can start until it is done.',
+    blockingWarning: 'The {kind} takes about {minutes} minute. No analysis can start until it is done. | The {kind} takes about {minutes} minutes. No analysis can start until it is done.',
     noun: {
       build: 'build',
       clone: 'clone',

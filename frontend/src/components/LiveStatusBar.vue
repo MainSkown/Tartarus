@@ -82,7 +82,7 @@ const link = computed(() => (props.ended ? t('live.status.streamEnded') : t(LINK
     <span
       class="live-status__item live-status__events"
       data-field="events"
-    ><strong>{{ t('live.status.events', { count: formatCount(total) }) }}</strong>{{ shownLabel }} {{ t('live.status.rate', { count: formatCount(eventsPerMinute) }) }}</span>
+    ><strong>{{ t('live.status.events', { count: formatCount(total) }, total) }}</strong>{{ shownLabel }} {{ t('live.status.rate', { count: formatCount(eventsPerMinute) }) }}</span>
 
     <span class="live-status__actions">
       <slot name="actions" />

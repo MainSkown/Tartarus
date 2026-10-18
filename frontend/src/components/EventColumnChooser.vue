@@ -52,7 +52,7 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
           class="column-chooser__limit text-mono"
           role="status"
         >
-          {{ t('events.columns.limit', { max: MAX_COLUMNS }) }}
+          {{ t('events.columns.limit', { max: MAX_COLUMNS }, MAX_COLUMNS) }}
         </p>
         <div class="column-chooser__list scrollable-panel">
           <p

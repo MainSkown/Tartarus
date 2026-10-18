@@ -42,7 +42,7 @@ describe('AttackMatrix', () => {
 
   it('reads an unnamed technique cell as id, hits and severity', () => {
     const cell = mountMatrix().findAll('.attack-cell').at(-1)!
-    expect(cell.attributes('aria-label')).toBe('T1999, 1 hits, low severity')
+    expect(cell.attributes('aria-label')).toBe('T1999, 1 hit, low severity')
   })
 
   it('tells which technique was clicked', async () => {

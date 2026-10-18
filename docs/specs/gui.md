@@ -485,6 +485,13 @@ v1). The English text must come out exactly as it was written inline: same words
   With two forms 0 and 2 and above take the second, 1 the first, which is what `n === 1 ? singular : plural` did; write
   three forms (`'no events | {count} event | {count} events'`) only where zero reads differently. A count shown with grouping
   is passed formatted, `t(key, { count: formatCount(total) }, total)`.
+  **Every number followed by a noun is a plural message with the whole sentence in each form**, even when the number is a
+  constant today (`'{minutes} minute | {minutes} minutes'`, passed `minutes` as the count): never `'{n} events'` for a
+  count that can be 1, and never a noun as a message of its own inside a sentence (`'{n} {noun} passed'`), because other
+  languages inflect the noun, and sometimes the whole sentence, by the count. English needs two forms; a language with
+  more (Polish has one, few and many) gets them from its own catalogue plus a `pluralRules` entry for its locale in
+  `src/i18n/index.ts`, with no change at the call site. Two counted nouns in one sentence cannot both select a form: split
+  the sentence or leave the second number out (`guests.wizard.cloneSummary` still has this problem).
 - **Interpolation.** `{name}` with a named value: `t('guests.build.failure.step', { step })`. A sentence is one message; never
   join pieces (word order is the translator's). A value that is itself user-readable text (a noun for a sentence) is a
   translated string passed in, not a key. A missing named value renders as empty without an error, so cover each

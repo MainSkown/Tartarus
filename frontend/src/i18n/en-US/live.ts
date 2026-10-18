@@ -19,8 +19,8 @@ export default {
   extend: {
     label: '+{seconds}S',
     button: '[{label}]',
-    longest: 'The run is already at its longest ({minutes} minutes)',
-    adds: 'Adds {seconds} seconds to the run',
+    longest: 'The run is already at its longest ({minutes} minute) | The run is already at its longest ({minutes} minutes)',
+    adds: 'Adds {seconds} second to the run | Adds {seconds} seconds to the run',
   },
   countdown: {
     ending: 'ending',
@@ -35,7 +35,7 @@ export default {
     streamEnded: 'STREAM ENDED',
     elapsed: 'ELAPSED',
     remaining: 'REMAINING',
-    events: '{count} events',
+    events: '{count} event | {count} events',
     shown: ' ({count} shown)',
     rate: '· {count}/min',
   },

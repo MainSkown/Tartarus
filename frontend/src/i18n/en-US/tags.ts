@@ -15,7 +15,7 @@ export default {
     removeFailed: 'Could not remove the tag',
   },
   check: {
-    tooLong: 'at most {max} characters',
+    tooLong: 'at most {max} character | at most {max} characters',
     separator: "one ':' at most, between two parts",
     characters: "only a-z, 0-9, '.', '_' and '-'",
   },

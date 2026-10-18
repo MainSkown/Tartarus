@@ -12,6 +12,6 @@ export function extendLabel(): string {
 
 export function extendTitle(atLongest: boolean): string {
   return atLongest
-    ? t('live.extend.longest', { minutes: LONGEST_RUN_MINUTES })
-    : t('live.extend.adds', { seconds: EXTEND_STEP_S })
+    ? t('live.extend.longest', { minutes: LONGEST_RUN_MINUTES }, LONGEST_RUN_MINUTES)
+    : t('live.extend.adds', { seconds: EXTEND_STEP_S }, EXTEND_STEP_S)
 }

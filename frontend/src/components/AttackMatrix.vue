@@ -9,8 +9,8 @@ const emit = defineEmits<{ select: [technique: AttackTechniqueHit] }>()
 function cellLabel(technique: AttackTechniqueHit): string {
   const values = { id: technique.id, hits: technique.hit_count, severity: technique.severity }
   return technique.name
-    ? t('detections.matrix.cellNamed', { ...values, name: technique.name })
-    : t('detections.matrix.cell', values)
+    ? t('detections.matrix.cellNamed', { ...values, name: technique.name }, technique.hit_count)
+    : t('detections.matrix.cell', values, technique.hit_count)
 }
 </script>
 

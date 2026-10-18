@@ -49,7 +49,7 @@ export function selfTestOf(guest: Guest): SelfTestSummary | undefined {
 
 export function checkSummary(probes: readonly HealthProbe[]): string {
   const passed = probes.filter((probe) => probe.ok).length
-  return t('guests.checks.summary', { passed, total: probes.length, checks: t('guests.checks.noun', probes.length) })
+  return t('guests.checks.summary', { passed, total: probes.length }, probes.length)
 }
 
 export function guestDeleteConfirmation(name: string): ConfirmOptions {

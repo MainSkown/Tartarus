@@ -18,8 +18,8 @@ export default {
   },
   matrix: {
     version: 'ATT&CK v{version}',
-    cell: '{id}, {hits} hits, {severity} severity',
-    cellNamed: '{id}, {name}, {hits} hits, {severity} severity',
+    cell: '{id}, {hits} hit, {severity} severity | {id}, {hits} hits, {severity} severity',
+    cellNamed: '{id}, {name}, {hits} hit, {severity} severity | {id}, {name}, {hits} hits, {severity} severity',
   },
   detail: {
     heading: 'DESCRIPTION',

@@ -57,8 +57,12 @@ What each step proved, on `97111a3` as the baseline:
 lock-in. The first slice commit also carries the deletion of the superseded `eslint.i18n.config.js`.
 
 **Findings that stay open:**
-- The live event counter reads "1 events" (M3 kept it: M7b may not change what the analyst sees). A deliberate English fix
-  is now one catalogue line (`live.*` plural form).
+- **Plurals, fixed after the proof (2026-10-18, at the user's request).** The live counter said "1 events" and the Attack
+  matrix cell label said "1 hits", both from before M7b. They, the guest health-check summary (which built its sentence
+  around a separately pluralised noun) and the messages with a constant count (`minutes`, `seconds`, `columns`,
+  `characters`) are now plural messages, and gui.md states the rule. Only the two bugs change English: for a count of 1.
+  Still open: `guests.wizard.cloneSummary` has two counted nouns in one sentence ("about {minutes} minutes and about {disk}
+  GB"), which no plural form can serve for both.
 - English the code could not carry over as one message: CopyButton and the DesktopPanel `subject` prop build a sentence
   around a noun passed in (`{what}`), which a translation into a language with grammatical cases would need to reword.
 - Technical terms (DNS, HTTP, TLS, JA3, SHA256, `inetsim`) are catalogue messages in M5's tabs; a translator may leave them.
