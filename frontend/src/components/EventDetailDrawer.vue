@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import EventDetailPanel from '@/components/EventDetailPanel.vue'
 import { useEventDetail } from '@/composables/use-event-detail'
+import { t } from '@/i18n'
 import { useAnalysesStore } from '@/stores/analyses'
 import { useEventsStore } from '@/stores/events'
 import { useQueryStateStore } from '@/stores/query-state'
@@ -53,7 +54,7 @@ function onDialogUpdate(open: boolean): void {
     <q-card
       class="event-drawer"
       role="dialog"
-      aria-label="Event detail"
+      :aria-label="t('events.detail.label')"
     >
       <EventDetailPanel
         v-if="eventId !== null"

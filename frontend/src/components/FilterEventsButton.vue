@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useFilterEvents } from '@/composables/use-filter-events'
+import { t } from '@/i18n'
 import { describeTarget, type EventsTarget } from '@/services/events-filters'
 
 /**
@@ -13,7 +14,7 @@ const props = defineProps<{ target: EventsTarget; label?: string }>()
 const { filterOnEvents, showProcessEvents, showEventsMatching } = useFilterEvents()
 
 const nothingToApply = computed(() => 'chips' in props.target && props.target.chips.length === 0)
-const name = computed(() => `Show events with ${props.label ?? describeTarget(props.target)}`)
+const name = computed(() => t('events.filter.showWith', { target: props.label ?? describeTarget(props.target) }))
 
 async function show(): Promise<void> {
   const { target } = props
@@ -30,7 +31,7 @@ async function show(): Promise<void> {
     class="filter-events-button"
     :class="{ 'filter-events-button--content': $slots.default }"
     :aria-label="name"
-    title="Show events"
+    :title="t('events.filter.show')"
     @click="show"
   >
     <slot>

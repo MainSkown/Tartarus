@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { t } from '@/i18n'
 import { MAX_COLUMNS, columnFieldGroups, offeredColumnFields } from '@/services/event-columns'
 import { useFieldCatalogStore } from '@/stores/field-catalog'
 
@@ -17,8 +18,8 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
     class="column-chooser__trigger button text-mono"
     :class="{ 'is-active': chosen.length > 0 }"
     aria-haspopup="true"
-    aria-label="Columns"
-    :title="chosen.length > 0 ? `Columns: ${chosen.length} added` : 'Choose columns'"
+    :aria-label="t('events.columns.trigger')"
+    :title="chosen.length > 0 ? t('events.columns.addedTitle', { count: chosen.length }) : t('events.columns.chooseTitle')"
   >
     <q-icon
       name="view_column"
@@ -43,22 +44,22 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
           square
           dark
           clearable
-          placeholder="find a field"
-          aria-label="Find a field"
+          :placeholder="t('events.columns.searchPlaceholder')"
+          :aria-label="t('events.columns.searchLabel')"
         />
         <p
           v-if="atLimit"
           class="column-chooser__limit text-mono"
           role="status"
         >
-          {{ MAX_COLUMNS }} columns is the most a search returns: remove one to add another
+          {{ t('events.columns.limit', { max: MAX_COLUMNS }) }}
         </p>
         <div class="column-chooser__list scrollable-panel">
           <p
             v-if="groups.length === 0"
             class="column-chooser__empty text-mono text-gray"
           >
-            &gt; {{ catalog.fields.length === 0 ? 'loading fields' : 'no field matches' }}
+            {{ t(catalog.fields.length === 0 ? 'events.columns.loading' : 'events.columns.noMatch') }}
           </p>
           <section
             v-for="group in groups"
@@ -85,14 +86,14 @@ const groups = computed(() => columnFieldGroups(offeredColumnFields(catalog.fiel
           </section>
         </div>
         <div class="column-chooser__footer text-mono">
-          <span class="text-gray">fields the table can show</span>
+          <span class="text-gray">{{ t('events.columns.footer') }}</span>
           <button
             type="button"
             class="column-chooser__reset button text-mono"
             :disabled="chosen.length === 0"
             @click="emit('clear')"
           >
-            RESET
+            {{ t('events.columns.reset') }}
           </button>
         </div>
       </div>

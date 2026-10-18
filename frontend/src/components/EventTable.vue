@@ -8,6 +8,7 @@ import ProcessChip from '@/components/ProcessChip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import ViewState from '@/components/ViewState.vue'
+import { t } from '@/i18n'
 import { columnValue } from '@/services/event-columns'
 import { eventProcess } from '@/services/event-display'
 import { formatCount } from '@/services/format-number'
@@ -72,7 +73,7 @@ const gridMinWidth = computed(() => {
 
 const showsFooter = computed(() => !showsSkeleton.value && !isEmpty.value && !props.error)
 const counter = computed(() => {
-  return `${formatCount(props.events.length)} of ${formatCount(props.total)} event${props.total === 1 ? '' : 's'}`
+  return t('events.table.counter', { shown: formatCount(props.events.length), total: formatCount(props.total) }, props.total)
 })
 
 function listElement(): HTMLElement | undefined {
@@ -151,13 +152,13 @@ watch(
           v-if="isEmpty"
           class="event-table__empty"
         >
-          <TerminalEmpty :message="filtered ? 'no event matches this query' : 'no events'" />
+          <TerminalEmpty :message="filtered ? t('events.table.noMatch') : t('events.table.noEvents')" />
           <q-btn
             v-if="filtered"
             outline
             square
             class="event-table__clear text-mono"
-            label="[CLEAR QUERY]"
+            :label="t('events.table.clearQuery')"
             @click="emit('clear')"
           />
         </div>
@@ -172,7 +173,7 @@ watch(
             :style="{ '--event-columns': gridColumns, '--event-min-width': gridMinWidth }"
             role="grid"
             tabindex="0"
-            aria-label="Events"
+            :aria-label="t('events.table.label')"
             :aria-rowcount="total"
             @keydown="onKeydown"
           >
@@ -187,10 +188,10 @@ watch(
                 <button
                   type="button"
                   class="event-table__sort text-mono"
-                  :title="ascending ? 'Oldest first, click for newest first' : 'Newest first, click for oldest first'"
+                  :title="ascending ? t('events.table.sortOldest') : t('events.table.sortNewest')"
                   @click="emit('toggle-sort')"
                 >
-                  TIME<q-icon
+                  {{ t('events.column.time') }}<q-icon
                     :name="ascending ? 'arrow_upward' : 'arrow_downward'"
                     size="12px"
                     aria-hidden="true"
@@ -198,19 +199,19 @@ watch(
                 </button>
               </div>
               <div role="columnheader">
-                LANE
+                {{ t('events.column.lane') }}
               </div>
               <div role="columnheader">
-                PROCESS
+                {{ t('events.column.process') }}
               </div>
               <div role="columnheader">
-                ACTION
+                {{ t('events.column.action') }}
               </div>
               <div role="columnheader">
-                SUMMARY
+                {{ t('events.column.summary') }}
               </div>
               <div role="columnheader">
-                SEVERITY
+                {{ t('events.column.severity') }}
               </div>
               <div
                 v-for="column in extraColumns"
@@ -234,7 +235,7 @@ watch(
               v-if="showsSkeleton"
               class="event-table__skeleton"
               aria-busy="true"
-              aria-label="Loading events"
+              :aria-label="t('events.table.loading')"
             >
               <div
                 v-for="row in SKELETON_ROWS"
@@ -339,13 +340,13 @@ watch(
         v-if="loadMoreError"
         class="event-table__paging"
       >
-        <span class="text-gray">&gt; failed to load more: {{ loadMoreError }}</span>
+        <span class="text-gray">{{ t('events.table.loadMoreFailed', { error: loadMoreError }) }}</span>
         <button
           type="button"
           class="event-table__retry button text-mono"
           @click="emit('load-more')"
         >
-          [RETRY]
+          {{ t('common.retry') }}
         </button>
       </span>
       <span
@@ -355,9 +356,9 @@ watch(
         <span
           class="loader event-table__loader"
           role="status"
-          aria-label="Loading more events"
+          :aria-label="t('events.table.loadingMore')"
         />
-        <span class="text-gray">loading more events</span>
+        <span class="text-gray">{{ t('events.table.loadingMoreText') }}</span>
       </span>
     </footer>
   </div>

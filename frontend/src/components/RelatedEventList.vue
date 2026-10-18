@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ListingEvent } from '@/api'
 import LaneIcon from '@/components/LaneIcon.vue'
+import { t } from '@/i18n'
 import { eventTitle } from '@/services/event-display'
 import { formatCount } from '@/services/format-number'
 import { formatClockTime } from '@/services/format-time'
@@ -18,7 +19,7 @@ const emit = defineEmits<{ open: [id: string] }>()
       <span>{{ title }}</span>
       <span class="text-gray">{{
         listing.items.length < listing.total
-          ? `showing ${formatCount(listing.items.length)} of ${formatCount(listing.total)}`
+          ? t('events.related.showing', { shown: formatCount(listing.items.length), total: formatCount(listing.total) })
           : formatCount(listing.total)
       }}</span>
     </h4>

@@ -1,4 +1,5 @@
-import { GENERIC_ERROR_MESSAGE, errorMessage } from '@/services/api-error'
+import { t } from '@/i18n'
+import { errorMessage, genericErrorMessage } from '@/services/api-error'
 
 export interface SearchFailure {
   message: string
@@ -29,6 +30,6 @@ export function searchFailure(error: unknown, response?: { status: number }): Se
       ? errorMessage(error)
       : problem.filter_index === null
         ? problem.message
-        : `filter ${problem.filter_index + 1}: ${problem.message}`
-  return { message: message === '' ? GENERIC_ERROR_MESSAGE : message, status: response?.status }
+        : t('events.search.filterProblem', { position: problem.filter_index + 1, message: problem.message })
+  return { message: message === '' ? genericErrorMessage() : message, status: response?.status }
 }

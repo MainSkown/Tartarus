@@ -1,4 +1,5 @@
 import type { IocType, RegistryChange } from '@/api'
+import { t } from '@/i18n'
 
 export interface EventsFilter {
   field: string
@@ -63,6 +64,6 @@ function describeFilter({ field, value, negate }: EventsFilter): string {
 
 export function describeTarget(target: EventsTarget): string {
   if ('pid' in target) return `pid: ${target.pid}`
-  if ('text' in target) return `query: ${target.text}`
-  return target.chips.map(describeFilter).join(' and ')
+  if ('text' in target) return t('events.filter.queryTarget', { text: target.text })
+  return target.chips.map(describeFilter).join(` ${t('events.filter.joiner')} `)
 }

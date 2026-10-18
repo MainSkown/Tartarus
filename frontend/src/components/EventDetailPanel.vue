@@ -14,10 +14,9 @@ import { eventProcess, eventTitle } from '@/services/event-display'
 import { flattenSource } from '@/services/event-source'
 import { formatPreciseTimestamp } from '@/services/format-time'
 import { eventTarget } from '@/stores/annotations'
+import { t } from '@/i18n'
 
 const SKELETON_LINES = 10
-
-const ANNOTATE_HINT = 'events can be tagged and noted once the analysis is finished'
 
 const props = withDefaults(
   defineProps<{
@@ -69,8 +68,8 @@ function onKeydown(key: KeyboardEvent): void {
         <button
           type="button"
           class="event-detail__step button"
-          aria-label="Previous event"
-          title="Previous event (↑)"
+          :aria-label="t('events.detail.previous')"
+          :title="t('events.detail.previousTitle')"
           :disabled="!hasPrevious"
           @click="emit('previous')"
         >
@@ -82,8 +81,8 @@ function onKeydown(key: KeyboardEvent): void {
         <button
           type="button"
           class="event-detail__step button"
-          aria-label="Next event"
-          title="Next event (↓)"
+          :aria-label="t('events.detail.next')"
+          :title="t('events.detail.nextTitle')"
           :disabled="!hasNext"
           @click="emit('next')"
         >
@@ -92,12 +91,12 @@ function onKeydown(key: KeyboardEvent): void {
             size="20px"
           />
         </button>
-        <span class="event-detail__label text-mono">EVENT</span>
+        <span class="event-detail__label text-mono">{{ t('events.detail.kind') }}</span>
         <button
           type="button"
           class="event-detail__step event-detail__close button"
-          aria-label="Close event"
-          title="Close (Esc)"
+          :aria-label="t('events.detail.close')"
+          :title="t('events.detail.closeTitle')"
           @click="emit('close')"
         >
           <q-icon
@@ -144,7 +143,7 @@ function onKeydown(key: KeyboardEvent): void {
     >
       <TerminalEmpty
         v-if="notFound"
-        message="event not found: it is no longer in this analysis"
+        :message="t('events.detail.notFound')"
       />
       <ViewState
         v-else-if="error"
@@ -155,7 +154,7 @@ function onKeydown(key: KeyboardEvent): void {
         v-else-if="!detail"
         class="event-detail__skeleton"
         aria-busy="true"
-        aria-label="Loading event"
+        :aria-label="t('events.detail.loading')"
       >
         <span
           v-for="line in SKELETON_LINES"
@@ -169,12 +168,12 @@ function onKeydown(key: KeyboardEvent): void {
           class="event-detail__section"
           :target="eventTarget(eventId)"
           :editable="annotatable"
-          :hint="ANNOTATE_HINT"
+          :hint="t('events.detail.annotateHint')"
         />
 
         <section class="event-detail__section">
           <h4 class="event-detail__heading text-mono">
-            FIELDS
+            {{ t('events.detail.fields') }}
           </h4>
           <EventFieldsTable :fields="fields" />
         </section>
@@ -191,12 +190,12 @@ function onKeydown(key: KeyboardEvent): void {
                 :name="rawOpen ? 'expand_more' : 'chevron_right'"
                 size="16px"
                 aria-hidden="true"
-              />RAW JSON
+              />{{ t('events.detail.rawJson') }}
             </button>
             <CopyButton
               v-if="rawOpen"
               :text="rawJson"
-              what="raw JSON"
+              :what="t('events.detail.rawJsonNoun')"
             />
           </div>
           <pre
@@ -207,16 +206,16 @@ function onKeydown(key: KeyboardEvent): void {
 
         <section class="event-detail__section">
           <h4 class="event-detail__heading text-mono">
-            RELATED EVENTS
+            {{ t('events.detail.related') }}
           </h4>
           <template v-if="hasRelated">
             <RelatedEventList
-              title="REFERENCES"
+              :title="t('events.detail.references')"
               :listing="detail.related.references"
               @open="emit('open-event', $event)"
             />
             <RelatedEventList
-              title="REFERENCED BY"
+              :title="t('events.detail.referencedBy')"
               :listing="detail.related.referenced_by"
               @open="emit('open-event', $event)"
             />
@@ -225,7 +224,7 @@ function onKeydown(key: KeyboardEvent): void {
             v-else
             class="event-detail__none text-mono text-gray"
           >
-            no related events
+            {{ t('events.detail.noRelated') }}
           </p>
         </section>
       </template>

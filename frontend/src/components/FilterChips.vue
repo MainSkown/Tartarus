@@ -1,24 +1,27 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '@/i18n'
 import { formatClockTime } from '@/services/format-time'
 import type { QueryTimeRange } from '@/services/query-url'
 import { useQueryStateStore } from '@/stores/query-state'
 
 /** `pidNames` lets a caller that knows the processes (the Processes tab) add the image name to a pid chip. */
 const props = defineProps<{ pidNames?: Record<number, string> }>()
+// A query-grammar token, shown as written and never translated.
+const NEGATION_TOKEN = 'NOT'
 const store = useQueryStateStore()
 
 function describeTimeRange({ from, to }: QueryTimeRange): string {
-  if (from !== null && to !== null) return `${formatClockTime(from)} – ${formatClockTime(to)}`
-  return from !== null ? `from ${formatClockTime(from)}` : `until ${formatClockTime(to!)}`
+  if (from !== null && to !== null) return t('events.chips.range', { from: formatClockTime(from), to: formatClockTime(to) })
+  return from !== null ? t('events.chips.from', { time: formatClockTime(from) }) : t('events.chips.until', { time: formatClockTime(to!) })
 }
 
 const chips = computed(() =>
   store.chips.map((chip) => {
     const text = `${chip.field}: ${chip.value}`
-    const label = chip.negate ? `NOT ${text}` : text
-    const next = chip.negate ? 'include' : 'exclude'
-    return { key: `${chip.field}\u0000${chip.value}`, text, negate: chip.negate, title: `${label} (click to ${next})` }
+    const label = chip.negate ? `${NEGATION_TOKEN} ${text}` : text
+    const action = t(chip.negate ? 'events.chips.include' : 'events.chips.exclude')
+    return { key: `${chip.field}\u0000${chip.value}`, text, negate: chip.negate, title: t('events.chips.clickTo', { label, action }) }
   }),
 )
 
@@ -38,7 +41,7 @@ const visible = computed(() => chips.value.length > 0 || pids.value.length > 0 |
     v-if="visible"
     class="filter-chips"
     role="group"
-    aria-label="Active filters"
+    :aria-label="t('events.chips.label')"
   >
     <q-chip
       v-for="(chip, index) in chips"
@@ -50,14 +53,14 @@ const visible = computed(() => chips.value.length > 0 || pids.value.length > 0 |
       square
       icon-remove="close"
       :title="chip.title"
-      :remove-aria-label="`Remove filter ${chip.text}`"
+      :remove-aria-label="t('events.chips.removeFilter', { text: chip.text })"
       @click="store.toggleChip(index)"
       @remove="store.removeChip(index)"
     >
       <span
         v-if="chip.negate"
         class="filter-chip__not"
-      >NOT</span>
+      >{{ NEGATION_TOKEN }}</span>
       <span class="filter-chip__label">{{ chip.text }}</span>
     </q-chip>
 
@@ -69,7 +72,7 @@ const visible = computed(() => chips.value.length > 0 || pids.value.length > 0 |
       square
       icon-remove="close"
       :title="pid.text"
-      :remove-aria-label="`Remove filter pid: ${pid.pid}`"
+      :remove-aria-label="t('events.chips.removeFilter', { text: `pid: ${pid.pid}` })"
       @remove="store.togglePid(pid.pid)"
     >
       <span class="filter-chip__label">{{ pid.text }}</span>
@@ -82,7 +85,7 @@ const visible = computed(() => chips.value.length > 0 || pids.value.length > 0 |
       square
       icon-remove="close"
       :title="time"
-      remove-aria-label="Remove filter time"
+      :remove-aria-label="t('events.chips.removeTime')"
       @remove="store.clearTimeRange()"
     >
       <span class="filter-chip__label">{{ time }}</span>

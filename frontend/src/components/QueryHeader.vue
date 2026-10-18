@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import FilterChips from '@/components/FilterChips.vue'
 import QueryBar from '@/components/QueryBar.vue'
+import { t } from '@/i18n'
 import { pidNamesOf } from '@/services/pid-names'
 import { useEventsStore } from '@/stores/events'
 import { useQueryStateStore } from '@/stores/query-state'
@@ -17,7 +18,7 @@ const pidNames = computed(() => pidNamesOf(events.events, query.pids))
 <template>
   <section
     class="query-header"
-    aria-label="Query"
+    :aria-label="t('events.query.label')"
   >
     <QueryBar :analysis-id="analysisId" />
     <FilterChips :pid-names="pidNames" />

@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import FacetGroup from '@/components/FacetGroup.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
+import { t } from '@/i18n'
 import { FACET_FIELDS } from '@/services/event-fields'
 import { facetChipAction } from '@/services/facet-actions'
 import { useEventFacetsStore } from '@/stores/event-facets'
@@ -32,20 +33,20 @@ onMounted(() => void catalog.load())
   <aside
     class="event-facets"
     :class="{ 'is-collapsed': !open }"
-    aria-label="Facets"
+    :aria-label="t('events.facets.label')"
   >
     <header class="event-facets__header">
       <PaneHeading
         v-if="open"
         class="event-facets__title"
-        label="FACETS"
+        :label="t('events.facets.title')"
       />
       <button
         type="button"
         class="event-facets__toggle button"
         :aria-expanded="open"
-        :aria-label="open ? 'Hide facets' : 'Show facets'"
-        :title="open ? 'Hide facets' : 'Show facets'"
+        :aria-label="open ? t('events.facets.hide') : t('events.facets.show')"
+        :title="open ? t('events.facets.hide') : t('events.facets.show')"
         @click="emit('toggle')"
       >
         <q-icon
@@ -58,7 +59,7 @@ onMounted(() => void catalog.load())
     <span
       v-if="!open"
       class="event-facets__strip text-mono"
-    >FACETS</span>
+    >{{ t('events.facets.title') }}</span>
 
     <div
       v-else
@@ -69,14 +70,14 @@ onMounted(() => void catalog.load())
         class="event-facets__error text-mono"
       >
         <p class="text-gray">
-          &gt; facets unavailable: {{ facets.error }}
+          {{ t('events.facets.unavailable', { error: facets.error }) }}
         </p>
         <button
           type="button"
           class="event-facets__retry button text-mono"
           @click="facets.retry()"
         >
-          [RETRY]
+          {{ t('common.retry') }}
         </button>
       </div>
       <template v-else>

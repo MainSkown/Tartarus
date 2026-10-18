@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import CopyButton from '@/components/CopyButton.vue'
+import { t } from '@/i18n'
 import { useQueryStateStore } from '@/stores/query-state'
 
 const props = withDefaults(defineProps<{ field: string; value: string | number; filterable?: boolean }>(), {
@@ -22,8 +23,8 @@ function filter(negate: boolean): void {
       v-if="filterable"
       type="button"
       class="field-actions__button"
-      :aria-label="`Filter on ${target}`"
-      title="Filter on"
+      :aria-label="t('events.filter.onTarget', { target })"
+      :title="t('events.filter.on')"
       @click="filter(false)"
     >
       <q-icon
@@ -35,8 +36,8 @@ function filter(negate: boolean): void {
       v-if="filterable"
       type="button"
       class="field-actions__button"
-      :aria-label="`Filter out ${target}`"
-      title="Filter out"
+      :aria-label="t('events.filter.outTarget', { target })"
+      :title="t('events.filter.out')"
       @click="filter(true)"
     >
       <q-icon
@@ -46,7 +47,7 @@ function filter(negate: boolean): void {
     </button>
     <CopyButton
       :text="text"
-      :what="`${field} value`"
+      :what="t('events.fields.valueNoun', { field })"
     />
   </span>
 </template>

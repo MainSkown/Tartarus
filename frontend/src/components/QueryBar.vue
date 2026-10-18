@@ -6,6 +6,7 @@ import { useQueryValidation } from '@/composables/use-query-validation'
 import { applySuggestion } from '@/services/query-token'
 import { applyErrorSuggestion, underlineSegments } from '@/services/query-underline'
 import type { QueryErrorRead } from '@/api'
+import { I18nT, t } from '@/i18n'
 import { useQueryStateStore } from '@/stores/query-state'
 
 const props = defineProps<{ analysisId: number }>()
@@ -196,13 +197,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', focusOnSlash))
         :class="{ 'is-invalid': firstError }"
         type="text"
         role="combobox"
-        aria-label="Query"
+        :aria-label="t('events.query.label')"
         aria-autocomplete="list"
         :aria-expanded="suggestions.open.value"
         :aria-controls="listId"
         :aria-activedescendant="suggestions.active.value ? optionId(suggestions.activeIndex.value) : undefined"
         :aria-invalid="firstError ? 'true' : undefined"
-        placeholder="process.name:cmd.exe AND lane:network"
+        :placeholder="t('events.query.placeholder')"
         spellcheck="false"
         autocomplete="off"
         autocapitalize="off"
@@ -224,8 +225,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', focusOnSlash))
           v-if="canClear"
           type="button"
           class="query-bar__button text-mono"
-          aria-label="Clear query"
-          title="Clear query"
+          :aria-label="t('events.query.clear')"
+          :title="t('events.query.clear')"
           @click="clear"
         >
           ✕
@@ -233,8 +234,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', focusOnSlash))
         <button
           type="button"
           class="query-bar__button text-mono"
-          aria-label="Query syntax help"
-          title="Query syntax"
+          :aria-label="t('events.query.syntaxHelp')"
+          :title="t('events.query.syntaxTitle')"
           @click="cheatSheetOpen = true"
         >
           ?
@@ -256,7 +257,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', focusOnSlash))
       :id="listId"
       class="query-bar__suggestions scrollable-panel"
       role="listbox"
-      aria-label="Suggestions"
+      :aria-label="t('events.query.suggestions')"
     >
       <li
         v-for="(item, index) in suggestions.items.value"
@@ -294,14 +295,22 @@ onBeforeUnmount(() => document.removeEventListener('keydown', focusOnSlash))
       aria-live="polite"
     >
       <span class="query-bar__message-text">{{ firstError.message }}</span>
-      <span v-if="errors.length > 1">(+{{ errors.length - 1 }} more)</span>
+      <span v-if="errors.length > 1">{{ t('events.query.moreErrors', { count: errors.length - 1 }) }}</span>
       <button
         v-if="firstError.suggestion"
         type="button"
         class="query-bar__suggestion"
         @click="useErrorSuggestion(firstError)"
       >
-        use <strong>{{ firstError.suggestion }}</strong>
+        <I18nT
+          keypath="events.query.useSuggestion"
+          scope="global"
+          tag="span"
+        >
+          <template #suggestion>
+            <strong>{{ firstError.suggestion }}</strong>
+          </template>
+        </I18nT>
       </button>
     </p>
 

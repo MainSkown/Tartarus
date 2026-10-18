@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import FieldActions from '@/components/FieldActions.vue'
+import { t } from '@/i18n'
 import type { SourceField } from '@/services/event-source'
 import { useFieldCatalogStore } from '@/stores/field-catalog'
 
@@ -21,7 +22,7 @@ onMounted(() => void catalog.load())
   <div
     class="fields-table"
     role="table"
-    aria-label="Event fields"
+    :aria-label="t('events.fields.label')"
   >
     <div
       v-for="(field, index) in fields"

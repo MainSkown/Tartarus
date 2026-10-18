@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { Facet, FilterChip } from '@/api'
 import LaneIcon from '@/components/LaneIcon.vue'
+import { t } from '@/i18n'
 import { fieldLabel } from '@/services/event-fields'
 import { facetValueMark } from '@/services/facet-actions'
 import { formatCount } from '@/services/format-number'
@@ -55,7 +56,7 @@ const values = computed(() => {
           type="button"
           class="facet-value__pick"
           :aria-pressed="entry.mark !== undefined"
-          :title="`${entry.value}: click to filter on, alt-click to filter out`"
+          :title="t('events.facets.pickTitle', { value: entry.value })"
           @click="emit('pick', entry.value, $event.altKey)"
         >
           <LaneIcon
@@ -72,8 +73,8 @@ const values = computed(() => {
         <button
           type="button"
           class="facet-value__exclude"
-          :aria-label="`Filter out ${field}: ${entry.value}`"
-          title="Filter out"
+          :aria-label="t('events.filter.outTarget', { target: `${field}: ${entry.value}` })"
+          :title="t('events.filter.out')"
           @click="emit('pick', entry.value, true)"
         >
           <q-icon
@@ -100,7 +101,7 @@ const values = computed(() => {
       v-else
       class="facet-group__empty text-mono text-gray"
     >
-      no values
+      {{ t('events.facets.noValues') }}
     </p>
   </section>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch } from 'vue'
+import { t, type MessageKey } from '@/i18n'
 import { QUERY_EXAMPLES } from '@/services/query-examples'
 import { useFieldCatalogStore } from '@/stores/field-catalog'
 
@@ -8,23 +9,23 @@ const emit = defineEmits<{ 'update:modelValue': [open: boolean]; choose: [query:
 
 const catalog = useFieldCatalogStore()
 
-const GRAMMAR = [
-  'Terms next to each other are ANDed. NOT binds first, then AND, then OR; use parentheses to group.',
-  'Words with no field search the summary, command line, paths, URL and API arguments.',
-  'Values are case-insensitive. Quote a value that has spaces; a backslash is written as one or two.',
-  '* and ? are wildcards. A bare * after the colon tests that the field exists.',
-  'Numbers and dates take comparisons; a date alone is the whole day.',
+const GRAMMAR: MessageKey[] = [
+  'events.cheatSheet.grammar.adjacent',
+  'events.cheatSheet.grammar.fields',
+  'events.cheatSheet.grammar.values',
+  'events.cheatSheet.grammar.wildcards',
+  'events.cheatSheet.grammar.numbers',
 ]
 
-const OPERATORS = [
-  { syntax: 'field:value', meaning: 'the field equals the value' },
-  { syntax: 'field:(a OR b)', meaning: 'the field equals any of the values' },
-  { syntax: 'field:*', meaning: 'the field exists' },
-  { syntax: 'field >= 1024', meaning: 'also >  <  <=, on numbers and dates' },
-  { syntax: 'AND  OR  NOT', meaning: 'combine terms' },
-  { syntax: '( )', meaning: 'group terms' },
-  { syntax: '"two words"', meaning: 'a value with spaces' },
-  { syntax: '*.exe  c?d', meaning: 'wildcards inside a value' },
+const OPERATORS: { syntax: string; meaning: MessageKey }[] = [
+  { syntax: 'field:value', meaning: 'events.cheatSheet.operators.equals' },
+  { syntax: 'field:(a OR b)', meaning: 'events.cheatSheet.operators.anyOf' },
+  { syntax: 'field:*', meaning: 'events.cheatSheet.operators.exists' },
+  { syntax: 'field >= 1024', meaning: 'events.cheatSheet.operators.comparison' },
+  { syntax: 'AND  OR  NOT', meaning: 'events.cheatSheet.operators.combine' },
+  { syntax: '( )', meaning: 'events.cheatSheet.operators.group' },
+  { syntax: '"two words"', meaning: 'events.cheatSheet.operators.phrase' },
+  { syntax: '*.exe  c?d', meaning: 'events.cheatSheet.operators.wildcard' },
 ]
 
 function choose(query: string): void {
@@ -49,7 +50,7 @@ watch(
     <q-card class="query-cheat-sheet">
       <header class="query-cheat-sheet__header">
         <h2 class="query-cheat-sheet__title text-mono">
-          QUERY SYNTAX
+          {{ t('events.cheatSheet.title') }}
         </h2>
         <q-btn
           flat
@@ -57,7 +58,7 @@ watch(
           no-caps
           dense
           class="query-cheat-sheet__close text-mono"
-          label="CLOSE"
+          :label="t('common.close')"
           @click="emit('update:modelValue', false)"
         />
       </header>
@@ -67,14 +68,14 @@ watch(
           <div class="query-cheat-sheet__column">
             <section>
               <h3 class="query-cheat-sheet__heading text-mono">
-                GRAMMAR
+                {{ t('events.cheatSheet.grammar.heading') }}
               </h3>
               <ul class="query-cheat-sheet__grammar">
                 <li
                   v-for="line in GRAMMAR"
                   :key="line"
                 >
-                  {{ line }}
+                  {{ t(line) }}
                 </li>
               </ul>
             </section>
@@ -83,7 +84,7 @@ watch(
           <div class="query-cheat-sheet__column">
             <section>
               <h3 class="query-cheat-sheet__heading text-mono">
-                OPERATORS
+                {{ t('events.cheatSheet.operators.heading') }}
               </h3>
               <dl class="query-cheat-sheet__operators">
                 <template
@@ -93,7 +94,7 @@ watch(
                   <dt class="text-mono">
                     {{ operator.syntax }}
                   </dt>
-                  <dd>{{ operator.meaning }}</dd>
+                  <dd>{{ t(operator.meaning) }}</dd>
                 </template>
               </dl>
             </section>
@@ -102,7 +103,7 @@ watch(
           <div class="query-cheat-sheet__column">
             <section>
               <h3 class="query-cheat-sheet__heading text-mono">
-                EXAMPLES (CLICK TO TRY)
+                {{ t('events.cheatSheet.examples.heading') }}
               </h3>
               <ul class="query-cheat-sheet__examples">
                 <li
@@ -115,7 +116,7 @@ watch(
                     @click="choose(example.query)"
                   >
                     <code>{{ example.query }}</code>
-                    <span class="query-cheat-sheet__note">{{ example.description }}</span>
+                    <span class="query-cheat-sheet__note">{{ t(example.description) }}</span>
                   </button>
                 </li>
               </ul>
@@ -125,7 +126,7 @@ watch(
 
         <section v-if="catalog.aliasRows.length > 0">
           <h3 class="query-cheat-sheet__heading text-mono">
-            ALIASES
+            {{ t('events.cheatSheet.aliases.heading') }}
           </h3>
           <ul class="query-cheat-sheet__aliases">
             <li
