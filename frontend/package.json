@@ -13,6 +13,7 @@
     "dev": "quasar dev",
     "build": "quasar build -m pwa",
     "lint": "eslint . --max-warnings 0",
+    "lint:i18n": "eslint -c eslint.i18n.config.js src",
     "typecheck": "quasar prepare && vue-tsc --noEmit",
     "test:unit": "vitest run",
     "api:sync": "openapi-ts -i http://localhost:8000/openapi.json -o ./src/api -c @hey-api/client-fetch",
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@hey-api/openapi-ts": "^0.99.0",
+    "@intlify/eslint-plugin-vue-i18n": "^4.5.1",
     "@playwright/test": "^1.64.0",
     "@quasar/app-vite": "^3.10.2",
     "@quasar/vite-plugin": "^2.0.2",
