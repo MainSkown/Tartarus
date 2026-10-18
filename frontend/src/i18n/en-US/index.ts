@@ -1,7 +1,21 @@
+import analysis from './analysis'
+import artifacts from './artifacts'
 import common from './common'
+import dashboard from './dashboard'
+import detections from './detections'
+import events from './events'
 import guests from './guests'
 import live from './live'
+import network from './network'
 import notes from './notes'
+import reports from './reports'
+import rules from './rules'
+import settings from './settings'
+import shell from './shell'
+import submit from './submit'
+import tags from './tags'
+import timeline from './timeline'
+import widgets from './widgets'
 
 export { datetimeFormats, numberFormats } from './formats'
-export default { common, guests, live, notes }
+export default { analysis, artifacts, common, dashboard, detections, events, guests, live, network, notes, reports, rules, settings, shell, submit, tags, timeline, widgets }

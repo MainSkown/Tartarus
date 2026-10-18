@@ -43,22 +43,30 @@ Sonnet.
 |---|---|---|---|
 | **I1** | The catalogue skeleton per area under `src/i18n/en-US/`, the lint rule (`@intlify/vue-i18n/no-raw-text`, `no-unused-keys`) as a warning with the list of files not yet migrated, and the unit test that a key used in code exists in the catalogue and a catalogue key is used | Haiku | Test first: the key-usage test fails on a deliberately missing key; lint warns on a raw string in a fixture template |
 
-### Wave 3: migration by area (Haiku, parallel, disjoint files)
+### Wave 3: migration by slice (Haiku, parallel, disjoint files)
 
-Each task migrates only its own files and adds keys only to its own catalogue file. Strings the API sends are shown as
-received. Existing English assertions stay unchanged unless a message was split or pluralised.
+Changed from the roadmap's "services first, then components": a slice owns a screen's components **and** the services,
+composables and stores that feed it, **and** its own catalogue files, so no two tasks touch the same file and the agent
+that writes a message also sees where it is shown. The skeleton (empty catalogue files registered in `en-US/index.ts`) was
+committed first so no task edits `index.ts`. `common.ts` may be extended by any task with a word that is generic across
+areas. Strings the API sends are shown as received. Existing English assertions stay unchanged unless a message was
+split or pluralised. A function's signature stays (it keeps returning the translated string) unless its callers are in
+the same slice. The ownership map is the file lists in each task brief (every `.vue` and `.ts` file under `src/` outside
+`api/` and `i18n/` belongs to exactly one slice; `components/tabs/index.ts` has no text).
 
-| ID | Area |
-|---|---|
-| **M1** | Services and composables with strings (about 32 TypeScript files outside the generated client) |
-| **M2** | Guests page, build wizard, clone form, build page |
-| **M3** | Analysis page shell and its tabs (header, Overview, Processes) |
-| **M4** | LIVE tab |
-| **M5** | Events, Network, Artifacts, Detections, detail drawer |
-| **M6** | Timeline (canvas text and tooltips) |
-| **M7** | Settings, Dashboard, Submit dialog, Rules, Notes, Export, layouts and the app shell |
+| ID | Slice | Files | Catalogue files |
+|---|---|---|---|
+| **M1** | Guests, wizard, clone, build page | 42 | `guests` |
+| **M2** | Analysis page shell, Overview, Processes | 22 | `analysis` |
+| **M3** | LIVE tab, desktop, end run, `+60s` | 34 | `live` |
+| **M4** | Events, query bar, facets, detail drawer | 44 | `events` |
+| **M5** | Network, Artifacts, Detections | 13 | `network`, `artifacts`, `detections` |
+| **M6** | Timeline (canvas text and tooltips) | 18 | `timeline` |
+| **M7** | App shell, Dashboard, Submit dialog, Settings, reports and exports, router | 39 | `shell`, `dashboard`, `submit`, `settings`, `reports` |
+| **M8** | Rules, Notes, tags, shared widgets (copy button, badges, empty and view states) | 21 | `rules`, `notes`, `tags`, `widgets` |
 
-M1 goes first (the components call the services); M2 to M7 run together after it.
+Strings in `.ts` files are not found by tooling (`lint:i18n` reads templates only), so wave 5 adds an audit: a scan of
+string literals in `src/**/*.ts` that look like user text, reviewed by the planner.
 
 ### Wave 4: lock it in
 
