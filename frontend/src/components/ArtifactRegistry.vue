@@ -5,6 +5,7 @@ import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { t } from '@/i18n'
 import { registryChangeFilters } from '@/services/events-filters'
 import { formatTimestamp } from '@/services/format-time'
 
@@ -30,7 +31,7 @@ function groupTitle(group: { hive: string | null; key: string }): string {
     :loading="loading"
     :error="error"
     :empty="data?.keys.length === 0"
-    empty-message="no registry changes were recorded"
+    :empty-message="t('artifacts.empty.registry')"
     @retry="reload"
   >
     <template v-if="data">
@@ -45,18 +46,18 @@ function groupTitle(group: { hive: string | null; key: string }): string {
             class="group-title"
             :title="groupTitle(group)"
           >{{ groupTitle(group) }}</span>
-          <span class="group-count">{{ group.changes.length }} {{ group.changes.length === 1 ? 'change' : 'changes' }}</span>
+          <span class="group-count">{{ t('artifacts.registry.changes', group.changes.length) }}</span>
         </summary>
         <div class="tt-table-scroll">
           <table class="tt-table text-mono">
             <thead>
               <tr>
-                <th>ACTION</th>
-                <th>VALUE</th>
-                <th>TYPE</th>
-                <th>DATA</th>
-                <th>PROCESS</th>
-                <th>TIME</th>
+                <th>{{ t('artifacts.column.action') }}</th>
+                <th>{{ t('artifacts.column.value') }}</th>
+                <th>{{ t('artifacts.column.type') }}</th>
+                <th>{{ t('artifacts.column.data') }}</th>
+                <th>{{ t('artifacts.column.process') }}</th>
+                <th>{{ t('artifacts.column.time') }}</th>
               </tr>
             </thead>
             <tbody>

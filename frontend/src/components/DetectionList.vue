@@ -2,6 +2,7 @@
 import type { DetectionGroup } from '@/api'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
+import { t } from '@/i18n'
 import { rulesetLabel } from '@/services/detection-groups'
 
 defineProps<{ groups: DetectionGroup[]; selectedId: string | undefined }>()
@@ -28,7 +29,7 @@ const emit = defineEmits<{ select: [id: string] }>()
         <span
           v-if="detection.related_event_total > 0"
           class="detection-entry__count text-mono text-gray"
-        >{{ detection.related_event_total }} {{ detection.related_event_total === 1 ? 'event' : 'events' }}</span>
+        >{{ t('detections.list.events', detection.related_event_total) }}</span>
         <span class="detection-entry__name text-mono">{{ detection.name }}</span>
         <span
           v-if="detection.techniques.length > 0"

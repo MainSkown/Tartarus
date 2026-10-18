@@ -2,6 +2,7 @@
 import type { ProcessRef } from '@/api'
 import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
+import { t } from '@/i18n'
 import type { EventsFilter } from '@/services/events-filters'
 
 export interface NetworkColumn {
@@ -29,12 +30,12 @@ defineProps<{
 <template>
   <div class="network-table">
     <p class="network-table__note text-mono">
-      <span class="network-table__count text-gray">listed {{ rows.length }} of {{ total }}</span>
+      <span class="network-table__count text-gray">{{ t('network.table.listed', { shown: rows.length, total }) }}</span>
       <span
         v-if="simulated"
         class="network-table__inetsim"
-        title="answered by INetSim"
-      >inetsim</span>
+        :title="t('network.table.inetsimTitle')"
+      >{{ t('network.table.inetsim') }}</span>
     </p>
     <div class="tt-table-scroll">
       <table class="tt-table text-mono">
@@ -48,7 +49,7 @@ defineProps<{
               {{ column.label }}
             </th>
             <th v-if="withProcess">
-              PROCESS
+              {{ t('network.column.process') }}
             </th>
           </tr>
         </thead>

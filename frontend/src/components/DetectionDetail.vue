@@ -5,6 +5,7 @@ import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
+import { t } from '@/i18n'
 import { rulesetLabel } from '@/services/detection-groups'
 import { eventIdQuery } from '@/services/event-id-query'
 import { filterOn } from '@/services/events-filters'
@@ -18,7 +19,7 @@ const WEB_ADDRESS = /^https?:\/\//i
 const eventsCount = computed(() => {
   const { related_events, related_event_total } = props.detection
   return related_events.length < related_event_total
-    ? `${related_events.length} of ${related_event_total} shown`
+    ? t('detections.detail.eventsShown', { shown: related_events.length, total: related_event_total })
     : String(related_event_total)
 })
 
@@ -27,45 +28,45 @@ const triggeringEventsQuery = computed(() => eventIdQuery(props.detection.relate
 
 <template>
   <article class="detection-detail">
-    <PaneHeading label="DESCRIPTION" />
+    <PaneHeading :label="t('detections.detail.heading')" />
     <div class="detection-detail__top">
       <SeverityBadge :severity="detection.severity" />
       <FilterEventsButton
         class="detection-detail__action detection-detail__rule-filter text-mono"
         :target="{ chips: filterOn('rule.name', detection.name) }"
       >
-        [FILTER ON RULE]
+        {{ t('detections.detail.filterOnRule') }}
       </FilterEventsButton>
     </div>
     <h2 class="detection-detail__name text-mono">
       {{ detection.name }}
     </h2>
     <p class="detection-detail__description">
-      {{ detection.description ?? 'no description' }}
+      {{ detection.description ?? t('detections.detail.noDescription') }}
     </p>
 
     <dl class="detection-detail__facts">
       <dt class="text-mono">
-        RULESET
+        {{ t('detections.detail.ruleset') }}
       </dt>
       <dd class="detection-detail__ruleset text-mono">
         {{ rulesetLabel(detection.ruleset) }}
       </dd>
       <dt class="text-mono">
-        PROCESS
+        {{ t('detections.detail.process') }}
       </dt>
       <dd class="detection-detail__process">
         <ProcessChip :process="detection.process" />
       </dd>
       <dt class="text-mono">
-        TIME
+        {{ t('detections.detail.time') }}
       </dt>
       <dd class="detection-detail__time text-mono">
         {{ formatTimestamp(detection.time) }}
       </dd>
       <template v-if="detection.techniques.length > 0">
         <dt class="text-mono">
-          TECHNIQUES
+          {{ t('detections.detail.techniques') }}
         </dt>
         <dd class="text-mono">
           {{ detection.techniques.join(' ') }}
@@ -75,7 +76,7 @@ const triggeringEventsQuery = computed(() => eventIdQuery(props.detection.relate
 
     <template v-if="detection.references.length > 0">
       <h3 class="detection-detail__heading text-mono">
-        REFERENCES
+        {{ t('detections.detail.references') }}
       </h3>
       <ul class="detection-detail__references">
         <li
@@ -95,13 +96,13 @@ const triggeringEventsQuery = computed(() => eventIdQuery(props.detection.relate
 
     <template v-if="detection.match">
       <h3 class="detection-detail__heading text-mono">
-        MATCHED CONDITION
+        {{ t('detections.detail.matchedCondition') }}
       </h3>
       <pre class="code-block detection-detail__match">{{ detection.match }}</pre>
     </template>
 
     <h3 class="detection-detail__heading text-mono">
-      TRIGGERING EVENTS
+      {{ t('detections.detail.triggeringEvents') }}
       <span
         v-if="detection.related_event_total > 0"
         class="detection-detail__events-count text-gray"
@@ -110,13 +111,13 @@ const triggeringEventsQuery = computed(() => eventIdQuery(props.detection.relate
         <span
           v-if="triggeringEventsQuery.used < detection.related_events.length"
           class="detection-detail__events-cut text-gray"
-        >the query names {{ triggeringEventsQuery.used }} of {{ detection.related_events.length }}</span>
+        >{{ t('detections.detail.queryNames', { used: triggeringEventsQuery.used, listed: detection.related_events.length }) }}</span>
         <FilterEventsButton
           class="detection-detail__action detection-detail__show-events text-mono"
           :target="{ text: triggeringEventsQuery.text }"
-          label="the triggering events"
+          :label="t('detections.detail.triggeringEventsNoun')"
         >
-          [SHOW THESE EVENTS]
+          {{ t('detections.detail.showTheseEvents') }}
         </FilterEventsButton>
       </template>
     </h3>
@@ -150,7 +151,7 @@ const triggeringEventsQuery = computed(() => eventIdQuery(props.detection.relate
       v-else
       class="text-mono text-gray"
     >
-      &gt; no triggering events recorded
+      {{ t('detections.detail.noTriggeringEvents') }}
     </p>
   </article>
 </template>

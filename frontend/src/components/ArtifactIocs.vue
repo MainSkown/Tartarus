@@ -6,6 +6,7 @@ import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { t } from '@/i18n'
 import { iocFilters } from '@/services/events-filters'
 
 const IOC_TYPES: IocType[] = ['hash', 'domain', 'ip', 'url', 'mutex', 'registry', 'file']
@@ -43,14 +44,14 @@ watch(() => props.analysisId, () => {
     :loading="loading"
     :error="error"
     :empty="iocs.length === 0 && data !== undefined"
-    empty-message="no indicators were extracted"
+    :empty-message="t('artifacts.empty.iocs')"
     @retry="reload"
   >
     <template v-if="data">
       <div
         class="type-chips"
         role="group"
-        aria-label="Filter by type"
+        :aria-label="t('artifacts.iocs.filterByType')"
       >
         <button
           type="button"
@@ -58,7 +59,7 @@ watch(() => props.analysisId, () => {
           :aria-pressed="selectedType === undefined"
           @click="selectedType = undefined"
         >
-          all {{ iocs.length }}
+          {{ t('artifacts.iocs.all', { count: iocs.length }) }}
         </button>
         <button
           v-for="{ type, count } in typeCounts"
@@ -68,26 +69,26 @@ watch(() => props.analysisId, () => {
           :aria-pressed="selectedType === type"
           @click="toggleType(type)"
         >
-          {{ type }} {{ count }}
+          {{ t('artifacts.iocs.typeCount', { type, count }) }}
         </button>
       </div>
       <p
         v-if="data.truncated_types.length"
         class="truncated-note text-mono text-gray"
       >
-        &gt; the list is cut short for {{ data.truncated_types.join(', ') }}: not every indicator of these types is shown
+        {{ t('artifacts.iocs.cutShort', { types: data.truncated_types.join(', ') }) }}
       </p>
       <div class="tt-table-scroll">
         <table class="tt-table text-mono">
           <thead>
             <tr>
-              <th>TYPE</th>
-              <th>VALUE</th>
+              <th>{{ t('artifacts.column.type') }}</th>
+              <th>{{ t('artifacts.column.value') }}</th>
               <th class="num">
-                COUNT
+                {{ t('artifacts.column.count') }}
               </th>
-              <th>CONTEXT</th>
-              <th>PROCESS</th>
+              <th>{{ t('artifacts.column.context') }}</th>
+              <th>{{ t('artifacts.column.process') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -103,7 +104,7 @@ watch(() => props.analysisId, () => {
                 >{{ ioc.value }}</span>
                 <CopyButton
                   :text="ioc.value"
-                  what="indicator"
+                  :what="t('artifacts.iocs.indicatorNoun')"
                 />
                 <FilterEventsButton :target="{ chips: iocFilters(ioc.type, ioc.value) }" />
               </td>

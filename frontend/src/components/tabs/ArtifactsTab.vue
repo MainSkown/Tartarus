@@ -7,6 +7,7 @@ import ArtifactRegistry from '@/components/ArtifactRegistry.vue'
 import ArtifactTable from '@/components/ArtifactTable.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { t } from '@/i18n'
 
 type SubTabKey = 'dropped' | 'payloads' | 'dumps' | 'registry' | 'iocs'
 
@@ -25,12 +26,16 @@ const { data, loading, error, reload } = useAnalysisView(
 const dumpCount = computed(() => data.value && data.value.procdumps.length + (data.value.memory_dump ? 1 : 0))
 
 const subTabs = computed<{ key: SubTabKey; label: string; count: number | undefined }[]>(() => [
-  { key: 'dropped', label: 'DROPPED FILES', count: data.value?.dropped.length },
-  { key: 'payloads', label: 'PAYLOADS & CONFIGS', count: data.value?.payloads.length },
-  { key: 'dumps', label: 'PROCESS DUMPS', count: dumpCount.value },
-  { key: 'registry', label: 'REGISTRY', count: registryCount.value },
-  { key: 'iocs', label: 'IOCs', count: iocCount.value },
+  { key: 'dropped', label: t('artifacts.tabs.droppedFiles'), count: data.value?.dropped.length },
+  { key: 'payloads', label: t('artifacts.tabs.payloadsAndConfigs'), count: data.value?.payloads.length },
+  { key: 'dumps', label: t('artifacts.tabs.processDumps'), count: dumpCount.value },
+  { key: 'registry', label: t('artifacts.tabs.registry'), count: registryCount.value },
+  { key: 'iocs', label: t('artifacts.tabs.iocs'), count: iocCount.value },
 ])
+
+function tabLabel(tab: { label: string; count: number | undefined }): string {
+  return tab.count === undefined ? tab.label : t('artifacts.tabs.withCount', { label: tab.label, count: tab.count })
+}
 
 function select(key: SubTabKey): void {
   opened.add(key)
@@ -61,7 +66,7 @@ const noDumps = computed(() => dumpCount.value === 0)
         v-for="tab in subTabs"
         :key="tab.key"
         :name="tab.key"
-        :label="tab.count === undefined ? tab.label : `${tab.label} (${tab.count})`"
+        :label="tabLabel(tab)"
       />
     </q-tabs>
 
@@ -73,7 +78,7 @@ const noDumps = computed(() => dumpCount.value === 0)
         :loading="loading"
         :error="error"
         :empty="data?.dropped.length === 0"
-        empty-message="no files were dropped"
+        :empty-message="t('artifacts.empty.droppedFiles')"
         @retry="reload"
       >
         <ArtifactTable
@@ -92,7 +97,7 @@ const noDumps = computed(() => dumpCount.value === 0)
         :loading="loading"
         :error="error"
         :empty="noPayloads"
-        empty-message="no payloads or configs were extracted"
+        :empty-message="t('artifacts.empty.payloadsAndConfigs')"
         @retry="reload"
       >
         <template v-if="data">
@@ -115,7 +120,7 @@ const noDumps = computed(() => dumpCount.value === 0)
         :loading="loading"
         :error="error"
         :empty="noDumps"
-        empty-message="no process or memory dumps were captured"
+        :empty-message="t('artifacts.empty.processDumps')"
         @retry="reload"
       >
         <template v-if="data">
@@ -126,7 +131,7 @@ const noDumps = computed(() => dumpCount.value === 0)
           />
           <template v-if="data.memory_dump">
             <h3 class="memory-heading text-mono">
-              MEMORY DUMP
+              {{ t('artifacts.memoryDump') }}
             </h3>
             <ArtifactTable
               :analysis-id="analysis.id"

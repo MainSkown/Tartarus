@@ -239,6 +239,20 @@ describe('DetectionsTab ATT&CK matrix', () => {
     expect(wrapper.find('.technique-filter').text()).toContain('T1055')
   })
 
+  it('names the clicked technique with its name when it has one', async () => {
+    const wrapper = await mountTab()
+    await modeInput(wrapper, 'attack').setValue(true)
+    await wrapper.findAll('.attack-cell')[1]!.trigger('click')
+    expect(wrapper.find('.technique-filter span').text()).toBe('technique T1055 (Process Injection)')
+  })
+
+  it('names the clicked technique by its id alone when it has no name', async () => {
+    const wrapper = await mountTab()
+    await modeInput(wrapper, 'attack').setValue(true)
+    await wrapper.findAll('.attack-cell').at(-1)!.trigger('click')
+    expect(wrapper.find('.technique-filter span').text()).toBe('technique T1999')
+  })
+
   it('goes back to every detection when the technique filter is cleared', async () => {
     const wrapper = await mountTab()
     await modeInput(wrapper, 'attack').setValue(true)

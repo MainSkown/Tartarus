@@ -35,6 +35,16 @@ describe('AttackMatrix', () => {
     expect(cell.text()).toContain('T1999')
   })
 
+  it('reads a named technique cell as id, name, hits and severity', () => {
+    const cell = mountMatrix().findAll('.attack-cell')[1]!
+    expect(cell.attributes('aria-label')).toBe('T1055, Process Injection, 2 hits, critical severity')
+  })
+
+  it('reads an unnamed technique cell as id, hits and severity', () => {
+    const cell = mountMatrix().findAll('.attack-cell').at(-1)!
+    expect(cell.attributes('aria-label')).toBe('T1999, 1 hits, low severity')
+  })
+
   it('tells which technique was clicked', async () => {
     const wrapper = mountMatrix()
     await wrapper.findAll('.attack-cell')[1]!.trigger('click')

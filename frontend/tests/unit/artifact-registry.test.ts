@@ -73,6 +73,20 @@ describe('ArtifactRegistry', () => {
     expect(wrapper.emitted('counted')).toEqual([[undefined], [3]])
   })
 
+  it('says change, not changes, for a key with one change', async () => {
+    const key = registryViewFixture().keys[0]!
+    viewsRegistry.mockResolvedValue({ data: { keys: [{ ...key, changes: key.changes.slice(0, 1) }], total: 1 } })
+    const wrapper = await mountRegistry()
+    expect(wrapper.find('.group-count').text()).toBe('1 change')
+  })
+
+  it('says changes for a key with more than one change', async () => {
+    const key = registryViewFixture().keys[0]!
+    viewsRegistry.mockResolvedValue({ data: { keys: [key], total: key.changes.length } })
+    const wrapper = await mountRegistry()
+    expect(wrapper.find('.group-count').text()).toBe(`${key.changes.length} changes`)
+  })
+
   it('says when no key was changed', async () => {
     viewsRegistry.mockResolvedValue({ data: { keys: [], total: 0 } })
     const wrapper = await mountRegistry()

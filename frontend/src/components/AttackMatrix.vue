@@ -1,20 +1,23 @@
 <script setup lang="ts">
 import type { AttackMatrix, AttackTechniqueHit } from '@/api'
+import { t } from '@/i18n'
 import { severityMeta } from '@/services/analysis-status'
 
 defineProps<{ matrix: AttackMatrix }>()
 const emit = defineEmits<{ select: [technique: AttackTechniqueHit] }>()
 
 function cellLabel(technique: AttackTechniqueHit): string {
-  const name = technique.name ? `${technique.name}, ` : ''
-  return `${technique.id}, ${name}${technique.hit_count} hits, ${technique.severity} severity`
+  const values = { id: technique.id, hits: technique.hit_count, severity: technique.severity }
+  return technique.name
+    ? t('detections.matrix.cellNamed', { ...values, name: technique.name })
+    : t('detections.matrix.cell', values)
 }
 </script>
 
 <template>
   <div class="attack-matrix">
     <p class="attack-matrix__version text-mono text-gray">
-      ATT&amp;CK v{{ matrix.attack_version }}
+      {{ t('detections.matrix.version', { version: matrix.attack_version }) }}
     </p>
     <div class="attack-matrix__scroll">
       <section

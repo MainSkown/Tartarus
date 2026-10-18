@@ -7,14 +7,15 @@ import DetectionDetail from '@/components/DetectionDetail.vue'
 import DetectionList from '@/components/DetectionList.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { t, type MessageKey } from '@/i18n'
 import { detectionById, displayedGroups } from '@/services/detection-groups'
 
 const props = defineProps<{ analysis: AnalysisRead }>()
 
 type Mode = 'detections' | 'attack'
-const MODES: { value: Mode; label: string }[] = [
-  { value: 'detections', label: 'DETECTIONS' },
-  { value: 'attack', label: 'ATT&CK' },
+const MODES: { value: Mode; label: MessageKey }[] = [
+  { value: 'detections', label: 'detections.modes.detections' },
+  { value: 'attack', label: 'detections.modes.attack' },
 ]
 
 const detections = useAnalysisView(
@@ -43,6 +44,12 @@ function showTechnique(hit: AttackTechniqueHit): void {
   mode.value = 'detections'
 }
 
+function techniqueFilterLabel(hit: AttackTechniqueHit): string {
+  return hit.name
+    ? t('detections.technique.filterNamed', { id: hit.id, name: hit.name })
+    : t('detections.technique.filter', { id: hit.id })
+}
+
 function clearTechnique(): void {
   technique.value = undefined
   pickedId.value = undefined
@@ -57,7 +64,7 @@ function clearTechnique(): void {
     <div
       class="radio-group detections-tab__mode"
       role="radiogroup"
-      aria-label="Detections view"
+      :aria-label="t('detections.viewLabel')"
     >
       <template
         v-for="option in MODES"
@@ -74,7 +81,7 @@ function clearTechnique(): void {
         <label
           :for="`detections-mode-${option.value}`"
           class="radio-label text-mono"
-        >{{ option.label }}</label>
+        >{{ t(option.label) }}</label>
       </template>
     </div>
 
@@ -83,7 +90,7 @@ function clearTechnique(): void {
       :loading="attack.loading.value"
       :error="attack.error.value"
       :empty="attack.data.value?.tactics.length === 0"
-      empty-message="no ATT&CK techniques were raised"
+      :empty-message="t('detections.empty.attack')"
       @retry="attack.reload"
     >
       <AttackMatrix
@@ -98,20 +105,20 @@ function clearTechnique(): void {
       :loading="detections.loading.value"
       :error="detections.error.value"
       :empty="allGroups.length === 0"
-      empty-message="no detections"
+      :empty-message="t('detections.empty.detections')"
       @retry="detections.reload"
     >
       <p
         v-if="technique"
         class="technique-filter text-mono"
       >
-        <span>technique {{ technique.id }}{{ technique.name ? ` (${technique.name})` : '' }}</span>
+        <span>{{ techniqueFilterLabel(technique) }}</span>
         <button
           type="button"
           class="technique-filter__clear text-mono"
           @click="clearTechnique"
         >
-          [CLEAR]
+          {{ t('detections.technique.clear') }}
         </button>
       </p>
       <div class="detections-tab__panes">

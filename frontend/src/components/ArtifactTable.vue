@@ -4,6 +4,7 @@ import type { Artifact } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
 import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
+import { t } from '@/i18n'
 import { filterOn } from '@/services/events-filters'
 import { formatFileSize } from '@/services/file-size'
 
@@ -24,26 +25,26 @@ function downloadUrl(artifact: Artifact): string {
       v-if="anyDownloadable"
       class="download-note text-mono text-gray"
     >
-      &gt; downloads are zip archives, password: infected
+      {{ t('artifacts.table.downloadNote') }}
     </p>
     <div class="tt-table-scroll">
       <table class="tt-table text-mono">
         <thead>
           <tr>
-            <th>NAME</th>
+            <th>{{ t('artifacts.column.name') }}</th>
             <th v-if="showFamily">
-              FAMILY
+              {{ t('artifacts.column.family') }}
             </th>
-            <th>GUEST PATH</th>
+            <th>{{ t('artifacts.column.guestPath') }}</th>
             <th class="num">
-              SIZE
+              {{ t('artifacts.column.size') }}
             </th>
-            <th>TYPE</th>
-            <th>SHA256</th>
-            <th>YARA</th>
-            <th>PROCESS</th>
+            <th>{{ t('artifacts.column.type') }}</th>
+            <th>{{ t('artifacts.column.sha256') }}</th>
+            <th>{{ t('artifacts.column.yara') }}</th>
+            <th>{{ t('artifacts.column.process') }}</th>
             <th class="col-download">
-              DOWNLOAD
+              {{ t('artifacts.column.download') }}
             </th>
           </tr>
         </thead>
@@ -91,7 +92,7 @@ function downloadUrl(artifact: Artifact): string {
                 <span :title="artifact.sha256">{{ artifact.sha256.slice(0, HASH_PREFIX_LENGTH) }}…</span>
                 <CopyButton
                   :text="artifact.sha256"
-                  what="SHA-256"
+                  :what="t('artifacts.table.sha256Noun')"
                 />
                 <FilterEventsButton :target="{ chips: filterOn('file.hash.sha256', artifact.sha256) }" />
               </template>
@@ -122,13 +123,13 @@ function downloadUrl(artifact: Artifact): string {
                 v-if="artifact.downloadable"
                 class="download-link"
                 :href="downloadUrl(artifact)"
-              >[DOWNLOAD]<q-tooltip>zip archive, password: infected</q-tooltip></a>
+              >{{ t('artifacts.table.download') }}<q-tooltip>{{ t('artifacts.table.downloadTooltip') }}</q-tooltip></a>
               <span
                 v-else
                 class="download-unavailable"
                 aria-disabled="true"
-                title="the analysis no longer holds this file"
-              >not kept</span>
+                :title="t('artifacts.table.notKeptTitle')"
+              >{{ t('artifacts.table.notKept') }}</span>
             </td>
           </tr>
         </tbody>
