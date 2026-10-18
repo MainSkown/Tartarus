@@ -1,0 +1,50 @@
+<Sysmon schemaversion="4.90">
+  <EventFiltering>
+    <ProcessCreate onmatch="exclude">
+      <Image condition="end with">conhost.exe</Image>
+    </ProcessCreate>
+    <ProcessTerminate onmatch="exclude">
+      <Image condition="end with">conhost.exe</Image>
+    </ProcessTerminate>
+    <NetworkConnect onmatch="exclude">
+      <Image condition="is">C:\Python311\pythonw.exe</Image>
+    </NetworkConnect>
+    <ImageLoad onmatch="include">
+      <Signed condition="is">false</Signed>
+    </ImageLoad>
+    <CreateRemoteThread onmatch="exclude" />
+    <ProcessAccess onmatch="exclude">
+      <SourceImage condition="is">C:\Python311\pythonw.exe</SourceImage>
+      <SourceImage condition="end with">MsMpEng.exe</SourceImage>
+      <SourceImage condition="end with">csrss.exe</SourceImage>
+      <SourceImage condition="end with">svchost.exe</SourceImage>
+      <SourceImage condition="end with">wmiprvse.exe</SourceImage>
+      <SourceImage condition="end with">lsass.exe</SourceImage>
+      <SourceImage condition="end with">services.exe</SourceImage>
+      <SourceImage condition="end with">wininit.exe</SourceImage>
+      <SourceImage condition="end with">explorer.exe</SourceImage>
+      <SourceImage condition="end with">taskmgr.exe</SourceImage>
+    </ProcessAccess>
+    <FileCreate onmatch="exclude">
+      <TargetFilename condition="contains">\Windows\Prefetch\</TargetFilename>
+    </FileCreate>
+    <RegistryEvent onmatch="exclude">
+      <TargetObject condition="begin with">HKLM\SOFTWARE\Microsoft\Wbem\Tracing</TargetObject>
+      <TargetObject condition="begin with">HKLM\SOFTWARE\Policies\Microsoft\Windows Defender</TargetObject>
+      <TargetObject condition="contains">\Explorer\RecentDocs</TargetObject>
+      <TargetObject condition="contains">\Services\bam\State\UserSettings</TargetObject>
+      <TargetObject condition="contains">\Local Settings\MuiCache\</TargetObject>
+      <TargetObject condition="contains">SystemCertificates\</TargetObject>
+      <TargetObject condition="contains">EnterpriseCertificates\</TargetObject>
+      <TargetObject condition="contains">\Control\ProductOptions</TargetObject>
+      <TargetObject condition="contains">\Control\Hvsi</TargetObject>
+      <TargetObject condition="contains">\CapabilityAccessManager\</TargetObject>
+      <TargetObject condition="contains">\CurrentVersion\Wosc\</TargetObject>
+      <TargetObject condition="contains">\CurrentVersion\CPSS</TargetObject>
+      <TargetObject condition="contains">\AppModel\SystemAppData\</TargetObject>
+      <TargetObject condition="contains">WinTrust\Trust Providers\Software Publishing</TargetObject>
+    </RegistryEvent>
+    <DnsQuery onmatch="exclude" />
+    <FileDeleteDetected onmatch="exclude" />
+  </EventFiltering>
+</Sysmon>

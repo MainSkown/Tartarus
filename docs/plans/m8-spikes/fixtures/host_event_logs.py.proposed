@@ -1,0 +1,107 @@
+"""Exports Windows event logs from the guest after the run, through the CAPE agent, into the analysis folder.
+
+Runs on the host, so it still works when the guest analyzer died before starting its own auxiliary modules.
+"""
+import base64
+import logging
+import re
+import time
+from pathlib import Path
+
+import requests
+
+from lib.cuckoo.common.abstracts import Auxiliary
+from lib.cuckoo.common.constants import CUCKOO_ROOT
+
+log = logging.getLogger(__name__)
+
+# One line per channel: where the export lands in the analysis folder.
+CHANNELS = {
+    "Microsoft-Windows-Sysmon/Operational": "sysmon/sysmon.xml",
+    "Microsoft-Windows-Windows Defender/Operational": "aux/defender.xml",
+}
+DEFENDER = "Microsoft-Windows-Windows Defender/Operational"
+# PowerShell takes about 8 ms per event; wevtutil is two orders of magnitude faster but writes the guest's ANSI code page.
+FAST = {"Microsoft-Windows-Sysmon/Operational"}
+# The agent splits commands POSIX-style, so paths have forward slashes and a literal backslash is doubled.
+WEVTUTIL = "C:/Windows/System32/wevtutil.exe"
+REG = "C:/Windows/System32/reg.exe"
+POWERSHELL = "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+# Defender quarantines a detected file about ten seconds after it detects it (event 1117 after 1116); worst seen 17.5 s.
+SETTLE_S = 30
+
+EXPORT = """
+$e = Get-WinEvent -LogName '{channel}' -FilterXPath '*[System[EventRecordID > {after}]]' -Oldest -ErrorAction SilentlyContinue
+'<Events>'
+$e | ForEach-Object {{ $_.ToXml() }}
+'</Events>'
+"""
+
+
+def powershell_command(script):
+    script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8\n" + script
+    return "%s -NoProfile -EncodedCommand %s" % (POWERSHELL, base64.b64encode(script.encode("utf-16-le")).decode())
+
+
+class EventLogs(Auxiliary):
+    def start(self):
+        t0 = time.time()
+        self.after = {channel: 0 for channel in CHANNELS}
+        self.acp = "cp1250"
+        try:
+            for channel in CHANNELS:
+                newest = self.execute(f'{WEVTUTIL} query-events "{channel}" /c:1 /rd:true /f:xml')
+                record = re.search(rb"<EventRecordID>(\d+)<", newest)
+                self.after[channel] = int(record.group(1)) if record else 0
+            acp = self.execute(r"%s query HKLM\\SYSTEM\\CurrentControlSet\\Control\\Nls\\CodePage /v ACP" % REG)
+            self.acp = "cp" + re.search(rb"ACP\s+REG_SZ\s+(\d+)", acp).group(1).decode()
+            log.info("event log baselines %s, %s, in %.1f s", self.after, self.acp, time.time() - t0)
+        except Exception as error:
+            log.warning("could not read the event log baselines: %s", error)
+
+    def stop(self):
+        t0 = time.time()
+        folder = Path(CUCKOO_ROOT) / "storage" / "analyses" / str(self.task.id)
+        defender = self.settled_defender_export()
+        for channel, relative in CHANNELS.items():
+            try:
+                xml = defender if channel == DEFENDER else self.export(channel)
+            except Exception as error:
+                log.warning("export of %s failed: %s", channel, error)
+                continue
+            if b"<Events>" in xml:
+                target = folder / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(xml)
+                log.info("exported %s: %d events, %d bytes", channel, xml.count(b"<Event "), len(xml))
+        log.info("event log export took %.1f s", time.time() - t0)
+
+    def settled_defender_export(self):
+        t0 = time.time()
+        while True:
+            try:
+                xml = self.export(DEFENDER)
+            except Exception as error:
+                log.warning("export of %s failed: %s", DEFENDER, error)
+                return b""
+            text = xml.decode("utf-8", "replace")
+            detected = set(re.findall(r"<EventID>1116</EventID>.*?Name='Detection ID'>([^<]+)<", text, re.S))
+            closed = set(re.findall(r"<EventID>111[789]</EventID>.*?Name='Detection ID'>([^<]+)<", text, re.S))
+            if detected <= closed or time.time() - t0 > SETTLE_S:
+                log.info("defender settle: %d detected, %d closed after %.1f s", len(detected), len(detected & closed), time.time() - t0)
+                return xml
+            time.sleep(3)
+
+    def export(self, channel):
+        if channel in FAST:
+            query = "*[System[EventRecordID > %d]]" % self.after[channel]
+            raw = self.execute(f'{WEVTUTIL} query-events "{channel}" /e:Events /format:xml /query:"{query}"')
+            return raw.decode(self.acp, "replace").encode("utf-8")
+        return self.execute(powershell_command(EXPORT.format(channel=channel, after=self.after[channel])))
+
+    def execute(self, command):
+        answer = requests.post(
+            f"http://{self.machine.ip}:8000/execute", data={"command": command, "encoding": "base64"}, timeout=120
+        )
+        answer.raise_for_status()
+        return base64.b64decode(answer.json()["stdout"])
