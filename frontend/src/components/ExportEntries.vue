@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AnalysisRead } from '@/api'
+import { t } from '@/i18n'
 import { useIocExport } from '@/composables/use-ioc-export'
 import { IOC_FORMATS } from '@/services/ioc-export'
 import { openReportDialog } from '@/services/report-dialog'
@@ -22,7 +23,7 @@ const reportBlock = computed(() => reportBlockReason(props.analysis.status))
       header
       class="export-entries__heading text-mono"
     >
-      IOCS
+      {{ t('reports.export.iocs') }}
     </q-item-label>
     <q-item
       v-for="format in IOC_FORMATS"
@@ -42,7 +43,7 @@ const reportBlock = computed(() => reportBlockReason(props.analysis.status))
       header
       class="export-entries__heading text-mono"
     >
-      REPORT
+      {{ t('reports.export.report') }}
     </q-item-label>
     <q-item
       v-for="format in REPORT_FORMATS"

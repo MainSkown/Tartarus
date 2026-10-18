@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import type { AnalysisStatus } from '@/api'
 import AnalysesTable from '@/components/AnalysesTable.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
+import { t } from '@/i18n'
 import { ANALYSIS_STATUSES, analysisStatusMeta } from '@/services/analysis-status'
 import { confirmDestructive } from '@/services/confirm'
 import { deleteConfirmation } from '@/services/delete-confirmation'
@@ -29,7 +30,7 @@ const search = ref('')
 const status = ref<AnalysisStatus | null>(null)
 const tag = ref<string | null>(null)
 
-const tagOptions = computed(() => tags.items.map(({ name, count }) => ({ value: name, label: `${name} (${count})` })))
+const tagOptions = computed(() => tags.items.map(({ name, count }) => ({ value: name, label: t('dashboard.filter.tagOption', { name, count }) })))
 const filtered = computed(() => search.value.trim() !== '' || status.value !== null || tag.value !== null)
 const listQuery = computed<AnalysisListQuery>(() => ({
   ...(search.value.trim() && { q: search.value.trim() }),
@@ -74,22 +75,22 @@ async function deleteAnalysis(id: number): Promise<void> {
   if (!analysis) return
   const confirmed = await confirmDestructive(deleteConfirmation(analysis))
   if (!confirmed) return
-  if (!(await analyses.remove(id))) Notify.create({ type: 'tt-error', message: `Could not delete #${id}` })
+  if (!(await analyses.remove(id))) Notify.create({ type: 'tt-error', message: t('dashboard.notice.deleteFailed', { id }) })
 }
 
 async function reingestAnalysis(id: number): Promise<void> {
   // A refusal (409 while another analysis is active) was already toasted with the backend's reason.
-  if (await analyses.reingest(id)) Notify.create({ type: 'tt-info', message: `Re-ingesting #${id}` })
+  if (await analyses.reingest(id)) Notify.create({ type: 'tt-info', message: t('dashboard.notice.reingesting', { id }) })
 }
 
 async function cancelAnalysis(id: number): Promise<void> {
   const confirmed = await confirmDestructive({
-    title: `Cancel #${id}`,
-    message: `Stop the analysis of ${filenameOf(id)}? A cancelled run cannot be resumed.`,
-    confirmLabel: 'CANCEL ANALYSIS',
+    title: t('dashboard.cancel.title', { id }),
+    message: t('dashboard.cancel.message', { filename: filenameOf(id) }),
+    confirmLabel: t('dashboard.cancel.confirm'),
   })
   if (!confirmed) return
-  if (!(await analyses.cancel(id))) Notify.create({ type: 'tt-error', message: `Could not cancel #${id}` })
+  if (!(await analyses.cancel(id))) Notify.create({ type: 'tt-error', message: t('dashboard.notice.cancelFailed', { id }) })
 }
 
 reload()
@@ -105,7 +106,7 @@ onUnmounted(() => {
   <div class="dashboard-page">
     <div class="dashboard-header">
       <h1 class="section-title text-mono">
-        ANALYSES
+        {{ t('dashboard.title') }}
       </h1>
       <div class="dashboard-filters">
         <q-input
@@ -114,8 +115,8 @@ onUnmounted(() => {
           dense
           hide-bottom-space
           clearable
-          placeholder="search name or hash"
-          aria-label="Search analyses"
+          :placeholder="t('dashboard.search.placeholder')"
+          :aria-label="t('dashboard.search.label')"
           class="search-input text-mono"
         >
           <template #prepend>
@@ -131,7 +132,7 @@ onUnmounted(() => {
           clearable
           emit-value
           map-options
-          label="STATUS"
+          :label="t('dashboard.filter.status')"
           class="status-select text-mono"
         />
         <q-select
@@ -143,7 +144,7 @@ onUnmounted(() => {
           clearable
           emit-value
           map-options
-          label="TAG"
+          :label="t('dashboard.filter.tag')"
           :display-value="tag ?? undefined"
           menu-anchor="bottom right"
           menu-self="top right"
@@ -160,7 +161,7 @@ onUnmounted(() => {
       <span
         class="loader"
         role="status"
-        aria-label="Loading analyses"
+        :aria-label="t('dashboard.loading')"
       />
     </div>
 
@@ -169,12 +170,12 @@ onUnmounted(() => {
       class="page-state text-mono"
     >
       <p class="text-gray">
-        &gt; failed to load: {{ analyses.loadError }}
+        {{ t('dashboard.loadFailed', { error: analyses.loadError }) }}
       </p>
       <q-btn
         outline
         square
-        label="[RETRY]"
+        :label="t('common.retry')"
         class="retry-btn text-mono"
         @click="reload"
       />
@@ -185,34 +186,34 @@ onUnmounted(() => {
       class="page-state text-mono"
     >
       <template v-if="filtered">
-        <TerminalEmpty message="no analyses match" />
+        <TerminalEmpty :message="t('dashboard.empty.noMatches')" />
         <q-btn
           outline
           square
-          label="[CLEAR FILTERS]"
+          :label="t('dashboard.empty.clearFilters')"
           class="clear-filters-btn text-mono"
           @click="clearFilters"
         />
       </template>
       <template v-else-if="guestKnownNotReady">
-        <TerminalEmpty message="guest VM not ready" />
+        <TerminalEmpty :message="t('dashboard.empty.guestNotReady')" />
         <p class="empty-reason text-gray">
           {{ system.guestMessage }}
         </p>
         <q-btn
           outline
           square
-          label="[BUILD GUEST]"
+          :label="t('dashboard.empty.buildGuest')"
           class="build-guest-btn text-mono"
           @click="router.push({ name: 'guest' })"
         />
       </template>
       <template v-else>
-        <TerminalEmpty message="no analyses yet" />
+        <TerminalEmpty :message="t('dashboard.empty.none')" />
         <q-btn
           outline
           square
-          label="[+ SUBMIT SAMPLE]"
+          :label="t('dashboard.empty.submitSample')"
           class="submit-btn text-mono"
           @click="openSubmitDialog"
         />
@@ -231,7 +232,7 @@ onUnmounted(() => {
         v-if="analyses.total > analyses.items.length"
         class="list-footer text-mono text-gray"
       >
-        showing {{ analyses.items.length }} of {{ analyses.total }}
+        {{ t('dashboard.showing', { shown: analyses.items.length, total: analyses.total }) }}
       </p>
     </template>
   </div>

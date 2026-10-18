@@ -1,4 +1,5 @@
 import { Notify } from 'quasar'
+import { t } from '@/i18n'
 
 let announced = false
 
@@ -12,8 +13,8 @@ export function announceUpdate(reload: () => void = () => window.location.reload
   announced = true
   Notify.create({
     type: 'tt-info',
-    message: 'A new version of Tartarus is ready.',
+    message: t('shell.update.ready'),
     timeout: 0,
-    actions: [{ label: 'RELOAD', handler: reload }],
+    actions: [{ label: t('shell.update.reload'), handler: reload }],
   })
 }

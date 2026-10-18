@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { HealthStatus } from '@/api'
+import { t } from '@/i18n'
 
 export interface HealthSubStatus {
   label: string
@@ -22,14 +23,14 @@ const STATUS_CLASS: Record<HealthStatus, string> = {
 }
 
 function describe(status: HealthStatus, message?: string | null): string {
-  return message ? `${status} — ${message}` : status
+  return message ? t('shell.health.withMessage', { status, message }) : status
 }
 
 // The combined "Store" dot has no message of its own (see system store's storeStatus): its
 // tooltip lists Postgres and OpenSearch individually instead, per the gui spec scope note.
 const description = computed(() => {
   if (props.subStatuses && props.subStatuses.length > 0) {
-    return props.subStatuses.map((sub) => `${sub.label}: ${describe(sub.status, sub.message)}`).join(' · ')
+    return props.subStatuses.map((sub) => t('shell.health.detail', { label: sub.label, description: describe(sub.status, sub.message) })).join(' · ')
   }
   return describe(props.status, props.message)
 })
@@ -40,7 +41,7 @@ const description = computed(() => {
     class="health-dot text-mono"
     :class="STATUS_CLASS[status]"
     role="status"
-    :aria-label="`${label}: ${description}`"
+    :aria-label="t('shell.health.detail', { label, description })"
   >
     <span class="health-dot__mark">●</span>
     <span class="health-dot__label">{{ label }}</span>

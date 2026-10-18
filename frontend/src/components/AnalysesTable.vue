@@ -5,6 +5,7 @@ import GuestChip from '@/components/GuestChip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagList from '@/components/TagList.vue'
+import { t } from '@/i18n'
 import { isTerminalStatus } from '@/services/analysis-status'
 import { formatTimestamp } from '@/services/format-time'
 
@@ -32,23 +33,23 @@ function shaPrefix(sha256: string): string {
           <th class="col-id">
             #
           </th>
-          <th>FILE</th>
+          <th>{{ t('dashboard.table.file') }}</th>
           <th class="col-optional">
-            SHA256
+            {{ t('dashboard.table.sha256') }}
           </th>
           <th class="col-optional">
-            SUBMITTED
+            {{ t('dashboard.table.submitted') }}
           </th>
-          <th>STATUS</th>
+          <th>{{ t('dashboard.table.status') }}</th>
           <th class="col-numeric">
-            SCORE
+            {{ t('dashboard.table.score') }}
           </th>
-          <th>SEVERITY</th>
+          <th>{{ t('dashboard.table.severity') }}</th>
           <th class="col-optional">
-            TAGS
+            {{ t('dashboard.table.tags') }}
           </th>
           <th class="col-actions">
-            <span class="sr-only">ACTIONS</span>
+            <span class="sr-only">{{ t('dashboard.table.actions') }}</span>
           </th>
         </tr>
       </thead>
@@ -127,11 +128,11 @@ function shaPrefix(sha256: string): string {
               square
               icon="delete_outline"
               size="sm"
-              :aria-label="`Delete analysis ${analysis.id}`"
+              :aria-label="t('dashboard.row.deleteFor', { id: analysis.id })"
               @click.stop="emit('remove', analysis.id)"
               @keydown.enter.stop
             >
-              <q-tooltip>Delete</q-tooltip>
+              <q-tooltip>{{ t('dashboard.row.delete') }}</q-tooltip>
             </q-btn>
             <q-btn
               v-else
@@ -140,11 +141,11 @@ function shaPrefix(sha256: string): string {
               square
               icon="stop_circle"
               size="sm"
-              :aria-label="`Cancel analysis ${analysis.id}`"
+              :aria-label="t('dashboard.row.cancelFor', { id: analysis.id })"
               @click.stop="emit('cancel', analysis.id)"
               @keydown.enter.stop
             >
-              <q-tooltip>Cancel</q-tooltip>
+              <q-tooltip>{{ t('dashboard.row.cancel') }}</q-tooltip>
             </q-btn>
           </td>
         </tr>

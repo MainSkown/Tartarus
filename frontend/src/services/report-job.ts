@@ -1,5 +1,6 @@
 import { jobsDownload } from '@/api'
 import type { JobProgress, ReportVariant } from '@/api'
+import { t } from '@/i18n'
 import { saveDownload } from '@/services/download'
 
 export function jobFilename(job: JobProgress): string | undefined {
@@ -15,9 +16,7 @@ export function jobFormat(job: JobProgress): ReportVariant | undefined {
 export function jobFailureReason(job: JobProgress): string {
   const error = job.result?.error
   if (typeof error === 'string') return error
-  return job.status === 'interrupted'
-    ? 'The backend restarted while the report was being built'
-    : 'The report could not be built'
+  return job.status === 'interrupted' ? t('reports.job.interrupted') : t('reports.job.failed')
 }
 
 /** Saves the file of a finished report job; false when the download failed (the error toast has said why). */

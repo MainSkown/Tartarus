@@ -1,5 +1,6 @@
 import { exportReport } from '@/api'
 import type { AnalysisStatus, JobRead, ReportInclude, ReportVariant } from '@/api'
+import { t, type MessageKey } from '@/i18n'
 import { NOT_FOUND_STATUS, quietOn } from '@/services/quiet-statuses'
 import { refusalMessage } from '@/services/validation-errors'
 
@@ -12,18 +13,17 @@ export const REPORT_FORMATS: { value: ReportVariant; label: string }[] = [
 
 export const DEFAULT_REPORT_INCLUDE: ReportSections = { notes: true, screenshots: true, raw_iocs: true }
 
-export const REPORT_OPTIONS: { key: keyof ReportSections; label: string; hint: string }[] = [
-  { key: 'notes', label: 'NOTES', hint: "Your notes on the analysis, its processes and its events. Tags always stay." },
-  { key: 'screenshots', label: 'SCREENSHOTS', hint: 'The guest screenshots, embedded in the file. Off keeps it much smaller.' },
-  { key: 'raw_iocs', label: 'RAW IOCS', hint: 'Every IOC of each type. Off lists only the first five per type.' },
+export const REPORT_OPTIONS: { key: keyof ReportSections; labelKey: MessageKey; hintKey: MessageKey }[] = [
+  { key: 'notes', labelKey: 'reports.option.notes.label', hintKey: 'reports.option.notes.hint' },
+  { key: 'screenshots', labelKey: 'reports.option.screenshots.label', hintKey: 'reports.option.screenshots.hint' },
+  { key: 'raw_iocs', labelKey: 'reports.option.rawIocs.label', hintKey: 'reports.option.rawIocs.hint' },
 ]
 
-const NOT_FINISHED_REASON = 'Reports are built from a finished analysis'
 const CONFLICT_STATUS = 409
 const UNPROCESSABLE_STATUS = 422
 
 export function reportBlockReason(status: AnalysisStatus): string | undefined {
-  return status === 'done' ? undefined : NOT_FINISHED_REASON
+  return status === 'done' ? undefined : t('reports.blocked.notFinished')
 }
 
 export type ReportRequestOutcome = { job: JobRead } | { message: string }

@@ -6,6 +6,7 @@ import { settingsRead } from '@/api'
 import type { Route } from '@/api'
 import GuestOptionRow from '@/components/GuestOptionRow.vue'
 import { useGuestChoice } from '@/composables/use-guest-choice'
+import { t } from '@/i18n'
 import { sha256Hex } from '@/services/file-hash'
 import { formatFileSize } from '@/services/file-size'
 import { useGuestBlockReason } from '@/services/guest-gate'
@@ -19,12 +20,11 @@ const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginC
 const TIMEOUT_MIN_SECONDS = 60
 const TIMEOUT_MAX_SECONDS = 1200
 const SECONDS_PER_MINUTE = 60
-const TIMEOUT_ERROR = `Whole seconds, ${TIMEOUT_MIN_SECONDS} to ${TIMEOUT_MAX_SECONDS}`
 const FORM_FIELDS = ['file', 'route', 'timeout', 'guest', 'package', 'interactive'] as const
 type FormField = (typeof FORM_FIELDS)[number]
 
 function formatMinutes(seconds: number): string {
-  return `${Math.round((seconds / SECONDS_PER_MINUTE) * 10) / 10} min`
+  return t('submit.timeout.minutes', { minutes: Math.round((seconds / SECONDS_PER_MINUTE) * 10) / 10 })
 }
 
 const analyses = useAnalysesStore()
@@ -49,19 +49,26 @@ const fileInput = ref<HTMLInputElement>()
 const timeoutError = computed(() => {
   const seconds = Number(timeoutText.value)
   const valid = timeoutText.value.trim() !== '' && Number.isInteger(seconds)
-  return valid && seconds >= TIMEOUT_MIN_SECONDS && seconds <= TIMEOUT_MAX_SECONDS ? undefined : TIMEOUT_ERROR
+  return valid && seconds >= TIMEOUT_MIN_SECONDS && seconds <= TIMEOUT_MAX_SECONDS
+    ? undefined
+    : t('submit.timeout.range', { min: TIMEOUT_MIN_SECONDS, max: TIMEOUT_MAX_SECONDS })
 })
 
 const interactiveNote = computed(() => {
-  if (!interactive.value) return 'The run ends once the sample has exited, or at the timeout.'
-  const minutes = timeoutError.value ? '' : ` (${formatMinutes(Number(timeoutText.value))})`
-  return `Drive the guest yourself. The run lasts the full timeout${minutes} unless you press END RUN on the live page.`
+  if (!interactive.value) return t('submit.interactive.off')
+  if (timeoutError.value) return t('submit.interactive.on')
+  return t('submit.interactive.onWithLength', { minutes: formatMinutes(Number(timeoutText.value)) })
 })
 
-const emptyGuestText = computed(() => (guestChoice.noGuestReason.value ? 'none ready' : 'loading…'))
+const emptyGuestText = computed(() =>
+  guestChoice.noGuestReason.value ? t('submit.guest.none') : t('submit.guest.loading'),
+)
 
 const blockReason = computed(
-  () => guestChoice.noGuestReason.value ?? guestBlockReason.value ?? (file.value ? undefined : 'Choose a sample to analyse'),
+  () =>
+    guestChoice.noGuestReason.value ??
+    guestBlockReason.value ??
+    (file.value ? undefined : t('submit.blocked.chooseSample')),
 )
 const canSubmit = computed(() => !blockReason.value && !timeoutError.value && !submitting.value)
 
@@ -104,7 +111,7 @@ function onDrop(event: DragEvent): void {
   const dropped = event.dataTransfer?.files
   if (!dropped?.length) return
   if (dropped.length > 1) {
-    dropError.value = 'Drop one file at a time'
+    dropError.value = t('submit.file.dropOneAtATime')
     return
   }
   void chooseFile(dropped[0]!)
@@ -136,7 +143,7 @@ async function submit(): Promise<void> {
     void router.push({ name: 'analysis-workspace', params: { id: analysis.id } })
   } catch (error) {
     if (error instanceof SubmissionRejected) showRejection(error)
-    else errorBanner.value = 'Could not reach the backend.'
+    else errorBanner.value = t('submit.error.unreachable')
   } finally {
     submitting.value = false
   }
@@ -160,7 +167,7 @@ onMounted(() => {
         @submit.prevent="submit"
       >
         <h2 class="dialog-title text-mono">
-          SUBMIT SAMPLE
+          {{ t('submit.title') }}
         </h2>
 
         <div class="form-field">
@@ -186,20 +193,20 @@ onMounted(() => {
                 <span
                   class="file-hash"
                   :title="hash"
-                >sha256 {{ hash ?? 'hashing…' }}</span>
+                >{{ t('submit.file.hash', { hash: hash ?? t('submit.file.hashing') }) }}</span>
               </span>
             </template>
             <span
               v-else
               class="drop-hint text-mono text-gray"
-            >drop file here · or click to browse</span>
+            >{{ t('submit.file.dropHint') }}</span>
           </div>
           <input
             ref="fileInput"
             type="file"
             class="file-input"
             tabindex="-1"
-            aria-label="Sample file"
+            :aria-label="t('submit.file.label')"
             @change="onFileInput"
           >
           <p
@@ -231,7 +238,7 @@ onMounted(() => {
             hide-bottom-space
             emit-value
             map-options
-            label="GUEST"
+            :label="t('submit.guest.label')"
             stack-label
             :disable="submitting"
             :error="Boolean(fieldErrors.guest)"
@@ -262,16 +269,16 @@ onMounted(() => {
             class="guest-unavailable text-gray"
             role="status"
           >
-            The guest list could not be loaded: the backend picks the default guest.
+            {{ t('submit.guest.unavailable') }}
           </p>
         </div>
 
         <div class="form-field">
-          <span class="field-title text-mono">NETWORK</span>
+          <span class="field-title text-mono">{{ t('submit.route.title') }}</span>
           <div
             class="radio-group"
             role="radiogroup"
-            aria-label="Network route"
+            :aria-label="t('submit.route.group')"
           >
             <template
               v-for="option in BUILT_ROUTES"
@@ -297,7 +304,7 @@ onMounted(() => {
             class="internet-warning"
             role="alert"
           >
-            Sample will reach the real internet from this host's public IP.
+            {{ t('submit.route.internetWarning') }}
           </p>
           <p
             v-if="fieldErrors.route"
@@ -315,8 +322,8 @@ onMounted(() => {
             dense
             hide-bottom-space
             type="number"
-            label="TIMEOUT"
-            suffix="s"
+            :label="t('submit.timeout.label')"
+            :suffix="t('submit.timeout.unit')"
             :disable="submitting"
             :error="Boolean(timeoutError ?? fieldErrors.timeout)"
             :error-message="timeoutError ?? fieldErrors.timeout"
@@ -328,7 +335,7 @@ onMounted(() => {
             outlined
             dense
             hide-bottom-space
-            label="PACKAGE"
+            :label="t('submit.package.label')"
             :disable="submitting"
             :error="Boolean(fieldErrors.package)"
             :error-message="fieldErrors.package"
@@ -340,7 +347,7 @@ onMounted(() => {
           <q-toggle
             v-model="interactive"
             dense
-            label="INTERACTIVE DESKTOP"
+            :label="t('submit.interactive.label')"
             :disable="submitting"
             class="interactive-toggle text-mono"
           />
@@ -374,13 +381,13 @@ onMounted(() => {
               v-if="guestChoice.noGuestReason.value"
               to="/guest"
               class="guest-link"
-            >[OPEN GUEST VM]</router-link>
+            >{{ t('submit.guest.openGuestVm') }}</router-link>
           </span>
           <q-space />
           <q-btn
             flat
             square
-            label="CANCEL"
+            :label="t('common.cancel')"
             class="cancel-btn text-mono"
             :disable="submitting"
             @click="onDialogCancel"
@@ -389,7 +396,7 @@ onMounted(() => {
             outline
             square
             type="submit"
-            label="▶ DETONATE"
+            :label="t('submit.actions.detonate')"
             class="submit-btn text-mono"
             :disable="!canSubmit"
             :loading="submitting"

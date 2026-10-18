@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JobRead } from '@/api'
+import { t } from '@/i18n'
 
 vi.mock('@/api', () => ({ exportReport: vi.fn() }))
 
@@ -45,10 +46,10 @@ describe('report options', () => {
   it('explains each include option in one line', () => {
     expect(REPORT_OPTIONS.map((option) => option.key)).toEqual(['notes', 'screenshots', 'raw_iocs'])
     for (const option of REPORT_OPTIONS) {
-      expect(option.hint).not.toContain('\n')
-      expect(option.hint.length).toBeGreaterThan(10)
+      expect(t(option.hintKey)).not.toContain('\n')
+      expect(t(option.hintKey).length).toBeGreaterThan(10)
     }
-    expect(REPORT_OPTIONS.find((option) => option.key === 'raw_iocs')?.hint).toContain('first five')
+    expect(t(REPORT_OPTIONS.find((option) => option.key === 'raw_iocs')!.hintKey)).toContain('first five')
   })
 })
 

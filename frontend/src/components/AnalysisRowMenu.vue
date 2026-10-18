@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { AnalysisRead } from '@/api'
 import ExportEntries from '@/components/ExportEntries.vue'
+import { t } from '@/i18n'
 import { canReingest, isTerminalStatus } from '@/services/analysis-status'
 
 const props = defineProps<{ analysis: AnalysisRead }>()
@@ -26,11 +27,11 @@ const finished = computed(() => isTerminalStatus(props.analysis.status))
     size="sm"
     class="row-menu__button"
     aria-haspopup="menu"
-    :aria-label="`Actions for analysis ${analysis.id}`"
+    :aria-label="t('dashboard.row.actionsFor', { id: analysis.id })"
     @click.stop
     @keydown.enter.stop
   >
-    <q-tooltip>Actions</q-tooltip>
+    <q-tooltip>{{ t('dashboard.row.actions') }}</q-tooltip>
     <q-menu
       anchor="bottom right"
       self="top right"
@@ -44,7 +45,7 @@ const finished = computed(() => isTerminalStatus(props.analysis.status))
           clickable
           @click="emit('open', analysis.id)"
         >
-          <q-item-section>Open</q-item-section>
+          <q-item-section>{{ t('dashboard.row.open') }}</q-item-section>
         </q-item>
         <q-item
           v-if="reingestable"
@@ -52,10 +53,10 @@ const finished = computed(() => isTerminalStatus(props.analysis.status))
           clickable
           @click="emit('reingest', analysis.id)"
         >
-          <q-item-section>Re-ingest</q-item-section>
+          <q-item-section>{{ t('dashboard.row.reingest') }}</q-item-section>
         </q-item>
         <q-item clickable>
-          <q-item-section>Export</q-item-section>
+          <q-item-section>{{ t('dashboard.row.export') }}</q-item-section>
           <q-item-section side>
             <q-icon name="keyboard_arrow_right" />
           </q-item-section>
@@ -73,7 +74,7 @@ const finished = computed(() => isTerminalStatus(props.analysis.status))
           class="row-menu__danger"
           @click="emit('remove', analysis.id)"
         >
-          <q-item-section>Delete</q-item-section>
+          <q-item-section>{{ t('dashboard.row.delete') }}</q-item-section>
         </q-item>
         <q-item
           v-else
@@ -81,7 +82,7 @@ const finished = computed(() => isTerminalStatus(props.analysis.status))
           clickable
           @click="emit('cancel', analysis.id)"
         >
-          <q-item-section>Cancel</q-item-section>
+          <q-item-section>{{ t('dashboard.row.cancel') }}</q-item-section>
         </q-item>
       </q-list>
     </q-menu>

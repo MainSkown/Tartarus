@@ -3,6 +3,7 @@ import { onMounted, reactive, ref, toRef } from 'vue'
 import { Notify } from 'quasar'
 import { settingsRead, settingsReplace } from '@/api'
 import type { SettingsBody } from '@/api'
+import { t } from '@/i18n'
 import { useDefaultGuestField } from '@/composables/use-default-guest-field'
 import { BUILT_ROUTES } from '@/services/routes'
 import { validationIssues } from '@/services/validation-errors'
@@ -39,7 +40,7 @@ async function saveSettings(): Promise<void> {
     return
   }
   if (data) Object.assign(form, data)
-  Notify.create({ type: 'tt-success', message: 'Settings saved' })
+  Notify.create({ type: 'tt-success', message: t('settings.saved') })
 }
 
 onMounted(() => {
@@ -51,7 +52,7 @@ onMounted(() => {
 <template>
   <div class="settings-page">
     <h1 class="section-title text-mono">
-      DEFAULTS
+      {{ t('settings.title') }}
     </h1>
 
     <div
@@ -61,7 +62,7 @@ onMounted(() => {
       <span
         class="loader"
         role="status"
-        aria-label="Loading settings"
+        :aria-label="t('settings.loading')"
       />
     </div>
 
@@ -70,12 +71,12 @@ onMounted(() => {
       class="page-state text-mono"
     >
       <p class="text-gray">
-        &gt; failed to load settings
+        {{ t('settings.loadFailed') }}
       </p>
       <q-btn
         outline
         square
-        label="[RETRY]"
+        :label="t('common.retry')"
         class="retry-btn text-mono"
         @click="loadSettings"
       />
@@ -87,11 +88,11 @@ onMounted(() => {
       @submit.prevent="saveSettings"
     >
       <div class="settings-field">
-        <span class="field-title text-mono">DEFAULT ROUTE</span>
+        <span class="field-title text-mono">{{ t('settings.route.title') }}</span>
         <div
           class="radio-group"
           role="radiogroup"
-          aria-label="Default route"
+          :aria-label="t('settings.route.group')"
         >
           <template
             v-for="route in BUILT_ROUTES"
@@ -130,7 +131,7 @@ onMounted(() => {
           hide-bottom-space
           emit-value
           map-options
-          label="DEFAULT GUEST"
+          :label="t('settings.guest')"
           :error="Boolean(fieldErrors.default_guest)"
           :error-message="fieldErrors.default_guest"
           class="settings-input text-mono"
@@ -152,8 +153,8 @@ onMounted(() => {
         dense
         hide-bottom-space
         type="number"
-        label="DEFAULT TIMEOUT"
-        suffix="s"
+        :label="t('settings.timeout.label')"
+        :suffix="t('settings.timeout.unit')"
         :error="Boolean(fieldErrors.default_timeout)"
         :error-message="fieldErrors.default_timeout"
         class="settings-input"
@@ -171,7 +172,7 @@ onMounted(() => {
           <label
             for="default-interactive"
             class="field-title text-mono"
-          >DEFAULT INTERACTIVE</label>
+          >{{ t('settings.interactive') }}</label>
         </div>
         <p
           v-if="fieldErrors.default_interactive"
@@ -188,7 +189,7 @@ onMounted(() => {
         dense
         hide-bottom-space
         type="number"
-        label="DISK WARN (GB)"
+        :label="t('settings.diskWarn')"
         :error="Boolean(fieldErrors.disk_warn_gb)"
         :error-message="fieldErrors.disk_warn_gb"
         class="settings-input"
@@ -201,7 +202,7 @@ onMounted(() => {
         dense
         hide-bottom-space
         type="number"
-        label="DISK BLOCK (GB)"
+        :label="t('settings.diskBlock')"
         :error="Boolean(fieldErrors.disk_block_gb)"
         :error-message="fieldErrors.disk_block_gb"
         class="settings-input"
@@ -213,7 +214,7 @@ onMounted(() => {
           outline
           square
           type="submit"
-          label="[SAVE]"
+          :label="t('settings.save')"
           class="save-btn text-mono"
           :disable="saving"
         />

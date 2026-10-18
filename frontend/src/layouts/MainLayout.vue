@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import GuestHealthMenu from '@/components/guest/GuestHealthMenu.vue'
 import HealthDot from '@/components/HealthDot.vue'
 import { useReportNotices } from '@/composables/use-report-notices'
+import { t, type MessageKey } from '@/i18n'
 import { useGuestBlockReason } from '@/services/guest-gate'
 import { openSubmitDialog } from '@/services/submit-dialog'
 import { useGuestsStore } from '@/stores/guests'
@@ -11,7 +12,7 @@ import { useSystemStore } from '@/stores/system'
 
 interface NavItem {
   to: string
-  label: string
+  labelKey: MessageKey
   iconOutlined: string
   iconFilled: string
 }
@@ -19,10 +20,10 @@ interface NavItem {
 // Iconography: Material Icons outlined by default, filled for the active state (design
 // system "Iconography").
 const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Dashboard', iconOutlined: 'o_dashboard', iconFilled: 'dashboard' },
-  { to: '/rules', label: 'Rules', iconOutlined: 'o_policy', iconFilled: 'policy' },
-  { to: '/guest', label: 'Guest VM', iconOutlined: 'o_dns', iconFilled: 'dns' },
-  { to: '/settings', label: 'Settings', iconOutlined: 'o_settings', iconFilled: 'settings' },
+  { to: '/', labelKey: 'shell.nav.dashboard', iconOutlined: 'o_dashboard', iconFilled: 'dashboard' },
+  { to: '/rules', labelKey: 'shell.nav.rules', iconOutlined: 'o_policy', iconFilled: 'policy' },
+  { to: '/guest', labelKey: 'shell.nav.guestVm', iconOutlined: 'o_dns', iconFilled: 'dns' },
+  { to: '/settings', labelKey: 'shell.nav.settings', iconOutlined: 'o_settings', iconFilled: 'settings' },
 ]
 
 const system = useSystemStore()
@@ -46,8 +47,8 @@ const storeSubStatuses = computed(() => {
   const health = system.health
   if (!health) return []
   return [
-    { label: 'Postgres', status: health.postgres.status, message: health.postgres.message },
-    { label: 'OpenSearch', status: health.opensearch.status, message: health.opensearch.message },
+    { label: t('shell.health.postgres'), status: health.postgres.status, message: health.postgres.message },
+    { label: t('shell.health.opensearch'), status: health.opensearch.status, message: health.opensearch.message },
   ]
 })
 
@@ -64,16 +65,16 @@ useReportNotices()
         v-if="showReconnectBar"
         class="reconnect-bar text-mono"
       >
-        Reconnecting…
+        {{ t('shell.header.reconnecting') }}
       </div>
       <q-toolbar class="app-toolbar">
         <div class="wordmark text-mono">
-          TARTARUS
+          {{ t('shell.header.wordmark') }}
         </div>
 
         <div class="health-dots">
           <HealthDot
-            label="CAPE"
+            :label="t('shell.health.cape')"
             :status="system.health?.cape.status ?? 'down'"
             :message="system.health?.cape.message"
           />
@@ -83,7 +84,7 @@ useReportNotices()
             aria-haspopup="true"
           >
             <HealthDot
-              label="Guest"
+              :label="t('shell.health.guest')"
               :status="system.health?.guest.status ?? 'down'"
               :message="system.health?.guest.message"
             />
@@ -95,7 +96,7 @@ useReportNotices()
             </q-menu>
           </button>
           <HealthDot
-            label="Store"
+            :label="t('shell.health.store')"
             :status="system.storeStatus ?? 'down'"
             :sub-statuses="storeSubStatuses"
           />
@@ -116,7 +117,7 @@ useReportNotices()
             outline
             square
             :disable="submitDisabledReason !== undefined"
-            label="+ SUBMIT"
+            :label="t('shell.header.submit')"
             class="submit-btn text-mono"
             @click="openSubmitDialog"
           />
@@ -154,14 +155,14 @@ useReportNotices()
             />
           </q-item-section>
           <q-item-section v-if="drawerExpanded">
-            {{ item.label }}
+            {{ t(item.labelKey) }}
           </q-item-section>
           <q-tooltip
             v-if="!drawerExpanded"
             anchor="center right"
             self="center left"
           >
-            {{ item.label }}
+            {{ t(item.labelKey) }}
           </q-tooltip>
         </q-item>
       </q-list>

@@ -1,20 +1,21 @@
 import { onScopeDispose } from 'vue'
 import { Notify } from 'quasar'
 import type { JobProgress } from '@/api'
+import { t } from '@/i18n'
 import { downloadReportFile, jobFailureReason, jobFilename } from '@/services/report-job'
 import { useJobsStore } from '@/stores/jobs'
 
 function announce(job: JobProgress): void {
-  const caption = (detail: string | undefined) => `#${job.analysis_id} · ${detail}`
+  const caption = (detail: string | undefined) => t('reports.notice.caption', { id: job.analysis_id, detail: detail ?? '' })
   if (job.status === 'done') {
     Notify.create({
       type: 'tt-success',
-      message: 'Report ready',
+      message: t('reports.notice.ready'),
       caption: caption(jobFilename(job)),
-      actions: [{ label: 'DOWNLOAD', color: 'primary', handler: () => void downloadReportFile(job) }],
+      actions: [{ label: t('reports.notice.download'), color: 'primary', handler: () => void downloadReportFile(job) }],
     })
   } else {
-    Notify.create({ type: 'tt-error', message: 'Report failed', caption: caption(jobFailureReason(job)) })
+    Notify.create({ type: 'tt-error', message: t('reports.notice.failed'), caption: caption(jobFailureReason(job)) })
   }
 }
 

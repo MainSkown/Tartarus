@@ -2,6 +2,7 @@
 import { useDialogPluginComponent } from 'quasar'
 import type { ReportVariant } from '@/api'
 import { useReportDialog } from '@/composables/use-report-dialog'
+import { t } from '@/i18n'
 import { REPORT_FORMATS, REPORT_OPTIONS } from '@/services/report-request'
 
 const props = defineProps<{ analysisId: number; filename: string; initialFormat: ReportVariant }>()
@@ -21,8 +22,8 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
     <q-card class="report-dialog">
       <div class="report-dialog__body">
         <h2 class="report-dialog__title text-mono">
-          <span>REPORT</span>
-          <span class="report-dialog__id">#{{ analysisId }}</span>
+          <span>{{ t('reports.dialog.title') }}</span>
+          <span class="report-dialog__id">{{ t('reports.dialog.id', { id: analysisId }) }}</span>
           <span
             class="report-dialog__filename"
             :title="filename"
@@ -35,11 +36,11 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
           @submit.prevent="report.generate"
         >
           <div class="report-dialog__field">
-            <span class="report-dialog__field-title text-mono">FORMAT</span>
+            <span class="report-dialog__field-title text-mono">{{ t('reports.dialog.format') }}</span>
             <div
               class="radio-group"
               role="radiogroup"
-              aria-label="Report format"
+              :aria-label="t('reports.dialog.formatGroup')"
             >
               <template
                 v-for="option in REPORT_FORMATS"
@@ -63,7 +64,7 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
           </div>
 
           <div class="report-dialog__field">
-            <span class="report-dialog__field-title text-mono">INCLUDE</span>
+            <span class="report-dialog__field-title text-mono">{{ t('reports.dialog.include') }}</span>
             <label
               v-for="option in REPORT_OPTIONS"
               :key="option.key"
@@ -76,8 +77,8 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
                 :name="option.key"
                 :disabled="report.submitting.value"
               >
-              <span class="report-dialog__option-label text-mono">{{ option.label }}</span>
-              <span class="report-dialog__option-hint text-gray">{{ option.hint }}</span>
+              <span class="report-dialog__option-label text-mono">{{ t(option.labelKey) }}</span>
+              <span class="report-dialog__option-hint text-gray">{{ t(option.hintKey) }}</span>
             </label>
           </div>
 
@@ -94,7 +95,7 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
             <q-btn
               flat
               square
-              label="CANCEL"
+              :label="t('common.cancel')"
               class="report-dialog__cancel text-mono"
               :disable="report.submitting.value"
               @click="onDialogCancel"
@@ -103,7 +104,7 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
               outline
               square
               type="submit"
-              label="[GENERATE]"
+              :label="t('reports.dialog.generate')"
               class="report-dialog__primary text-mono"
               :disable="report.submitting.value"
               :loading="report.submitting.value"
@@ -119,22 +120,22 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
             <progress
               max="100"
               :value="report.job.value.progress"
-              aria-label="Report progress"
+              :aria-label="t('reports.dialog.progress')"
             />
             <div class="report-dialog__progress-line text-mono">
               <span class="report-dialog__step">{{ report.job.value.step }}</span>
-              <span class="report-dialog__percent">{{ report.job.value.progress }}%</span>
+              <span class="report-dialog__percent">{{ t('reports.dialog.percent', { percent: report.job.value.progress }) }}</span>
             </div>
           </div>
           <p class="report-dialog__note text-gray">
-            You can close this: the report keeps building in the background and a toast tells you when it is ready.
+            {{ t('reports.dialog.progressNote') }}
           </p>
           <div class="report-dialog__actions">
             <q-space />
             <q-btn
               flat
               square
-              label="CLOSE"
+              :label="t('common.close')"
               class="report-dialog__cancel text-mono"
               @click="onDialogCancel"
             />
@@ -146,7 +147,7 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
           class="report-dialog__form"
         >
           <p class="report-dialog__ready text-mono">
-            &gt; report ready
+            {{ t('reports.dialog.ready') }}
           </p>
           <p
             class="report-dialog__file text-mono text-gray"
@@ -158,7 +159,7 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
             <q-btn
               flat
               square
-              label="[NEW REPORT]"
+              :label="t('reports.dialog.newReport')"
               class="report-dialog__cancel text-mono"
               @click="report.startNewReport"
             />
@@ -166,14 +167,14 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
             <q-btn
               flat
               square
-              label="CLOSE"
+              :label="t('common.close')"
               class="report-dialog__cancel text-mono"
               @click="onDialogCancel"
             />
             <q-btn
               outline
               square
-              :label="`[DOWNLOAD ${report.builtFormat.value.toUpperCase()}]`"
+              :label="t('reports.dialog.download', { format: report.builtFormat.value.toUpperCase() })"
               class="report-dialog__primary text-mono"
               :loading="report.downloading.value"
               @click="report.download"
@@ -202,7 +203,7 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
             <q-btn
               flat
               square
-              label="[NEW REPORT]"
+              :label="t('reports.dialog.newReport')"
               class="report-dialog__cancel text-mono"
               @click="report.startNewReport"
             />
@@ -210,14 +211,14 @@ const report = useReportDialog(props.analysisId, props.initialFormat)
             <q-btn
               flat
               square
-              label="CLOSE"
+              :label="t('common.close')"
               class="report-dialog__cancel text-mono"
               @click="onDialogCancel"
             />
             <q-btn
               outline
               square
-              label="[RETRY]"
+              :label="t('common.retry')"
               class="report-dialog__primary text-mono"
               :disable="report.submitting.value"
               :loading="report.submitting.value"

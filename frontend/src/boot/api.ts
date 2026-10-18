@@ -2,6 +2,7 @@ import { defineBoot } from '#q-app'
 import { Notify } from 'quasar'
 import { client } from '@/api/client.gen'
 import type { ErrorEnvelope } from '@/api'
+import { genericErrorMessage } from '@/services/api-error'
 import { isQuietFailure } from '@/services/quiet-statuses'
 import { validationIssues } from '@/services/validation-errors'
 
@@ -9,8 +10,6 @@ import { validationIssues } from '@/services/validation-errors'
 // mounts its router at APIRouter(prefix="/api")), so a '/api' base would send /api/api/...
 // Same-origin works because the Vite dev server and production nginx both proxy /api.
 const API_BASE_URL = ''
-
-const GENERIC_ERROR_MESSAGE = 'Something went wrong talking to the backend.'
 
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
   if (typeof value !== 'object' || value === null) return false
@@ -26,7 +25,7 @@ function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
  */
 export function notifyApiError(error: unknown): void {
   if (!isErrorEnvelope(error)) {
-    Notify.create({ type: 'tt-error', message: GENERIC_ERROR_MESSAGE })
+    Notify.create({ type: 'tt-error', message: genericErrorMessage() })
     return
   }
 

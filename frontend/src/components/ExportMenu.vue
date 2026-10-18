@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AnalysisRead } from '@/api'
 import ExportEntries from '@/components/ExportEntries.vue'
+import { t } from '@/i18n'
 
 defineProps<{ analysis: AnalysisRead }>()
 </script>
@@ -9,7 +10,7 @@ defineProps<{ analysis: AnalysisRead }>()
   <q-btn
     outline
     square
-    label="[EXPORT]"
+    :label="t('reports.export.button')"
     class="export-menu__button text-mono"
     aria-haspopup="menu"
   >

@@ -1,1 +1,54 @@
-export default {}
+export default {
+  title: 'ANALYSES',
+  search: {
+    placeholder: 'search name or hash',
+    label: 'Search analyses',
+  },
+  filter: {
+    status: 'STATUS',
+    tag: 'TAG',
+    tagOption: '{name} ({count})',
+  },
+  loading: 'Loading analyses',
+  loadFailed: '> failed to load: {error}',
+  empty: {
+    noMatches: 'no analyses match',
+    clearFilters: '[CLEAR FILTERS]',
+    guestNotReady: 'guest VM not ready',
+    buildGuest: '[BUILD GUEST]',
+    none: 'no analyses yet',
+    submitSample: '[+ SUBMIT SAMPLE]',
+  },
+  showing: 'showing {shown} of {total}',
+  table: {
+    file: 'FILE',
+    sha256: 'SHA256',
+    submitted: 'SUBMITTED',
+    status: 'STATUS',
+    score: 'SCORE',
+    severity: 'SEVERITY',
+    tags: 'TAGS',
+    actions: 'ACTIONS',
+  },
+  row: {
+    actions: 'Actions',
+    actionsFor: 'Actions for analysis {id}',
+    open: 'Open',
+    reingest: 'Re-ingest',
+    export: 'Export',
+    delete: 'Delete',
+    deleteFor: 'Delete analysis {id}',
+    cancel: 'Cancel',
+    cancelFor: 'Cancel analysis {id}',
+  },
+  notice: {
+    deleteFailed: 'Could not delete #{id}',
+    reingesting: 'Re-ingesting #{id}',
+    cancelFailed: 'Could not cancel #{id}',
+  },
+  cancel: {
+    title: 'Cancel #{id}',
+    message: 'Stop the analysis of {filename}? A cancelled run cannot be resumed.',
+    confirm: 'CANCEL ANALYSIS',
+  },
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GENERIC_ERROR_MESSAGE, errorMessage } from '@/services/api-error'
+import { errorMessage, genericErrorMessage } from '@/services/api-error'
 
 describe('errorMessage', () => {
   it("reads the message of the backend's error envelope", () => {
@@ -9,7 +9,7 @@ describe('errorMessage', () => {
   it.each([undefined, null, {}, { error: {} }, { error: { message: 7 } }, 'boom'])(
     'falls back to the generic message for %j',
     (error) => {
-      expect(errorMessage(error)).toBe(GENERIC_ERROR_MESSAGE)
+      expect(errorMessage(error)).toBe(genericErrorMessage())
     },
   )
 })
