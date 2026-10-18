@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
+import { t } from '@/i18n'
 
 defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyMessage?: string }>()
 const emit = defineEmits<{ retry: [] }>()
@@ -13,7 +14,7 @@ const emit = defineEmits<{ retry: [] }>()
     <span
       class="loader"
       role="status"
-      aria-label="Loading"
+      :aria-label="t('widgets.view.loading')"
     />
   </div>
   <div
@@ -21,19 +22,19 @@ const emit = defineEmits<{ retry: [] }>()
     class="view-state text-mono"
   >
     <p class="text-gray">
-      &gt; failed to load: {{ error }}
+      &gt; {{ t('widgets.view.failed', { error }) }}
     </p>
     <q-btn
       outline
       square
-      label="[RETRY]"
+      :label="t('common.retry')"
       class="retry-btn text-mono"
       @click="emit('retry')"
     />
   </div>
   <TerminalEmpty
     v-else-if="empty"
-    :message="emptyMessage ?? 'nothing to show'"
+    :message="emptyMessage ?? t('widgets.view.nothingToShow')"
   />
   <slot v-else />
 </template>

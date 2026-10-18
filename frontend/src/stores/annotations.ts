@@ -9,6 +9,7 @@ import {
   annotationsUpdateNote,
 } from '@/api'
 import type { NoteAnnotation, TagAnnotation, TargetType } from '@/api'
+import { t } from '@/i18n'
 import { errorMessage } from '@/services/api-error'
 import { quietOn } from '@/services/quiet-statuses'
 import { refusalMessage } from '@/services/validation-errors'
@@ -25,7 +26,6 @@ export const eventTarget = (id: string): AnnotationTarget => ({ type: 'event', r
 
 const CONFLICT_STATUS = 409
 const UNPROCESSABLE_STATUS = 422
-const DUPLICATE_MESSAGE = 'already on this target'
 
 const isOn = (target: AnnotationTarget) => (annotation: { target_type: TargetType; target_ref: string }) =>
   annotation.target_type === target.type && annotation.target_ref === target.ref
@@ -95,7 +95,7 @@ export const useAnnotationsStore = defineStore('annotations', () => {
   /** Resolves to the message to show beside the input, or `undefined` when the tag was added. */
   async function addTag(target: AnnotationTarget, name: string): Promise<string | undefined> {
     if (analysisId.value === undefined) return undefined
-    if (tagsOf(target).some((link) => link.tag === name)) return DUPLICATE_MESSAGE
+    if (tagsOf(target).some((link) => link.tag === name)) return t('tags.input.duplicate')
     const { data, error } = await annotationsAddTag({
       path: { analysis_id: analysisId.value },
       body: { target_type: target.type, target_ref: target.ref, tag: name },

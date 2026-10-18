@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { copyToClipboard, Notify } from 'quasar'
+import { t } from '@/i18n'
 
 const props = defineProps<{ text: string; what: string; label?: string }>()
 
 async function copy(): Promise<void> {
   try {
     await copyToClipboard(props.text)
-    Notify.create({ type: 'tt-success', message: `${props.what} copied` })
+    Notify.create({ type: 'tt-success', message: t('widgets.copy.copied', { what: props.what }) })
   } catch {
-    Notify.create({ type: 'tt-error', message: `Could not copy the ${props.what}` })
+    Notify.create({ type: 'tt-error', message: t('widgets.copy.failed', { what: props.what }) })
   }
 }
 </script>
@@ -17,7 +18,7 @@ async function copy(): Promise<void> {
   <button
     type="button"
     class="copy-button"
-    :aria-label="`Copy ${what}`"
+    :aria-label="t('widgets.copy.label', { what })"
     @click="copy"
   >
     <q-icon

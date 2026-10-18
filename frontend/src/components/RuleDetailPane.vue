@@ -5,6 +5,7 @@ import PaneHeading from '@/components/PaneHeading.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import ViewState from '@/components/ViewState.vue'
+import { t } from '@/i18n'
 import { severityOfLevel, validityMeta } from '@/services/rule-view'
 
 defineProps<{ rule: RuleRead; detail: RuleDetail | undefined; loading: boolean; error: string | undefined }>()
@@ -16,14 +17,14 @@ const emit = defineEmits<{ close: []; retry: [] }>()
     <div class="rule-detail__bar">
       <PaneHeading
         class="rule-detail__heading"
-        label="RULE"
+        :label="t('rules.detail.heading')"
       />
       <button
         type="button"
         class="rule-detail__close text-mono"
         @click="emit('close')"
       >
-        [CLOSE]
+        {{ t('rules.detail.close') }}
       </button>
     </div>
 
@@ -38,7 +39,7 @@ const emit = defineEmits<{ close: []; retry: [] }>()
       {{ rule.title }}
     </h2>
     <p class="rule-detail__description">
-      {{ rule.description ?? 'no description' }}
+      {{ rule.description ?? t('rules.detail.noDescription') }}
     </p>
 
     <div
@@ -57,45 +58,45 @@ const emit = defineEmits<{ close: []; retry: [] }>()
           {{ validityMeta(rule.validity).label }}
         </p>
         <p class="rule-detail__error-text text-mono">
-          {{ rule.error ?? 'no reason was recorded' }}
+          {{ rule.error ?? t('rules.detail.noReason') }}
         </p>
       </div>
     </div>
 
     <dl class="rule-detail__facts">
       <dt class="text-mono">
-        ID
+        {{ t('rules.detail.id') }}
       </dt>
       <dd class="text-mono">
         {{ rule.id }}<CopyButton
           :text="rule.id"
-          what="rule id"
+          :what="t('rules.copy.id')"
         />
       </dd>
       <dt class="text-mono">
-        PATH
+        {{ t('rules.detail.path') }}
       </dt>
       <dd class="text-mono">
         {{ rule.path }}<CopyButton
           :text="rule.path"
-          what="rule path"
+          :what="t('rules.copy.path')"
         />
       </dd>
       <dt class="text-mono">
-        LOGSOURCE
+        {{ t('rules.detail.logsource') }}
       </dt>
       <dd class="text-mono">
         {{ rule.logsource_category ?? '–' }}
       </dd>
       <dt class="text-mono">
-        STATUS
+        {{ t('rules.detail.status') }}
       </dt>
       <dd class="text-mono">
         {{ rule.status ?? '–' }}
       </dd>
       <template v-if="rule.tags.length > 0">
         <dt class="text-mono">
-          TAGS
+          {{ t('rules.detail.tags') }}
         </dt>
         <dd class="text-mono">
           {{ rule.tags.join(' ') }}
@@ -105,12 +106,12 @@ const emit = defineEmits<{ close: []; retry: [] }>()
 
     <div class="rule-detail__yaml-bar">
       <h3 class="rule-detail__yaml-heading text-mono">
-        YAML
+        {{ t('rules.detail.yaml') }}
       </h3>
       <CopyButton
         v-if="detail"
         :text="detail.yaml"
-        what="rule YAML"
+        :what="t('rules.copy.yaml')"
       />
     </div>
     <ViewState
@@ -122,7 +123,7 @@ const emit = defineEmits<{ close: []; retry: [] }>()
         v-if="detail"
         class="code-block rule-detail__yaml"
         tabindex="0"
-        aria-label="Rule YAML"
+        :aria-label="t('rules.detail.yamlLabel')"
       >{{ detail.yaml.trimEnd() }}</pre>
     </ViewState>
   </article>

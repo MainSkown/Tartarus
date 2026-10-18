@@ -2,6 +2,7 @@
 import type { RuleRead } from '@/api'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
+import { t } from '@/i18n'
 import { formatCount } from '@/services/format-number'
 import { severityOfLevel, shortPath, toggleBlockedReason } from '@/services/rule-view'
 
@@ -20,21 +21,21 @@ function toggleEnabled(rule: RuleRead, event: Event): void {
       <thead>
         <tr>
           <th class="col-switch">
-            ENABLED
+            {{ t('rules.table.enabled') }}
           </th>
           <th class="col-title">
-            TITLE
+            {{ t('rules.table.title') }}
           </th>
-          <th>LEVEL</th>
+          <th>{{ t('rules.table.level') }}</th>
           <th class="col-logsource">
-            LOGSOURCE
+            {{ t('rules.table.logsource') }}
           </th>
-          <th>STATUS</th>
+          <th>{{ t('rules.table.status') }}</th>
           <th class="col-path">
-            PATH
+            {{ t('rules.table.path') }}
           </th>
           <th class="col-numeric">
-            HITS
+            {{ t('rules.table.hits') }}
           </th>
         </tr>
       </thead>
@@ -60,7 +61,7 @@ function toggleEnabled(rule: RuleRead, event: Event): void {
                 class="checkbox-input"
                 :checked="rule.enabled"
                 :disabled="toggleBlockedReason(rule) !== undefined || togglingIds.has(rule.id)"
-                :aria-label="`Enabled: ${rule.title}`"
+                :aria-label="t('rules.toggle.enabledFor', { title: rule.title })"
                 :aria-describedby="toggleBlockedReason(rule) ? `blocked-${rule.id}` : undefined"
                 @change="toggleEnabled(rule, $event)"
                 @click.stop

@@ -2,6 +2,7 @@
 import NoteEditor from '@/components/NoteEditor.vue'
 import TagInput from '@/components/TagInput.vue'
 import ViewState from '@/components/ViewState.vue'
+import { t } from '@/i18n'
 import { useAnnotationsStore, type AnnotationTarget } from '@/stores/annotations'
 
 const SKELETON_LINES = 3
@@ -18,13 +19,13 @@ const annotations = useAnnotationsStore()
 <template>
   <section class="target-annotations">
     <h4 class="target-annotations__heading text-mono">
-      TAGS AND NOTE
+      {{ t('notes.annotations.heading') }}
     </h4>
     <div
       v-if="annotations.loading && annotations.tags.length + annotations.notes.length === 0"
       class="target-annotations__skeleton"
       aria-busy="true"
-      aria-label="Loading tags and note"
+      :aria-label="t('notes.annotations.loading')"
     >
       <span
         v-for="line in SKELETON_LINES"
@@ -48,12 +49,12 @@ const annotations = useAnnotationsStore()
         :editable="editable"
       />
       <h5 class="target-annotations__label text-mono">
-        NOTE
+        {{ t('notes.annotations.noteHeading') }}
       </h5>
       <NoteEditor
         :target="target"
         :editable="editable"
-        label="Note"
+        :label="t('notes.annotations.noteLabel')"
       />
     </ViewState>
   </section>

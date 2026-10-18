@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 defineProps<{ name: string; removable?: boolean }>()
 const emit = defineEmits<{ remove: [] }>()
 </script>
@@ -13,7 +15,7 @@ const emit = defineEmits<{ remove: [] }>()
       v-if="removable"
       type="button"
       class="tag-chip__remove"
-      :aria-label="`Remove tag ${name}`"
+      :aria-label="t('tags.chip.remove', { name })"
       @click.stop="emit('remove')"
     >
       <q-icon

@@ -8,6 +8,7 @@ import ViewState from '@/components/ViewState.vue'
 import { useAnalysisTabNavigation } from '@/composables/use-analysis-tab-navigation'
 import { useAnalysisView } from '@/composables/use-analysis-view'
 import { useFilterEvents } from '@/composables/use-filter-events'
+import { t } from '@/i18n'
 import { groupAnnotations, type AnnotationEntry } from '@/services/annotation-groups'
 import { quietOn } from '@/services/quiet-statuses'
 import { flattenProcesses, processTitle } from '@/services/process-graph'
@@ -35,9 +36,9 @@ const processNames = computed(
 
 const groups = computed(() => groupAnnotations(annotations.tags, annotations.notes))
 const sections = computed(() => [
-  { key: 'analysis', title: 'ANALYSIS', entries: groups.value.analysis ? [groups.value.analysis] : [] },
-  { key: 'processes', title: 'PROCESSES', entries: groups.value.processes },
-  { key: 'events', title: 'EVENTS', entries: groups.value.events },
+  { key: 'analysis', title: t('notes.tab.sections.analysis'), entries: groups.value.analysis ? [groups.value.analysis] : [] },
+  { key: 'processes', title: t('notes.tab.sections.processes'), entries: groups.value.processes },
+  { key: 'events', title: t('notes.tab.sections.events'), entries: groups.value.events },
 ])
 const shownSections = computed(() => sections.value.filter((section) => section.entries.length > 0))
 const nothingYet = computed(() => shownSections.value.length === 0)
@@ -46,7 +47,7 @@ const loadingFirst = computed(() => annotations.loading && annotations.tags.leng
 function targetLabel(entry: AnnotationEntry): { text: string; title?: string } {
   const { type, ref } = entry.target
   if (type === 'process') return { text: processTitle({ pid: Number(ref), name: processNames.value.get(ref) ?? null }) }
-  return { text: `event ${ref.slice(0, EVENT_ID_PREFIX)}…`, title: ref }
+  return { text: t('notes.tab.eventTarget', { id: ref.slice(0, EVENT_ID_PREFIX) }), title: ref }
 }
 
 function follow(entry: AnnotationEntry): void {
@@ -66,23 +67,23 @@ const notesOf = (entry: AnnotationEntry) => (entry.target.type === 'analysis' ? 
   >
     <section class="notes-tab__section">
       <h2 class="notes-tab__heading text-mono">
-        ANALYSIS NOTE
+        {{ t('notes.tab.analysisNote') }}
       </h2>
       <NoteEditor
         :target="ANALYSIS_TARGET"
-        label="Analysis note"
+        :label="t('notes.tab.analysisNoteLabel')"
       />
     </section>
 
     <section class="notes-tab__section">
       <h2 class="notes-tab__heading text-mono">
-        TAGS AND NOTES BY TARGET
+        {{ t('notes.tab.byTarget') }}
       </h2>
       <ViewState
         :loading="loadingFirst"
         :error="annotations.loadError"
         :empty="nothingYet"
-        empty-message="no tags or notes yet"
+        :empty-message="t('notes.tab.emptyMessage')"
         @retry="annotations.reload"
       >
         <section
@@ -125,13 +126,13 @@ const notesOf = (entry: AnnotationEntry) => (entry.target.type === 'analysis' ? 
                 <span
                   v-if="entry.orphaned"
                   class="notes-entry__orphan"
-                  title="This annotation is kept, but the target is no longer in this analysis"
-                >ORPHANED</span>
+                  :title="t('notes.tab.orphanedHint')"
+                >{{ t('notes.tab.orphaned') }}</span>
               </header>
               <ul
                 v-if="entry.tags.length > 0"
                 class="notes-entry__tags"
-                aria-label="Tags"
+                :aria-label="t('tags.list.label')"
               >
                 <li
                   v-for="tag in entry.tags"

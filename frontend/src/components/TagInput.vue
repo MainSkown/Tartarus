@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type CSSProperties } from 'vue'
 import { Notify } from 'quasar'
 import TagChip from '@/components/TagChip.vue'
+import { t } from '@/i18n'
 import { checkTagName } from '@/services/tag-name'
 import { useAnnotationsStore, type AnnotationTarget } from '@/stores/annotations'
 import { useTagsStore } from '@/stores/tags'
@@ -29,7 +30,7 @@ const links = computed(() => annotations.tagsOf(props.target))
 const names = computed(() => links.value.map((link) => link.tag))
 const check = computed(() => checkTagName(typed.value))
 const problem = computed(() => {
-  if ('name' in check.value) return names.value.includes(check.value.name) ? 'already on this target' : undefined
+  if ('name' in check.value) return names.value.includes(check.value.name) ? t('tags.input.duplicate') : undefined
   return check.value.problem ?? undefined
 })
 const message = computed(() => refusal.value ?? problem.value)
@@ -124,7 +125,7 @@ function onBlur(): void {
 }
 
 async function remove(linkId: number): Promise<void> {
-  if (!(await annotations.removeTag(linkId))) Notify.create({ type: 'tt-error', message: 'Could not remove the tag' })
+  if (!(await annotations.removeTag(linkId))) Notify.create({ type: 'tt-error', message: t('tags.input.removeFailed') })
 }
 </script>
 
@@ -132,7 +133,7 @@ async function remove(linkId: number): Promise<void> {
   <div class="tag-input">
     <ul
       class="tag-input__chips"
-      aria-label="Tags"
+      :aria-label="t('tags.list.label')"
     >
       <li
         v-for="link in links"
@@ -148,7 +149,7 @@ async function remove(linkId: number): Promise<void> {
         <button
           type="button"
           class="tag-input__add text-mono"
-          aria-label="Add tag"
+          :aria-label="t('tags.input.add')"
           @click="openField"
         >
           <q-icon
@@ -169,13 +170,13 @@ async function remove(linkId: number): Promise<void> {
           class="input-field tag-input__field text-mono"
           :class="{ 'is-invalid': message !== undefined }"
           role="combobox"
-          aria-label="New tag"
+          :aria-label="t('tags.input.label')"
           aria-autocomplete="list"
           :aria-expanded="suggestions.length > 0"
           :aria-controls="listId"
           :aria-activedescendant="activeOption"
           :aria-describedby="message ? `${listId}-message` : undefined"
-          placeholder="tag, Enter to add"
+          :placeholder="t('tags.input.placeholder')"
           autocomplete="off"
           spellcheck="false"
           @input="onInput"
@@ -201,7 +202,7 @@ async function remove(linkId: number): Promise<void> {
               :id="listId"
               class="tag-input__options"
               role="listbox"
-              aria-label="Tags in use"
+              :aria-label="t('tags.input.suggestions')"
             >
               <li
                 v-for="(option, index) in suggestions"
@@ -224,7 +225,7 @@ async function remove(linkId: number): Promise<void> {
         v-if="links.length === 0 && !editable"
         class="tag-input__none text-mono text-gray"
       >
-        no tags
+        {{ t('tags.input.none') }}
       </li>
     </ul>
   </div>

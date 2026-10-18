@@ -60,6 +60,13 @@ describe('RulesPage list', () => {
     expect(wrapper.find('.rules-note').text()).toContain('rules/sigma/custom/')
   })
 
+  it('reads the whole note with its paths in place', async () => {
+    const wrapper = await mountPage()
+    expect(wrapper.find('.rules-note').text()).toBe(
+      'Loaded from rules/sigma/: the shipped set in default/ and tartarus/. Put your own rules in rules/sigma/custom/; changed files reload by themselves, or press RELOAD.',
+    )
+  })
+
   it('says how many rules there are', async () => {
     expect((await mountPage()).find('.rules-count').text()).toBe('6 rules')
   })

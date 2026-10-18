@@ -6,14 +6,20 @@ import RuleDetailPane from '@/components/RuleDetailPane.vue'
 import RulesTable from '@/components/RulesTable.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import ViewState from '@/components/ViewState.vue'
+import { I18nT, t } from '@/i18n'
 import { severityMeta } from '@/services/analysis-status'
 import { RULE_LEVELS, VALIDITIES, filterRules, reloadSummary, severityOfLevel, sortRules, validityMeta } from '@/services/rule-view'
 import { useRulesStore } from '@/stores/rules'
 
+const SIGMA_DIR = 'rules/sigma/'
+const SHIPPED_DIR = 'default/'
+const TARTARUS_DIR = 'tartarus/'
 const CUSTOM_RULES_DIR = 'rules/sigma/custom/'
 
-const LEVEL_OPTIONS = RULE_LEVELS.map((level) => ({ value: level, label: severityMeta(severityOfLevel(level)!).label }))
-const VALIDITY_OPTIONS = VALIDITIES.map((validity) => ({ value: validity, label: validityMeta(validity).label }))
+const LEVEL_OPTIONS = computed(() =>
+  RULE_LEVELS.map((level) => ({ value: level, label: severityMeta(severityOfLevel(level)!).label })),
+)
+const VALIDITY_OPTIONS = computed(() => VALIDITIES.map((validity) => ({ value: validity, label: validityMeta(validity).label })))
 
 const rules = useRulesStore()
 
@@ -27,10 +33,11 @@ const visible = computed(() =>
   sortRules(filterRules(rules.items, { text: text.value, level: level.value, validity: validity.value })),
 )
 const loadingFirstList = computed(() => rules.loading && rules.items.length === 0)
-const countLabel = computed(() => {
-  const noun = rules.items.length === 1 ? 'rule' : 'rules'
-  return filtered.value ? `showing ${visible.value.length} of ${rules.items.length} ${noun}` : `${rules.items.length} ${noun}`
-})
+const countLabel = computed(() =>
+  filtered.value
+    ? t('rules.count.filtered', { shown: visible.value.length }, rules.items.length)
+    : t('rules.count.all', rules.items.length),
+)
 
 function clearFilters(): void {
   text.value = ''
@@ -41,13 +48,14 @@ function clearFilters(): void {
 async function toggle(id: string, enabled: boolean): Promise<void> {
   if (await rules.toggleEnabled(id, enabled)) return
   const title = rules.items.find((rule) => rule.id === id)?.title ?? id
-  Notify.create({ type: 'tt-error', message: `Could not ${enabled ? 'enable' : 'disable'} ${title}` })
+  const message = enabled ? t('rules.toggle.failedEnable', { title }) : t('rules.toggle.failedDisable', { title })
+  Notify.create({ type: 'tt-error', message })
 }
 
 async function reload(): Promise<void> {
   if (rules.reloading) return
   if (await rules.reload()) Notify.create({ type: 'tt-success', message: reloadSummary(rules.items) })
-  else Notify.create({ type: 'tt-error', message: 'Could not reload the rules' })
+  else Notify.create({ type: 'tt-error', message: t('rules.reload.failed') })
 }
 
 // Below the width where the pane sits beside the table it stacks under it, out of sight on a long list.
@@ -70,21 +78,36 @@ onMounted(() => {
   <div class="rules-page">
     <div class="rules-header">
       <h1 class="section-title text-mono">
-        SIGMA RULES
+        {{ t('rules.page.title') }}
       </h1>
       <q-btn
         outline
         square
-        label="[RELOAD]"
+        :label="t('rules.page.reload')"
         class="reload-btn text-mono"
         :loading="rules.reloading"
         @click="reload"
       />
     </div>
-    <p class="rules-note text-mono text-gray">
-      Loaded from <code>rules/sigma/</code>: the shipped set in <code>default/</code> and <code>tartarus/</code>.
-      Put your own rules in <code>{{ CUSTOM_RULES_DIR }}</code>; changed files reload by themselves, or press RELOAD.
-    </p>
+    <I18nT
+      keypath="rules.page.note"
+      scope="global"
+      tag="p"
+      class="rules-note text-mono text-gray"
+    >
+      <template #sigma>
+        <code>{{ SIGMA_DIR }}</code>
+      </template>
+      <template #shipped>
+        <code>{{ SHIPPED_DIR }}</code>
+      </template>
+      <template #tartarus>
+        <code>{{ TARTARUS_DIR }}</code>
+      </template>
+      <template #custom>
+        <code>{{ CUSTOM_RULES_DIR }}</code>
+      </template>
+    </I18nT>
 
     <div class="rules-filters">
       <q-input
@@ -93,8 +116,8 @@ onMounted(() => {
         dense
         hide-bottom-space
         clearable
-        placeholder="search title, path or id"
-        aria-label="Search rules"
+        :placeholder="t('rules.filter.search')"
+        :aria-label="t('rules.filter.searchLabel')"
         class="search-input text-mono"
       >
         <template #prepend>
@@ -110,7 +133,7 @@ onMounted(() => {
         clearable
         emit-value
         map-options
-        label="LEVEL"
+        :label="t('rules.filter.level')"
         class="filter-select text-mono"
       />
       <q-select
@@ -122,7 +145,7 @@ onMounted(() => {
         clearable
         emit-value
         map-options
-        label="STATUS"
+        :label="t('rules.filter.status')"
         class="filter-select text-mono"
       />
       <span
@@ -135,7 +158,7 @@ onMounted(() => {
       :loading="loadingFirstList"
       :error="rules.loadError"
       :empty="rules.items.length === 0"
-      :empty-message="`no rules loaded: put Sigma YAML files in ${CUSTOM_RULES_DIR} and press RELOAD`"
+      :empty-message="t('rules.page.emptyLoaded', { dir: CUSTOM_RULES_DIR })"
       @retry="rules.load"
     >
       <div
@@ -154,11 +177,11 @@ onMounted(() => {
           v-else
           class="rules-state text-mono"
         >
-          <TerminalEmpty message="no rules match" />
+          <TerminalEmpty :message="t('rules.page.noMatch')" />
           <q-btn
             outline
             square
-            label="[CLEAR FILTERS]"
+            :label="t('rules.page.clearFilters')"
             class="clear-filters-btn text-mono"
             @click="clearFilters"
           />

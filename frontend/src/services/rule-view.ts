@@ -1,4 +1,5 @@
 import type { RuleRead, Severity, Validity } from '@/api'
+import { t, type MessageKey } from '@/i18n'
 import { compareSeverity, type AnalysisStatusMeta } from '@/services/analysis-status'
 
 /** Most severe first, the order the level filter lists them in. */
@@ -14,10 +15,21 @@ export interface RuleFilters {
 
 type ValidityMeta = Pick<AnalysisStatusMeta, 'label' | 'color' | 'icon' | 'active'>
 
-const VALIDITY_META: Record<Validity, ValidityMeta> = {
-  valid: { label: 'VALID', color: '--status-success', icon: 'check_circle', active: false },
-  invalid: { label: 'INVALID', color: '--status-critical', icon: 'error_outline', active: false },
-  unsupported: { label: 'UNSUPPORTED', color: '--status-medium', icon: 'block', active: false },
+const VALIDITY_STYLE: Record<Validity, Omit<ValidityMeta, 'label'>> = {
+  valid: { color: '--status-success', icon: 'check_circle', active: false },
+  invalid: { color: '--status-critical', icon: 'error_outline', active: false },
+  unsupported: { color: '--status-medium', icon: 'block', active: false },
+}
+
+const VALIDITY_LABEL: Record<Validity, MessageKey> = {
+  valid: 'rules.validity.valid',
+  invalid: 'rules.validity.invalid',
+  unsupported: 'rules.validity.unsupported',
+}
+
+const PROBLEM_LABEL: Record<'invalid' | 'unsupported', MessageKey> = {
+  invalid: 'rules.reload.invalid',
+  unsupported: 'rules.reload.unsupported',
 }
 
 const SEVERITY_BY_LEVEL: Record<(typeof RULE_LEVELS)[number], Severity> = {
@@ -29,7 +41,7 @@ const SEVERITY_BY_LEVEL: Record<(typeof RULE_LEVELS)[number], Severity> = {
 }
 
 export function validityMeta(validity: Validity): ValidityMeta {
-  return VALIDITY_META[validity]
+  return { ...VALIDITY_STYLE[validity], label: t(VALIDITY_LABEL[validity]) }
 }
 
 /** A rule without a level, or one the scale does not know, has no severity to show. */
@@ -63,19 +75,24 @@ export function filterRules(rules: readonly RuleRead[], { text, level, validity 
 
 /** Why a rule's enabled switch is locked, or `undefined` when the analyst may flip it. */
 export function toggleBlockedReason(rule: RuleRead): string | undefined {
-  const because = rule.error ? `: ${rule.error}` : ''
-  if (rule.validity === 'invalid') return `Invalid rule, it cannot run${because}`
-  if (rule.validity === 'unsupported') return `Unsupported rule, the engine cannot run it${because}`
+  if (rule.validity === 'invalid') return blockedMessage(rule, 'rules.toggle.blockedInvalid', 'rules.toggle.blockedInvalidWithError')
+  if (rule.validity === 'unsupported') {
+    return blockedMessage(rule, 'rules.toggle.blockedUnsupported', 'rules.toggle.blockedUnsupportedWithError')
+  }
   return undefined
+}
+
+function blockedMessage(rule: RuleRead, plainKey: MessageKey, withErrorKey: MessageKey): string {
+  return rule.error ? t(withErrorKey, { error: rule.error }) : t(plainKey)
 }
 
 export function reloadSummary(rules: readonly RuleRead[]): string {
   const count = (validity: Validity) => rules.filter((rule) => rule.validity === validity).length
   const problems = (['invalid', 'unsupported'] as const)
     .filter((validity) => count(validity) > 0)
-    .map((validity) => `${count(validity)} ${validity}`)
-  const loaded = `Reloaded ${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}`
-  return problems.length > 0 ? `${loaded}: ${problems.join(', ')}` : loaded
+    .map((validity) => t(PROBLEM_LABEL[validity], count(validity)))
+  const loaded = t('rules.reload.loaded', rules.length)
+  return problems.length > 0 ? t('rules.reload.summary', { loaded, problems: problems.join(', ') }) : loaded
 }
 
 const RULES_DIRECTORY = '/rules/sigma/'
