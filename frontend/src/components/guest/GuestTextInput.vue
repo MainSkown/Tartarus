@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { t } from '@/i18n'
 
 defineProps<{ modelValue: string; label: string; error?: string; revealable?: boolean; disable?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -33,7 +34,7 @@ const revealed = ref(false)
         dense
         square
         :icon="revealed ? 'visibility_off' : 'visibility'"
-        :aria-label="revealed ? 'Hide' : 'Show'"
+        :aria-label="revealed ? t('guests.textInput.hide') : t('guests.textInput.show')"
         :aria-pressed="revealed"
         class="guest-text-input__reveal"
         @click="revealed = !revealed"

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { t } from '@/i18n'
 import {
   BLANK_IDENTITY_LABEL,
   guestNameProblem,
@@ -131,6 +132,6 @@ describe('withoutBlanks', () => {
 
 describe('BLANK_IDENTITY_LABEL', () => {
   it('says the value is chosen later', () => {
-    expect(BLANK_IDENTITY_LABEL).toBe('chosen at build time')
+    expect(t(BLANK_IDENTITY_LABEL)).toBe('chosen at build time')
   })
 })

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import StatusBadge from '@/components/StatusBadge.vue'
+import { t } from '@/i18n'
 import { buildKindLabel, type BuildPhase } from '@/services/guest-build'
 
 defineProps<{
@@ -39,7 +40,7 @@ defineProps<{
           dense
           square
           no-caps
-          label="[BACK TO GUEST VM]"
+          :label="t('guests.action.backToGuestVm')"
           class="build-header__back text-mono"
           to="/guest"
         />
@@ -49,7 +50,7 @@ defineProps<{
     <progress
       :value="percent"
       max="100"
-      :aria-label="`${guest} ${buildKindLabel(kind).toLowerCase()} progress`"
+      :aria-label="t('guests.buildHeader.progressLabel', { guest, kind: buildKindLabel(kind).toLowerCase() })"
     />
     <p class="build-header__message text-mono text-gray">
       <span data-build="percent">{{ percent }}%</span>

@@ -8,6 +8,7 @@ import GuestResourcesFields from '@/components/guest/GuestResourcesFields.vue'
 import ProfileOptionField from '@/components/guest/ProfileOptionField.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useGuestWizard } from '@/composables/use-guest-wizard'
+import { t } from '@/i18n'
 import { blockingWarning } from '@/services/guest-wizard-view'
 
 const wizard = useGuestWizard()
@@ -18,12 +19,12 @@ void wizard.load()
   <div class="wizard-page">
     <div class="wizard-header">
       <h1 class="section-title text-mono">
-        BUILD GUEST
+        {{ t('guests.wizard.title') }}
       </h1>
       <q-btn
         flat
         square
-        label="[CANCEL]"
+        :label="t('guests.action.cancel')"
         class="wizard-cancel text-mono"
         to="/guest"
       />
@@ -39,8 +40,8 @@ void wizard.load()
     >
       <q-step
         :name="1"
-        title="CHOOSE MEDIA"
-        caption="The installation image to build from"
+        :title="t('guests.wizard.step.media')"
+        :caption="t('guests.wizard.step.mediaCaption')"
         icon="album"
         :done="wizard.step.value > 1"
         :header-nav="wizard.step.value > 1"
@@ -62,7 +63,7 @@ void wizard.load()
           <q-btn
             outline
             square
-            label="[CONTINUE]"
+            :label="t('guests.action.continue')"
             class="wizard-primary text-mono"
             :disable="!wizard.canContinue.value"
             @click="wizard.next"
@@ -72,8 +73,8 @@ void wizard.load()
 
       <q-step
         :name="2"
-        title="SETTINGS"
-        caption="What the guest is called, who it is and what it has"
+        :title="t('guests.wizard.step.settings')"
+        :caption="t('guests.wizard.step.settingsCaption')"
         icon="tune"
         :done="wizard.step.value > 2"
         :header-nav="wizard.step.value > 2"
@@ -84,7 +85,7 @@ void wizard.load()
         >
           <section class="settings__section">
             <h2 class="settings__title text-mono">
-              GUEST
+              {{ t('guests.wizard.section.guest') }}
             </h2>
             <GuestNameField
               v-model="wizard.name.value"
@@ -100,7 +101,7 @@ void wizard.load()
               option-label="label"
               emit-value
               map-options
-              label="EDITION"
+              :label="t('guests.wizard.edition')"
               outlined
               dense
               square
@@ -113,32 +114,32 @@ void wizard.load()
 
           <section class="settings__section">
             <h2 class="settings__title text-mono">
-              INSIDE THE GUEST
+              {{ t('guests.wizard.section.insideGuest') }}
             </h2>
             <GuestIdentityField
               v-model="wizard.account.value"
               :label="wizard.profile.value.identity.account.label.toUpperCase()"
               :error="wizard.errors.value['identity.account']"
-              hint="A realistic one is chosen when this is left blank."
+              :hint="t('guests.wizard.identityHint')"
             />
             <GuestIdentityField
               v-model="wizard.machine.value"
               :label="wizard.profile.value.identity.machine.label.toUpperCase()"
               :error="wizard.errors.value['identity.machine']"
-              hint="A realistic one is chosen when this is left blank."
+              :hint="t('guests.wizard.identityHint')"
             />
             <GuestIdentityField
               v-model="wizard.password.value"
               :label="wizard.profile.value.identity.password.label.toUpperCase()"
               :error="wizard.errors.value['identity.password']"
-              hint="A random one is chosen when this is left blank; the Guest page shows it."
+              :hint="t('guests.wizard.passwordHint')"
               secret
             />
           </section>
 
           <section class="settings__section">
             <h2 class="settings__title text-mono">
-              RESOURCES
+              {{ t('guests.wizard.section.resources') }}
             </h2>
             <GuestResourcesFields
               v-model="wizard.resources.value"
@@ -152,7 +153,7 @@ void wizard.load()
             class="settings__section"
           >
             <h2 class="settings__title text-mono">
-              OPTIONS
+              {{ t('guests.wizard.section.options') }}
             </h2>
             <ProfileOptionField
               v-for="option in wizard.profile.value.options"
@@ -168,14 +169,14 @@ void wizard.load()
           <q-btn
             flat
             square
-            label="[BACK]"
+            :label="t('guests.action.back')"
             class="wizard-back text-mono"
             @click="wizard.back"
           />
           <q-btn
             outline
             square
-            label="[CONTINUE]"
+            :label="t('guests.action.continue')"
             class="wizard-primary text-mono"
             :disable="!wizard.canContinue.value"
             @click="wizard.next"
@@ -185,8 +186,8 @@ void wizard.load()
 
       <q-step
         :name="3"
-        title="REVIEW"
-        caption="Check it, then build"
+        :title="t('guests.wizard.step.review')"
+        :caption="t('guests.wizard.step.reviewCaption')"
         icon="fact_check"
       >
         <dl class="review">
@@ -218,7 +219,7 @@ void wizard.load()
           <q-btn
             flat
             square
-            label="[BACK]"
+            :label="t('guests.action.back')"
             class="wizard-back text-mono"
             :disable="wizard.submission.submitting.value"
             @click="wizard.back"
@@ -226,7 +227,7 @@ void wizard.load()
           <q-btn
             outline
             square
-            label="[BUILD GUEST]"
+            :label="t('guests.action.buildGuest')"
             class="wizard-primary text-mono"
             :loading="wizard.submission.submitting.value"
             :disable="!wizard.canContinue.value || wizard.submission.submitting.value"

@@ -1,5 +1,6 @@
 import { computed, ref, watch, type ComputedRef, type Ref, type WritableComputedRef } from 'vue'
 import type { Guest } from '@/api'
+import { t } from '@/i18n'
 import { useGuestsStore } from '@/stores/guests'
 
 export const AUTO_PACKAGE = 'auto'
@@ -80,9 +81,9 @@ export function useGuestChoice(defaultGuest: Ref<string | null | undefined>): Gu
 
   const noGuestReason = computed(() => {
     if (!listLoaded.value || listUnavailable.value || store.readyGuests.length > 0) return undefined
-    if (store.guests.length === 0) return 'No guest is ready: none has been built'
-    const states = store.guests.map((guest) => `${guest.name} is ${guest.state}`)
-    return `No guest is ready: ${states.join(', ')}`
+    if (store.guests.length === 0) return t('guests.choice.noneBuilt')
+    const states = store.guests.map((guest) => t('guests.choice.stateOf', { name: guest.name, state: guest.state }))
+    return t('guests.choice.noneReady', { states: states.join(', ') })
   })
 
   const optionPayload = computed(() => ({

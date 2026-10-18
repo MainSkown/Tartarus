@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Guest } from '@/api'
 import GuestStateList from '@/components/guest/GuestStateList.vue'
+import { t } from '@/i18n'
 
 defineProps<{ guests: readonly Guest[]; message?: string | null }>()
 </script>
@@ -8,7 +9,7 @@ defineProps<{ guests: readonly Guest[]; message?: string | null }>()
 <template>
   <div class="guest-health-menu">
     <h2 class="guest-health-menu__title text-mono">
-      GUEST VM
+      {{ t('guests.title') }}
     </h2>
     <p
       v-if="message"
@@ -23,7 +24,7 @@ defineProps<{ guests: readonly Guest[]; message?: string | null }>()
       v-close-popup
       outline
       square
-      label="[OPEN GUEST VM]"
+      :label="t('guests.action.openGuestVm')"
       class="guest-health-menu__open text-mono"
       to="/guest"
     />

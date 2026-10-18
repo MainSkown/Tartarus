@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { t } from '@/i18n'
 import { useGuestsStore } from '@/stores/guests'
 
 interface DefaultGuestOption {
@@ -12,7 +13,7 @@ export function useDefaultGuestField(stored: Ref<string | null | undefined>) {
   const judged = ref(false)
 
   const options = computed<DefaultGuestOption[]>(() => [
-    { label: 'first ready guest', value: null },
+    { label: t('guests.defaultGuest.firstReady'), value: null },
     ...store.readyGuests.map((guest) => ({ label: guest.name, value: guest.name })),
   ])
 
@@ -23,8 +24,8 @@ export function useDefaultGuestField(stored: Ref<string | null | undefined>) {
     if (!judged.value || !name || storedIsOffered.value) return undefined
     const existing = store.byName(name)
     return existing
-      ? `${name} is ${existing.state}: the first ready guest is used`
-      : `${name} no longer exists: the first ready guest is used`
+      ? t('guests.defaultGuest.stateNote', { name, state: existing.state })
+      : t('guests.defaultGuest.gone', { name })
   })
 
   // Quasar would show nothing for a model value that matches no option.

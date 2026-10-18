@@ -2,6 +2,7 @@ import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { guestsMedia, guestsStartBuild } from '@/api'
 import type { GuestProfile, GuestResources, MediaEntry } from '@/api'
 import { useGuestSubmission, type GuestSubmission } from '@/composables/use-guest-submission'
+import { t } from '@/i18n'
 import { errorMessage } from '@/services/api-error'
 import {
   BLANK_IDENTITY_LABEL,
@@ -115,7 +116,7 @@ export function useGuestWizard(): GuestWizard {
   const mediaChoices = computed<MediaChoice[]>(() =>
     media.value.map((entry) => {
       const profile = profileById(entry.profile)
-      const noProfile = entry.profile ? `No installed profile reads this image (${entry.profile})` : undefined
+      const noProfile = entry.profile ? t('guests.wizard.noProfile', { profile: entry.profile }) : undefined
       return { entry, profileName: profile?.display_name, unavailable: entry.error ?? (profile ? undefined : noProfile) }
     }),
   )
@@ -177,20 +178,20 @@ export function useGuestWizard(): GuestWizard {
   const reviewRows = computed<ReviewRow[]>(() => {
     const identity = body.value.identity
     const identityRow = (label: string, key: string, shown: string): ReviewRow =>
-      key in identity ? { label, value: shown, blank: false } : { label, value: BLANK_IDENTITY_LABEL, blank: true }
+      key in identity ? { label, value: shown, blank: false } : { label, value: t(BLANK_IDENTITY_LABEL), blank: true }
     const optionRows = (profile.value?.options ?? []).map((option) => ({
       label: option.label,
       value: optionValueLabel(option, options.value[option.key]),
       blank: false,
     }))
     return [
-      { label: 'Media', value: selectedFile.value ?? '', blank: false },
-      ...(chosenVariant.value ? [{ label: 'Edition', value: chosenVariant.value.label, blank: false }] : []),
-      { label: 'Name', value: name.value, blank: false },
-      identityRow('Username', 'account', identity.account ?? ''),
-      identityRow('Computer name', 'machine', identity.machine ?? ''),
-      identityRow('Password', 'password', 'set by you'),
-      { label: 'Resources', value: resourcesLabel(resources.value), blank: false },
+      { label: t('guests.review.media'), value: selectedFile.value ?? '', blank: false },
+      ...(chosenVariant.value ? [{ label: t('guests.review.edition'), value: chosenVariant.value.label, blank: false }] : []),
+      { label: t('guests.review.name'), value: name.value, blank: false },
+      identityRow(t('guests.review.username'), 'account', identity.account ?? ''),
+      identityRow(t('guests.review.computerName'), 'machine', identity.machine ?? ''),
+      identityRow(t('guests.review.password'), 'password', t('guests.review.passwordSetByYou')),
+      { label: t('guests.review.resources'), value: resourcesLabel(resources.value), blank: false },
       ...optionRows,
     ]
   })

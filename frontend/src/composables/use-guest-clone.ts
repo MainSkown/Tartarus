@@ -2,6 +2,7 @@ import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { guestsClone } from '@/api'
 import type { Guest, GuestProfile, GuestResources, ProfileOption } from '@/api'
 import { useGuestSubmission, type GuestSubmission } from '@/composables/use-guest-submission'
+import { t } from '@/i18n'
 import { guestNameProblem, identityProblem, profileDefaults, withoutBlanks, type OptionValues } from '@/services/guest-form'
 import { quietOn } from '@/services/quiet-statuses'
 import { useGuestsStore } from '@/stores/guests'
@@ -81,7 +82,7 @@ export function useGuestClone(sourceName: string): GuestClone {
     if (machineProblem) found['identity.machine'] = machineProblem
     for (const field of ['vcpus', 'ram_mb'] as const) {
       if (!Number.isInteger(resources.value[field]) || resources.value[field] < 1) {
-        found[`resources.${field}`] = 'A whole number of at least 1'
+        found[`resources.${field}`] = t('guests.form.wholeNumber')
       }
     }
     return found
@@ -117,7 +118,7 @@ export function useGuestClone(sourceName: string): GuestClone {
     } else if (source.value.state !== 'ready') {
       status.value = 'not-ready'
     } else if (!profile.value) {
-      loadError.value = `The profile ${source.value.profile} of ${sourceName} is not installed`
+      loadError.value = t('guests.clone.profileMissing', { profile: source.value.profile, guest: sourceName })
       status.value = 'failed'
     } else {
       startFromSource(source.value, profile.value)

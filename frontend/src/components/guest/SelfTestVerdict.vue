@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BuildNotice from '@/components/guest/BuildNotice.vue'
+import { I18nT, t } from '@/i18n'
 import type { Check, SelfTestVerdict } from '@/services/guest-build'
 
 defineProps<{
@@ -18,20 +19,24 @@ function checkIcon(check: Check): string {
 <template>
   <BuildNotice
     :tone="passed ? 'green' : 'red'"
-    :title="passed ? 'GUEST READY' : 'SELF-TEST FAILED'"
+    :title="passed ? t('guests.verdict.ready') : t('guests.verdict.failed')"
     :icon="passed ? 'check_circle' : 'dangerous'"
     :data-verdict="passed ? 'passed' : 'failed'"
   >
     <p class="verdict__message">
       {{ verdict?.message ?? message }}
     </p>
-    <p
+    <I18nT
       v-if="!passed"
+      keypath="guests.verdict.consequence"
+      scope="global"
+      tag="p"
       class="verdict__consequence"
     >
-      The guest <strong class="text-mono">{{ guest }}</strong> is failed and unregistered from CAPE, so no analysis
-      can be started on it. Delete it on the Guest VM page and build it again.
-    </p>
+      <template #guest>
+        <strong class="text-mono">{{ guest }}</strong>
+      </template>
+    </I18nT>
 
     <template v-if="verdict">
       <section
@@ -39,7 +44,7 @@ function checkIcon(check: Check): string {
         class="verdict__section"
       >
         <h3 class="verdict__heading text-mono">
-          SIGNALS
+          {{ t('guests.verdict.signals') }}
         </h3>
         <ul class="verdict__checks">
           <li
@@ -66,7 +71,7 @@ function checkIcon(check: Check): string {
         class="verdict__section"
       >
         <h3 class="verdict__heading text-mono">
-          PROOFS
+          {{ t('guests.verdict.proofs') }}
         </h3>
         <ul class="verdict__checks">
           <li
@@ -93,7 +98,7 @@ function checkIcon(check: Check): string {
         class="verdict__section verdict__giveaways"
       >
         <h3 class="verdict__heading text-mono">
-          A SAMPLE CAN TELL THIS IS A SANDBOX
+          {{ t('guests.verdict.giveaways') }}
         </h3>
         <ul class="verdict__list">
           <li
@@ -112,7 +117,7 @@ function checkIcon(check: Check): string {
         :to="`/analyses/${verdict.analysisId}`"
         class="verdict__analysis text-mono"
       >
-        self-test analysis #{{ verdict.analysisId }}
+        {{ t('guests.verdict.analysisLink', { id: verdict.analysisId }) }}
       </router-link>
     </template>
 
@@ -120,7 +125,7 @@ function checkIcon(check: Check): string {
       <q-btn
         outline
         square
-        label="[OPEN GUEST VM]"
+        :label="t('guests.action.openGuestVm')"
         class="verdict__open text-mono"
         to="/guest"
       />

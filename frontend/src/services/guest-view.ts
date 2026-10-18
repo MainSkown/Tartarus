@@ -1,5 +1,6 @@
 import type { ConfirmOptions } from '@/services/confirm'
 import { isInProgress } from '@/services/guest-state'
+import { t, type MessageKey } from '@/i18n'
 import type { Guest, GuestProfile, GuestResources, HealthProbe } from '@/api'
 
 export interface SelfTestSummary {
@@ -8,11 +9,11 @@ export interface SelfTestSummary {
   analysisId: number | undefined
 }
 
-export const GIVEAWAY_ADVICE = 'Rebuild or clone for a clean guest.'
+export const GIVEAWAY_ADVICE: MessageKey = 'guests.card.giveawayAdvice'
 
 export function kindLabel(guest: Guest): string | undefined {
-  if (guest.adopted) return 'ADOPTED'
-  if (guest.cloned_from) return `CLONE OF ${guest.cloned_from}`
+  if (guest.adopted) return t('guests.kind.adopted')
+  if (guest.cloned_from) return t('guests.kind.clone', { source: guest.cloned_from })
   return guest.kind?.toUpperCase()
 }
 
@@ -36,8 +37,8 @@ export function systemLabel(
 }
 
 export function resourcesLabel({ vcpus, ram_mb, disk_gb }: GuestResources): string {
-  const ram = ram_mb % 1024 === 0 ? `${ram_mb / 1024} GB` : `${ram_mb} MB`
-  return `${vcpus} ${vcpus === 1 ? 'vCPU' : 'vCPUs'} · ${ram} RAM · ${disk_gb} GB disk`
+  const ram = ram_mb % 1024 === 0 ? t('guests.resources.gigabytes', { count: ram_mb / 1024 }) : t('guests.resources.megabytes', { count: ram_mb })
+  return t('guests.resources.summary', { cpus: t('guests.resources.vcpus', vcpus), ram, disk: disk_gb })
 }
 
 export function selfTestOf(guest: Guest): SelfTestSummary | undefined {
@@ -48,13 +49,13 @@ export function selfTestOf(guest: Guest): SelfTestSummary | undefined {
 
 export function checkSummary(probes: readonly HealthProbe[]): string {
   const passed = probes.filter((probe) => probe.ok).length
-  return `${passed} of ${probes.length} ${probes.length === 1 ? 'check' : 'checks'} passed`
+  return t('guests.checks.summary', { passed, total: probes.length, checks: t('guests.checks.noun', probes.length) })
 }
 
 export function guestDeleteConfirmation(name: string): ConfirmOptions {
   return {
-    title: `Delete ${name}`,
-    message: `Delete the guest ${name}? Its virtual machine, disk and snapshot are removed and it is unregistered from CAPE; analyses that used it keep their data. This cannot be undone.`,
+    title: t('guests.delete.title', { name }),
+    message: t('guests.delete.message', { name }),
   }
 }
 

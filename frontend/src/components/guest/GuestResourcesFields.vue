@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GuestResources } from '@/api'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   modelValue: GuestResources
@@ -11,10 +12,14 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: GuestResources] }>()
 
+function errorOf(key: keyof GuestResources): string | undefined {
+  return props.errors?.[`resources.${key}`]
+}
+
 const FIELDS = [
-  { key: 'vcpus', label: 'VCPUS', suffix: undefined },
-  { key: 'ram_mb', label: 'RAM', suffix: 'MB' },
-  { key: 'disk_gb', label: 'DISK', suffix: 'GB' },
+  { key: 'vcpus', labelKey: 'guests.resources.field.vcpus', suffixKey: undefined },
+  { key: 'ram_mb', labelKey: 'guests.resources.field.ram', suffixKey: 'guests.resources.unit.mb' },
+  { key: 'disk_gb', labelKey: 'guests.resources.field.disk', suffixKey: 'guests.resources.unit.gb' },
 ] as const
 
 function change(key: keyof GuestResources, value: string | number | null): void {
@@ -24,7 +29,7 @@ function change(key: keyof GuestResources, value: string | number | null): void 
 function noteOf(key: keyof GuestResources): string | undefined {
   if (key !== 'disk_gb') return undefined
   if (props.diskLocked) return props.diskReason
-  return props.minDisk ? `minimum ${props.minDisk} GB` : undefined
+  return props.minDisk ? t('guests.resources.minimumDisk', { gb: props.minDisk }) : undefined
 }
 </script>
 
@@ -37,11 +42,11 @@ function noteOf(key: keyof GuestResources): string | undefined {
     >
       <q-input
         :model-value="modelValue[field.key]"
-        :label="field.label"
-        :suffix="field.suffix"
+        :label="t(field.labelKey)"
+        :suffix="field.suffixKey && t(field.suffixKey)"
         :disable="disable || (field.key === 'disk_gb' && diskLocked)"
-        :error="Boolean(errors?.[`resources.${field.key}`])"
-        :error-message="errors?.[`resources.${field.key}`]"
+        :error="Boolean(errorOf(field.key))"
+        :error-message="errorOf(field.key)"
         type="number"
         outlined
         dense

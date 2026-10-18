@@ -3,6 +3,8 @@ import GuestCard from '@/components/guest/GuestCard.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useGuestList } from '@/composables/use-guest-list'
+import { I18nT, t } from '@/i18n'
+import { ISO_FOLDER } from '@/services/guest-media-view'
 
 const list = useGuestList()
 </script>
@@ -11,12 +13,12 @@ const list = useGuestList()
   <div class="guest-page">
     <div class="guest-header">
       <h1 class="section-title text-mono">
-        GUEST VM
+        {{ t('guests.title') }}
       </h1>
       <q-btn
         outline
         square
-        label="[+ NEW GUEST]"
+        :label="t('guests.action.newGuest')"
         class="new-guest-btn text-mono"
         to="/guest/new"
       />
@@ -27,7 +29,7 @@ const list = useGuestList()
       class="guest-note text-mono"
       role="alert"
     >
-      &gt; guest control service is not reachable
+      {{ t('guests.unreachable') }}
     </p>
 
     <ViewState
@@ -62,14 +64,21 @@ const list = useGuestList()
         v-else-if="!list.loadError.value"
         class="guest-empty text-mono"
       >
-        <TerminalEmpty message="guest VM not built" />
-        <p class="guest-empty__hint text-gray">
-          Put a Windows ISO in <code>data/iso</code>, then build the guest from it.
-        </p>
+        <TerminalEmpty :message="t('guests.empty.message')" />
+        <I18nT
+          keypath="guests.empty.hint"
+          scope="global"
+          tag="p"
+          class="guest-empty__hint text-gray"
+        >
+          <template #folder>
+            <code>{{ ISO_FOLDER }}</code>
+          </template>
+        </I18nT>
         <q-btn
           outline
           square
-          label="[BUILD GUEST]"
+          :label="t('guests.action.buildGuest')"
           class="new-guest-btn text-mono"
           to="/guest/new"
         />

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import GuestTextInput from '@/components/guest/GuestTextInput.vue'
 import type { ProfileOption } from '@/api'
+import { t } from '@/i18n'
 
 defineProps<{
   option: ProfileOption
@@ -72,7 +73,7 @@ defineEmits<{ 'update:modelValue': [value: unknown] }>()
         size="14px"
         aria-hidden="true"
       />
-      may ask for one manual step
+      {{ t('guests.option.manualStep') }}
     </p>
     <p
       v-if="locked && lockedReason"

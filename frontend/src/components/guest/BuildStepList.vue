@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { BuildStep } from '@/api'
+import { t } from '@/i18n'
 import { humanStepName, stepDurationLabel, stepMeta } from '@/services/guest-build'
 
 const props = defineProps<{ steps: readonly BuildStep[] }>()
@@ -54,13 +55,13 @@ const rows = computed(() =>
         <span
           v-if="step.status === 'failed' && step.exit_code != null"
           class="build-step__exit text-mono"
-        >exit {{ step.exit_code }}</span>
+        >{{ t('guests.buildSteps.exit', { code: step.exit_code }) }}</span>
         <q-icon
           v-if="step.desktop"
           name="desktop_windows"
           size="14px"
           class="build-step__desktop"
-          title="This step shows the guest's desktop"
+          :title="t('guests.buildSteps.desktop')"
           data-step-desktop
         />
       </span>
@@ -74,7 +75,7 @@ const rows = computed(() =>
     v-else
     class="build-steps__empty text-mono text-gray"
   >
-    &gt; no steps yet
+    {{ t('guests.buildSteps.empty') }}
   </p>
 </template>
 

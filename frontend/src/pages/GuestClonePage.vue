@@ -10,6 +10,7 @@ import ProfileOptionField from '@/components/guest/ProfileOptionField.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useGuestClone } from '@/composables/use-guest-clone'
+import { I18nT, t, type MessageKey } from '@/i18n'
 import { blockingWarning, cloneSummary, sourceNotReadyMessage } from '@/services/guest-wizard-view'
 
 const route = useRoute()
@@ -17,16 +18,23 @@ const sourceName = computed(() => String(route.params.name))
 const clone = useGuestClone(sourceName.value)
 void clone.load()
 
-const USERNAME_REASON = 'A different username needs a build: renaming leaves the old profile folder behind.'
-const LOCKED_REASON = 'Fixed on a clone; a build can change it.'
+const USERNAME_REASON: MessageKey = 'guests.clone.usernameReason'
+const LOCKED_REASON: MessageKey = 'guests.clone.lockedReason'
 </script>
 
 <template>
   <div class="clone-page">
     <div class="clone-header">
-      <h1 class="section-title text-mono">
-        CLONE <span class="clone-header__source">{{ sourceName }}</span>
-      </h1>
+      <I18nT
+        keypath="guests.clone.title"
+        scope="global"
+        tag="h1"
+        class="section-title text-mono"
+      >
+        <template #name>
+          <span class="clone-header__source">{{ sourceName }}</span>
+        </template>
+      </I18nT>
       <template v-if="clone.source.value">
         <StatusBadge :guest-state="clone.source.value.state" />
         <GuestBadges :badges="clone.source.value.badges ?? []" />
@@ -34,7 +42,7 @@ const LOCKED_REASON = 'Fixed on a clone; a build can change it.'
       <q-btn
         flat
         square
-        label="[CANCEL]"
+        :label="t('guests.action.cancel')"
         class="clone-cancel text-mono"
         to="/guest"
       />
@@ -54,14 +62,14 @@ const LOCKED_REASON = 'Fixed on a clone; a build can change it.'
             {{ sourceNotReadyMessage(clone.source.value.name, clone.source.value.state) }}
           </template>
           <template v-else>
-            There is no guest called {{ sourceName }}.
+            {{ t('guests.clone.noGuest', { name: sourceName }) }}
           </template>
         </GuestNotice>
         <router-link
           to="/guest"
           class="clone-back text-mono"
         >
-          [BACK TO GUEST VM]
+          {{ t('guests.action.backToGuestVm') }}
         </router-link>
       </div>
 
@@ -76,11 +84,11 @@ const LOCKED_REASON = 'Fixed on a clone; a build can change it.'
 
         <section class="clone-section">
           <h2 class="clone-section__title text-mono">
-            NEW GUEST
+            {{ t('guests.clone.newGuest') }}
           </h2>
           <GuestNameField
             v-model="clone.name.value"
-            label="NEW NAME"
+            :label="t('guests.clone.newName')"
             :error="clone.errors.value.name"
           />
           <GuestIdentityField
@@ -88,27 +96,27 @@ const LOCKED_REASON = 'Fixed on a clone; a build can change it.'
             v-model="clone.machine.value"
             :label="clone.profile.value.identity.machine.label.toUpperCase()"
             :error="clone.errors.value['identity.machine']"
-            placeholder="chosen at clone time"
-            hint="A realistic one is chosen when this is left blank; it is never the source's."
+            :placeholder="t('guests.clone.machinePlaceholder')"
+            :hint="t('guests.clone.machineHint')"
           />
           <GuestIdentityField
             v-if="clone.source.value?.identity && clone.profile.value"
             :model-value="clone.source.value.identity.account"
             :label="clone.profile.value.identity.account.label.toUpperCase()"
             readonly
-            :reason="USERNAME_REASON"
+            :reason="t(USERNAME_REASON)"
           />
         </section>
 
         <section class="clone-section">
           <h2 class="clone-section__title text-mono">
-            RESOURCES
+            {{ t('guests.wizard.section.resources') }}
           </h2>
           <GuestResourcesFields
             v-model="clone.resources.value"
             :errors="clone.errors.value"
             disk-locked
-            disk-reason="A clone has its source's disk."
+            :disk-reason="t('guests.clone.diskReason')"
           />
         </section>
 
@@ -117,7 +125,7 @@ const LOCKED_REASON = 'Fixed on a clone; a build can change it.'
           class="clone-section"
         >
           <h2 class="clone-section__title text-mono">
-            OPTIONS
+            {{ t('guests.wizard.section.options') }}
           </h2>
           <ProfileOptionField
             v-for="{ option, locked } in clone.optionRows.value"
@@ -125,7 +133,7 @@ const LOCKED_REASON = 'Fixed on a clone; a build can change it.'
             :option="option"
             :model-value="clone.options.value[option.key]"
             :locked="locked"
-            :locked-reason="LOCKED_REASON"
+            :locked-reason="t(LOCKED_REASON)"
             :error="clone.errors.value[`options.${option.key}`]"
             @update:model-value="(value) => clone.setOption(option.key, value)"
           />
@@ -146,7 +154,7 @@ const LOCKED_REASON = 'Fixed on a clone; a build can change it.'
             outline
             square
             type="submit"
-            label="[CLONE]"
+            :label="t('guests.action.clone')"
             class="clone-submit text-mono"
             :loading="clone.submission.submitting.value"
             :disable="!clone.canSubmit.value || clone.submission.submitting.value"

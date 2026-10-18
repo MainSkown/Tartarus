@@ -2,6 +2,7 @@ import { computed, onScopeDispose, ref, watch, type ComputedRef } from 'vue'
 import { Notify } from 'quasar'
 import { guestsActiveBuild, guestsCheck, guestsDelete, guestsReadBuild, settingsRead } from '@/api'
 import type { BuildView, Guest, GuestProfile, HealthCheckResult } from '@/api'
+import { t } from '@/i18n'
 import { errorMessage } from '@/services/api-error'
 import { confirmDestructive } from '@/services/confirm'
 import { isInProgress } from '@/services/guest-state'
@@ -123,7 +124,7 @@ export function useGuestList(): GuestList {
       deleteErrors.value[name] = errorMessage(error)
       return
     }
-    Notify.create({ type: 'tt-success', message: `Deleted ${name}` })
+    Notify.create({ type: 'tt-success', message: t('guests.delete.deleted', { name }) })
     await reload()
   }
 

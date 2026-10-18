@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
+import { I18nT, t } from '@/i18n'
 import type { MediaChoice } from '@/composables/use-guest-wizard'
 import { formatFileSize } from '@/services/file-size'
-import { mediaDetails } from '@/services/guest-media-view'
+import { ISO_FOLDER, mediaDetails } from '@/services/guest-media-view'
 
 defineProps<{ choices: MediaChoice[]; selected?: string; error?: string }>()
 const emit = defineEmits<{ select: [file: string]; reload: [] }>()
@@ -17,7 +18,7 @@ const emit = defineEmits<{ select: [file: string]; reload: [] }>()
       v-if="choices.length > 0"
       class="media-list__rows"
       role="radiogroup"
-      aria-label="Installation media"
+      :aria-label="t('guests.media.label')"
     >
       <button
         v-for="{ entry, profileName, unavailable } in choices"
@@ -68,10 +69,17 @@ const emit = defineEmits<{ select: [file: string]; reload: [] }>()
       v-else
       class="media-list__empty"
     >
-      <TerminalEmpty message="no installation media found" />
-      <p class="media-list__hint">
-        Put a Windows ISO in <code>data/iso</code> on the host, then reload the list. Nothing is uploaded from the browser.
-      </p>
+      <TerminalEmpty :message="t('guests.media.empty')" />
+      <I18nT
+        keypath="guests.media.hint"
+        scope="global"
+        tag="p"
+        class="media-list__hint"
+      >
+        <template #folder>
+          <code>{{ ISO_FOLDER }}</code>
+        </template>
+      </I18nT>
     </div>
 
     <p
@@ -85,7 +93,7 @@ const emit = defineEmits<{ select: [file: string]; reload: [] }>()
     <q-btn
       flat
       square
-      label="[RELOAD]"
+      :label="t('guests.action.reload')"
       class="media-list__reload text-mono"
       @click="emit('reload')"
     />

@@ -10,6 +10,7 @@ import SelfTestVerdict from '@/components/guest/SelfTestVerdict.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useGuestBuild } from '@/composables/use-guest-build'
+import { t } from '@/i18n'
 import { failureTitle, stepsWithSelfTest } from '@/services/guest-build'
 import { guestDesktopPath } from '@/services/desktop-url'
 
@@ -43,7 +44,7 @@ const busy = computed(() => state.busy.value !== undefined)
               outline
               square
               no-caps
-              :label="state.busy.value === 'cancel' ? '[CANCELLING...]' : '[CANCEL BUILD]'"
+              :label="state.busy.value === 'cancel' ? t('guests.build.page.button.cancelling') : t('guests.build.page.button.cancel')"
               class="build-page__cancel-button text-mono"
               data-build="cancel"
               :disable="busy"
@@ -57,13 +58,13 @@ const busy = computed(() => state.busy.value !== undefined)
           class="build-page__note text-mono"
           data-build="connection-note"
         >
-          &gt; the guest control service is not reachable; trying again
+          {{ t('guests.build.page.connectionLost') }}
         </p>
 
         <BuildNotice
           v-if="phase === 'paused'"
           tone="amber"
-          title="WAITING FOR YOU"
+          :title="t('guests.build.page.waiting')"
           icon="pause_circle"
           :error="state.actionError.value"
         >
@@ -71,13 +72,13 @@ const busy = computed(() => state.busy.value !== undefined)
             {{ build.pause?.instructions }}
           </p>
           <p class="build-page__hint text-gray">
-            Do it on the guest's desktop below, then continue the build.
+            {{ t('guests.build.page.pausedHint') }}
           </p>
           <template #actions>
             <q-btn
               outline
               square
-              :label="state.busy.value === 'continue' ? '[CONTINUING...]' : '[CONTINUE]'"
+              :label="state.busy.value === 'continue' ? t('guests.build.page.button.continuing') : t('guests.action.continue')"
               class="build-page__action text-mono"
               :disable="busy"
               @click="state.continueBuild"
@@ -93,16 +94,16 @@ const busy = computed(() => state.busy.value !== undefined)
           :error="state.actionError.value"
         >
           <p class="build-page__failure text-mono">
-            {{ build.message || 'The step failed without a message; the log below may say why.' }}
+            {{ build.message || t('guests.build.page.failedNoMessage') }}
           </p>
           <p class="build-page__hint text-gray">
-            RESUME runs the failed step again. RESTART begins from the first step and discards what has been done.
+            {{ t('guests.build.page.failedHint') }}
           </p>
           <template #actions>
             <q-btn
               outline
               square
-              :label="state.busy.value === 'resume' ? '[RESUMING...]' : '[RESUME]'"
+              :label="state.busy.value === 'resume' ? t('guests.build.page.button.resuming') : t('guests.build.page.button.resume')"
               class="build-page__action text-mono"
               :disable="busy"
               @click="state.resume"
@@ -110,7 +111,7 @@ const busy = computed(() => state.busy.value !== undefined)
             <q-btn
               outline
               square
-              :label="state.busy.value === 'restart' ? '[RESTARTING...]' : '[RESTART]'"
+              :label="state.busy.value === 'restart' ? t('guests.build.page.button.restarting') : t('guests.build.page.button.restart')"
               class="build-page__restart text-mono"
               :disable="busy"
               @click="state.restart"
@@ -122,13 +123,13 @@ const busy = computed(() => state.busy.value !== undefined)
           v-else-if="verdictShown"
           :passed="phase === 'ready'"
           :guest="build.guest"
-          :message="phase === 'ready' ? 'The guest was built and is ready.' : state.failureMessage.value"
+          :message="phase === 'ready' ? t('guests.build.page.built') : state.failureMessage.value"
           :verdict="state.verdict.value"
         />
 
         <div class="build-page__grid">
           <section class="build-page__steps">
-            <PaneHeading label="STEPS" />
+            <PaneHeading :label="t('guests.build.page.steps')" />
             <BuildStepList :steps="steps" />
           </section>
           <div class="build-page__main">
@@ -152,26 +153,26 @@ const busy = computed(() => state.busy.value !== undefined)
         class="build-page__missing text-mono"
       >
         <h1 class="build-page__title">
-          BUILD
+          {{ t('guests.build.page.title') }}
         </h1>
         <p
           v-if="phase === 'not-found'"
           class="text-gray"
         >
-          &gt; build not found
+          {{ t('guests.build.page.notFound') }}
         </p>
         <template v-else>
           <p class="text-gray">
-            &gt; the guest control service is not reachable
+            {{ t('guests.build.page.unreachable') }}
           </p>
           <p class="build-page__hint text-gray">
-            trying again every few seconds
+            {{ t('guests.build.page.retrying') }}
           </p>
         </template>
         <q-btn
           outline
           square
-          label="[BACK TO GUEST VM]"
+          :label="t('guests.action.backToGuestVm')"
           class="build-page__action text-mono"
           to="/guest"
         />

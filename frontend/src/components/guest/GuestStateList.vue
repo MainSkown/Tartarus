@@ -3,6 +3,7 @@ import type { Guest } from '@/api'
 import GuestBadges from '@/components/guest/GuestBadges.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
+import { t } from '@/i18n'
 
 defineProps<{ guests: readonly Guest[] }>()
 </script>
@@ -33,7 +34,7 @@ defineProps<{ guests: readonly Guest[] }>()
   </ul>
   <TerminalEmpty
     v-else
-    message="no guests"
+    :message="t('guests.stateList.empty')"
   />
 </template>
 

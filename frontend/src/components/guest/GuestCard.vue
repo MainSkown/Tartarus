@@ -196,7 +196,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
           </li>
         </ul>
         <p class="guest-card__giveaways-advice">
-          {{ GIVEAWAY_ADVICE }}
+          {{ t(GIVEAWAY_ADVICE) }}
         </p>
       </div>
     </div>

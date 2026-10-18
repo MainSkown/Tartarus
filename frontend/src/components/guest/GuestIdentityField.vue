@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import GuestTextInput from '@/components/guest/GuestTextInput.vue'
+import { t } from '@/i18n'
 import { BLANK_IDENTITY_LABEL } from '@/services/guest-form'
 
 const props = withDefaults(
@@ -15,7 +16,7 @@ const props = withDefaults(
     readonly?: boolean
     reason?: string
   }>(),
-  { placeholder: BLANK_IDENTITY_LABEL, error: undefined, hint: undefined, reason: undefined },
+  { placeholder: undefined, error: undefined, hint: undefined, reason: undefined },
 )
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
@@ -32,7 +33,7 @@ const note = computed(() => (props.readonly ? props.reason : props.hint))
         :error="error"
         :revealable="secret && !readonly"
         :disable="readonly"
-        :placeholder="placeholder"
+        :placeholder="placeholder ?? t(BLANK_IDENTITY_LABEL)"
         class="identity-field__input text-mono"
         @update:model-value="(value) => emit('update:modelValue', value)"
       />
@@ -40,7 +41,7 @@ const note = computed(() => (props.readonly ? props.reason : props.hint))
         v-if="!readonly"
         flat
         square
-        label="[RANDOM]"
+        :label="t('guests.identity.random')"
         :aria-pressed="blank"
         class="identity-field__random text-mono"
         :class="{ 'is-active': blank }"

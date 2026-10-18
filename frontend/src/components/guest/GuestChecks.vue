@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CheckState } from '@/composables/use-guest-list'
+import { t } from '@/i18n'
 import { checkSummary } from '@/services/guest-view'
 
 defineProps<{ state: CheckState }>()
@@ -8,15 +9,15 @@ defineProps<{ state: CheckState }>()
 <template>
   <section
     class="guest-checks"
-    aria-label="Health checks"
+    :aria-label="t('guests.checks.label')"
   >
     <template v-if="state.busy">
-      <progress aria-label="Running the checks" />
+      <progress :aria-label="t('guests.checks.running')" />
       <p
         class="guest-checks__note text-mono text-gray"
         role="status"
       >
-        running the checks, this takes up to 2 minutes
+        {{ t('guests.checks.runningNote') }}
       </p>
     </template>
 
@@ -50,7 +51,7 @@ defineProps<{ state: CheckState }>()
             aria-hidden="true"
           />
           <span class="guest-checks__id text-mono">{{ probe.id }}</span>
-          <span class="sr-only">{{ probe.ok ? 'passed' : 'failed' }}</span>
+          <span class="sr-only">{{ t(probe.ok ? 'guests.checks.passed' : 'guests.checks.failed') }}</span>
           <span class="guest-checks__message">{{ probe.message }}</span>
         </li>
       </ul>

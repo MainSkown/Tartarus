@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import CopyButton from '@/components/CopyButton.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
+import { t } from '@/i18n'
 
 const props = defineProps<{ lines: readonly string[] }>()
 
@@ -44,7 +45,7 @@ watch(() => props.lines, followIfWanted, { flush: 'post' })
   >
     <div class="build-log__bar">
       <PaneHeading
-        label="BUILD LOG"
+        :label="t('guests.buildLog.heading')"
         class="build-log__heading"
       />
       <q-btn
@@ -52,7 +53,7 @@ watch(() => props.lines, followIfWanted, { flush: 'post' })
         dense
         square
         no-caps
-        :label="following ? '[PAUSE FOLLOW]' : '[FOLLOW]'"
+        :label="following ? t('guests.buildLog.pauseFollow') : t('guests.buildLog.follow')"
         :aria-pressed="following"
         class="build-log__follow text-mono"
         data-build="follow"
@@ -60,8 +61,8 @@ watch(() => props.lines, followIfWanted, { flush: 'post' })
       />
       <CopyButton
         :text="lines.join('\n')"
-        what="build log"
-        label="[COPY LOG]"
+        :what="t('guests.buildLog.noun')"
+        :label="t('guests.buildLog.copy')"
       />
     </div>
     <pre
@@ -78,7 +79,7 @@ watch(() => props.lines, followIfWanted, { flush: 'post' })
 </span><span
       v-if="rows.length === 0"
       class="build-log__empty text-gray"
-    >&gt; no output yet</span></pre>
+    >{{ t('guests.buildLog.empty') }}</span></pre>
   </section>
 </template>
 

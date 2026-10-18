@@ -1,8 +1,9 @@
 import type { GuestProfile, GuestResources, IdentityRule, ProfileOption } from '@/api'
+import { t, type MessageKey } from '@/i18n'
 
-export const BLANK_IDENTITY_LABEL = 'chosen at build time'
+export const BLANK_IDENTITY_LABEL: MessageKey = 'guests.form.blankIdentity'
 
-export const NAME_RULE = 'Use 2 to 32 lower-case letters, digits or hyphens, starting with a letter'
+const NAME_RULE: MessageKey = 'guests.form.nameRule'
 const GUEST_NAME = /^[a-z][a-z0-9-]{1,31}$/
 
 export type OptionValues = Record<string, unknown>
@@ -15,8 +16,8 @@ export interface ProfileDefaults {
 }
 
 export function guestNameProblem(name: string, taken: readonly string[]): string | undefined {
-  if (!GUEST_NAME.test(name)) return NAME_RULE
-  return taken.includes(name) ? `Another guest is already called ${name}` : undefined
+  if (!GUEST_NAME.test(name)) return t(NAME_RULE)
+  return taken.includes(name) ? t('guests.form.nameTaken', { name }) : undefined
 }
 
 function fullMatch(pattern: string): RegExp | undefined {
@@ -31,17 +32,17 @@ function fullMatch(pattern: string): RegExp | undefined {
 /** Why a typed identity value breaks the profile's rule, or nothing for a blank (chosen at build time) or a good one. The giveaway list stays the server's: it answers with its own message. */
 export function identityProblem(rule: IdentityRule, value: string): string | undefined {
   if (value === '') return undefined
-  if (fullMatch(rule.pattern)?.test(value) === false) return `${rule.label} must match ${rule.pattern}`
+  if (fullMatch(rule.pattern)?.test(value) === false) return t('guests.form.mustMatch', { label: rule.label, pattern: rule.pattern })
   const reserved = (rule.reserved ?? []).some((name) => name.toLowerCase() === value.toLowerCase())
-  return reserved ? `${value} is reserved` : undefined
+  return reserved ? t('guests.form.reserved', { value }) : undefined
 }
 
 export function resourceProblems(resources: GuestResources, minDiskGb: number): ResourceProblems {
   const problems: ResourceProblems = {}
   for (const field of ['vcpus', 'ram_mb', 'disk_gb'] as const) {
-    if (!Number.isInteger(resources[field]) || resources[field] < 1) problems[field] = 'A whole number of at least 1'
+    if (!Number.isInteger(resources[field]) || resources[field] < 1) problems[field] = t('guests.form.wholeNumber')
   }
-  if (!problems.disk_gb && resources.disk_gb < minDiskGb) problems.disk_gb = `At least ${minDiskGb} GB`
+  if (!problems.disk_gb && resources.disk_gb < minDiskGb) problems.disk_gb = t('guests.form.minDisk', { gb: minDiskGb })
   return problems
 }
 
@@ -60,9 +61,9 @@ export function profileDefaults(profile: GuestProfile): ProfileDefaults {
 }
 
 export function optionValueLabel(option: ProfileOption, value: unknown): string {
-  if (option.type === 'bool') return value ? 'ON' : 'OFF'
-  if (option.type === 'secret') return value ? 'set' : 'not set'
-  return value ? String(value) : 'none'
+  if (option.type === 'bool') return t(value ? 'guests.form.on' : 'guests.form.off')
+  if (option.type === 'secret') return t(value ? 'guests.form.set' : 'guests.form.notSet')
+  return value ? String(value) : t('guests.form.none')
 }
 
 /** A blank identity value means "chosen at build time", so it is left out of the request, never sent as an empty string. */
