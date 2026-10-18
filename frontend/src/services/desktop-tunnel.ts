@@ -1,4 +1,5 @@
 import type { Tunnel } from 'guacamole-common-js'
+import { t } from '@/i18n'
 import type { GuacamoleModule } from '@/services/desktop-guacamole'
 
 type SocketFactory = (url: string) => WebSocket
@@ -88,7 +89,7 @@ export class DesktopTunnel implements Tunnel {
     try {
       this.parser.receive(frame)
     } catch {
-      this.fail(CLOSE_PROTOCOL_ERROR, 'malformed instruction from the server')
+      this.fail(CLOSE_PROTOCOL_ERROR, t('live.desktop.tunnel.malformed'))
     }
   }
 
@@ -108,7 +109,7 @@ export class DesktopTunnel implements Tunnel {
   private resetTimers(): void {
     this.clearTimers()
     if (this.state === this.states.UNSTABLE) this.setState(this.states.OPEN)
-    this.receiveTimer = setTimeout(() => this.fail(CLOSE_ABNORMAL, 'no data from the server'), this.receiveTimeout)
+    this.receiveTimer = setTimeout(() => this.fail(CLOSE_ABNORMAL, t('live.desktop.tunnel.noData')), this.receiveTimeout)
     this.unstableTimer = setTimeout(() => this.setState(this.states.UNSTABLE), this.unstableThreshold)
     this.pingTimer = setTimeout(() => this.sendPing(), Math.max(this.lastPingAt + PING_INTERVAL_MS - Date.now(), 0))
   }

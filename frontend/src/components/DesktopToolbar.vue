@@ -1,6 +1,14 @@
 <script setup lang="ts">
-defineProps<{ live: boolean; fullscreen: boolean; capturing: boolean; note?: string }>()
+import { computed } from 'vue'
+import { t } from '@/i18n'
+
+const props = defineProps<{ live: boolean; fullscreen: boolean; capturing: boolean; note?: string }>()
 const emit = defineEmits<{ fullscreen: []; 'ctrl-alt-del': [] }>()
+
+const hint = computed(() => {
+  if (props.capturing) return t('live.desktop.toolbar.escToRelease')
+  return props.live ? t('live.desktop.toolbar.clickToType') : ''
+})
 </script>
 
 <template>
@@ -11,7 +19,7 @@ const emit = defineEmits<{ fullscreen: []; 'ctrl-alt-del': [] }>()
       dense
       no-caps
       icon="fullscreen"
-      :label="fullscreen ? '[EXIT FULLSCREEN]' : '[FULLSCREEN]'"
+      :label="fullscreen ? t('live.desktop.toolbar.exitFullscreen') : t('live.desktop.toolbar.fullscreen')"
       class="desktop-toolbar__button"
       data-desktop="fullscreen"
       @click="emit('fullscreen')"
@@ -22,7 +30,7 @@ const emit = defineEmits<{ fullscreen: []; 'ctrl-alt-del': [] }>()
       dense
       no-caps
       icon="keyboard"
-      label="[CTRL+ALT+DEL]"
+      :label="t('live.desktop.toolbar.ctrlAltDel')"
       class="desktop-toolbar__button"
       data-desktop="ctrl-alt-del"
       :disable="!live"
@@ -32,7 +40,7 @@ const emit = defineEmits<{ fullscreen: []; 'ctrl-alt-del': [] }>()
       class="desktop-toolbar__note"
       :class="{ 'desktop-toolbar__note--active': capturing && !note, 'desktop-toolbar__note--wrap': note }"
       data-desktop="toolbar-note"
-    >{{ note ?? (capturing ? 'Esc Esc to release' : live ? 'click the screen to type' : '') }}</span>
+    >{{ note ?? hint }}</span>
   </div>
 </template>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { EXTEND_LABEL } from '@/services/extend-run'
+import { t } from '@/i18n'
+import { extendLabel } from '@/services/extend-run'
 
 const props = defineProps<{ visible: boolean; disabled: boolean; title: string }>()
 const emit = defineEmits<{ press: [] }>()
@@ -16,7 +17,7 @@ const emit = defineEmits<{ press: [] }>()
       square
       dense
       no-caps
-      :label="`[${EXTEND_LABEL}]`"
+      :label="t('live.extend.button', { label: extendLabel() })"
       class="live-extend-run__button text-mono"
       data-live="extend-run"
       :disable="disabled"

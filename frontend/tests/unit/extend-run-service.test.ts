@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EXTEND_LABEL, EXTEND_STEP_S, LONGEST_RUN_S, extendTitle } from '@/services/extend-run'
+import { EXTEND_STEP_S, LONGEST_RUN_S, extendLabel, extendTitle } from '@/services/extend-run'
 
 describe('extend-run constants', () => {
   it('steps by a minute, up to the 20 minutes CAPE allows an interactive run', () => {
@@ -8,7 +8,7 @@ describe('extend-run constants', () => {
   })
 
   it('labels the button with its step', () => {
-    expect(EXTEND_LABEL).toBe('+60S')
+    expect(extendLabel()).toBe('+60S')
   })
 })
 

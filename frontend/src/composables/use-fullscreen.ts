@@ -1,4 +1,5 @@
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
+import { t } from '@/i18n'
 
 /** Fullscreen for one element: whether it is active, and the browser's reason when it says no. */
 export function useFullscreen(target: Ref<HTMLElement | undefined>): {
@@ -18,9 +19,9 @@ export function useFullscreen(target: Ref<HTMLElement | undefined>): {
     try {
       if (active.value) await document.exitFullscreen()
       else if (target.value?.requestFullscreen) await target.value.requestFullscreen()
-      else throw new Error('this browser has no fullscreen support')
+      else error.value = t('live.fullscreen.unsupported')
     } catch (failure) {
-      error.value = `fullscreen was refused: ${failure instanceof Error ? failure.message : String(failure)}`
+      error.value = t('live.fullscreen.refused', { reason: failure instanceof Error ? failure.message : String(failure) })
     }
   }
 

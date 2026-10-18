@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import PaneHeading from '@/components/PaneHeading.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
+import { t } from '@/i18n'
 import { rulesetLabel } from '@/services/detection-groups'
 import type { LiveDetection } from '@/services/live-detections'
 import { processClock } from '@/services/process-graph'
@@ -10,7 +11,9 @@ import { processClock } from '@/services/process-graph'
 const props = defineProps<{ detections: readonly LiveDetection[] }>()
 
 const newestFirst = computed(() => [...props.detections].reverse())
-const heading = computed(() => (props.detections.length > 0 ? `DETECTIONS (${props.detections.length})` : 'DETECTIONS'))
+const heading = computed(() =>
+  props.detections.length > 0 ? t('live.detections.headingCount', { count: props.detections.length }) : t('live.detections.heading'),
+)
 </script>
 
 <template>
@@ -23,7 +26,7 @@ const heading = computed(() => (props.detections.length > 0 ? `DETECTIONS (${pro
       v-if="detections.length === 0"
       class="live-detections__empty text-mono text-gray"
     >
-      &gt; none yet: Sigma rules match as events arrive, CAPE signatures run after the analysis
+      &gt; {{ t('live.detections.empty') }}
     </p>
     <ul
       v-else

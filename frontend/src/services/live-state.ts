@@ -1,4 +1,5 @@
 import type { AnalysisStatus } from '@/api'
+import { t } from '@/i18n'
 import { isTerminalStatus } from '@/services/analysis-status'
 import type { LiveError, LiveEvent, LiveProcessNode, LiveSubscription, ProcessDelta } from '@/services/live-messages'
 
@@ -117,22 +118,22 @@ export interface StreamContext {
 
 /** Why the stream has nothing to show, in the order the run goes: queued, guest starting, connected, over. */
 export function streamEmptyMessage({ status, processCount, queuePosition, filtered }: StreamContext): string {
-  if (status === 'queued') return queuePosition === null ? 'queued, waiting for the guest' : `queued, position ${queuePosition}`
-  if (filtered) return 'no events match the filter'
-  if (isTerminalStatus(status)) return 'the run is over; this view shows only what it streamed while open, see the other tabs'
-  if (processCount === 0) return 'starting the guest...'
-  return 'connected, no events yet'
+  if (status === 'queued') {
+    return queuePosition === null ? t('live.empty.queuedWaiting') : t('live.empty.queuedPosition', { position: queuePosition })
+  }
+  if (filtered) return t('live.empty.noMatch')
+  if (isTerminalStatus(status)) return t('live.empty.over')
+  if (processCount === 0) return t('live.empty.starting')
+  return t('live.empty.connected')
 }
 
 export function processesEmptyMessage({ status, queuePosition }: Pick<StreamContext, 'status' | 'queuePosition'>): string {
   if (status === 'queued') return streamEmptyMessage({ status, processCount: 0, queuePosition, filtered: false })
-  return isTerminalStatus(status) ? 'the run is over; this view saw no process, see the PROCESSES tab' : 'starting the guest...'
+  return isTerminalStatus(status) ? t('live.empty.processesOver') : t('live.empty.starting')
 }
 
-const FINAL_REPORT_UNAFFECTED = 'the final report is not affected'
-
 export function describeLiveError({ code, message }: LiveError): string {
-  if (code === 'live_index_failed') return `live indexing failed (${message}); ${FINAL_REPORT_UNAFFECTED}`
-  if (code === 'log_format') return `a log record could not be read (${message}); ${FINAL_REPORT_UNAFFECTED}`
-  return `${code}: ${message}`
+  if (code === 'live_index_failed') return t('live.error.indexFailed', { message })
+  if (code === 'log_format') return t('live.error.logFormat', { message })
+  return t('live.error.generic', { code, message })
 }

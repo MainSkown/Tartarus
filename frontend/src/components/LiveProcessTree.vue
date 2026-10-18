@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import PaneHeading from '@/components/PaneHeading.vue'
+import { t } from '@/i18n'
 import ProcessChip from '@/components/ProcessChip.vue'
 import { treeRows, type ProcessTreeNode } from '@/services/live-state'
 import { processLifetime } from '@/services/process-graph'
@@ -23,7 +24,7 @@ function toggle(pid: number): void {
     class="live-processes"
     data-live="processes"
   >
-    <PaneHeading :label="`PROCESSES ${rows.length}`" />
+    <PaneHeading :label="t('live.processes.heading', { count: rows.length })" />
     <ul
       v-if="rows.length > 0"
       class="live-processes__list"
@@ -52,7 +53,7 @@ function toggle(pid: number): void {
             aria-hidden="true"
           />
           <ProcessChip :process="process" />
-          <span class="live-process__state">{{ isRunning(process) ? 'running' : 'ended' }}</span>
+          <span class="live-process__state">{{ isRunning(process) ? t('live.processes.running') : t('live.processes.ended') }}</span>
           <span
             v-if="process.end !== null"
             class="live-process__lifetime"

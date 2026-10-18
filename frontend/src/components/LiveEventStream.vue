@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { QVirtualScroll } from 'quasar'
+import { t } from '@/i18n'
 import LaneIcon from '@/components/LaneIcon.vue'
 import LiveNotice from '@/components/LiveNotice.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
@@ -59,8 +60,6 @@ function setIncludeApi(event: Event): void {
   emit('filter', { includeApi: (event.target as HTMLInputElement).checked })
 }
 
-const plural = (count: number, noun: string): string => `${formatCount(count)} ${noun}${count === 1 ? '' : 's'}`
-
 // A notice appearing above the list or the window resizing moves the end of the list away from the viewport.
 let resizeObserver: ResizeObserver | undefined
 
@@ -83,12 +82,12 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
     <div class="live-stream__bar">
       <PaneHeading
         class="live-stream__title"
-        label="EVENT STREAM"
+        :label="t('live.stream.heading')"
       />
       <div
         class="live-stream__lanes"
         role="group"
-        aria-label="Lanes"
+        :aria-label="t('live.stream.lanes')"
       >
         <button
           v-for="lane in CHIP_LANES"
@@ -109,7 +108,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
           :checked="filter.includeApi"
           @change="setIncludeApi"
         >
-        SHOW API CALLS
+        {{ t('live.stream.showApi') }}
       </label>
       <span class="live-stream__spacer" />
       <button
@@ -119,7 +118,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
         :aria-pressed="following"
         @click="following = !following"
       >
-        FOLLOW
+        {{ t('live.stream.follow') }}
       </button>
       <button
         type="button"
@@ -131,10 +130,10 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
           :name="paused ? 'play_arrow' : 'pause'"
           size="14px"
           aria-hidden="true"
-        />{{ paused ? 'RESUME' : 'PAUSE' }}<span
+        />{{ paused ? t('live.stream.resume') : t('live.stream.pause') }}<span
           v-if="paused && backlog > 0"
           class="live-stream__backlog"
-        >+{{ formatCount(backlog) }} new</span>
+        >{{ t('live.stream.backlog', { count: formatCount(backlog) }) }}</span>
       </button>
     </div>
 
@@ -143,13 +142,13 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
       class="live-stream__skipped"
       level="warning"
     >
-      <span title="the events table arrives with M3">{{ plural(dropped, 'event') }} skipped by the server, open table</span>
+      <span :title="t('live.stream.skippedTitle')">{{ t('live.stream.skipped', { count: formatCount(dropped) }, dropped) }}</span>
     </LiveNotice>
     <LiveNotice
       v-if="trimmed > 0"
       class="live-stream__trimmed"
     >
-      {{ plural(trimmed, 'older event') }} trimmed
+      {{ t('live.stream.trimmed', { count: formatCount(trimmed) }, trimmed) }}
     </LiveNotice>
 
     <q-virtual-scroll

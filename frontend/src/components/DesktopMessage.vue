@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '@/i18n'
 import { phaseMessage, retryLabel, type DesktopPhase, type DesktopSubject } from '@/services/desktop-close'
 
 const props = defineProps<{ phase: DesktopPhase; reason?: string; screenshot?: string; subject?: DesktopSubject }>()
@@ -21,7 +22,7 @@ const busy = computed(() => props.phase === 'connecting' || props.phase === 'wai
     <img
       v-if="screenshot"
       :src="screenshot"
-      alt="The last screenshot of the guest"
+      :alt="t('live.desktop.lastScreenshot')"
       class="desktop-message__shot"
       data-desktop="last-screenshot"
     >
@@ -30,7 +31,7 @@ const busy = computed(() => props.phase === 'connecting' || props.phase === 'wai
         v-if="busy"
         class="loader"
         role="status"
-        aria-label="Loading"
+        :aria-label="t('live.desktop.loading')"
       />
       <p class="desktop-message__text">
         &gt; {{ text }}

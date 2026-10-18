@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { t } from '@/i18n'
 import DesktopMessage from '@/components/DesktopMessage.vue'
 import DesktopToolbar from '@/components/DesktopToolbar.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
@@ -43,7 +44,7 @@ function keepKeysFromTheApp(event: KeyboardEvent): void {
     ref="root"
     class="live-desktop"
   >
-    <PaneHeading label="DESKTOP" />
+    <PaneHeading :label="t('live.desktop.heading')" />
     <div
       ref="screen"
       class="live-desktop__screen"

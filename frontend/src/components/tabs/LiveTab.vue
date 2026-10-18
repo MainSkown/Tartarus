@@ -14,6 +14,7 @@ import { useEndRun } from '@/composables/use-end-run'
 import { useExtendRun } from '@/composables/use-extend-run'
 import { useLiveAnalysis } from '@/composables/use-live-analysis'
 import { useViewportFill } from '@/composables/use-viewport-fill'
+import { t } from '@/i18n'
 import { isTerminalStatus } from '@/services/analysis-status'
 import { describeLiveError, processesEmptyMessage, streamEmptyMessage } from '@/services/live-state'
 
@@ -111,7 +112,7 @@ function selectProcess(pid: number | undefined): void {
         v-if="live.notFound.value"
         level="warning"
       >
-        the live stream does not know this analysis
+        {{ t('live.notFound') }}
       </LiveNotice>
       <LiveNotice
         v-for="error in live.errors.value"

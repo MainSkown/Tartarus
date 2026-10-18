@@ -1,4 +1,5 @@
 import type { AnalysisStatus } from '@/api'
+import { t, type MessageKey } from '@/i18n'
 
 export type EndRunPhase = 'hidden' | 'waiting' | 'ready' | 'confirming' | 'ending'
 
@@ -21,17 +22,17 @@ export function endRunPhase({ status, monitorUp, confirming, ending, cooling }: 
 }
 
 export function endRunLabel(phase: EndRunPhase): string {
-  return phase === 'ending' ? 'ENDING...' : 'END RUN'
+  return t(phase === 'ending' ? 'live.endRun.labelEnding' : 'live.endRun.label')
 }
 
-const TITLES: Record<EndRunPhase, string> = {
-  hidden: '',
-  waiting: 'The analysis has not started in the guest yet. The run can be ended in a few seconds.',
-  ready: 'Stops the guest now; CAPE processes what was collected so far.',
-  confirming: 'Waiting for your answer.',
-  ending: 'The guest is stopping. The analysis moves on to processing in a few seconds.',
+const TITLES: Partial<Record<EndRunPhase, MessageKey>> = {
+  waiting: 'live.endRun.title.waiting',
+  ready: 'live.endRun.title.ready',
+  confirming: 'live.endRun.title.confirming',
+  ending: 'live.endRun.title.ending',
 }
 
 export function endRunTitle(phase: EndRunPhase): string {
-  return TITLES[phase]
+  const key = TITLES[phase]
+  return key === undefined ? '' : t(key)
 }

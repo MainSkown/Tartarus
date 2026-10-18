@@ -1,4 +1,5 @@
 import type { AnalysisStatus } from '@/api'
+import { t, type MessageKey } from '@/i18n'
 
 export type DesktopPhase =
   | 'connecting'
@@ -38,40 +39,41 @@ export function phaseAfterGuacdError(wasConnected: boolean): DesktopPhase {
   return phaseAfterClose(CLOSE_NORMAL, wasConnected)
 }
 
-const RETRY_LABELS: Partial<Record<DesktopPhase, string>> = {
-  timeout: '[RETRY]',
-  unreachable: '[RETRY]',
-  unavailable: '[RETRY]',
-  failed: '[RECONNECT]',
+const RETRY_LABELS: Partial<Record<DesktopPhase, MessageKey>> = {
+  timeout: 'common.retry',
+  unreachable: 'common.retry',
+  unavailable: 'common.retry',
+  failed: 'live.desktop.reconnect',
 }
 
 export function retryLabel(phase: DesktopPhase): string | undefined {
-  return RETRY_LABELS[phase]
+  const key = RETRY_LABELS[phase]
+  return key === undefined ? undefined : t(key)
 }
 
-const MESSAGES: Record<DesktopPhase, string> = {
-  connecting: 'connecting to the desktop...',
-  waiting: 'waiting for the guest to start...',
-  connected: 'connected',
-  'run-ended': 'The run has ended. CAPE is processing the results.',
-  unavailable: 'the desktop is not available: the guest is not running',
-  'not-running': 'the desktop is only available while the analysis runs',
-  timeout: 'the desktop is not available yet',
-  unreachable: 'the desktop service is unreachable',
-  failed: 'the desktop connection was lost',
+const MESSAGES: Record<DesktopPhase, MessageKey> = {
+  connecting: 'live.desktop.connecting',
+  waiting: 'live.desktop.waiting',
+  connected: 'live.desktop.connected',
+  'run-ended': 'live.desktop.runEnded',
+  unavailable: 'live.desktop.unavailable',
+  'not-running': 'live.desktop.notRunning',
+  timeout: 'live.desktop.timeout',
+  unreachable: 'live.desktop.unreachable',
+  failed: 'live.desktop.failed',
 }
 
 /** The desktop of an analysis follows its run; the one of a guest follows the step its build is at. */
 export type DesktopSubject = 'analysis' | 'build'
 
-const BUILD_MESSAGES: Partial<Record<DesktopPhase, string>> = {
-  'run-ended': 'The build no longer shows a desktop.',
-  'not-running': 'the desktop is only available while the build is at a step that shows one',
+const BUILD_MESSAGES: Partial<Record<DesktopPhase, MessageKey>> = {
+  'run-ended': 'live.desktop.build.runEnded',
+  'not-running': 'live.desktop.build.notRunning',
 }
 
 export function phaseMessage(phase: DesktopPhase, reason?: string, subject: DesktopSubject = 'analysis'): string {
   if (phase === 'timeout' && reason) return reason
-  return (subject === 'build' ? BUILD_MESSAGES[phase] : undefined) ?? MESSAGES[phase]
+  return t((subject === 'build' ? BUILD_MESSAGES[phase] : undefined) ?? MESSAGES[phase])
 }
 
 export interface RunContext {

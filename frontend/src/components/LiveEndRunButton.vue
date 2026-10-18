@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import type { EndRunPhase } from '@/services/end-run'
 
 const props = defineProps<{ phase: EndRunPhase; label: string; title: string }>()
@@ -16,7 +17,7 @@ const emit = defineEmits<{ press: [] }>()
       square
       dense
       no-caps
-      :label="`[${label}]`"
+      :label="t('live.endRun.button', { label })"
       class="live-end-run__button text-mono"
       data-live="end-run"
       :data-phase="phase"

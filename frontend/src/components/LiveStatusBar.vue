@@ -5,15 +5,16 @@ import RunCountdown from '@/components/RunCountdown.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import type { LiveStatusSnapshot } from '@/composables/use-live-analysis'
 import { useTickingSeconds, type Reading } from '@/composables/use-ticking-seconds'
+import { t, type MessageKey } from '@/i18n'
 import { shownDuration } from '@/services/countdown'
 import { formatCount } from '@/services/format-number'
 import type { WsConnectionState } from '@/services/ws'
 
-const LINK_LABELS: Record<WsConnectionState, string> = {
-  connecting: 'CONNECTING',
-  open: 'CONNECTED',
-  reconnecting: 'RECONNECTING',
-  closed: 'CLOSED',
+const LINK_LABELS: Record<WsConnectionState, MessageKey> = {
+  connecting: 'live.status.linkConnecting',
+  open: 'live.status.linkConnected',
+  reconnecting: 'live.status.linkReconnecting',
+  closed: 'live.status.linkClosed',
 }
 
 const props = defineProps<{
@@ -35,10 +36,10 @@ const readingOf = (field: 'elapsed_s' | 'remaining_s'): Reading | undefined =>
 const elapsedS = useTickingSeconds(() => readingOf('elapsed_s'), { direction: 1, counting: () => counting.value })
 const remainingS = useTickingSeconds(() => readingOf('remaining_s'), { direction: -1, counting: () => counting.value })
 const shownLabel = computed(() =>
-  props.listed !== undefined && props.listed !== props.total ? ` (${formatCount(props.listed)} shown)` : '',
+  props.listed !== undefined && props.listed !== props.total ? t('live.status.shown', { count: formatCount(props.listed) }) : '',
 )
 const queued = computed(() => props.status === 'queued')
-const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.connection]))
+const link = computed(() => (props.ended ? t('live.status.streamEnded') : t(LINK_LABELS[props.connection])))
 </script>
 
 <template>
@@ -52,17 +53,17 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
     </span>
 
     <template v-if="queued">
-      <span class="live-status__item text-gray">{{ queuePosition === null ? 'waiting for the guest' : `position ${queuePosition} in the queue` }}</span>
+      <span class="live-status__item text-gray">{{ queuePosition === null ? t('live.status.waiting') : t('live.status.queuePosition', { position: queuePosition }) }}</span>
     </template>
     <template v-else>
       <span
         class="live-status__item"
         data-field="elapsed"
-      ><span class="live-status__label">ELAPSED</span> {{ shownDuration(elapsedS) }}</span>
+      ><span class="live-status__label">{{ t('live.status.elapsed') }}</span> {{ shownDuration(elapsedS) }}</span>
       <span
         class="live-status__item"
         data-field="remaining"
-      ><span class="live-status__label">REMAINING</span> <RunCountdown
+      ><span class="live-status__label">{{ t('live.status.remaining') }}</span> <RunCountdown
         :seconds="remainingS"
         :interactive="interactive"
         :running="status === 'running'"
@@ -81,7 +82,7 @@ const link = computed(() => (props.ended ? 'STREAM ENDED' : LINK_LABELS[props.co
     <span
       class="live-status__item live-status__events"
       data-field="events"
-    ><strong>{{ formatCount(total) }} events</strong>{{ shownLabel }} · {{ formatCount(eventsPerMinute) }}/min</span>
+    ><strong>{{ t('live.status.events', { count: formatCount(total) }) }}</strong>{{ shownLabel }} {{ t('live.status.rate', { count: formatCount(eventsPerMinute) }) }}</span>
 
     <span class="live-status__actions">
       <slot name="actions" />

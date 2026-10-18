@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { AnalysisStatus } from '@/api'
+import { t } from '@/i18n'
 import PaneHeading from '@/components/PaneHeading.vue'
 import ScreenshotLightbox from '@/components/ScreenshotLightbox.vue'
 import ViewState from '@/components/ViewState.vue'
@@ -23,7 +24,7 @@ const opened = ref<number | null>(null)
     class="live-finished"
     data-live="finished"
   >
-    <PaneHeading label="RUN FINISHED" />
+    <PaneHeading :label="t('live.finished.heading')" />
     <ViewState
       :loading="loading"
       :error="error"
@@ -38,23 +39,23 @@ const opened = ref<number | null>(null)
         >
           <img
             :src="screenshotUrl(analysisId, last)"
-            :alt="`Screenshot ${last} of ${count}`"
+            :alt="t('live.finished.screenshotAlt', { last, count })"
           >
         </button>
         <div class="live-finished__text">
           <p class="live-finished__state text-mono">
-            ended: {{ analysisStatusMeta(status).label }}
+            {{ t('live.finished.ended', { status: analysisStatusMeta(status).label }) }}
           </p>
           <p
             v-if="last === 0"
             class="live-finished__none text-mono text-gray"
           >
-            &gt; no screenshot was captured
+            &gt; {{ t('live.finished.noScreenshot') }}
           </p>
           <q-btn
             outline
             square
-            label="[SUMMARY]"
+            :label="t('live.finished.summary')"
             class="live-finished__summary text-mono"
             @click="emit('open-summary')"
           />
