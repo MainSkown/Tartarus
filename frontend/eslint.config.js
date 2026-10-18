@@ -3,6 +3,7 @@ import quasar from '@quasar/app-vite/eslint'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 import vue from 'eslint-plugin-vue'
+import i18nRules from './eslint.i18n-rules.js'
 
 export default tseslint.config(
   ...quasar.configs.recommended(),
@@ -17,6 +18,7 @@ export default tseslint.config(
     files: ['**/*.vue'],
     languageOptions: { parserOptions: { parser: tseslint.parser } },
   },
+  ...i18nRules,
   {
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: {

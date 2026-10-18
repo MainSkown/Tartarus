@@ -13,7 +13,6 @@
     "dev": "quasar dev",
     "build": "quasar build -m pwa",
     "lint": "eslint . --max-warnings 0",
-    "lint:i18n": "eslint -c eslint.i18n.config.js src",
     "typecheck": "quasar prepare && vue-tsc --noEmit",
     "test:unit": "vitest run",
     "api:sync": "openapi-ts -i http://localhost:8000/openapi.json -o ./src/api -c @hey-api/client-fetch",

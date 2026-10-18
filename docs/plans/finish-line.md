@@ -1,6 +1,6 @@
 # Plan: the finish line of v1
 
-M0 to M7 are built (M7 closed 2026-10-17 after its exit run passed, see its plan). This is what is left before Tartarus v1 is finished, decided with the user
+M0 to M7b are built (M7 closed 2026-10-17 after its exit run passed, M7b 2026-10-18; see their plans). This is what is left before Tartarus v1 is finished, decided with the user
 on 2026-10-17 by going through every open question and every unfinished feature one by one. Milestones M7 to
 M11 follow the order the user chose: **foundations, features, guest proofs, hardening, release**; M7b (frontend i18n,
 added later the same day) sits between foundations and features. Each
@@ -83,6 +83,7 @@ Done 2026-10-17. The plan with its decisions and what each wave proved is in [m7
   `make e2e` 129 checks, none failed; see the Status of [m7-foundations.md](m7-foundations.md).
 
 ### M7b: Frontend i18n, English only
+Done 2026-10-18. The plan, what each step proved and the open findings are in [m7b-frontend-i18n.md](m7b-frontend-i18n.md).
 Every string a user can read in the frontend moves out of the templates, services and composables into a locale
 catalogue, with one locale, `en-US`, shipping. **Why now:** it is a change across about 110 files (108 Vue files, about
 81 of them with visible text, and about 32 of the 126 TypeScript files outside the generated client, led by

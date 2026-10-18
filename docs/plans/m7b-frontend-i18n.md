@@ -6,16 +6,66 @@ Nothing the analyst sees changes. This file is the task table and the record of 
 
 ## Status
 
-Started 2026-10-18. Baseline taken on `97111a3`: `npm run test:unit` 212 files, 3226 tests, exit 0 (one run printed 2
-transient errors and still passed; not reproduced on the next run).
+**Built and proven 2026-10-18.** Every user-readable string of the frontend is in the `en-US` catalogue (18 files under
+`src/i18n/en-US/`, 887 messages); `npm run lint` fails on a raw string in a template; English is the only locale.
 
-**B0, done 2026-10-18.** The screenshot harness ran twice on `97111a3` (556 images, 572 specs pass, 1 fails before any
-change: `placeholders.spec.ts › guest-placeholder` still waits for "> not implemented yet" on a page that now exists; not
-M7b's to fix). **The harness is not deterministic:** 156 images differ between the two runs, all inside a small box
-(spinners, skeleton loaders, toast slide-ins, a few drawer repaints), so a byte comparison would drown the proof.
-[compare_shots.py](m7b-notes/compare_shots.py) takes the two baseline runs and an after run; per image, the box where
-the baselines disagree is the noise box. Any difference outside it fails; a difference only inside it is listed for the
-planner to look at. The baselines live in the session scratchpad and are reproducible from `97111a3`.
+What each step proved, on `97111a3` as the baseline:
+
+- **Baseline.** `npm run test:unit` 212 files, 3226 tests, exit 0. The screenshot harness (572 specs, 556 images) is not
+  deterministic: spinners, pulse markers, hover transitions, drawer and toast slide-ins differ between two runs of the same
+  commit, so [compare_shots.py](m7b-notes/compare_shots.py) compares several runs and ignores the pixels where runs of the
+  same code disagree. `placeholders.spec.ts › guest-placeholder` fails before and after (it waits for text of a page that
+  now exists); not M7b's.
+- **S0** ([findings](m7b-notes/S0-findings.md)). `vue-i18n` 11, Composition API, installed from `boot/i18n.ts`. vue-i18n's
+  own types accept any key, so the project exports its own `t`, `n`, `d`, `I18nT` typed on the catalogue's dotted leaf paths:
+  `vue-tsc` fails on an unknown key, and `$t` and `useI18n` are banned by lint. Conventions are in
+  [gui.md](../specs/gui.md#internationalisation).
+- **I1.** The key-usage unit test (`tests/unit/i18n-keys.test.ts`: a key used must exist, a key defined must be used) and
+  the lint rules. The first version of the rule missed text in attributes (`label`, `title`, `placeholder`, `aria-label`)
+  and in string literals in their bound form (`:label="x ? '[HIDE]' : '[REVEAL]'"`), which is most Quasar text; both were
+  added after a probe file showed the gap (backlog 249 errors in 58 files became 513 in 81).
+- **Wave 3, by slice rather than by area** (a slice owns a screen's components, its services, composables and stores, and its
+  own catalogue files, so no two tasks touched the same file): M1 guests 42 files, M2 analysis 22, M3 live 34, M4 events 44,
+  M5 network, artifacts and detections 13, M6 timeline 18, M7 shell, dashboard, submit, settings and reports 39, M8 rules,
+  notes, tags and widgets 21. All Haiku, all in one round, none needed a second attempt. Six existing test files were
+  edited, only where an exported const became a function or a key (`EXTEND_LABEL`, `GENERIC_ERROR_MESSAGE`,
+  `BLANK_IDENTITY_LABEL`, `REPORT_OPTIONS`, `AnalysisTab.label`); no English assertion changed. Six more gained
+  characterisation tests for messages that were split or pluralised.
+- **Lock-in.** The rules moved into `eslint.config.js` (rules in `eslint.i18n-rules.js`), so `npm run lint --max-warnings 0`
+  fails on raw template text: a probe file with `label="Hello"` failed it and the real tree passes. The `common.*` allowlist in
+  the key test is gone.
+- **Proof, run by the planner on the combined tree.**
+  - `npm run test:unit`: 214 files, 3259 tests, exit 0 (now and then a run prints a Quasar `window is not defined` timer error
+    from `live-event-stream.test.ts` and exits 1; it also happened on the untouched baseline).
+  - `npm run lint` exit 0; `npm run typecheck`: one error, in `tests/screenshots/header-health-dots.spec.ts`
+    (it predates M7b), none from M7b; `npm run build` exit 0.
+  - **Text conservation:** all 887 catalogue messages trace to text in the pre-migration source. 18 first looked missing and
+    were sentences the old code assembled from parts (`` `Could not ${enabled ? 'enable' : 'disable'} ${title}` ``,
+    `` `${key} arrives later` ``, the `live-state` messages), which now are one message each with the same English.
+  - **Screenshots:** four runs of `97111a3` against three of the migrated tree, 556 images each: 366 byte-identical to the
+    first baseline, 188 differ only in pixels that also vary between runs of the same code, and 2 were flagged by the
+    strict pass and looked at by eye (neither is a change): the 28 px spinner of the busy `[RUN CHECKS]` button
+    (identical in all seven runs by eye) and an 8-pixel sliver of the `+60S` countdown bar, whose fill depends on when the
+    capture happens (empty in three baseline runs, part full in others).
+  - Module-level text: an AST scan found no `t(...)` call outside a function in any `.ts` file. A scan of `.ts` files and
+    `<script>` blocks for text-like literals found only format names (STIX, MISP, CSV, HTML, PDF), query grammar, CSS classes,
+    route names and message keys.
+- **Not run:** `make e2e` (needs the real stack), and the production bundle was built but not opened in a browser. The unit
+  suite, the 572 screenshot specs through the dev server and the build cover the same code paths.
+
+**Commits:** conventions 9879c49, guard rails a8d4558, catalogue skeleton f7ef099, then one commit per slice (M1 to M8) and the
+lock-in. The first slice commit also carries the deletion of the superseded `eslint.i18n.config.js`.
+
+**Findings that stay open:**
+- The live event counter reads "1 events" (M3 kept it: M7b may not change what the analyst sees). A deliberate English fix
+  is now one catalogue line (`live.*` plural form).
+- English the code could not carry over as one message: CopyButton and the DesktopPanel `subject` prop build a sentence
+  around a noun passed in (`{what}`), which a translation into a language with grammatical cases would need to reword.
+- Technical terms (DNS, HTTP, TLS, JA3, SHA256, `inetsim`) are catalogue messages in M5's tabs; a translator may leave them.
+- Strings in `.ts` files and `<script>` blocks are guarded by review and the scans above, not by lint.
+- A handful of unit symbols (`B`, `KB`, `MB`, `h`, `m`, `s`) in `format-duration.ts` and `file-size.ts` are not catalogued.
+- `tests/screenshots/header-health-dots.spec.ts` fails `npm run typecheck` (it passes `{}` where `getBody` is required) and
+  `placeholders.spec.ts` fails at runtime, both from before M7b.
 
 ## Waves
 
@@ -65,7 +115,7 @@ the same slice. The ownership map is the file lists in each task brief (every `.
 | **M7** | App shell, Dashboard, Submit dialog, Settings, reports and exports, router | 39 | `shell`, `dashboard`, `submit`, `settings`, `reports` |
 | **M8** | Rules, Notes, tags, shared widgets (copy button, badges, empty and view states) | 21 | `rules`, `notes`, `tags`, `widgets` |
 
-Strings in `.ts` files are not found by tooling (`lint:i18n` reads templates only), so wave 5 adds an audit: a scan of
+Strings in `.ts` files are not found by tooling (the lint rules read templates only), so wave 5 adds an audit: a scan of
 string literals in `src/**/*.ts` that look like user text, reviewed by the planner.
 
 ### Wave 4: lock it in

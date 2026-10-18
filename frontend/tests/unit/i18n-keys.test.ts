@@ -6,8 +6,6 @@ import enUS from '@/i18n/en-US'
 const FRONTEND = join(import.meta.dirname, '../..')
 const SRC = join(FRONTEND, 'src')
 const NOT_SCANNED = [join(SRC, 'api'), join(SRC, 'i18n')]
-// Written up front for the migration, with no call sites yet; this list is deleted when the migration finishes.
-const PENDING_MIGRATION_UNUSED_KEYS = ['common.close', 'common.cancel', 'common.retry']
 
 const LITERAL_CALL = /(?<![\w$.])t\(\s*(['"])([^'"`]+)\1/g
 const TEMPLATE_CALL = /(?<![\w$.])t\(\s*`([^`]*)`/g
@@ -82,7 +80,7 @@ describe('i18n key usage in src', () => {
 
   it('uses every key of the en-US catalogue', () => {
     const unusedLeaves = leaves
-      .filter((leaf) => !isUsed(leaf) && !PENDING_MIGRATION_UNUSED_KEYS.includes(leaf))
+      .filter((leaf) => !isUsed(leaf))
       .map((leaf) => `"${leaf}" is defined in src/i18n/en-US/${leaf.split('.')[0]}.ts but no t() or keypath in src uses it`)
 
     expect(unusedLeaves).toEqual([])

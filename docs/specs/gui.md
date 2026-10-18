@@ -502,10 +502,10 @@ v1). The English text must come out exactly as it was written inline: same words
   `@vue/test-utils`, which concatenates it with the plugins a mount passes itself, so a mount needs nothing extra and
   `global: { plugins: [Quasar, router] }` keeps working. Code that imports `t` needs no plugin at all. Assertions stay on
   the English text; split or pluralised messages are the only reason to edit one.
-- **Guard rails.** `npm run lint:i18n` (`frontend/eslint.i18n.config.js`) fails on raw template text (text nodes, the text-bearing attributes such as `label`, `title`, `placeholder` and
+- **Guard rails.** `npm run lint` (the rules are in `frontend/eslint.i18n-rules.js`) fails on raw template text (text nodes, the text-bearing attributes such as `label`, `title`, `placeholder` and
   `aria-label`, and string literals in the bound form of those attributes) and on `$t` or `useI18n`
   outside `src/i18n/` and `src/boot/`; `frontend/tests/unit/i18n-keys.test.ts` fails on a key used but missing from the catalogue
-  and on a catalogue key no `t()` or `keypath` uses. Raw strings in `.ts` files are not caught by tooling, only by review and migration.
+  and on a catalogue key no `t()` or `keypath` uses. Raw strings in `.ts` files and in `<script>` blocks are not caught by tooling, only by review.
 - **Not translated:** text the API sends (error messages, validation messages, profile and step names) shown as received;
   identifiers, ids and hashes; CSS classes and `data-test` ids; query-grammar tokens and field names (`process.name`, `AND`);
   log and terminal text; keyboard key names in `@keydown` handlers (not the key hints shown to the user, which are text);
