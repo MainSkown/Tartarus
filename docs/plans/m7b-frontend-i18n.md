@@ -7,8 +7,15 @@ Nothing the analyst sees changes. This file is the task table and the record of 
 ## Status
 
 Started 2026-10-18. Baseline taken on `97111a3`: `npm run test:unit` 212 files, 3226 tests, exit 0 (one run printed 2
-transient errors and still passed; not reproduced on the next run). The 388 baseline screenshots are captured to the
-session scratchpad (twice, to learn whether the harness is deterministic) before any change.
+transient errors and still passed; not reproduced on the next run).
+
+**B0, done 2026-10-18.** The screenshot harness ran twice on `97111a3` (556 images, 572 specs pass, 1 fails before any
+change: `placeholders.spec.ts › guest-placeholder` still waits for "> not implemented yet" on a page that now exists; not
+M7b's to fix). **The harness is not deterministic:** 156 images differ between the two runs, all inside a small box
+(spinners, skeleton loaders, toast slide-ins, a few drawer repaints), so a byte comparison would drown the proof.
+[compare_shots.py](m7b-notes/compare_shots.py) takes the two baseline runs and an after run; per image, the box where
+the baselines disagree is the noise box. Any difference outside it fails; a difference only inside it is listed for the
+planner to look at. The baselines live in the session scratchpad and are reproducible from `97111a3`.
 
 ## Waves
 
@@ -22,7 +29,7 @@ Sonnet.
 
 | ID | Task | Check |
 |---|---|---|
-| **B0** | `npm run screenshots` on the pre-change commit, twice, into the scratchpad | The two runs are byte-identical, or the differing files are listed and explained (clock, animation) so the final comparison can ignore exactly those |
+| **B0** (done) | `npm run screenshots` on the pre-change commit, twice, into the scratchpad | The two runs are byte-identical, or the differing files are listed and explained (clock, animation) so the final comparison can ignore exactly those: see Status |
 
 ### Wave 1: conventions spike (one task)
 
@@ -63,7 +70,7 @@ M1 goes first (the components call the services); M2 to M7 run together after it
 
 | ID | Task | Check |
 |---|---|---|
-| **P1** | Screenshots after the change against B0 | Every pixel that differs is fixed or explained |
+| **P1** | Screenshots after the change against B0, with `m7b-notes/compare_shots.py` | No FAILED row; every NOISY row looked at (those with text in the noise box, such as toasts, by eye) |
 | **P2** | The suites | `npm run test:unit` exit 0, `npm run lint`, `npm run typecheck`, `make e2e` browser flows |
 | **D1** | Docs | Status filled in here and in the roadmap; the conventions section in [gui.md](../specs/gui.md) matches what was built |
 
