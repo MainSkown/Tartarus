@@ -1,5 +1,6 @@
 import type { ElementDefinition, StylesheetJson } from 'cytoscape'
 import type { ProcessNode, ProcessRef, Severity } from '@/api'
+import { t } from '@/i18n'
 import { SEVERITIES, severityMeta } from '@/services/analysis-status'
 import { formatDuration, secondsBetween } from '@/services/format-duration'
 
@@ -51,13 +52,16 @@ function shortened(name: string | null): string | null {
 }
 
 export function processTitle(process: { pid: number; name: string | null }): string {
-  return process.name ? `${process.name} (${process.pid})` : `pid ${process.pid}`
+  return process.name
+    ? t('analysis.process.title', { name: process.name, pid: process.pid })
+    : t('analysis.process.pidTitle', { pid: process.pid })
 }
 
 export function nodeLabel(node: ProcessNode): string {
   const title = processTitle({ pid: node.pid, name: shortened(node.name) })
   if (node.max_severity === null || node.detection_count === 0) return title
-  return `${title}\n${severityMeta(node.max_severity).label} · ${node.detection_count}`
+  const severity = t('analysis.process.graphSeverity', { severity: severityMeta(node.max_severity).label, count: node.detection_count })
+  return `${title}\n${severity}`
 }
 
 export function nodeSize(label: string, { icon = false } = {}): { width: number; height: number } {
@@ -103,7 +107,7 @@ function injectionElements(processes: ProcessNode[]): ElementDefinition[] {
       return [
         {
           group: 'edges' as const,
-          data: { id: `inject:${source.entity_id}>${target.entity_id}`, source: source.entity_id, target: target.entity_id, label: 'inject' },
+          data: { id: `inject:${source.entity_id}>${target.entity_id}`, source: source.entity_id, target: target.entity_id, label: t('analysis.processes.graph.injectEdge') },
           classes: 'injection',
         },
       ]
@@ -155,7 +159,7 @@ export function injectionPeers(roots: ProcessNode[], node: ProcessNode): { into:
 export function processLifetime(node: Pick<ProcessNode, 'start' | 'end'>): string | null {
   if (node.start === null || node.end === null) return null
   const seconds = secondsBetween(node.start, node.end)
-  return seconds < SUB_MINUTE_SECONDS ? `${seconds.toFixed(1)}s` : formatDuration(seconds)
+  return seconds < SUB_MINUTE_SECONDS ? t('analysis.process.seconds', { seconds: seconds.toFixed(1) }) : formatDuration(seconds)
 }
 
 export function processClock(iso: string | null): string {

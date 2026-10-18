@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { t } from '@/i18n'
 import { screenshotUrl } from '@/services/screenshot-url'
 
 const props = defineProps<{ analysisId: number; count: number; modelValue: number | null }>()
@@ -51,7 +52,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <img
         class="screenshot-lightbox__image"
         :src="screenshotUrl(analysisId, shown)"
-        :alt="`Screenshot ${shown} of ${count}`"
+        :alt="t('analysis.screenshot.alt', { n: shown, count })"
       >
       <div class="screenshot-lightbox__bar">
         <q-btn
@@ -59,7 +60,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           square
           dense
           icon="chevron_left"
-          aria-label="Previous screenshot"
+          :aria-label="t('analysis.screenshot.previous')"
           :disable="!hasPrevious"
           @click="step(-1)"
         />
@@ -69,7 +70,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           square
           dense
           icon="chevron_right"
-          aria-label="Next screenshot"
+          :aria-label="t('analysis.screenshot.next')"
           :disable="!hasNext"
           @click="step(1)"
         />
@@ -79,7 +80,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           square
           dense
           icon="close"
-          aria-label="Close"
+          :aria-label="t('analysis.screenshot.close')"
           @click="emit('update:modelValue', null)"
         />
       </div>

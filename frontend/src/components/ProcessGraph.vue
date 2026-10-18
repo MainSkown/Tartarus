@@ -3,6 +3,7 @@ import cytoscape, { type Core, type LayoutOptions } from 'cytoscape'
 import dagre from 'cytoscape-dagre'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ProcessNode } from '@/api'
+import { t } from '@/i18n'
 import { graphStylesheet, readGraphColors, toGraphElements, type GraphColors } from '@/services/process-graph'
 
 const props = defineProps<{ roots: ProcessNode[]; selectedId?: string }>()
@@ -123,8 +124,8 @@ watch([() => props.roots, showInjection, showHosts], redraw)
         dense
         square
         icon="fit_screen"
-        aria-label="Fit graph to view"
-        title="Fit graph to view"
+        :aria-label="t('analysis.processes.graph.fit')"
+        :title="t('analysis.processes.graph.fit')"
         @click="fit"
       />
       <q-btn
@@ -132,8 +133,8 @@ watch([() => props.roots, showInjection, showHosts], redraw)
         dense
         square
         icon="add"
-        aria-label="Zoom in"
-        title="Zoom in"
+        :aria-label="t('analysis.processes.graph.zoomIn')"
+        :title="t('analysis.processes.graph.zoomIn')"
         @click="zoomBy(ZOOM_STEP)"
       />
       <q-btn
@@ -141,8 +142,8 @@ watch([() => props.roots, showInjection, showHosts], redraw)
         dense
         square
         icon="remove"
-        aria-label="Zoom out"
-        title="Zoom out"
+        :aria-label="t('analysis.processes.graph.zoomOut')"
+        :title="t('analysis.processes.graph.zoomOut')"
         @click="zoomBy(1 / ZOOM_STEP)"
       />
       <q-btn
@@ -150,8 +151,8 @@ watch([() => props.roots, showInjection, showHosts], redraw)
         dense
         square
         icon="account_tree"
-        aria-label="Reset layout"
-        title="Reset layout"
+        :aria-label="t('analysis.processes.graph.resetLayout')"
+        :title="t('analysis.processes.graph.resetLayout')"
         @click="layOut"
       />
       <q-btn
@@ -159,20 +160,20 @@ watch([() => props.roots, showInjection, showHosts], redraw)
         dense
         square
         icon="download"
-        aria-label="Export PNG"
-        title="Export PNG"
+        :aria-label="t('analysis.processes.graph.exportPng')"
+        :title="t('analysis.processes.graph.exportPng')"
         @click="exportPng"
       />
       <q-toggle
         v-model="showInjection"
         dense
-        label="INJECTION"
+        :label="t('analysis.processes.graph.injection')"
         class="process-graph__toggle text-mono"
       />
       <q-toggle
         v-model="showHosts"
         dense
-        label="HOSTS"
+        :label="t('analysis.processes.graph.hosts')"
         class="process-graph__toggle text-mono"
       />
       <slot name="toolbar-end" />
@@ -181,7 +182,7 @@ watch([() => props.roots, showInjection, showHosts], redraw)
       ref="canvas"
       class="process-graph__canvas"
       role="img"
-      aria-label="Process graph; the same data is available as a tree"
+      :aria-label="t('analysis.processes.graph.label')"
     />
   </div>
 </template>

@@ -6,35 +6,40 @@ import ScreenshotStrip from '@/components/ScreenshotStrip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatTile from '@/components/StatTile.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
+import { t, type MessageKey } from '@/i18n'
 import { compareSeverity } from '@/services/analysis-status'
 import { formatDuration } from '@/services/format-duration'
 import { laneBars } from '@/services/lanes'
 
 const props = defineProps<{ analysis: AnalysisRead }>()
 
-const PHASES: Partial<Record<AnalysisStatus, string>> = {
-  starting: 'starting the guest',
-  running: 'detonating in the guest',
-  processing: 'CAPE is processing the results',
-  ingesting: 'reading the report',
+const PHASE_KEYS: Partial<Record<AnalysisStatus, MessageKey>> = {
+  starting: 'analysis.summary.starting',
+  running: 'analysis.summary.running',
+  processing: 'analysis.summary.processing',
+  ingesting: 'analysis.summary.ingesting',
 }
 
-const NO_REPORT_MESSAGES: Partial<Record<AnalysisStatus, string>> = {
-  queued: 'queued, waiting for the guest to be free',
-  failed: 'no report: the analysis failed before CAPE produced one',
-  report_failed: 'the report could not be read',
-  cancelled: 'cancelled before it ran',
+const NO_REPORT_KEYS: Partial<Record<AnalysisStatus, MessageKey>> = {
+  failed: 'analysis.summary.failed',
+  report_failed: 'analysis.summary.reportFailed',
+  cancelled: 'analysis.summary.cancelled',
 }
 
 function queuedMessage(position: number | null): string {
-  if (position === null) return NO_REPORT_MESSAGES.queued!
-  const place = position === 1 ? 'next in the queue' : `position ${position} in the queue`
-  return `queued, ${place}, waiting for the guest to be free`
+  if (position === null) return t('analysis.summary.queued')
+  return position === 1 ? t('analysis.summary.queuedNext') : t('analysis.summary.queuedAt', { position })
 }
 
-const phase = computed(() => PHASES[props.analysis.status])
+function translatedOrUndefined(key: MessageKey | undefined): string | undefined {
+  return key ? t(key) : undefined
+}
+
+const phase = computed(() => translatedOrUndefined(PHASE_KEYS[props.analysis.status]))
 const noReportMessage = computed(() =>
-  props.analysis.status === 'queued' ? queuedMessage(props.analysis.queue_position) : NO_REPORT_MESSAGES[props.analysis.status],
+  props.analysis.status === 'queued'
+    ? queuedMessage(props.analysis.queue_position)
+    : translatedOrUndefined(NO_REPORT_KEYS[props.analysis.status]),
 )
 const report = computed<ReportSummary>(() => props.analysis.summary ?? {})
 const signatures = computed(() =>
@@ -54,7 +59,7 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
         color="primary"
         track-color="grey-9"
         class="analysis-summary__progress"
-        :aria-label="`Analysis ${analysis.status}`"
+        :aria-label="t('analysis.summary.progressLabel', { status: analysis.status })"
       />
       <p class="analysis-summary__phase text-mono text-gray">
         {{ phase }}
@@ -69,66 +74,66 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
     <template v-else>
       <div class="analysis-summary__tiles">
         <StatTile
-          label="SCORE"
+          :label="t('analysis.summary.tile.score')"
           :value="analysis.score"
         />
-        <StatTile label="MAX SEVERITY">
+        <StatTile :label="t('analysis.summary.tile.maxSeverity')">
           <SeverityBadge
             v-if="analysis.max_severity"
             :severity="analysis.max_severity"
           />
         </StatTile>
         <StatTile
-          label="PROCESSES"
+          :label="t('analysis.summary.tile.processes')"
           :value="report.process_count"
         />
         <StatTile
-          label="DURATION"
+          :label="t('analysis.summary.tile.duration')"
           :value="duration"
         />
         <StatTile
-          label="FILES WRITTEN"
+          :label="t('analysis.summary.tile.filesWritten')"
           :value="report.files_written"
         />
         <StatTile
-          label="REGISTRY KEYS WRITTEN"
+          :label="t('analysis.summary.tile.registryKeysWritten')"
           :value="report.registry_keys_written"
         />
       </div>
 
       <template v-if="lanes.length > 0">
         <h2 class="analysis-summary__heading text-mono">
-          EVENTS BY LANE
+          {{ t('analysis.summary.eventsByLane') }}
         </h2>
         <LaneBars :bars="lanes" />
       </template>
 
       <h2 class="analysis-summary__heading text-mono">
-        SCREENSHOTS
+        {{ t('analysis.summary.screenshots') }}
       </h2>
       <ScreenshotStrip :analysis-id="analysis.id" />
 
       <h2 class="analysis-summary__heading text-mono">
-        NETWORK
+        {{ t('analysis.summary.network') }}
       </h2>
       <div class="analysis-summary__tiles">
         <StatTile
-          label="DNS"
+          :label="t('analysis.summary.tile.dns')"
           :value="report.network?.dns"
         />
         <StatTile
-          label="HOSTS"
+          :label="t('analysis.summary.tile.hosts')"
           :value="report.network?.hosts"
         />
         <StatTile
-          label="TCP"
+          :label="t('analysis.summary.tile.tcp')"
           :value="report.network?.tcp"
         />
       </div>
 
       <template v-if="analysis.detected_families.length > 0">
         <h2 class="analysis-summary__heading text-mono">
-          DETECTED FAMILIES
+          {{ t('analysis.summary.detectedFamilies') }}
         </h2>
         <ul class="analysis-summary__families text-mono">
           <li
@@ -142,12 +147,12 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
 
       <TerminalEmpty
         v-if="!hasDetections"
-        message="no detections: CAPE raised no signatures"
+        :message="t('analysis.summary.noDetections')"
       />
 
       <template v-else>
         <h2 class="analysis-summary__heading text-mono">
-          SIGNATURES
+          {{ t('analysis.summary.signatures') }}
         </h2>
         <ul class="analysis-summary__list analysis-summary__list--signatures">
           <li
@@ -162,7 +167,7 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
         </ul>
 
         <h2 class="analysis-summary__heading text-mono">
-          ATT&amp;CK TECHNIQUES
+          {{ t('analysis.summary.attackTechniques') }}
         </h2>
         <ul class="analysis-summary__list">
           <li

@@ -1,26 +1,29 @@
 <script setup lang="ts">
-type Mode = 'graph' | 'tree'
+import { computed } from 'vue'
+import { t } from '@/i18n'
 
-const MODES = [
-  { label: 'GRAPH', value: 'graph' },
-  { label: 'TREE', value: 'tree' },
-]
+type Mode = 'graph' | 'tree'
 
 defineProps<{ total: number }>()
 const mode = defineModel<Mode>({ required: true })
+
+const modeOptions = computed(() => [
+  { label: t('analysis.processes.view.graph'), value: 'graph' },
+  { label: t('analysis.processes.view.tree'), value: 'tree' },
+])
 </script>
 
 <template>
   <div class="process-view-switch">
-    <span class="process-view-switch__count text-mono text-gray">{{ total }} {{ total === 1 ? 'process' : 'processes' }}</span>
+    <span class="process-view-switch__count text-mono text-gray">{{ t('analysis.processes.count', total) }}</span>
     <q-btn-toggle
       v-model="mode"
-      :options="MODES"
+      :options="modeOptions"
       unelevated
       square
       no-caps
       class="process-view-switch__toggle text-mono"
-      aria-label="Process view"
+      :aria-label="t('analysis.processes.view.label')"
     />
   </div>
 </template>

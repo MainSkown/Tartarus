@@ -7,6 +7,7 @@ import SeverityBadge from '@/components/SeverityBadge.vue'
 import TargetAnnotations from '@/components/TargetAnnotations.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { t } from '@/i18n'
 import { formatTimestamp } from '@/services/format-time'
 import { laneBars, laneMeta } from '@/services/lanes'
 import { processClock, processLifetime, processTitle } from '@/services/process-graph'
@@ -34,9 +35,9 @@ const lanes = computed(() => laneBars(props.node.event_counts_by_lane))
 const subTabs = computed(() => {
   const detail = extras.data.value
   return [
-    { key: 'apis' as const, label: 'TOP APIS', count: detail?.top_apis.length ?? 0 },
-    { key: 'modules' as const, label: 'MODULES', count: detail?.modules.length ?? 0 },
-    { key: 'events' as const, label: 'EVENTS', count: detail?.event_total ?? 0 },
+    { key: 'apis' as const, label: t('analysis.processDetails.tab.apis'), count: detail?.top_apis.length ?? 0 },
+    { key: 'modules' as const, label: t('analysis.processDetails.tab.modules'), count: detail?.modules.length ?? 0 },
+    { key: 'events' as const, label: t('analysis.processDetails.tab.events'), count: detail?.event_total ?? 0 },
   ]
 })
 const laneStyle = (lane: string) => ({ background: `var(${laneMeta(lane).color})` })
@@ -65,18 +66,18 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
       <span
         v-else
         class="process-details__quiet text-mono text-gray"
-      >no detections</span>
+      >{{ t('analysis.processDetails.noDetections') }}</span>
     </header>
 
     <dl class="process-details__facts">
       <div class="process-details__fact process-details__fact--wide">
-        <dt>COMMAND LINE</dt>
+        <dt>{{ t('analysis.processDetails.fact.commandLine') }}</dt>
         <dd class="process-details__long text-mono">
           {{ orDash(node.command_line) }}
         </dd>
       </div>
       <div class="process-details__fact process-details__fact--wide">
-        <dt>PATH</dt>
+        <dt>{{ t('analysis.processDetails.fact.path') }}</dt>
         <dd
           class="process-details__oneline text-mono"
           :title="node.executable ?? undefined"
@@ -85,31 +86,31 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
         </dd>
       </div>
       <div class="process-details__fact">
-        <dt>PID</dt>
+        <dt>{{ t('analysis.processDetails.fact.pid') }}</dt>
         <dd class="text-mono">
           {{ node.pid }}
         </dd>
       </div>
       <div class="process-details__fact">
-        <dt>PPID</dt>
+        <dt>{{ t('analysis.processDetails.fact.ppid') }}</dt>
         <dd class="text-mono">
           {{ orDash(node.ppid) }}
         </dd>
       </div>
       <div class="process-details__fact">
-        <dt>INTEGRITY</dt>
+        <dt>{{ t('analysis.processDetails.fact.integrity') }}</dt>
         <dd class="text-mono">
           {{ orDash(node.integrity) }}
         </dd>
       </div>
       <div class="process-details__fact">
-        <dt>DURATION</dt>
+        <dt>{{ t('analysis.processDetails.fact.duration') }}</dt>
         <dd class="text-mono">
           {{ orDash(processLifetime(node)) }}
         </dd>
       </div>
       <div class="process-details__fact">
-        <dt>START (UTC)</dt>
+        <dt>{{ t('analysis.processDetails.fact.startUtc') }}</dt>
         <dd
           class="text-mono"
           :title="fullTime(node.start)"
@@ -118,7 +119,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
         </dd>
       </div>
       <div class="process-details__fact">
-        <dt>END (UTC)</dt>
+        <dt>{{ t('analysis.processDetails.fact.endUtc') }}</dt>
         <dd
           class="text-mono"
           :title="fullTime(node.end)"
@@ -127,7 +128,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
         </dd>
       </div>
       <div class="process-details__fact process-details__fact--wide">
-        <dt>NETWORK HOSTS</dt>
+        <dt>{{ t('analysis.processDetails.fact.networkHosts') }}</dt>
         <dd class="text-mono">
           <template v-if="node.network_hosts.length > 0">
             <span
@@ -145,7 +146,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
         v-if="injectedInto.length > 0"
         class="process-details__fact process-details__fact--wide"
       >
-        <dt>INJECTED INTO</dt>
+        <dt>{{ t('analysis.processDetails.fact.injectedInto') }}</dt>
         <dd>
           <ProcessChip
             v-for="peer in injectedInto"
@@ -158,7 +159,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
         v-if="injectedFrom.length > 0"
         class="process-details__fact process-details__fact--wide"
       >
-        <dt>INJECTED FROM</dt>
+        <dt>{{ t('analysis.processDetails.fact.injectedFrom') }}</dt>
         <dd>
           <ProcessChip
             v-for="peer in injectedFrom"
@@ -172,7 +173,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
     <ul
       v-if="lanes.length > 0"
       class="process-details__lanes text-mono"
-      aria-label="Events by lane"
+      :aria-label="t('analysis.processDetails.lanesLabel')"
     >
       <li
         v-for="bar in lanes"
@@ -202,7 +203,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
         <div
           class="process-details__tabs"
           role="tablist"
-          aria-label="Process activity"
+          :aria-label="t('analysis.processDetails.activityLabel')"
         >
           <button
             v-for="tab in subTabs"
@@ -223,7 +224,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
               v-if="extras.data.value.top_apis.length === 0"
               class="text-mono text-gray"
             >
-              &gt; no API calls recorded
+              {{ t('analysis.processDetails.noApiCalls') }}
             </p>
             <table
               v-else
@@ -248,7 +249,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
               v-if="extras.data.value.modules.length === 0"
               class="text-mono text-gray"
             >
-              &gt; no modules recorded
+              {{ t('analysis.processDetails.noModules') }}
             </p>
             <table
               v-else
@@ -256,8 +257,8 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
             >
               <thead>
                 <tr>
-                  <th>NAME</th>
-                  <th>BASE ADDRESS</th>
+                  <th>{{ t('analysis.processDetails.column.name') }}</th>
+                  <th>{{ t('analysis.processDetails.column.baseAddress') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -283,11 +284,11 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
               v-if="extras.data.value.events.length === 0"
               class="text-mono text-gray"
             >
-              &gt; no events recorded
+              {{ t('analysis.processDetails.noEvents') }}
             </p>
             <template v-else>
               <p class="process-details__note text-mono text-gray">
-                {{ extras.data.value.events.length }} of {{ extras.data.value.event_total }}, newest first
+                {{ t('analysis.processDetails.eventsNote', { shown: extras.data.value.events.length, total: extras.data.value.event_total }) }}
               </p>
               <ul class="process-details__events">
                 <li
@@ -300,7 +301,7 @@ const fullTime = (iso: string | null): string | undefined => (iso === null ? und
                       :style="laneStyle(event.lane)"
                       aria-hidden="true"
                     />
-                    <span>{{ laneMeta(event.lane).label }} · {{ event.action }} · {{ formatTimestamp(event.time) }}</span>
+                    <span>{{ t('analysis.processDetails.eventHead', { lane: laneMeta(event.lane).label, action: event.action, time: formatTimestamp(event.time) }) }}</span>
                   </span>
                   <span class="process-details__summary">{{ event.summary }}</span>
                 </li>

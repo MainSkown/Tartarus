@@ -9,6 +9,7 @@ import ProcessViewSwitch from '@/components/ProcessViewSwitch.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
 import { useViewportFill } from '@/composables/use-viewport-fill'
+import { t } from '@/i18n'
 import { flattenProcesses, injectionPeers, resolveSelection } from '@/services/process-graph'
 
 type Mode = 'graph' | 'tree'
@@ -70,7 +71,7 @@ const peers = computed(() => (selected.value ? injectionPeers(roots.value, selec
       :loading="view.loading.value"
       :error="view.error.value"
       :empty="roots.length === 0"
-      empty-message="no processes recorded"
+      :empty-message="t('analysis.processes.empty')"
       @retry="view.reload"
     >
       <div class="processes-tab__body">

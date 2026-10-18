@@ -35,6 +35,17 @@ describe('AnalysisSummaryTab waiting states', () => {
     expect(wrapper.text()).toContain(expected)
   })
 
+  it.each([
+    [null, 'queued, waiting for the guest to be free'],
+    [1, 'queued, next in the queue, waiting for the guest to be free'],
+    [3, 'queued, position 3 in the queue, waiting for the guest to be free'],
+  ])('reads the whole queue message for position %s', (position, expected) => {
+    const wrapper = mountTab(
+      analysisWithStatus('queued', { started_at: null, finished_at: null, queue_position: position }),
+    )
+    expect(wrapper.text()).toContain(expected)
+  })
+
   it('explains that a queued analysis is waiting for the guest', () => {
     const wrapper = mountTab(analysisWithStatus('queued', { started_at: null, finished_at: null }))
     expect(wrapper.text()).toContain('queued')

@@ -1,9 +1,10 @@
 import type { AnalysisRead, AnalysisStatus } from '@/api'
+import { t, type MessageKey } from '@/i18n'
 import { isTerminalStatus } from '@/services/analysis-status'
 
 export interface AnalysisTab {
   key: string
-  label: string
+  labelKey: MessageKey
   available: boolean
   /** The milestone that builds a tab that is not available yet. */
   arrivesWith?: string
@@ -19,15 +20,15 @@ export const DEFAULT_TAB = 'summary'
 export const LIVE_TAB = 'live'
 
 export const ANALYSIS_TABS: AnalysisTab[] = [
-  { key: LIVE_TAB, label: 'LIVE', available: true, liveOnly: true },
-  { key: DEFAULT_TAB, label: 'SUMMARY', available: true },
-  { key: 'processes', label: 'PROCESSES', available: true },
-  { key: 'timeline', label: 'TIMELINE', available: true, queryable: true },
-  { key: 'events', label: 'EVENTS', available: true, queryable: true },
-  { key: 'network', label: 'NETWORK', available: true },
-  { key: 'artifacts', label: 'ARTIFACTS', available: true },
-  { key: 'detections', label: 'DETECTIONS', available: true },
-  { key: 'notes', label: 'NOTES', available: true, usableBeforeDone: true },
+  { key: LIVE_TAB, labelKey: 'analysis.tabs.live', available: true, liveOnly: true },
+  { key: DEFAULT_TAB, labelKey: 'analysis.tabs.summary', available: true },
+  { key: 'processes', labelKey: 'analysis.tabs.processes', available: true },
+  { key: 'timeline', labelKey: 'analysis.tabs.timeline', available: true, queryable: true },
+  { key: 'events', labelKey: 'analysis.tabs.events', available: true, queryable: true },
+  { key: 'network', labelKey: 'analysis.tabs.network', available: true },
+  { key: 'artifacts', labelKey: 'analysis.tabs.artifacts', available: true },
+  { key: 'detections', labelKey: 'analysis.tabs.detections', available: true },
+  { key: 'notes', labelKey: 'analysis.tabs.notes', available: true, usableBeforeDone: true },
 ]
 
 export function isQueryableTab(key: string): boolean {
@@ -64,5 +65,5 @@ export function nextLiveSession(wasLive: boolean, analysis: AnalysisRead | undef
 
 export function arrivalNote(key: string): string {
   const milestone = ANALYSIS_TABS.find((tab) => tab.key === key)?.arrivesWith
-  return `${key} arrives${milestone ? ` with ${milestone}` : ' later'}`
+  return milestone ? t('analysis.tabs.arrivalWithMilestone', { key, milestone }) : t('analysis.tabs.arrivalLater', { key })
 }

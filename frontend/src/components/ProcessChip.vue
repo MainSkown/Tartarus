@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { processTitle } from '@/services/process-graph'
 
 const props = defineProps<{ process: { pid: number; name: string | null } | null }>()
 
-const label = computed(() => {
-  const { process } = props
-  if (process === null) return '–'
-  return process.name ? `${process.name} (${process.pid})` : `pid ${process.pid}`
-})
+const label = computed(() => (props.process === null ? '–' : processTitle(props.process)))
 </script>
 
 <template>

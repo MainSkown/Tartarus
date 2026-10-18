@@ -4,6 +4,7 @@ import { viewsArtifacts } from '@/api'
 import ScreenshotLightbox from '@/components/ScreenshotLightbox.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
+import { t } from '@/i18n'
 import { screenshotUrl } from '@/services/screenshot-url'
 
 const props = defineProps<{ analysisId: number }>()
@@ -23,12 +24,12 @@ const opened = ref<number | null>(null)
     :loading="loading"
     :error="error"
     :empty="count === 0"
-    empty-message="no screenshots were captured"
+    :empty-message="t('analysis.screenshots.empty')"
     @retry="reload"
   >
     <div class="screenshot-strip">
       <p class="screenshot-strip__count text-mono text-gray">
-        {{ count }} {{ count === 1 ? 'screenshot' : 'screenshots' }}
+        {{ t('analysis.screenshots.count', count) }}
       </p>
       <ul class="screenshot-strip__list">
         <li
@@ -42,7 +43,7 @@ const opened = ref<number | null>(null)
           >
             <img
               :src="screenshotUrl(analysisId, n)"
-              :alt="`Screenshot ${n} of ${count}`"
+              :alt="t('analysis.screenshot.alt', { n, count })"
               loading="lazy"
             >
           </button>

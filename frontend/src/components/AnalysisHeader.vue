@@ -8,6 +8,7 @@ import RunCountdown from '@/components/RunCountdown.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagInput from '@/components/TagInput.vue'
 import { type Reading, useTickingSeconds } from '@/composables/use-ticking-seconds'
+import { t, type MessageKey } from '@/i18n'
 import { isActiveStatus } from '@/services/analysis-status'
 import { formatDuration, secondsBetween } from '@/services/format-duration'
 import { formatTimestamp } from '@/services/format-time'
@@ -16,15 +17,18 @@ import { ANALYSIS_TARGET } from '@/stores/annotations'
 const props = defineProps<{ analysis: AnalysisRead; busy: boolean }>()
 const emit = defineEmits<{ cancel: []; delete: [] }>()
 
-const FAILURE_TITLES: Partial<Record<AnalysisRead['status'], string>> = {
-  failed: 'ANALYSIS FAILED',
-  report_failed: 'REPORT FAILED',
+const FAILURE_TITLE_KEYS: Partial<Record<AnalysisRead['status'], MessageKey>> = {
+  failed: 'analysis.header.failedTitle',
+  report_failed: 'analysis.header.reportFailedTitle',
 }
 
 const canCancel = computed(() => props.analysis.status === 'queued')
 // CAPE cannot delete a task that is still being analysed, so the backend answers 409 for these.
 const canDelete = computed(() => !isActiveStatus(props.analysis.status))
-const failureTitle = computed(() => FAILURE_TITLES[props.analysis.status])
+const failureTitle = computed(() => {
+  const key = FAILURE_TITLE_KEYS[props.analysis.status]
+  return key ? t(key) : undefined
+})
 const duration = computed(() => {
   const { started_at, finished_at } = props.analysis
   return started_at && finished_at ? formatDuration(secondsBetween(started_at, finished_at)) : undefined
@@ -47,7 +51,7 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
 <template>
   <header class="analysis-header">
     <div class="analysis-header__title">
-      <span class="analysis-header__id text-mono">#{{ analysis.id }}</span>
+      <span class="analysis-header__id text-mono">{{ t('analysis.header.id', { id: analysis.id }) }}</span>
       <h1
         class="analysis-header__filename text-mono"
         :title="analysis.filename"
@@ -64,7 +68,7 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
           v-if="canCancel"
           outline
           square
-          label="[CANCEL]"
+          :label="t('analysis.header.cancel')"
           class="analysis-header__cancel text-mono"
           :disable="busy"
           @click="emit('cancel')"
@@ -74,7 +78,7 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
           v-if="canDelete"
           outline
           square
-          label="[DELETE]"
+          :label="t('analysis.header.delete')"
           class="analysis-header__delete text-mono"
           :disable="busy"
           @click="emit('delete')"
@@ -83,7 +87,7 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
     </div>
 
     <div class="analysis-header__hash-row">
-      <span class="analysis-header__label text-mono">SHA-256</span>
+      <span class="analysis-header__label text-mono">{{ t('analysis.header.sha256') }}</span>
       <code
         class="analysis-header__hash text-mono"
         :title="analysis.sample_sha256"
@@ -91,20 +95,20 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
       <CopyButton
         class="analysis-header__copy"
         :text="analysis.sample_sha256"
-        what="SHA-256"
+        :what="t('analysis.header.sha256')"
       />
     </div>
 
     <dl class="analysis-header__timing text-mono">
       <div>
-        <dt>SUBMITTED</dt>
+        <dt>{{ t('analysis.header.submitted') }}</dt>
         <dd>{{ formatTimestamp(analysis.submitted_at) }}</dd>
       </div>
       <div
         v-if="analysis.guest"
         class="analysis-header__guest"
       >
-        <dt>GUEST</dt>
+        <dt>{{ t('analysis.header.guest') }}</dt>
         <dd>
           <GuestChip
             :name="analysis.guest"
@@ -116,21 +120,21 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
         v-if="analysis.started_at"
         class="analysis-header__started"
       >
-        <dt>STARTED</dt>
+        <dt>{{ t('analysis.header.started') }}</dt>
         <dd>{{ formatTimestamp(analysis.started_at) }}</dd>
       </div>
       <div
         v-if="duration"
         class="analysis-header__duration"
       >
-        <dt>DURATION</dt>
+        <dt>{{ t('analysis.header.duration') }}</dt>
         <dd>{{ duration }}</dd>
       </div>
       <div
         v-if="showRemaining"
         class="analysis-header__remaining"
       >
-        <dt>REMAINING</dt>
+        <dt>{{ t('analysis.header.remaining') }}</dt>
         <dd>
           <RunCountdown
             :seconds="remaining"
@@ -147,7 +151,7 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
       role="alert"
     >
       <strong class="text-mono">{{ failureTitle }}</strong>
-      <span>{{ analysis.error ?? 'The analysis ended with no error message.' }}</span>
+      <span>{{ analysis.error ?? t('analysis.header.noErrorMessage') }}</span>
     </div>
   </header>
 </template>

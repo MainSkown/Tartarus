@@ -10,6 +10,7 @@ import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { TAB_VIEWS } from '@/components/tabs'
 import { useAnalysisTabNavigation } from '@/composables/use-analysis-tab-navigation'
 import { useQueryUrlSync } from '@/composables/use-query-url-sync'
+import { t } from '@/i18n'
 import {
   DEFAULT_TAB,
   LIVE_TAB,
@@ -64,14 +65,14 @@ async function perform(action: (id: number) => Promise<boolean>, failureMessage:
 }
 
 async function cancelAnalysis(): Promise<void> {
-  await perform(store.cancel, 'Could not cancel the analysis')
+  await perform(store.cancel, t('analysis.page.cancelFailed'))
 }
 
 async function deleteAnalysis(): Promise<void> {
   if (!analysis.value) return
   const confirmed = await confirmDestructive(deleteConfirmation(analysis.value))
   if (!confirmed) return
-  if (await perform(store.remove, 'Could not delete the analysis')) await router.push({ name: 'dashboard' })
+  if (await perform(store.remove, t('analysis.page.deleteFailed'))) await router.push({ name: 'dashboard' })
 }
 
 function selectTab(tab: string): void {
@@ -94,7 +95,7 @@ onBeforeUnmount(store.stopPolling)
   <div class="analysis-page">
     <TerminalEmpty
       v-if="notFound"
-      message="analysis not found"
+      :message="t('analysis.page.notFound')"
     />
 
     <template v-else-if="analysis">
@@ -132,7 +133,7 @@ onBeforeUnmount(store.stopPolling)
         />
         <TerminalEmpty
           v-else
-          message="available once the analysis is done"
+          :message="t('analysis.page.notDone')"
         />
       </template>
       <TerminalEmpty
@@ -146,12 +147,12 @@ onBeforeUnmount(store.stopPolling)
       class="page-state text-mono"
     >
       <p class="text-gray">
-        &gt; failed to load: {{ store.loadError }}
+        {{ t('analysis.page.loadFailed', { error: store.loadError }) }}
       </p>
       <q-btn
         outline
         square
-        label="[RETRY]"
+        :label="t('common.retry')"
         class="retry-btn text-mono"
         @click="load"
       />
@@ -164,7 +165,7 @@ onBeforeUnmount(store.stopPolling)
       <span
         class="loader"
         role="status"
-        aria-label="Loading analysis"
+        :aria-label="t('analysis.page.loading')"
       />
     </div>
   </div>

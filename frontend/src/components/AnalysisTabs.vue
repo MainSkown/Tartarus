@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '@/i18n'
 import { listedTabs, selectableTab } from '@/services/analysis-tabs'
 
 const props = withDefaults(defineProps<{ active: string; live?: boolean }>(), { live: false })
@@ -13,7 +14,7 @@ const selected = computed(() => selectableTab(props.active, props.live))
   <nav
     class="analysis-tabs"
     role="tablist"
-    aria-label="Analysis views"
+    :aria-label="t('analysis.tabs.label')"
   >
     <button
       v-for="tab in tabs"
@@ -23,10 +24,10 @@ const selected = computed(() => selectableTab(props.active, props.live))
       class="analysis-tabs__tab text-mono"
       :aria-selected="tab.key === selected"
       :disabled="!tab.available"
-      :title="tab.available ? undefined : `Arrives with ${tab.arrivesWith}`"
+      :title="tab.available ? undefined : t('analysis.tabs.arrivesWith', { milestone: tab.arrivesWith })"
       @click="emit('select', tab.key)"
     >
-      {{ tab.label }}
+      {{ t(tab.labelKey) }}
     </button>
   </nav>
 </template>

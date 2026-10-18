@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { MessageKey } from '@/i18n'
 import {
   ANALYSIS_TABS,
+  arrivalNote,
   DEFAULT_TAB,
   LIVE_TAB,
   isLiveStatus,
@@ -23,7 +25,7 @@ describe('listedTabs', () => {
 
   it('lists LIVE first, labelled LIVE, during a live session', () => {
     const [first] = listedTabs(true)
-    expect(first).toMatchObject({ key: LIVE_TAB, label: 'LIVE', available: true })
+    expect(first).toMatchObject({ key: LIVE_TAB, labelKey: 'analysis.tabs.live', available: true })
   })
 
   it('keeps the other tabs in their order either way', () => {
@@ -107,5 +109,19 @@ describe('nextLiveSession', () => {
   it('keeps its state until the analysis has loaded', () => {
     expect(nextLiveSession(true, undefined)).toBe(true)
     expect(nextLiveSession(false, undefined)).toBe(false)
+  })
+})
+
+describe('arrivalNote', () => {
+  it('says which milestone builds a tab that is not available yet', () => {
+    ANALYSIS_TABS.push({ key: 'later', labelKey: 'analysis.tabs.later' as MessageKey, available: false, arrivesWith: 'M9' })
+    expect(arrivalNote('later')).toBe('later arrives with M9')
+    ANALYSIS_TABS.pop()
+  })
+
+  it('says the tab arrives later when no milestone is named', () => {
+    ANALYSIS_TABS.push({ key: 'someday', labelKey: 'analysis.tabs.later' as MessageKey, available: false })
+    expect(arrivalNote('someday')).toBe('someday arrives later')
+    ANALYSIS_TABS.pop()
   })
 })
