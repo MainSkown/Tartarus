@@ -36,6 +36,7 @@ CATEGORIES = ("malware", "file")
 ACTION_EVENTS = {"quarantine": "malware-quarantined", "remove": "malware-removed"}
 ACTION_VERBS = {"quarantine": "quarantined", "remove": "removed", "none": "acted on"}
 FAILURE_SEVERITY = 3
+ALERTING_SCOPES = frozenset({Scope.SAMPLE, Scope.DROPPED})
 
 
 class DefenderNormalizer:
@@ -84,7 +85,7 @@ def _event(
         return None
     when, on_snapshot_clock = moment
     return factory.build(
-        _shape(record),
+        _shape(record, detection),
         SourceRecord(record.record_id, when, _raw(record)),
         _summary(record),
         severity=_severity(record),
@@ -94,10 +95,11 @@ def _event(
     )
 
 
-def _shape(record: WindowsEvent) -> EventShape:
+def _shape(record: WindowsEvent, detection: Detection) -> EventShape:
     if record.event_id == DETECTED:
+        kind = "alert" if detection.scope in ALERTING_SCOPES else "event"
         return EventShape(
-            "malware-detected", CATEGORIES, ("info", "indicator"), LANE, DATASET, "alert"
+            "malware-detected", CATEGORIES, ("info", "indicator"), LANE, DATASET, kind
         )
     if record.event_id in ACTION_FAILED:
         return EventShape(

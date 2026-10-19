@@ -15,6 +15,9 @@ from app.ingest.windows_events import WindowsEvent
 PROCESS_CREATED = 1
 REMOTE_THREAD = 8
 PROCESS_ACCESS = 10
+# Built from ETW timestamps, which do not follow the clock step CAPE makes when an analysis starts
+# (seen in the M8 real run: `UtcTime` two minutes before the sample started).
+ETW_TIMED_EVENTS = frozenset({3, 22})
 # Events whose own `ProcessGuid`/`ProcessId`/`Image` name the process that acted.
 ACTING_PROCESS_EVENTS = frozenset({1, 3, 5, 7, 11, 12, 13, 14, 22, 23, 26})
 UNKNOWN_IMAGE = "<unknown process>"
@@ -74,7 +77,10 @@ def acting_and_target(event_id: int, fields: EventFields) -> tuple[Subject | Non
 
 
 def guest_time(event: WindowsEvent, fields: EventFields) -> datetime | None:
-    """`UtcTime` (when it happened) on the guest's clock, else the log's write time."""
+    """When it happened on the guest's clock: `UtcTime`, or the log's write time where that is not
+    reliable (`ETW_TIMED_EVENTS`) or missing."""
+    if event.event_id in ETW_TIMED_EVENTS and event.system_time is not None:
+        return event.system_time
     return parse_clock(fields.get("UtcTime")) or event.system_time
 
 

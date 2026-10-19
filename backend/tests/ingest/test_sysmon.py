@@ -231,7 +231,8 @@ def test_eid_5_process_terminated(fixture_events: dict[int, Event]) -> None:
 def test_eid_3_network_connection(fixture_events: dict[int, Event]) -> None:
     event = fixture_events[2662]
 
-    assert event["@timestamp"] == "2026-10-18T22:46:20.928Z"
+    # The log's write time: 1.6 s after the connection's own `UtcTime` (22:46:20.928) here.
+    assert event["@timestamp"] == "2026-10-18T22:46:22.513Z"
     assert event["event"]["action"] == "network-connection"
     assert event["event"]["category"] == ["network"]
     assert event["event"]["type"] == ["connection"]
@@ -246,7 +247,8 @@ def test_eid_3_network_connection(fixture_events: dict[int, Event]) -> None:
 def test_eid_22_dns_query(fixture_events: dict[int, Event]) -> None:
     event = fixture_events[533]
 
-    assert event["@timestamp"] == "2026-10-18T22:43:50.262Z"
+    # The log's write time: 1 s after the query's own `UtcTime` (22:43:50.262) here.
+    assert event["@timestamp"] == "2026-10-18T22:43:51.255Z"
     assert event["event"]["action"] == "dns-query"
     assert event["event"]["category"] == ["network"]
     assert event["event"]["type"] == ["protocol"]
@@ -671,6 +673,32 @@ def test_a_missing_utc_time_falls_back_to_the_log_time(tmp_path: Path) -> None:
     )
 
     assert only(hand_written(tmp_path, xml))["@timestamp"] == "2026-10-18T22:44:10.250Z"
+
+
+@pytest.mark.parametrize(
+    ("event_id", "data"),
+    [
+        (22, {"QueryName": "example.test", "QueryResults": "10.0.0.1;"}),
+        (3, {"DestinationIp": "10.0.0.1", "DestinationPort": 80, "Protocol": "tcp"}),
+    ],
+    ids=["dns-query", "network-connection"],
+)
+def test_events_whose_utc_time_does_not_follow_the_clock_step_take_the_log_time(
+    tmp_path: Path, event_id: int, data: dict[str, str | int]
+) -> None:
+    # Seen in the M8 real run: CAPE steps the guest clock forward (here by two minutes) when the
+    # analysis starts. EID 3 and 22 are built from ETW timestamps that do not move with it, so
+    # their `UtcTime` was two minutes before the sample started; `TimeCreated` is right.
+    stale = "2026-10-18 20:44:10.000"
+    log_time = "2026-10-18 20:46:10.000"
+    xml = event_xml(
+        event_id,
+        7,
+        log_time,
+        {"UtcTime": stale, "ProcessGuid": guid(1), "ProcessId": 500, "Image": BENIGN, **data},
+    )
+
+    assert only(hand_written(tmp_path, xml))["@timestamp"] == "2026-10-18T22:46:10.000Z"
 
 
 def test_an_event_without_any_time_takes_the_analysis_start(tmp_path: Path) -> None:

@@ -2,6 +2,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, NamedTuple
 
+import pytest
+
 from app.ingest.sysmon import SysmonNormalizer
 from tests.ingest.sysmon_cases import (
     AGENT,
@@ -337,6 +339,23 @@ def test_the_monitors_own_files_in_a_sample_process_are_artefacts(tmp_path: Path
 
     assert kept == set()
     assert dropped == {MONITOR_ARTEFACT: 5}
+
+
+@pytest.mark.parametrize("root", [r"C:\VTroer", r"C:\ShgRuKILV", r"C:\abcdefghij"])
+def test_the_monitors_results_folder_is_an_artefact_whatever_its_random_length(
+    tmp_path: Path, root: str
+) -> None:
+    # The analyzer's results folder is 6 to 10 random characters (CAPE's constants.py), unlike the
+    # 8-character folder it is unpacked into; the real run's folders were 6 and 9 long, and the
+    # folder itself is created without a trailing separator.
+    kept, dropped = run(
+        tmp_path,
+        file_created(10, SAMPLE_PID, BENIGN, f"{root}\\CAPE", own=1),
+        file_created(11, SAMPLE_PID, BENIGN, f"{root}\\CAPE\\CapeOutput.bin", own=1),
+    )
+
+    assert kept == set()
+    assert dropped == {MONITOR_ARTEFACT: 2}
 
 
 def test_a_sample_file_with_an_unlucky_name_is_not_an_artefact(tmp_path: Path) -> None:

@@ -237,6 +237,26 @@ def test_failed_action_is_an_event_with_failure_outcome(tmp_path: Path) -> None:
     assert failure["related"] == {"events": [events[0]["event"]["id"]]}
 
 
+def test_a_detection_of_neither_the_sample_nor_its_files_is_an_event_not_an_alert(
+    tmp_path: Path,
+) -> None:
+    # Seen in the M8 real run on an adopted guest: Defender flagged a policy value of the guest
+    # itself on every run. It stays visible, but is not a detection of the analysis.
+    background = detection_data(
+        path=r"C:\Windows\Temp\guest-own.bin",
+        process=r"C:\Windows\System32\svchost.exe",
+        threat_name="VirTool:Win32/DefenderTamperingRestore",
+    )
+    detected = event_xml(1116, 300, "2026-10-18T23:33:50Z", background)
+    root = write_export(tmp_path, export_xml(detected))
+
+    events, _ = normalise(root, report_of(EICAR_TASK, EICAR_STARTED))
+
+    assert [event["event"]["action"] for event in events] == ["malware-detected"]
+    assert events[0]["tartarus"]["defender"]["scope"] == "other"
+    assert events[0]["event"]["kind"] == "event"
+
+
 def test_non_ascii_dropped_path_is_kept_as_written(tmp_path: Path) -> None:
     path = r"C:\Users\Public\zażółć-тест-测试.txt"
     detected = event_xml(
