@@ -1,0 +1,108 @@
+
+[
+  {
+    "Value": "0xf800d4000000",
+    "Variable": "Kernel Base",
+    "__children": []
+  },
+  {
+    "Value": "0x1ae000",
+    "Variable": "DTB",
+    "__children": []
+  },
+  {
+    "Value": "file:///opt/vol3-spike/volatility3/symbols/windows/ntkrnlmp-24DE61DB3A27C5B383DFF181CB51F7E1-1.json.xz",
+    "Variable": "Symbols",
+    "__children": []
+  },
+  {
+    "Value": "True",
+    "Variable": "Is64Bit",
+    "__children": []
+  },
+  {
+    "Value": "False",
+    "Variable": "IsPAE",
+    "__children": []
+  },
+  {
+    "Value": "0 WindowsIntel32e",
+    "Variable": "layer_name",
+    "__children": []
+  },
+  {
+    "Value": "1 Elf64Layer",
+    "Variable": "memory_layer",
+    "__children": []
+  },
+  {
+    "Value": "2 FileLayer",
+    "Variable": "base_layer",
+    "__children": []
+  },
+  {
+    "Value": "0xf800d4e0a9a0",
+    "Variable": "KdVersionBlock",
+    "__children": []
+  },
+  {
+    "Value": "15.26100",
+    "Variable": "Major/Minor",
+    "__children": []
+  },
+  {
+    "Value": "34404",
+    "Variable": "MachineType",
+    "__children": []
+  },
+  {
+    "Value": "2",
+    "Variable": "KeNumberProcessors",
+    "__children": []
+  },
+  {
+    "Value": "2026-10-18 22:16:04+00:00",
+    "Variable": "SystemTime",
+    "__children": []
+  },
+  {
+    "Value": "C:\\WINDOWS",
+    "Variable": "NtSystemRoot",
+    "__children": []
+  },
+  {
+    "Value": "NtProductWinNt",
+    "Variable": "NtProductType",
+    "__children": []
+  },
+  {
+    "Value": "10",
+    "Variable": "NtMajorVersion",
+    "__children": []
+  },
+  {
+    "Value": "0",
+    "Variable": "NtMinorVersion",
+    "__children": []
+  },
+  {
+    "Value": "10",
+    "Variable": "PE MajorOperatingSystemVersion",
+    "__children": []
+  },
+  {
+    "Value": "0",
+    "Variable": "PE MinorOperatingSystemVersion",
+    "__children": []
+  },
+  {
+    "Value": "34404",
+    "Variable": "PE Machine",
+    "__children": []
+  },
+  {
+    "Value": "Wed May 24 03:48:29 2006",
+    "Variable": "PE TimeDateStamp",
+    "__children": []
+  }
+]
