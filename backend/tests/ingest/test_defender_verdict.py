@@ -1,9 +1,14 @@
 from pathlib import Path
 from typing import Any
 
-from app.analyses.defender import DefenderStatus, DefenderVerdict
+from app.analyses.defender import DefenderStatus, DefenderThreat, DefenderVerdict
 from app.ingest.defender import DefenderNormalizer
-from app.ingest.defender_verdict import defender_verdict, verdict_of_export
+from app.ingest.defender_export import Outcome, Scope
+from app.ingest.defender_verdict import (
+    collapse_repeated_threats,
+    defender_verdict,
+    verdict_of_export,
+)
 from tests.ingest.defender_cases import (
     DROPPED_STARTED,
     DROPPED_TASK,
@@ -206,3 +211,185 @@ def test_the_normaliser_keeps_the_export_it_read_so_the_verdict_needs_no_second_
     assert verdict_of_export(normalizer.export, process_count=0) == defender_verdict(
         report, context, process_count=0
     )
+
+
+SECOND_DETECTION = "{9B4BFAF1-6D6D-406E-AADE-06C5B6A9E568}"
+OTHER_EICAR_PATH = r"C:\Users\Alice\AppData\Local\Temp\321\other.com"
+
+
+def detected(
+    record_id: int,
+    guest_time: str,
+    detection_id: str = EICAR_DETECTION,
+    path: str = EICAR_SAMPLE_PATH,
+    threat_id: str = "2147519003",
+) -> str:
+    data = detection_data(path=path, detection_id=detection_id, threat_id=threat_id)
+    return event_xml(1116, record_id, guest_time, data)
+
+
+def removed(record_id: int, guest_time: str, detection_id: str = EICAR_DETECTION) -> str:
+    return event_xml(1117, record_id, guest_time, closing_data(detection_id=detection_id))
+
+
+def failed(record_id: int, guest_time: str, detection_id: str = EICAR_DETECTION) -> str:
+    return event_xml(1119, record_id, guest_time, closing_data(detection_id=detection_id))
+
+
+def threat(**fields: object) -> DefenderThreat:
+    base: dict[str, object] = {
+        "detection_id": EICAR_DETECTION,
+        "threat_id": 2147519003,
+        "name": "Virus:DOS/EICAR_Test_File",
+        "severity": 4,
+        "category_id": 42,
+        "scope": Scope.SAMPLE,
+        "path": EICAR_SAMPLE_PATH,
+        "process": r"C:\Python311\pythonw.exe",
+        "user": "DESKTOP-2YK5XLK\\Alice",
+        "detected_at": "2026-10-18T23:34:00.000Z",
+        "action": "quarantine",
+        "outcome": Outcome.REMOVED,
+        "removed_at": "2026-10-18T23:34:01.000Z",
+    }
+    return DefenderThreat(**(base | fields))  # type: ignore[arg-type]
+
+
+def test_two_detections_of_one_file_are_one_threat(tmp_path: Path) -> None:
+    root = write_export(
+        tmp_path,
+        export_xml(
+            detected(300, "2026-10-18T21:34:00.000Z"),
+            removed(301, "2026-10-18T21:34:01.000Z"),
+            detected(302, "2026-10-18T21:34:15.000Z", detection_id=SECOND_DETECTION),
+            removed(303, "2026-10-18T21:34:16.000Z", detection_id=SECOND_DETECTION),
+        ),
+    )
+
+    verdict = verdict_of(root, process_count=0)
+
+    assert verdict["status"] == "removed"
+    assert verdict["sample_removed"] is True
+    assert verdict["blocked_before_run"] is True
+    assert len(verdict["threats"]) == 1
+    assert verdict["threats"][0]["detection_id"] == EICAR_DETECTION
+    assert verdict["threats"][0]["detected_at"] == "2026-10-18T23:34:00.000Z"
+    assert verdict["threats"][0]["removed_at"] == "2026-10-18T23:34:16.000Z"
+    assert verdict["threats"][0]["outcome"] == "removed"
+
+
+def test_the_events_still_record_each_detection(tmp_path: Path) -> None:
+    root = write_export(
+        tmp_path,
+        export_xml(
+            detected(300, "2026-10-18T21:34:00.000Z"),
+            removed(301, "2026-10-18T21:34:01.000Z"),
+            detected(302, "2026-10-18T21:34:15.000Z", detection_id=SECOND_DETECTION),
+            removed(303, "2026-10-18T21:34:16.000Z", detection_id=SECOND_DETECTION),
+        ),
+    )
+    report = report_of(EICAR_TASK, EICAR_STARTED)
+
+    events = list(DefenderNormalizer().normalise(report, context_of(root, EICAR_STARTED)))
+
+    assert {event["tartarus"]["defender"]["detection_id"] for event in events} == {
+        EICAR_DETECTION,
+        SECOND_DETECTION,
+    }
+
+
+def test_a_repeat_at_another_path_is_its_own_threat(tmp_path: Path) -> None:
+    root = write_export(
+        tmp_path,
+        export_xml(
+            detected(300, "2026-10-18T21:34:00.000Z"),
+            removed(301, "2026-10-18T21:34:01.000Z"),
+            detected(
+                302,
+                "2026-10-18T21:34:15.000Z",
+                detection_id=SECOND_DETECTION,
+                path=OTHER_EICAR_PATH,
+            ),
+            removed(303, "2026-10-18T21:34:16.000Z", detection_id=SECOND_DETECTION),
+        ),
+    )
+
+    verdict = verdict_of(root, process_count=0)
+
+    assert [entry["path"] for entry in verdict["threats"]] == [EICAR_SAMPLE_PATH, OTHER_EICAR_PATH]
+
+
+def test_a_failed_repeat_makes_the_one_threat_failed(tmp_path: Path) -> None:
+    root = write_export(
+        tmp_path,
+        export_xml(
+            detected(300, "2026-10-18T21:34:00.000Z"),
+            removed(301, "2026-10-18T21:34:01.000Z"),
+            detected(302, "2026-10-18T21:34:15.000Z", detection_id=SECOND_DETECTION),
+            failed(303, "2026-10-18T21:34:16.000Z", detection_id=SECOND_DETECTION),
+        ),
+    )
+
+    verdict = verdict_of(root, process_count=0)
+
+    assert verdict["status"] == "failed"
+    assert verdict["sample_removed"] is False
+    assert len(verdict["threats"]) == 1
+    assert verdict["threats"][0]["outcome"] == "failed"
+
+
+def test_a_removed_repeat_beside_a_pending_one_is_removed(tmp_path: Path) -> None:
+    root = write_export(
+        tmp_path,
+        export_xml(
+            detected(300, "2026-10-18T21:34:00.000Z"),
+            removed(301, "2026-10-18T21:34:01.000Z"),
+            detected(302, "2026-10-18T21:34:15.000Z", detection_id=SECOND_DETECTION),
+        ),
+    )
+
+    verdict = verdict_of(root, process_count=0)
+
+    assert verdict["status"] == "removed"
+    assert verdict["sample_removed"] is True
+    assert len(verdict["threats"]) == 1
+    assert verdict["threats"][0]["outcome"] == "removed"
+    assert verdict["threats"][0]["action"] == "quarantine"
+    assert verdict["threats"][0]["removed_at"] == "2026-10-18T23:34:01.000Z"
+
+
+def test_repeats_without_a_threat_id_are_one_threat_by_name(tmp_path: Path) -> None:
+    root = write_export(
+        tmp_path,
+        export_xml(
+            detected(300, "2026-10-18T21:34:00.000Z", threat_id=""),
+            removed(301, "2026-10-18T21:34:01.000Z"),
+            detected(302, "2026-10-18T21:34:15.000Z", detection_id=SECOND_DETECTION, threat_id=""),
+            removed(303, "2026-10-18T21:34:16.000Z", detection_id=SECOND_DETECTION),
+        ),
+    )
+
+    verdict = verdict_of(root, process_count=0)
+
+    assert len(verdict["threats"]) == 1
+
+
+def test_collapse_keeps_different_scopes_apart() -> None:
+    sample = threat(scope=Scope.SAMPLE)
+    dropped = threat(scope=Scope.DROPPED, detection_id=SECOND_DETECTION)
+
+    assert collapse_repeated_threats([sample, dropped]) == [sample, dropped]
+
+
+def test_collapse_keeps_different_names_apart_when_there_is_no_threat_id() -> None:
+    eicar = threat(threat_id=None, name="Virus:DOS/EICAR_Test_File")
+    other = threat(threat_id=None, name="Trojan:Win32/Other", detection_id=SECOND_DETECTION)
+
+    assert collapse_repeated_threats([eicar, other]) == [eicar, other]
+
+
+def test_collapse_matches_paths_case_insensitively() -> None:
+    upper = threat(path=EICAR_SAMPLE_PATH.upper(), detection_id=SECOND_DETECTION)
+    lower = threat(path=EICAR_SAMPLE_PATH.lower())
+
+    assert len(collapse_repeated_threats([lower, upper])) == 1
