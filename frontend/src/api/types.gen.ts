@@ -23,6 +23,106 @@ export type ActiveBuild = {
 };
 
 /**
+ * AnalysisCreated
+ */
+export type AnalysisCreated = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Sample Sha256
+     */
+    sample_sha256: string;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Cape Task Id
+     */
+    cape_task_id: number | null;
+    status: AnalysisStatus;
+    phase: AnalysisPhase;
+    /**
+     * Options
+     */
+    options: {
+        [key: string]: unknown;
+    };
+    /**
+     * Score
+     */
+    score: number | null;
+    max_severity: Severity | null;
+    /**
+     * Detected Families
+     */
+    detected_families: Array<string>;
+    /**
+     * Event Count
+     */
+    event_count: number;
+    /**
+     * Disk Bytes
+     */
+    disk_bytes: number;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Submitted At
+     */
+    submitted_at: string;
+    /**
+     * Started At
+     */
+    started_at: string | null;
+    /**
+     * Finished At
+     */
+    finished_at: string | null;
+    /**
+     * Deadline At
+     *
+     * When an interactive run ends unless the analyst extends it; null otherwise.
+     */
+    deadline_at: string | null;
+    summary: ReportSummary | null;
+    /**
+     * Tags
+     *
+     * The analyst's tags on the analysis itself, by name.
+     */
+    tags: Array<string>;
+    /**
+     * Guest
+     *
+     * The guest the analysis runs on; the stored name even if deleted.
+     */
+    guest: string | null;
+    /**
+     * Guest Badges
+     *
+     * The guest's badges ("DEFENDER ON"); empty when the guest is gone or the guest control service cannot be asked.
+     */
+    guest_badges: Array<string>;
+    /**
+     * Queue Position
+     *
+     * 1 for the analysis served next; null unless `queued`.
+     */
+    queue_position: number | null;
+    /**
+     * Warnings
+     *
+     * What the analyst should know about the submission, such as little free disk.
+     */
+    warnings: Array<string>;
+};
+
+/**
  * AnalysisPage
  */
 export type AnalysisPage = {
@@ -345,7 +445,7 @@ export type BodyAnalysesCreate = {
     /**
      * Options
      *
-     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's profile lists), `interactive` (a desktop to drive; the run then lasts the whole timeout) and `guest` (a ready guest; the default guest when omitted).
+     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's profile lists), `interactive` (a desktop to drive; the run then lasts the whole timeout), `memory_dump` (dump the guest's RAM and read it; needs free disk), `keep_memory_dump` (keep the dump afterwards; only with `memory_dump`) and `guest` (a ready guest; the default guest when omitted).
      */
     options?: string;
 };
@@ -485,6 +585,86 @@ export type ComponentHealth = {
      * Message
      */
     message?: string | null;
+};
+
+/**
+ * DefenderStatus
+ */
+export type DefenderStatus = 'clean' | 'detected' | 'removed' | 'failed' | 'no_export';
+
+/**
+ * DefenderThreat
+ */
+export type DefenderThreat = {
+    /**
+     * Detection Id
+     */
+    detection_id: string;
+    /**
+     * Threat Id
+     */
+    threat_id: number | null;
+    /**
+     * Name
+     */
+    name: string | null;
+    /**
+     * Severity
+     */
+    severity: number;
+    /**
+     * Category Id
+     */
+    category_id: number | null;
+    scope: Scope;
+    /**
+     * Path
+     */
+    path: string | null;
+    /**
+     * Process
+     */
+    process: string | null;
+    /**
+     * User
+     */
+    user: string | null;
+    /**
+     * Detected At
+     */
+    detected_at: string | null;
+    /**
+     * Action
+     */
+    action: string;
+    outcome: Outcome;
+    /**
+     * Removed At
+     */
+    removed_at: string | null;
+};
+
+/**
+ * DefenderVerdict
+ *
+ * `no_export` means the guest left no Defender export (agent unreachable, module not
+ * enabled, an older analysis); `clean` means the export ran and holds no detection of the
+ * sample or of what it dropped. CAPE's own tooling is never listed as a threat.
+ */
+export type DefenderVerdict = {
+    status: DefenderStatus;
+    /**
+     * Sample Removed
+     */
+    sample_removed: boolean;
+    /**
+     * Blocked Before Run
+     */
+    blocked_before_run: boolean;
+    /**
+     * Threats
+     */
+    threats: Array<DefenderThreat>;
 };
 
 /**
@@ -1821,6 +2001,39 @@ export type MediaVariant = {
 };
 
 /**
+ * MemoryFindings
+ */
+export type MemoryFindings = 'ok' | 'unavailable' | 'failed';
+
+/**
+ * MemorySummary
+ *
+ * `unavailable` means there was no dump to read (CAPE skips the dump when the storage is
+ * nearly full); `failed` means the control service could not run Volatility3 on one; `error`
+ * then says why, or names the plugins that failed when the others still gave findings.
+ * `dump_deleted` is null when the dump was not deleted on purpose (kept, or never taken).
+ */
+export type MemorySummary = {
+    /**
+     * Dump Taken
+     */
+    dump_taken: boolean;
+    findings: MemoryFindings;
+    /**
+     * Error
+     */
+    error?: string | null;
+    /**
+     * Dump Bytes
+     */
+    dump_bytes?: number | null;
+    /**
+     * Dump Deleted
+     */
+    dump_deleted?: boolean | null;
+};
+
+/**
  * NetworkAlertRow
  */
 export type NetworkAlertRow = {
@@ -1932,6 +2145,11 @@ export type NoteCreate = {
 export type NoteUpdate = {
     body: NoteBody;
 };
+
+/**
+ * Outcome
+ */
+export type Outcome = 'removed' | 'failed' | 'pending';
 
 /**
  * ProcessDetail
@@ -2484,6 +2702,14 @@ export type ReportSummary = {
     lane_counts?: {
         [key: string]: number;
     };
+    defender?: DefenderVerdict | null;
+    /**
+     * Hidden Events
+     */
+    hidden_events?: {
+        [key: string]: number;
+    };
+    memory?: MemorySummary | null;
 };
 
 /**
@@ -2636,6 +2862,11 @@ export type SampleSummary = {
      */
     type?: string | null;
 };
+
+/**
+ * Scope
+ */
+export type Scope = 'tooling' | 'sample' | 'dropped' | 'other';
 
 /**
  * Screenshot
@@ -3444,7 +3675,7 @@ export type AnalysesCreateResponses = {
     /**
      * Successful Response
      */
-    201: AnalysisRead;
+    201: AnalysisCreated;
 };
 
 export type AnalysesCreateResponse = AnalysesCreateResponses[keyof AnalysesCreateResponses];

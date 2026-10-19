@@ -199,8 +199,10 @@ export const analysesList = <ThrowOnError extends boolean = false>(options?: Opt
  * Stores the sample and queues an analysis on the chosen guest, or on the default guest.
  *
  * `409` when the guest does not exist or is not ready, when no guest has been built or is ready,
- * and while any guest is being built or tested; `422` for a package the guest does not accept;
- * `502` when the guest control service cannot be asked.
+ * and while any guest is being built or tested, and for a memory dump when the CAPE storage has
+ * less free disk than the dump needs (the message gives both numbers); `422` for a package the
+ * guest does not accept; `502` when the guest control service cannot be asked. `warnings` is
+ * filled when the submission was accepted with little free disk left.
  */
 export const analysesCreate = <ThrowOnError extends boolean = false>(options: Options<AnalysesCreateData, ThrowOnError>): RequestResult<AnalysesCreateResponses, AnalysesCreateErrors, ThrowOnError> => (options.client ?? client).post<AnalysesCreateResponses, AnalysesCreateErrors, ThrowOnError>({
     ...formDataBodySerializer,
