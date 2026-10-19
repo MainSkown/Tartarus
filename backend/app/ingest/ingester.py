@@ -18,8 +18,10 @@ from app.ingest.clock import (
     read_host_registrations,
     task_log_of,
 )
+from app.ingest.defender import DefenderNormalizer
 from app.ingest.protocol import IngestContext, Normalizer
 from app.ingest.sigma import RulesProvider, can_match_a_rule, final_detections, no_rules
+from app.ingest.sysmon import SysmonNormalizer
 from app.rules.rule import Rule
 from app.search.index import IndexingError
 
@@ -45,7 +47,13 @@ class EventStore(Protocol):
 
 
 def default_normalizers() -> list[Normalizer]:
-    return [CapemonNormalizer(), CapeNetworkNormalizer(), CapeSignaturesNormalizer()]
+    return [
+        CapemonNormalizer(),
+        CapeNetworkNormalizer(),
+        CapeSignaturesNormalizer(),
+        SysmonNormalizer(),
+        DefenderNormalizer(),
+    ]
 
 
 class ReportIngester:

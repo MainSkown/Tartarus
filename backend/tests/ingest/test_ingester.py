@@ -12,7 +12,7 @@ import pytest
 
 from app.analyses.ports import IngestFailedError
 from app.ingest import ingester as ingester_module
-from app.ingest.ingester import ReportIngester
+from app.ingest.ingester import ReportIngester, default_normalizers
 from app.ingest.protocol import IngestContext
 from app.rules.loader import load_rule_file
 from app.rules.rule import Rule
@@ -135,6 +135,16 @@ async def test_opensearch_being_down_when_the_template_is_ensured_fails_the_inge
         await ingester.ingest(ANALYSIS_ID, FULL_REPORT)
 
     assert index.calls == ["ensure_template"]
+
+
+def test_every_source_the_analysis_can_hold_is_a_default_normaliser() -> None:
+    assert {normalizer.source for normalizer in default_normalizers()} == {
+        "capemon",
+        "cape-network",
+        "cape-signatures",
+        "sysmon",
+        "defender",
+    }
 
 
 class _ContextRecorder:
