@@ -32,8 +32,8 @@ lint: ## Run ruff, mypy, eslint and the TypeScript check
 	cd backend && uv run ruff check
 	cd backend && uv run ruff format --check
 	cd backend && uv run mypy app
-	cd cape && uv run --no-project --with ruff ruff check guest_engine tests bin/guest-control bin/control_http.py bin/finish_logic.py
-	cd cape && uv run --no-project --with ruff ruff format --check guest_engine tests bin/guest-control bin/control_http.py bin/finish_logic.py
+	cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py
+	cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py
 	cd frontend && npm run lint
 	cd frontend && npm run typecheck
 

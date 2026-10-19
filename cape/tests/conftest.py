@@ -1,7 +1,10 @@
 import pytest
+from fixtures.cape_modules import stub_cape_modules
 from fixtures.leaks import has_child_processes, kill, processes_running_under
 
 from guest_engine.sequencer import Sequencer
+
+stub_cape_modules()
 
 
 @pytest.fixture(autouse=True)

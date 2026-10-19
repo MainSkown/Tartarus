@@ -56,7 +56,7 @@
       "label": "Sysmon",
       "type": "bool",
       "default": true,
-      "help": "Installs Sysmon with the pinned, low-volume configuration and checks that its service runs and logs."
+      "help": "Installs Sysmon with the pinned configuration, which logs process, network, file, registry, DNS and WMI activity without Windows' own background noise, and checks that its service runs and logs. Every run applies that configuration again and exports the events."
     },
     {
       "key": "key",

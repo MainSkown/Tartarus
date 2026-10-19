@@ -1,14 +1,15 @@
-<!-- Sysmon configuration, written for this project rather than copied from a third-party set
-     (SwiftOnSecurity and similar configs log far more than a short-lived analysis run needs).
-     Strategy: include only the five event types the self-test and the ingest pipeline read
-     (ProcessCreate, NetworkConnect, FileCreate, RegistryEvent for value-set/key-create, plus
-     ProcessTerminate for process lifetime), exclude the noisy, low-value sources within each
-     (child processes of the agent itself, temp/cache file churn, loopback and the agent's own
-     port, HKLM policy keys this profile writes during provisioning), and leave ImageLoad, FileCreateStreamHash,
-     DNS and the remaining event types off entirely: they are expensive to collect and the
-     analyzer's own instrumentation already covers process, file, registry and network behaviour
-     in the report. -->
-<Sysmon schemaversion="4.70">
+<!-- Sysmon configuration, written for this project rather than copied from a third-party set.
+     Strategy: log what the analyzer's own instrumentation cannot see (unsigned image loads, remote
+     threads, process access, DNS, WMI subscriptions, deleted files) and everything about process,
+     network, file and registry activity, minus what Windows and the analysis agent produce on their own
+     (conhost, the agent's connections, Prefetch, the registry keys the OS rewrites constantly).
+     An empty exclude block (CreateRemoteThread, DnsQuery, FileDeleteDetected, WmiEvent) logs that event
+     type in full. FileDeleteDetected is EID 26, not 23: 23 archives the deleted file and uses disk.
+     Within one rule block Sysmon ANDs different field names and ORs the same one, so a block here
+     names a single field; mixing two silently excludes nothing.
+     Installed at guest build (provision.ps1, -i) and re-applied by the event_logs auxiliary at the start
+     of every run (-c), so a guest built with an older config needs no rebuild. -->
+<Sysmon schemaversion="4.90">
   <EventFiltering>
     <ProcessCreate onmatch="exclude">
       <Image condition="end with">conhost.exe</Image>
@@ -16,17 +17,46 @@
     <ProcessTerminate onmatch="exclude">
       <Image condition="end with">conhost.exe</Image>
     </ProcessTerminate>
+    <NetworkConnect onmatch="exclude">
+      <Image condition="is">C:\Python311\pythonw.exe</Image>
+    </NetworkConnect>
+    <ImageLoad onmatch="include">
+      <Signed condition="is">false</Signed>
+    </ImageLoad>
+    <CreateRemoteThread onmatch="exclude" />
+    <ProcessAccess onmatch="exclude">
+      <SourceImage condition="is">C:\Python311\pythonw.exe</SourceImage>
+      <SourceImage condition="end with">MsMpEng.exe</SourceImage>
+      <SourceImage condition="end with">csrss.exe</SourceImage>
+      <SourceImage condition="end with">svchost.exe</SourceImage>
+      <SourceImage condition="end with">wmiprvse.exe</SourceImage>
+      <SourceImage condition="end with">lsass.exe</SourceImage>
+      <SourceImage condition="end with">services.exe</SourceImage>
+      <SourceImage condition="end with">wininit.exe</SourceImage>
+      <SourceImage condition="end with">explorer.exe</SourceImage>
+      <SourceImage condition="end with">taskmgr.exe</SourceImage>
+    </ProcessAccess>
     <FileCreate onmatch="exclude">
-      <TargetFilename condition="contains">\AppData\Local\Temp\</TargetFilename>
       <TargetFilename condition="contains">\Windows\Prefetch\</TargetFilename>
     </FileCreate>
-    <NetworkConnect onmatch="exclude">
-      <DestinationIp condition="is">127.0.0.1</DestinationIp>
-      <DestinationPort condition="is">8000</DestinationPort>
-    </NetworkConnect>
     <RegistryEvent onmatch="exclude">
+      <TargetObject condition="begin with">HKLM\SOFTWARE\Microsoft\Wbem\Tracing</TargetObject>
       <TargetObject condition="begin with">HKLM\SOFTWARE\Policies\Microsoft\Windows Defender</TargetObject>
-      <TargetObject condition="contains">\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs</TargetObject>
+      <TargetObject condition="contains">\Explorer\RecentDocs</TargetObject>
+      <TargetObject condition="contains">\Services\bam\State\UserSettings</TargetObject>
+      <TargetObject condition="contains">\Local Settings\MuiCache\</TargetObject>
+      <TargetObject condition="contains">SystemCertificates\</TargetObject>
+      <TargetObject condition="contains">EnterpriseCertificates\</TargetObject>
+      <TargetObject condition="contains">\Control\ProductOptions</TargetObject>
+      <TargetObject condition="contains">\Control\Hvsi</TargetObject>
+      <TargetObject condition="contains">\CapabilityAccessManager\</TargetObject>
+      <TargetObject condition="contains">\CurrentVersion\Wosc\</TargetObject>
+      <TargetObject condition="contains">\CurrentVersion\CPSS</TargetObject>
+      <TargetObject condition="contains">\AppModel\SystemAppData\</TargetObject>
+      <TargetObject condition="contains">WinTrust\Trust Providers\Software Publishing</TargetObject>
     </RegistryEvent>
+    <DnsQuery onmatch="exclude" />
+    <FileDeleteDetected onmatch="exclude" />
+    <WmiEvent onmatch="exclude" />
   </EventFiltering>
 </Sysmon>

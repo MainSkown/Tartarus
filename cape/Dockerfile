@@ -141,6 +141,11 @@ RUN python3 /tmp/skip-packaged-apps.py /opt/CAPEv2/analyzer/windows/analyzer.py 
     && grep -q 'skips_packaged_app(filepath, self.analyzer.package_name)' /opt/CAPEv2/analyzer/windows/analyzer.py \
     && rm /tmp/skip-packaged-apps.py
 
+# Host-side auxiliary that exports the guest's Sysmon and Defender logs through the agent at the end of
+# a run. CAPE imports every module in this directory; auxiliary.conf enables it by file name. It reads
+# the Sysmon config from the profiles copied below.
+COPY --chown=cape:cape cape/auxiliary/event_logs.py /opt/CAPEv2/modules/auxiliary/event_logs.py
+
 # Reads the Windows installation media (wiminfo) for the guest wizard. A layer of its own, after the
 # slow ones, so adding it does not re-resolve the packages the proven libvirt and QEMU were installed with.
 RUN apt-get update && apt-get install -y --no-install-recommends wimtools \

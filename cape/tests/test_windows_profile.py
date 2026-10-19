@@ -947,16 +947,40 @@ class TestDefenderProofScript:
         assert re.search(r"\bexit 0\s*$", script_text("defender-proof.ps1"))
 
 
+def sysmon_config_root() -> ET.Element:
+    return ET.parse(PROFILE_DIR / "sysmon-config.xml").getroot()  # noqa: S314 - a file this repo ships
+
+
 class TestSysmon:
     def test_config_is_well_formed_and_small(self):
-        path = PROFILE_DIR / "sysmon-config.xml"
-        root = ET.parse(path).getroot()  # noqa: S314 - a file this repo ships, not untrusted input
+        root = sysmon_config_root()
         assert root.tag == "Sysmon"
         assert root.get("schemaversion")
-        assert len(path.read_text().splitlines()) < 150
+        assert len((PROFILE_DIR / "sysmon-config.xml").read_text().splitlines()) < 150
         events = {child.tag for child in root.find("EventFiltering")}
         assert {"ProcessCreate", "NetworkConnect", "FileCreate", "RegistryEvent"} <= events
-        assert "ImageLoad" not in events or root.find("EventFiltering/ImageLoad") is None
+
+    def test_unsigned_image_loads_are_the_only_ones_logged(self):
+        block = sysmon_config_root().find("EventFiltering/ImageLoad")
+        assert block.get("onmatch") == "include"
+        assert [(rule.tag, rule.get("condition"), rule.text) for rule in block] == [
+            ("Signed", "is", "false")
+        ]
+
+    @pytest.mark.parametrize(
+        "event", ["WmiEvent", "DnsQuery", "CreateRemoteThread", "FileDeleteDetected"]
+    )
+    def test_an_event_type_is_logged_in_full_by_an_empty_exclude_block(self, event):
+        block = sysmon_config_root().find(f"EventFiltering/{event}")
+        assert block is not None
+        assert block.get("onmatch") == "exclude"
+        assert len(block) == 0
+
+    def test_no_rule_block_mixes_field_names_because_sysmon_ands_them(self):
+        for block in sysmon_config_root().find("EventFiltering"):
+            assert len({rule.tag for rule in block}) <= 1, (
+                f"{block.tag} would match nothing it was meant to"
+            )
 
     def test_the_binary_is_pinned_in_the_manifest(self):
         entries = [

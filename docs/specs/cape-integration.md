@@ -41,9 +41,43 @@ the entrypoint exports.
 | `routing.conf` | `route = inetsim`; `no_local_routing = no` (`yes` needs a VRF and the host's `vrf` module); `internet = eth0`; RFC1918 and Docker `reject_segments`. Only the inetsim route is verified; `internet` is configured but unexercised. |
 | `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `[taskdelete] enabled = yes`, because `tasks/delete` answers "Task Deletion API is Disabled" by default; `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
 | `web.conf` | `[guacamole] enabled = yes` so CAPE records each guest's VNC port. `guacd` binds the internal address only. The backend uses `cape:4822` itself; CAPE's own Guacamole view is unused. |
-| `auxiliary.conf` | Sysmon, ETW modules and `QemuScreenshots`: **deferred to M0b/M1**, they need a Windows guest. Sysmon's EVTX is collected at the end of the run only: a final-phase source with no live forwarder (decided 2026-10-17, [v1 open question 3](../features/tartarus-v1.md#open-questions)). |
+| `auxiliary.conf` | `[sniffer] interface = tt-guest`, and `[event_logs] enabled = yes` for the host-side [event logs module](#event-logs-module). The guest-side `[auxiliary_modules]` list and `sysmon_windows = no` are left alone: Sysmon's log is exported by the module, not by CAPE's own `sysmon` auxiliary (which clears the log before it installs). The ETW modules are dropped from v1 ([M8 plan](../plans/m8-event-sources.md)); `QemuScreenshots` is unchanged. Sysmon's events are a final-phase source with no live forwarder (decided 2026-10-17, [v1 open question 3](../features/tartarus-v1.md#open-questions)). |
 | `processing.conf`, `memory.conf` | **Deferred.** Volatility3 and its symbol tables are not installed yet. `virustotal` stays off (no data leaves the host). |
 | `reporting.conf` | `jsondump` on (its default), `mongodb` off, and the `callback` module enabled with `url = http://backend:8000/internal/cape/callback`. The module runs after the report is written, sets the task to `reported` itself, and catches its own failures: an unreachable backend is logged and changes neither the task nor the report (checked with the backend stopped and with a 404). `scripts/verify-guest.sh` layers a temporary listener over it through `reporting.conf.d/callback.conf`; CAPE loads that later, and the script removes only that file. |
+
+### Event logs module
+
+`cape/auxiliary/event_logs.py` is a CAPE auxiliary that runs on the host (in the `cape` container, copied by
+the Dockerfile to `/opt/CAPEv2/modules/auxiliary/`, enabled by `[event_logs]` above). It asks the guest agent
+(`:8000`, `/execute`) to export two Windows event logs, so it still works when the guest analyzer dies before
+it starts its own modules, which is what Defender does to it on a detected sample.
+
+| Channel | Lands in the analysis folder as | How it is exported |
+|---|---|---|
+| `Microsoft-Windows-Sysmon/Operational` | `sysmon/sysmon.xml` | `wevtutil`, decoded with the guest's ANSI code page (read from the registry) and written as UTF-8 |
+| `Microsoft-Windows-Windows Defender/Operational` | `aux/defender.xml` | PowerShell `Get-WinEvent ... ToXml()` as UTF-8 |
+
+Both are `<Events>` documents of the events as the guest wrote them. The channels are one table in the module;
+a channel is added with one line. Sysmon is optional: a guest without it (an adopted guest) gets no
+`sysmon.xml` and no error.
+
+- **Baseline, not a clear.** `start()` records each channel's newest `EventRecordID`; `stop()` exports only
+  records after it. The log is never cleared: a clear at the start would erase the sample's own Defender
+  detection, which Defender writes before the analyzer starts. A channel whose baseline cannot be read (agent
+  unreachable, channel missing, code page unreadable) is skipped, never exported whole.
+- **Sysmon config.** At `start()` the module pushes `guest/profiles/windows/sysmon-config.xml` (the image keeps it
+  at `/usr/local/lib/tartarus/profiles/windows/`) to the guest through the agent and applies it with
+  `Sysmon64.exe -accepteula -c`, then removes the file, before reading the baseline, so Sysmon's own
+  config-change event is not exported. A guest built with an older config needs no rebuild.
+- **Settle wait.** For Defender, `stop()` re-exports every 3 s until each detection (event 1116) has a closing
+  event (1117, 1118 or 1119) with the same `Detection ID`, up to 30 s: Defender quarantines a file about 10 s
+  after it detects it (worst seen 17.5 s). Sysmon never waits.
+- **Always a file.** An export that ran but found nothing is written as an empty `<Events>` document, which says
+  "Defender had nothing to say", as opposed to a missing file, which says "no export". Output that is not a
+  well-formed `<Events>` document is not written; control characters XML forbids are dropped first.
+- **Never raises.** CAPE aborts the task on an exception out of `start()` or `stop()`, so every failure is logged
+  and the channel skipped. Every agent call has a short timeout (5 s to connect, 15 s for the baseline steps, 30 s
+  to read Defender, 120 s to read Sysmon) and `stop()` as a whole is capped at 180 s.
 
 **API token.** `CAPE_API_TOKEN` comes from `.env`; the entrypoint refuses to start without one,
 and compose requires it too (`make up` fails with a message if `.env` lacks it). On every start
