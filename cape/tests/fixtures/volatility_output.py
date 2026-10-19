@@ -26,16 +26,20 @@ def failure(returncode: int = 1, stdout: str = "", stderr: str = BANNER) -> Comm
     return CommandResult(returncode, stdout, stderr)
 
 
-# The INFO line `pdbutil.load_windows_symbol_table` logs (volatility3 2.28.2) when the kernel's PDB
-# is found in the dump but no ISF matches; the age is appended to the GUID in decimal, as Volatility
-# prints it. Read from the wheel's source: no real dump with missing symbols has been run.
+# The kernel of the S3 spike's Windows 11 dump; the age is appended to the GUID in decimal, as
+# Volatility prints it in the PDB's URL.
 KERNEL_GUID = "24DE61DB3A27C5B383DFF181CB51F7E1"
 
 
 def missing_symbols_log(
     guid: str = KERNEL_GUID, age: int | str = 1, pdb: str = "ntkrnlmp.pdb"
 ) -> str:
+    """The INFO line `vol -v --offline` (2.28.2) logs when no ISF matches the kernel it found.
+
+    Read from a real run on a Windows 11 dump (M8 real-run proof). The "symbols can be downloaded
+    later" line that `pdbutil` logs when online never appears with `--offline`.
+    """
     return (
-        f"INFO     volatility3.framework.symbols.windows.pdbutil: The symbols can be downloaded"
-        f" later using pdbconv.py -p {pdb} -g {guid}{age}\n"
+        "INFO     volatility3.framework.layers.resources: Not accessing"
+        f" http://msdl.microsoft.com/download/symbols/{pdb}/{guid}{age}/{pdb} in offline mode\n"
     )

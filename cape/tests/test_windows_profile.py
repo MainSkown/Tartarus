@@ -1021,6 +1021,16 @@ class TestSysmon:
                 f"{block.tag} would match nothing it was meant to"
             )
 
+    @pytest.mark.parametrize("image", ["conhost.exe", "OpenConsole.exe"])
+    def test_the_console_host_every_sample_gets_is_not_logged_as_accessing_it(self, image):
+        # Seen in the M8 real run: both opened benign.exe and cmd.exe, and the backend listed each
+        # as a root process of the analysis beside the sample.
+        block = sysmon_config_root().find("EventFiltering/ProcessAccess")
+        assert block.get("onmatch") == "exclude"
+        assert ("SourceImage", "end with", image) in [
+            (rule.tag, rule.get("condition"), rule.text) for rule in block
+        ]
+
     def test_the_binary_is_pinned_in_the_manifest(self):
         entries = [
             line.split()

@@ -28,12 +28,11 @@ NO_SYMBOLS = "no symbols for this Windows build"
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 ERROR_DETAIL_LIMIT = 200
 BANNER = re.compile(r"^Volatility 3 Framework (\S+)$", re.MULTILINE)
-# What `pdbutil.load_windows_symbol_table` logs at INFO when it found the kernel's PDB in the dump
-# but no ISF matches (2.28.2): the GUID (32 hex digits) followed by the age in decimal. Only the x64
-# kernel's name is taken: the symbol file Tartarus makes is for that one.
+# The URL `vol --offline` logs it declined to fetch when the kernel's PDB was found in the dump but
+# no ISF matches (2.28.2, seen in a real run): the GUID (32 hex digits) followed by the age in
+# decimal. Only the x64 kernel's name is taken: the symbol file Tartarus makes is for that one.
 MISSING_SYMBOLS_LINE = re.compile(
-    r"The symbols can be downloaded later using pdbconv\.py "
-    r"-p ntkrnlmp\.pdb -g ([0-9A-Fa-f]{32})([0-9]{1,10})\b"
+    r"/symbols/ntkrnlmp\.pdb/([0-9A-Fa-f]{32})([0-9]{1,10})/ntkrnlmp\.pdb\b"
 )
 # What `vol` prints when it cannot build the kernel layer or find its symbol table: the same
 # failure whether the ISF is missing or belongs to another build.

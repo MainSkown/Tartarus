@@ -267,7 +267,7 @@ def test_the_log_line_may_be_on_either_stream():
         missing_symbols_log(pdb="ntkrnlpa.pdb"),
         missing_symbols_log(guid=KERNEL_GUID[:-1]),
         missing_symbols_log(guid="Z" * 32),
-        "The symbols can be downloaded later using pdbconv.py -p ntkrnlmp.pdb -g ../../etc1\n",
+        "Not accessing http://msdl.microsoft.com/download/symbols/ntkrnlmp.pdb/../../etc1/x\n",
     ],
     ids=["no-line", "another-kernel-pdb", "short-guid", "not-hex", "not-a-guid"],
 )

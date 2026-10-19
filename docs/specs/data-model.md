@@ -377,7 +377,10 @@ streaming parse per pass, never the whole log in memory. `event.module: sysmon`,
   destination as logged: for an inbound connection (`Initiated` false) the source is the remote end. EID 13's
   `Details` is `registry.data.strings` verbatim (`DWORD (0x00000001)`, what Sigma rules match), with the type
   read from its prefix. `User` is `user.name`/`user.domain`. The WMI events name no process.
-- **Time.** `UtcTime` (not `TimeCreated`, the log write time) on the guest clock, plus `guest_clock_offset(report,
+- **Time.** `UtcTime` (not `TimeCreated`, the log write time) on the guest clock, except EID 3 and 22, which take
+  `TimeCreated`: they are built from ETW timestamps that do not follow the clock step CAPE makes at the start of a
+  run (the M8 real run saw a DNS query two minutes before the sample started; the write time is 1 to 2 s late).
+  Plus `guest_clock_offset(report,
   host_registrations)`, the offset capemon's times get. Output is oldest first whatever the file's order (the
   kept events are buffered and sorted); the event id follows the record's position in the file, so a noise rule
   changing does not renumber the survivors.
@@ -393,7 +396,7 @@ streaming parse per pass, never the whole log in memory. `event.module: sysmon`,
      descendant by `ParentProcessGuid`; or it names such a process as the **target** (EID 8, 10) and the actor
      is not CAPE's tooling; or it names no (identifiable) process, as the WMI events;
   2. dropped `cape-tooling`: the agent (`pythonw.exe`), `inject-*.exe` and the executables under
-     `C:\<8 chars>\bin|dll|data|lib|modules|CAPE\` the injector is renamed to, `PPLinject*`, `wevtutil.exe`, Sysmon's
+     `C:\<6 to 10 chars>\bin|dll|data|lib|modules|CAPE` the injector is renamed to, `PPLinject*`, `wevtutil.exe`, Sysmon's
      binaries, and a process started by one of those. The injector acting on the sample is CAPE injecting its
      monitor, not an injection by the sample;
   3. dropped `monitor-artefact`: inside a sample process, the monitor's own files (anything under the analyzer
@@ -414,7 +417,9 @@ after the run (S4 spike, `docs/plans/m8-spikes/S4-findings.md`). Final phase, `e
 
 - Only 1116 (malware detected) and 1117, 1118, 1119 (action taken, failed) are events. Every other id
   (5007 configuration changes, 2001 update failures, ...) is dropped.
-- 1116 is an alert, `event.action: malware-detected`, severity from Severity ID (5 to 4, 4 to 3, 2 to 2,
+- 1116 is an alert (`event.kind: alert`) when its scope is `sample` or `dropped`, and a plain event when it is `other`
+  (Windows or the guest's own business, as seen on an adopted guest: a policy value Defender flags on every
+  run), `event.action: malware-detected`, severity from Severity ID (5 to 4, 4 to 3, 2 to 2,
   1 to 1, else 2). 1117 is an event with `malware-quarantined` (Action ID 2), `malware-removed` (3) or
   `malware-action-taken` (any other id), `event.outcome: success`. 1118 and 1119 are
   `malware-action-failed` with `event.outcome: failure`, severity 3, and `error.code` and `error.message`.

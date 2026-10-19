@@ -276,6 +276,26 @@ def test_what_is_written_can_be_read_by_other_users_whatever_the_services_umask(
     assert modes == {ANALYSIS_FILE_MODE}
 
 
+def test_the_results_belong_to_whoever_owns_the_analysis_folder_so_cape_can_delete_it(
+    analyser, storage, monkeypatch
+):
+    # Found in the M8 real run: the service runs as root, left memory/ owned by root, and CAPE
+    # (the `cape` user) then could not remove the task folder when the analysis was deleted.
+    handed_over: dict[Path, tuple[int, int]] = {}
+    monkeypatch.setattr(
+        os, "chown", lambda path, uid, gid: handed_over.update({Path(path): (uid, gid)})
+    )
+
+    analyser.analyse(7)
+
+    analysis = storage / "analyses" / "7"
+    owner = (analysis.stat().st_uid, analysis.stat().st_gid)
+    folder = memory_folder(storage)
+    assert handed_over.pop(folder) == owner
+    assert {path.name for path in handed_over} >= {"windows.pslist.json", "run.json.tmp"}
+    assert set(handed_over.values()) == {owner}
+
+
 def test_a_second_run_replaces_the_first_and_leaves_no_file_of_a_plugin_that_now_fails(
     analyser, storage, runner
 ):

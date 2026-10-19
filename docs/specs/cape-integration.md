@@ -260,8 +260,8 @@ missing symbols, is an entry in `errors`, never a download); `404` no dump, `409
 (`204`, `404`, `409` while it is being read): the backend has the storage read-only, so only this service can.
 Why Volatility runs here and not in CAPE's own memory module: [S3 findings](../plans/m8-spikes/S3-findings.md).
 When `windows.info` fails because no ISF matches the dump's kernel, `analyse` also reads the kernel's PDB id from
-Volatility's INFO log (`windows.info` is the only plugin run with `-v`; the line is the one
-`pdbutil.load_windows_symbol_table` logs in 2.28.2) and adds `"missing_symbols": {"guid": "...", "age": n}` to the
+Volatility's INFO log (`windows.info` is the only plugin run with `-v`; with `--offline` the line is the URL of the
+PDB it declined to fetch, `.../symbols/ntkrnlmp.pdb/<GUID><age>/ntkrnlmp.pdb`, as seen in the M8 real run) and adds `"missing_symbols": {"guid": "...", "age": n}` to the
 `200` body and to `run.json`; the key is absent when symbols are fine or the id could not be read. That id is what
 `POST /symbols` needs.
 

@@ -35,6 +35,8 @@
       <SourceImage condition="end with">wininit.exe</SourceImage>
       <SourceImage condition="end with">explorer.exe</SourceImage>
       <SourceImage condition="end with">taskmgr.exe</SourceImage>
+      <SourceImage condition="end with">conhost.exe</SourceImage>
+      <SourceImage condition="end with">OpenConsole.exe</SourceImage>
     </ProcessAccess>
     <FileCreate onmatch="exclude">
       <TargetFilename condition="contains">\Windows\Prefetch\</TargetFilename>

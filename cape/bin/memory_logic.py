@@ -219,6 +219,9 @@ class MemoryAnalyser:
             for plugin in scan.skipped:
                 _write_readable(folder / f"{plugin}.json", [])
             _write_readable(folder / "run.json.tmp", _run_json(scan, dump_bytes))
+            # The service runs as root; CAPE, as `cape`, deletes the whole task folder with the
+            # analysis and cannot remove what root leaves in it.
+            _give_to_owner_of(self._analysis(task_id), [folder, *folder.iterdir()])
             # Last, and atomically: the backend treats the presence of run.json as "finished".
             os.replace(folder / "run.json.tmp", folder / "run.json")
         except OSError as unwritable:
@@ -248,6 +251,12 @@ def _name_of(process: Path) -> str:
         return (process / "comm").read_text().strip() or "?"
     except OSError:
         return "?"
+
+
+def _give_to_owner_of(analysis: Path, paths: Sequence[Path]) -> None:
+    owner = analysis.stat()
+    for path in paths:
+        os.chown(path, owner.st_uid, owner.st_gid)
 
 
 def _write_readable(path: Path, content: Any) -> None:
