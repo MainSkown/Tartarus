@@ -37,8 +37,8 @@ export default {
   },
   memory: {
     label: 'FULL MEMORY DUMP + VOLATILITY',
-    warning: 'Adds about {gb} GB of disk and several minutes of processing.',
-    warningUnsized: 'Adds the guest RAM in disk space and several minutes of processing.',
+    warning: 'Adds about {gb} GB of disk and a few seconds of processing.',
+    warningUnsized: 'Adds the guest RAM in disk space and a few seconds of processing.',
     keep: {
       label: 'KEEP THE DUMP AFTER THE FINDINGS ARE EXTRACTED',
       helper: 'Kept dumps stay on disk until the analysis is deleted.',

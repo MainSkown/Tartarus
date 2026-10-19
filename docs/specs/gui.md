@@ -122,9 +122,9 @@ The query-bar state (query plus chips) and the selected process are kept in the 
   js) is shown.
 - **Full memory dump + Volatility** is a switch of its own, off by default, with its option block below
   the interactive one. When on, it warns with the disk the chosen guest's dump takes: its RAM in GB plus
-  about 0.3 GB of findings, rounded up to one decimal (4096 MB gives "Adds about 4.3 GB of disk and several
-  minutes of processing."). The warning follows the chosen guest. A guest that does not report its RAM gets
-  "Adds the guest RAM in disk space and several minutes of processing." instead.
+  about 0.3 GB of findings, rounded up to one decimal (4096 MB gives "Adds about 4.3 GB of disk and a few
+  seconds of processing."). The warning follows the chosen guest. A guest that does not report its RAM gets
+  "Adds the guest RAM in disk space and a few seconds of processing." instead.
   - A nested switch, **Keep the dump after the findings are extracted**, appears only while the dump is on,
     off by default, with the helper "Kept dumps stay on disk until the analysis is deleted." Switching the dump
     off clears it.

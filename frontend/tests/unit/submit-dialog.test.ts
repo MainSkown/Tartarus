@@ -532,7 +532,7 @@ describe('SubmitDialog', () => {
       await switchMemory(wrapper, true)
 
       expect(wrapper.find('.memory-note').text()).toBe(
-        'Adds about 4.3 GB of disk and several minutes of processing.',
+        'Adds about 4.3 GB of disk and a few seconds of processing.',
       )
     })
 
@@ -544,7 +544,7 @@ describe('SubmitDialog', () => {
       await flushPromises()
 
       expect(wrapper.find('.memory-note').text()).toBe(
-        'Adds about 16.3 GB of disk and several minutes of processing.',
+        'Adds about 16.3 GB of disk and a few seconds of processing.',
       )
     })
 
@@ -554,7 +554,7 @@ describe('SubmitDialog', () => {
       await switchMemory(wrapper, true)
 
       expect(wrapper.find('.memory-note').text()).toBe(
-        'Adds the guest RAM in disk space and several minutes of processing.',
+        'Adds the guest RAM in disk space and a few seconds of processing.',
       )
     })
 
