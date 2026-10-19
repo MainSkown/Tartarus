@@ -1,0 +1,43 @@
+
+Data Collector Set                      Type                          Status
+-------------------------------------------------------------------------------
+Circular Kernel Context Logger          Trace                         Running 
+Eventlog-Security                       Trace                         Running 
+CimFSUnionFS-Filter                     Trace                         Running 
+DiagLog                                 Trace                         Running 
+Diagtrack-Listener                      Trace                         Running 
+EventLog-Application                    Trace                         Running 
+EventLog-Microsoft-Windows-Sysmon-Operational Trace                         Running 
+EventLog-System                         Trace                         Running 
+FilterMgr-Logger                        Trace                         Running 
+LwtNetLog                               Trace                         Running 
+Microsoft-Windows-Rdp-Graphics-RdpIdd-Trace Trace                         Running 
+NetCore                                 Trace                         Running 
+NtfsLog                                 Trace                         Running 
+RadioMgr                                Trace                         Running 
+8696EAC4-1288-4288-A4EE-49EE431B0AD9    Trace                         Running 
+ReFSLog                                 Trace                         Running 
+UBPM                                    Trace                         Running 
+WdiContextLog                           Trace                         Running 
+WiFiSession                             Trace                         Running 
+ECCB175F-1EB2-43DA-BFB5-A8D58A40A4D7    Trace                         Running 
+SleepStudyTraceSession                  Trace                         Running 
+F589D420-8B9A-40A2-95A8-DBB27ED17997    Trace                         Running 
+BE235AAC-AC9D-4DDC-9FA6-D4C37AF837B7    Trace                         Running 
+D425B399-4B71-4151-8DAF-413F92A75EC3    Trace                         Running 
+CldFltLog                               Trace                         Running 
+MpWppTracing-20261018-224138-00000003-fffffffeffffffff Trace                         Running 
+SYSMON TRACE                            Trace                         Running 
+ScreenOnPowerStudyTraceSession          Trace                         Running 
+WINNETESP                               Trace                         Running 
+SHS-10192026-004157-7-1ff               Trace                         Running 
+UpdateSessionOrchestration              Trace                         Running 
+MoUxCoreWorker                          Trace                         Running 
+WinDiag-Realtime-Session                Trace                         Running 
+WindowsUpdate_trace_log                 Trace                         Running 
+ETW_AMSI                                Trace                         Running 
+ETW_DNS                                 Trace                         Running 
+ETW_KernelNetwork                       Trace                         Running 
+WMI_ETW                                 Trace                         Running 
+
+The command completed successfully.

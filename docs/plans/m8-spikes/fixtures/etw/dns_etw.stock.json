@@ -1,0 +1,16 @@
+{"QueryType": "Query", "ProcessId": 800, "ThreadId": 2140, "QueryName": "etw-dns-one.example.com", "DNS Server": "192.168.150.1"}
+{"QueryType": "Response", "ProcessId": 800, "ThreadId": 2140, "QueryName": "etw-dns-one.example.com"}
+{"QueryType": "Query", "ProcessId": 800, "ThreadId": 2140, "QueryName": "etw-dns-two.example.org", "DNS Server": "192.168.150.1"}
+{"QueryType": "Response", "ProcessId": 800, "ThreadId": 2140, "QueryName": "etw-dns-two.example.org"}
+{"QueryType": "Query", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com", "DNS Server": "192.168.150.1"}
+{"QueryType": "Response", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com"}
+{"QueryType": "Query", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com", "DNS Server": "192.168.150.1"}
+{"QueryType": "Response", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com"}
+{"QueryType": "Query", "ProcessId": 800, "ThreadId": 3328, "QueryName": "settings-win.data.microsoft.com", "DNS Server": "192.168.150.1"}
+{"QueryType": "Response", "ProcessId": 800, "ThreadId": 3328, "QueryName": "settings-win.data.microsoft.com"}
+{"QueryType": "Query", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com", "DNS Server": "192.168.150.1"}
+{"QueryType": "Response", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com"}
+{"QueryType": "Query", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com", "DNS Server": "192.168.150.1"}
+{"QueryType": "Response", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com"}
+{"QueryType": "Query", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com", "DNS Server": "192.168.150.1"}
+{"QueryType": "Response", "ProcessId": 800, "ThreadId": 2140, "QueryName": "www.msftconnecttest.com"}

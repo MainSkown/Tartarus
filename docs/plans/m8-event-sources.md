@@ -8,7 +8,19 @@ interface; none writes its own copy of the ECS helpers. The only new screen is t
 ## Status
 
 Planned 2026-10-18 from the [finish line](finish-line.md#m8-more-event-sources-and-defenders-verdict) and a read of
-CAPE's own modules in the `tartarus-cape` image. Nothing built yet.
+CAPE's own modules in the `tartarus-cape` image. **The four spikes ran 2026-10-18 and 19** (findings and fixtures in
+[m8-spikes/](m8-spikes/)); nothing is built yet.
+
+| Spike | Outcome |
+|---|---|
+| [S1 Sysmon](m8-spikes/S1-findings.md) | **Go, route B.** CAPE's own `sysmon` auxiliary is broken on a fresh guest (it clears the log before installing). Sysmon comes from the guest build; a Tartarus auxiliary exports the log to `sysmon/sysmon.xml`. The normaliser reads that XML with `iterparse`, applies `guest_clock_offset` and filters Windows background noise (85 to 99% of events). A tighter Sysmon config is proposed. Open: score impact on long interactive runs (n=4 is too few). |
+| [S4 Defender](m8-spikes/S4-findings.md) | **Go.** A guest-side module cannot collect it (Defender kills the analyzer before modules start), so collection is a **host-side** CAPE auxiliary that runs the export through the guest agent; it replaces S1's guest module (one module, a channel table, Sysmon and Defender). Verdict from events 1116/1117; `PPLinject.exe` is detected on every Defender-on run and must be excluded; clamp the sample's snapshot-clock 1116 to the analysis start. |
+| [S3 Memory](m8-spikes/S3-findings.md) | **Go: dump plus findings.** 4.0 GiB per analysis, ELF core, no effect on the analysis. Volatility3 runs from the guest-control service (not CAPE's `memory.py`, which adds ~150 s and leaks handles), `--offline`, `--pid` from the analysis's own processes, per-build ISF in `data/symbols`, generated at registration. `netscan` stays out. The form field `memory=1` is right; `options=memory=1` is not. New: the backend disk check before submit, and dump retention. |
+| [S2 ETW](m8-spikes/S2-findings.md) | **Dropped from v1.** It runs (the wheel works under the 32-bit Python), but DNS and network add nothing over Sysmon EID 22/3 and the pcap, AMSI gave no events, and only `wmi_etw` is usable. If WMI is wanted later: ship `etw/` in the analyzer, enable `wmi_etw` only. Add a `WmiEvent` rule to the Sysmon config instead. |
+
+Found on the way, for later milestones: the cape container is **not offline** (`tartarus-internal` is not `internal: true`;
+M11 security review); a clone's first reconfigure once failed with "guest did not start its reboot within 90s" and
+resumed fine (M10).
 
 ## What the CAPE source already tells us
 

@@ -1,0 +1,1 @@
+{"event_type": "udp_send_v4", "event_id": 42, "pid": "4", "protocol": "UDP", "direction": "outbound", "src_ip": "192.168.150.14", "src_port": "138", "dst_ip": "192.168.150.255", "dst_port": "138", "timestamp": "134368373039674917", "connid": "0"}
