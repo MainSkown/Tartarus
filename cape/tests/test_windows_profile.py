@@ -195,6 +195,7 @@ class TestProfileFile:
             "define",
             "install",
             "provision",
+            "symbols",
             "snapshot",
             "register",
         ]
@@ -208,6 +209,7 @@ class TestProfileFile:
             "install",
             "provision",
             "tamper-off",
+            "symbols",
             "snapshot",
             "register",
         ]
@@ -221,6 +223,7 @@ class TestProfileFile:
             "define",
             "reconfigure",
             "defender-on",
+            "symbols",
             "snapshot",
             "register",
         ]
@@ -230,6 +233,7 @@ class TestProfileFile:
             "define",
             "reconfigure",
             "tamper-off",
+            "symbols",
             "snapshot",
             "register",
         ]
@@ -721,6 +725,41 @@ class TestDesktopOnPausableSteps:
         pausable = {"tamper-off", "defender-on", "reconfigure", "install", "provision"}
         missing = [e["step"] for e in entries if e["step"] in pausable and not e.get("desktop")]
         assert missing == []
+
+
+class TestSymbolsStep:
+    """The step that makes the guest's Volatility3 symbol file (docs/plans/m8-spikes/Y-notes.md)."""
+
+    def test_it_runs_just_before_the_snapshot_in_every_pipeline_while_the_agent_still_answers(self):
+        profile = json.loads((PROFILE_DIR / "profile.json").read_text())
+        pipelines = [*profile["pipelines"]["build"].values(), profile["pipelines"]["clone"]]
+        for pipeline in pipelines:
+            names = [entry["step"] for entry in pipeline]
+            assert names[names.index("symbols") + 1] == "snapshot"
+
+    def test_it_asks_no_option_and_needs_no_desktop(self):
+        profile = json.loads((PROFILE_DIR / "profile.json").read_text())
+        entries = profile["pipelines"]["clone"] + profile["pipelines"]["build"]["installer"]
+        (symbols,) = [entry for entry in entries if entry["step"] == "symbols"][:1]
+        assert "when" not in symbols
+        assert not symbols.get("desktop")
+
+    def test_its_timeout_is_above_the_time_it_gives_itself_so_it_can_never_fail_the_build(self):
+        profile = json.loads((PROFILE_DIR / "profile.json").read_text())
+        entry = next(e for e in profile["pipelines"]["clone"] if e["step"] == "symbols")
+        own_limit = re.search(r"SYMBOLS_TIMEOUT_S:-(\d+)", script_text("steps/symbols"))
+        assert entry["timeout_s"] > int(own_limit.group(1)) + 60
+
+    def test_it_is_an_executable_bash_script_with_strict_mode(self):
+        step = PROFILE_DIR / "steps" / "symbols"
+        assert os.access(step, os.X_OK)
+        assert step.read_text().splitlines()[0] == "#!/usr/bin/env bash"
+        assert "set -uo pipefail" in step.read_text()
+
+    def test_it_never_ends_with_a_failing_exit_code(self):
+        text = script_text("steps/symbols")
+        assert not re.search(r'\bfail "', text)
+        assert not re.search(r"^\s*exit [1-9]", text, re.MULTILINE)
 
 
 class TestRemoveGhostDrivesStep:

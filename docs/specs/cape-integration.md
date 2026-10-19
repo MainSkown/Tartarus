@@ -42,7 +42,7 @@ the entrypoint exports.
 | `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `[taskdelete] enabled = yes`, because `tasks/delete` answers "Task Deletion API is Disabled" by default; `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
 | `web.conf` | `[guacamole] enabled = yes` so CAPE records each guest's VNC port. `guacd` binds the internal address only. The backend uses `cape:4822` itself; CAPE's own Guacamole view is unused. |
 | `auxiliary.conf` | `[sniffer] interface = tt-guest`, and `[event_logs] enabled = yes` for the host-side [event logs module](#event-logs-module). The guest-side `[auxiliary_modules]` list and `sysmon_windows = no` are left alone: Sysmon's log is exported by the module, not by CAPE's own `sysmon` auxiliary (which clears the log before it installs). The ETW modules are dropped from v1 ([M8 plan](../plans/m8-event-sources.md)); `QemuScreenshots` is unchanged. Sysmon's events are a final-phase source with no live forwarder (decided 2026-10-17, [v1 open question 3](../features/tartarus-v1.md#open-questions)). |
-| `processing.conf`, `memory.conf` | **Deferred.** Volatility3 and its symbol tables are not installed yet. `virustotal` stays off (no data leaves the host). |
+| `processing.conf`, `memory.conf` | CAPE's own memory module stays off; Volatility3 is installed in CAPE's venv and run by the [control service](#the-control-service) instead ("Memory analysis"). `virustotal` stays off (no sample data leaves the host); the one outbound request is the symbol fetch, which sends only a PDB id ("Symbols"). |
 | `reporting.conf` | `jsondump` on (its default), `mongodb` off, and the `callback` module enabled with `url = http://backend:8000/internal/cape/callback`. The module runs after the report is written, sets the task to `reported` itself, and catches its own failures: an unreachable backend is logged and changes neither the task nor the report (checked with the backend stopped and with a 404). `scripts/verify-guest.sh` layers a temporary listener over it through `reporting.conf.d/callback.conf`; CAPE loads that later, and the script removes only that file. |
 
 ### Event logs module
@@ -100,6 +100,7 @@ must exist before it is registered, and a guest is unregistered before it is und
 | Other anti-VM gaps. | SeaBIOS keeps its "SeaBIOS (version …)" banner and some unused legacy `BXPC` ACPI blobs. | Accepted for now. pafish was meant to be run as information only; it is not built. |
 | **Unpinned inputs at build time.** | `kvm-qemu.sh` doesn't verify the QEMU tarball (gpg reports "No public key" and continues); CAPE's community signatures come from master; the Suricata rules are a snapshot. Guacamole and Cirros are pinned by sha256. | Pin or verify when hardening the build. |
 | `yara-python` comes from the wheel, not rebuilt with `--enable-cuckoo`/`magic` as `cape2.sh` does. Missing optional CAPE dependencies: httpreplay, regex, DIE, de4dot, Volatility3. `/opt/CAPEv2/.git` is removed, so `analysisinfo` logs an error. | Possible gaps in analysis output. | Check during M0b; fix what matters. |
+| **The cape container can reach the internet, and one request now uses that.** | `tartarus-internal` is not `internal: true`, so `cape` has a default route (found in S3). The symbol fetch (`POST /symbols`, the `symbols` build step) sends one HTTPS request to Microsoft's symbol server with only a kernel's GUID and age; no sample or guest data leaves, and a failure is logged without failing a build. | Accepted for M8. The M11 security review decides whether `cape` should lose its route; the ISF can then be made elsewhere and copied into `symbols/windows/`. |
 | **`privileged: true` is probably broader than needed.** | Reasoned, not tested: libvirt/QEMU need the devices `/dev/kvm`, `/dev/net/tun`, `/dev/vhost-net` and capabilities `NET_ADMIN`, `SYS_ADMIN`, `SYS_RESOURCE`, `IPC_LOCK`, with seccomp (and AppArmor on such hosts) unconfined; the rooter and tcpdump need `NET_ADMIN` and `NET_RAW`. | Try `cap_add` plus those devices later; it would drop host block devices, `SYS_MODULE`, `SYS_RAWIO` and `SYS_PTRACE`. |
 | The host auto-loads kernel modules on demand (`tap`, `tun`, `vhost_net`, `xt_*` and others). | They stay loaded until reboot and can't be unloaded without root. A host-side libvirt would load the same ones. | Accepted. `make verify-cape` prints them as `[INFO]`. |
 
@@ -179,7 +180,7 @@ should set the backend's URL in `reporting.conf`).
 
 | Need | Mechanism |
 |---|---|
-| Submit | `POST apiv2/tasks/create/file/` with `file`, `timeout`, `route`, `package`, `options` (the profile's interactive options, `memory=1` as chosen), `machine=<guest label>`, always sent. CAPE answers an unknown machine with HTTP 200 and `{"error": true, "error_value": "Machine 'x' does not exist..."}` and creates no task, so the backend reads `error`, not the status |
+| Submit | `POST apiv2/tasks/create/file/` with `file`, `timeout`, `route`, `package`, `options` (the profile's interactive options), `machine=<guest label>`, always sent, and further form fields from the guest's profile (`enforce_timeout` for Linux) and from the analysis (`memory=1` when it asked for a memory dump). `memory=1` is a **form field, never part of the `options` string**: `options=memory=1` was measured to take no dump ([S3](../plans/m8-spikes/S3-findings.md)). CAPE answers an unknown machine with HTTP 200 and `{"error": true, "error_value": "Machine 'x' does not exist..."}` and creates no task, so the backend reads `error`, not the status |
 | Status | `GET apiv2/tasks/status/{id}/`, polled every 2 s while active, plus the callback when reporting finishes |
 | Stop early | `POST http://cape-control:8002/tasks/{id}/finish` with `{"guest": "<name>"}` to the guest control service (bearer token, `tartarus-control` network). The guest network exists only inside the `cape` container, so the service does what the backend cannot: it looks up that guest's address, agent port and finish folder in its own record and profile (the backend never supplies an address, so there is nothing to validate and no path to inject) and asks the guest agent (`POST /mkdir`) to create `<finish folder>/<md5("cape-<task id>")>` (`C:\Windows\Temp` for Windows). CAPE's analyzer (`analyzer.py`, `analysis_loop`) ends the analysis as soon as a folder of that name exists in `%TMP%` or `%SystemRoot%\Temp`, then uploads its results as for a timeout; the agent's `mkdir` is `os.makedirs(exist_ok=True)`, so asking twice is harmless. It answers `200 {"finished": true}`, `502 {"error"}` when the agent is unreachable or refuses, `422` for a bad guest name, `400` for a task id that is not digits, `404` for an unknown guest. |
 | Extend | Interactive runs only, and not a CAPE feature. **Built in M7** ([M7 plan](../plans/m7-foundations.md), decision 5): the task is submitted with CAPE's maximum timeout (1200 s), and the backend ends the run at the analyst's deadline through the finish call. The deadline is the oldest `logs/*.bson` modification time plus the analyst's timeout, set once the monitor has started, and is capped at `started_at` + 1200 s, which keeps the backend ahead of CAPE's own timer (measured in S1: no earlier than `started_at` + 1222 s). `POST /analyses/{id}/extend` moves it later by up to 600 s at a time. |
@@ -216,7 +217,8 @@ off and the Docker socket is never mounted.**
   `DELETE /guests/{name}`, `POST /guests/{name}/check`, `POST /guests/{name}/clone`, `GET
   /guests/{name}/display`, `GET /guests/{name}/selftest/sample`, `POST /guests/{name}/selftest/checks`,
   `POST /builds`, `GET /builds/{id}` and `/log?tail=`, `POST /builds/{id}/resume|restart|continue|complete|cancel`,
-  `POST /tasks/{id}/finish`, and the memory routes `POST /memory/{id}/analyse` and `DELETE /memory/{id}/dump`. A refusal is `404` (unknown guest, build or profile), `409` (the current
+  `POST /tasks/{id}/finish`, the memory routes `POST /memory/{id}/analyse` and `DELETE /memory/{id}/dump`, and
+  `POST /symbols` (below). A refusal is `404` (unknown guest, build or profile), `409` (the current
   state refuses, with a message for the analyst), `422` (a parameter is wrong, with `fields`), or `400` for a
   guest name or build id that does not match its pattern; a sample that cannot be built is `500` and checks
   that cannot run `502`, each with its message; anything else is a generic `500` with the detail in the log.
@@ -236,6 +238,16 @@ The same engine is reachable from a shell: `docker compose exec cape guest-build
 wraps, with the `GUEST_*` variables of `.env`) starts a build through the running service and prints the log. A
 guest it builds is accepted without the backend's self-test, so `make verify-guest` is what proves it.
 
+**Memory dump (S3).** With the form field `memory=1` CAPE dumps the guest's RAM after the guest reports the run finished and before it
+stops the machine: libvirt's `coreDump` with `VIR_DUMP_MEMORY_ONLY`, written as `storage/analyses/<id>/memory.dmp` by `cape`. It is an
+ELF64 core file (`ET_CORE`, x86-64) that Volatility3 reads without conversion, never compressed, and as big as the guest's RAM:
+4,294,776,995 bytes (4.0 GiB) for a 4096 MB guest (`memballoon` none). The dump takes 1 to 2 s with the guest paused and does not change
+the analysis (same score, same signatures, same guest run time). CAPE skips the dump, logging `Not enough free disk space! Could not
+dump ram` and still ending the task `reported`, when the storage has less than `cuckoo.conf freespace` (50,000 MB) free, so the
+backend checks the room before it accepts an analysis that asks for one ([backend spec](backend.md)). CAPE's own `memory` processing
+module stays off: it scans all processes (136 to 154 s), cannot be limited to the sample's pids, and leaves `cape-processor` holding
+the dump open after it is deleted.
+
 **Memory analysis.** `POST /memory/{task_id}/analyse` runs Volatility3 (`cape/bin/memory_logic.py`, command line in
 `cape/bin/volatility.py`) on `storage/analyses/<id>/memory.dmp`, in place, as the `cape` user, with `--offline`
 and the ISF files under `/var/lib/libvirt/tartarus/symbols/windows/` (on the `guest-images` volume). It runs
@@ -247,6 +259,56 @@ missing symbols, is an entry in `errors`, never a download); `404` no dump, `409
 `vol` cannot be started, `500` the results cannot be written. `DELETE /memory/{task_id}/dump` removes the dump
 (`204`, `404`, `409` while it is being read): the backend has the storage read-only, so only this service can.
 Why Volatility runs here and not in CAPE's own memory module: [S3 findings](../plans/m8-spikes/S3-findings.md).
+When `windows.info` fails because no ISF matches the dump's kernel, `analyse` also reads the kernel's PDB id from
+Volatility's INFO log (`windows.info` is the only plugin run with `-v`; the line is the one
+`pdbutil.load_windows_symbol_table` logs in 2.28.2) and adds `"missing_symbols": {"guid": "...", "age": n}` to the
+`200` body and to `run.json`; the key is absent when symbols are fine or the id could not be read. That id is what
+`POST /symbols` needs.
+
+**Symbols (the one outbound connection of the memory pipeline).** Volatility needs an ISF per Windows kernel,
+made from the kernel's PDB, which only Microsoft's symbol server has. `cape/bin/symbols_logic.py` does it:
+`ensure_symbols(guid, age, symbols_dir, fetch, convert)` checks the id (32 hex digits and a 32-bit age, nothing
+else), builds `https://msdl.microsoft.com/download/symbols/ntkrnlmp.pdb/<GUID, upper case><age, hex>/ntkrnlmp.pdb`
+(the host and path are constants; no URL ever comes from outside), downloads it with a 50 MB cap and a 120 s
+limit, converts it with Volatility's own `pdbconv --file ... --pattern ntkrnlmp.pdb` as the `cape` user, checks
+that the result is the ISF of exactly that GUID and age, and writes
+`/var/lib/libvirt/tartarus/symbols/windows/ntkrnlmp-<GUID><age>.json.xz` (mode 0644) in one rename, so a failure
+leaves nothing behind and an existing valid file means no fetch at all. About 30 s the first time, 0.7 MB on disk.
+
+- **What leaves the host.** One HTTPS `GET` to `msdl.microsoft.com`, which carries the kernel's GUID and age in the
+  URL and nothing of the guest or the sample. The symbol server answers with a redirect to Microsoft's content
+  host; a redirect is followed only to `https` and to `*.microsoft.com` or `*.blob.core.windows.net`, and refused
+  (with the host named) anywhere else. Volatility itself still runs `--offline`.
+- **The container is not offline today.** `tartarus-internal` is a plain bridge (not `internal: true`), so this
+  request works because the container has a default route. The M11 security review decides whether the cape
+  container should lose it; if it does, an operator makes the file where there is a network and copies it into
+  `symbols/windows/`, and nothing else changes.
+- **Two callers.** `POST /symbols` with `{"guid": "<32 hex>", "age": <number or up to 8 hex digits>}` and the bearer
+  token: `200 {"file": "windows/ntkrnlmp-<GUID><age>.json.xz", "created": true|false}`, `400` for an id that is
+  not one (or a body with other keys), `502 {"error": "..."}` when the file could not be made (no network, the
+  server has no PDB for the build or is down, a download over the cap, a redirect elsewhere, the converter
+  failed), each with a readable message. It takes about 30 s the first time. The Windows profile's `symbols`
+  build step is the other caller.
+- **The build step.** `symbols` is a step of the Windows profile (`guest/profiles/windows/steps/symbols`) that
+  runs after the last Windows step and just before `snapshot`, in the build and the clone pipelines: the guest is
+  still running there and its agent answers, and `snapshot` is what shuts it down. It fetches the guest's own
+  `C:\Windows\Sysnative\ntoskrnl.exe` through the agent (the agent is 32-bit, so `System32` would be
+  redirected), reads the PDB name, GUID and age from its debug directory (`steps/lib/pdb_id.py`, standard library
+  only), and runs `guest-symbols ensure <GUID> <age>`, which is `symbols_logic` called directly: a step is a process
+  of its own with a stripped environment and no token, so it cannot call the route. **It never fails the build**:
+  without a network, with Microsoft's server down, or with an image it cannot read it logs
+  `symbols: unavailable (reason)` and ends well. The guest then has no memory findings and `analyse` says
+  `no symbols for this Windows build`. A clone of a guest with the same build finds the file and fetches nothing.
+- **Fixing a guest built before this existed, or after a failed fetch.** Run `analyse` on a task with a dump, read
+  `missing_symbols` in its answer, and post that id (the age is a number there):
+
+  ```sh
+  docker compose exec cape sh -c 'curl -fsS -X POST http://cape-control:8002/symbols \
+    -H "Authorization: Bearer $GUEST_CONTROL_TOKEN" -H "Content-Type: application/json" \
+    -d "{\"guid\": \"24DE61DB3A27C5B383DFF181CB51F7E1\", \"age\": 1}"'
+  ```
+
+  then analyse the dump again. Not tested against a real guest yet (the real-run proof of M8 does it).
 
 ### Several guests
 
@@ -338,7 +400,7 @@ Windows Security were seen (see Defender below).
 ### Build steps (an installer build)
 
 Each step is shown with progress and a log tail; the pipeline is `preflight`, `fetch`, `define`, `install`,
-`provision`, `tamper-off` (only when Defender is off), `snapshot`, `register`, and then the backend's
+`provision`, `tamper-off` (only when Defender is off), `symbols`, `snapshot`, `register`, and then the backend's
 self-test. Steps are idempotent, so a failed build can be resumed at the step that failed or restarted from
 the first.
 
@@ -370,17 +432,19 @@ the first.
    then copies the log off the guest and removes the installers; the working folder keeps the agent, the done
    marker and the log.
 6. **tamper-off** (Defender off only): see Defender below.
-7. **snapshot:** ACPI shutdown (never `virsh destroy`, which loses unflushed writes), boot the clean guest,
+7. **symbols** (never fails the build): makes the Volatility3 symbol file of the guest's kernel while the agent
+   still answers; see "Symbols" under the memory analysis above.
+8. **snapshot:** ACPI shutdown (never `virsh destroy`, which loses unflushed writes), boot the clean guest,
    wait for the agent on `:8000`, idle 60 s, then take the external disk-and-memory snapshot
    `tartarus-clean` and power off. Revert takes about 1.6 s.
-8. **register:** the engine writes `guests.conf`, restarts `cape`, and checks `machines/list`. The guest is
+9. **register:** the engine writes `guests.conf`, restarts `cape`, and checks `machines/list`. The guest is
    `testing`.
-9. **self-test** (the backend's, on the new guest): see Self-test below.
+10. **self-test** (the backend's, on the new guest): see Self-test below.
 
 ### Clone steps
 
 `[CLONE]` makes a new guest from a `ready` one in minutes instead of a full build: `preflight`, `copy`,
-`define`, `reconfigure`, `tamper-off` or `defender-on` (by the Defender option), `snapshot`, `register`,
+`define`, `reconfigure`, `tamper-off` or `defender-on` (by the Defender option), `symbols`, `snapshot`, `register`,
 then the same self-test. `preflight`, `define`, `snapshot` and `register` are the build's own step files.
 
 - **copy** takes the source's **base disk, never its snapshot**: the snapshot's memory image holds the

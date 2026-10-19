@@ -8,11 +8,20 @@ import sys
 from pathlib import Path
 
 import pytest
-from fixtures.volatility_output import BANNER, UNSATISFIED, failure, fixture_rows, success
+from fixtures.volatility_output import (
+    BANNER,
+    KERNEL_GUID,
+    UNSATISFIED,
+    failure,
+    fixture_rows,
+    missing_symbols_log,
+    success,
+)
 from volatility import (
     NO_SYMBOLS,
     VOLATILITY_COMMAND,
     CommandResult,
+    MissingSymbols,
     Volatility,
     VolatilityUnavailableError,
     run_command,
@@ -208,3 +217,70 @@ def test_the_real_runner_does_not_read_the_services_stdin():
     result = run_command([sys.executable, "-c", "import sys; print(repr(sys.stdin.read()))"], 10)
 
     assert result.stdout == "''\n"
+
+
+def test_a_verbose_command_asks_for_the_info_log_and_only_then():
+    quiet = volatility(FakeRunner()).command("windows.info")
+    verbose = volatility(FakeRunner()).command("windows.info", verbose=True)
+
+    assert "-v" not in quiet
+    assert verbose[:3] == [VOLATILITY_COMMAND, "-q", "-v"]
+    assert [word for word in verbose if word != "-v"] == quiet
+
+
+def missing_symbols_run(stderr: str, *, verbose: bool = True):
+    runner = FakeRunner(failure(stdout=UNSATISFIED, stderr=BANNER + stderr))
+    return volatility(runner).run("windows.info", 60, verbose=verbose)
+
+
+def test_missing_symbols_carry_the_kernels_guid_and_age_volatility_logged():
+    ran = missing_symbols_run(missing_symbols_log())
+
+    assert ran.error == NO_SYMBOLS
+    assert ran.missing_symbols == MissingSymbols(KERNEL_GUID, 1)
+
+
+def test_the_age_is_the_decimal_number_after_the_32_digit_guid():
+    ran = missing_symbols_run(missing_symbols_log(age=12))
+
+    assert ran.missing_symbols == MissingSymbols(KERNEL_GUID, 12)
+
+
+def test_the_guid_is_upper_cased():
+    ran = missing_symbols_run(missing_symbols_log(guid=KERNEL_GUID.lower()))
+
+    assert ran.missing_symbols == MissingSymbols(KERNEL_GUID, 1)
+
+
+def test_the_log_line_may_be_on_either_stream():
+    runner = FakeRunner(failure(stdout=UNSATISFIED + missing_symbols_log(), stderr=BANNER))
+
+    ran = volatility(runner).run("windows.info", 60, verbose=True)
+
+    assert ran.missing_symbols == MissingSymbols(KERNEL_GUID, 1)
+
+
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "",
+        missing_symbols_log(pdb="ntkrnlpa.pdb"),
+        missing_symbols_log(guid=KERNEL_GUID[:-1]),
+        missing_symbols_log(guid="Z" * 32),
+        "The symbols can be downloaded later using pdbconv.py -p ntkrnlmp.pdb -g ../../etc1\n",
+    ],
+    ids=["no-line", "another-kernel-pdb", "short-guid", "not-hex", "not-a-guid"],
+)
+def test_a_dump_whose_kernel_id_cannot_be_read_just_has_no_id(stderr):
+    ran = missing_symbols_run(stderr)
+
+    assert ran.error == NO_SYMBOLS
+    assert ran.missing_symbols is None
+
+
+def test_a_plugin_that_works_has_no_missing_symbols_even_if_the_line_is_logged():
+    runner = FakeRunner(CommandResult(0, "[]", BANNER + missing_symbols_log()))
+
+    ran = volatility(runner).run("windows.info", 60, verbose=True)
+
+    assert ran.missing_symbols is None

@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Makes the Volatility3 symbol file of the guest's Windows kernel while its agent still answers, so a
+# memory dump of this guest can be analysed offline later. Reads the PDB id (name, GUID, age) out of
+# the guest's own ntoskrnl.exe and has `guest-symbols` fetch and convert that PDB, which is the one
+# outbound connection of the memory pipeline (the integration spec, "Memory analysis").
+#
+# Never fails the build: without a network, with Microsoft's server down or with an image it cannot
+# read, it logs `symbols: unavailable (reason)` and ends well. Memory findings then stay unavailable
+# for this guest and `analyse` says so. Idempotent: a file that exists is kept and nothing is fetched.
+set -uo pipefail
+# shellcheck source=lib/windows.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
+
+KERNEL_IMAGE=ntoskrnl.exe
+KERNEL_PDB=ntkrnlmp.pdb
+# The image lays the profiles and the commands side by side: <root>/profiles/windows and <root>/guest-symbols.
+SYMBOLS_COMMAND=$(cd "$TT_PROFILE_DIR/../.." && pwd)/guest-symbols
+# More than guest-symbols gives the fetch (120 s) and the conversion (300 s), less than the step's
+# own timeout in profile.json, which would fail the build.
+SYMBOLS_TIMEOUT_S=${SYMBOLS_TIMEOUT_S:-540}
+TIMED_OUT=124
+
+unavailable() {
+    log "symbols: unavailable ($*)"
+    exit 0
+}
+
+make_symbols() {
+    local pdb_id pdb_name guid age output code
+    pdb_id=$(python3 -I "$WINDOWS_STEPS_LIB/pdb_id.py" "$KERNEL_IMAGE_COPY" 2>&1) || unavailable "$pdb_id"
+    read -r pdb_name guid age <<<"$pdb_id"
+    [[ $pdb_name == "$KERNEL_PDB" ]] || unavailable "the kernel's PDB is $pdb_name, only $KERNEL_PDB is supported"
+    progress 50
+    output=$(timeout -k 10 "$SYMBOLS_TIMEOUT_S" "$SYMBOLS_COMMAND" ensure "$guid" "$age" 2>&1)
+    code=$?
+    case $code in
+        0) log "$output" ;;
+        "$TIMED_OUT") unavailable "timed out after ${SYMBOLS_TIMEOUT_S} s" ;;
+        *) [[ $output == "symbols: unavailable ("* ]] && log "$output" || unavailable "guest-symbols ended with exit code $code: $output" ;;
+    esac
+}
+
+step "Making the memory analysis symbol file"
+progress 5
+KERNEL_IMAGE_COPY=$TT_BUILD_DIR/$KERNEL_IMAGE
+trap 'rm -f "$KERNEL_IMAGE_COPY"' EXIT
+fetched=$(guest_agent retrieve-system "$KERNEL_IMAGE" "$KERNEL_IMAGE_COPY" 2>&1) ||
+    unavailable "the guest's kernel could not be read: $fetched"
+progress 30
+make_symbols
+progress 100
+exit 0

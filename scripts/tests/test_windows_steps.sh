@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Tests the Windows profile's own build steps (guest/profiles/windows/steps/{install,provision,
-# tamper-off,defender-on}) the way the build sequencer runs them: as executables with the TT_*
-# environment, from a copy of guest/ laid out like the image. The guest is a fake agent on loopback
-# (scripts/tests/fake_guest_agent.py); virsh and xorriso are stubs on PATH that record their calls.
+# tamper-off,defender-on,remove-ghost-drives,symbols}) the way the build sequencer runs them: as
+# executables with the TT_* environment, from a copy of guest/ laid out like the image. The guest
+# is a fake agent on loopback (scripts/tests/fake_guest_agent.py); virsh and xorriso are stubs on
+# PATH that record their calls.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -612,9 +613,122 @@ test_remove_ghost_drives_fails_when_the_agent_is_unreachable() {
     assert_status 1 && assert_contains "agent"
 }
 
+# --- symbols ---------------------------------------------------------------------------------------
+
+KERNEL_GUID=24DE61DB3A27C5B383DFF181CB51F7E1
+
+# A sandbox whose guest has a kernel image (the PE builder of the unit tests, with the kernel's own
+# PDB id) and whose `guest-symbols`, beside profiles/ as in the image, is a stub: $1 is its exit code, $2 the line it prints.
+symbols_sandbox() {
+    new_sandbox
+    mkdir -p "$SB/disk/Windows/Sysnative"
+    write_kernel_image "${3:-}"
+    write_symbols_stub "${1:-0}" "${2:-symbols: ready windows/ntkrnlmp-${KERNEL_GUID}1.json.xz (created)}"
+}
+
+write_kernel_image() { # [pdb name]
+    python3 -I -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+from pe_images import CODEVIEW, codeview, pe_image
+name = sys.argv[2] or "ntkrnlmp.pdb"
+sys.stdout.buffer.write(pe_image(entries=((CODEVIEW, codeview(name=name)),)))
+' "$REPO/cape/tests/fixtures" "$1" >"$SB/disk/Windows/Sysnative/ntoskrnl.exe"
+}
+
+write_symbols_stub() { # <exit code> <what it prints>
+    printf '%s\n' "$2" >"$SB/guest/output"
+    cat >"$SB/guest/guest-symbols" <<STUB
+#!/usr/bin/env bash
+echo "\$*" >"$STUB_DIR/symbols-args"
+cat "$SB/guest/output"
+exit $1
+STUB
+    chmod +x "$SB/guest/guest-symbols"
+}
+
+run_symbols_step() { run_step symbols "$@"; }
+
+test_symbols_reads_the_guests_kernel_and_makes_the_symbol_file_of_its_pdb_id() {
+    symbols_sandbox
+    run_symbols_step
+    assert_status 0 &&
+        assert_contains "LOG symbols: ready windows/ntkrnlmp-${KERNEL_GUID}1.json.xz (created)" &&
+        [[ $(cat "$STUB_DIR/symbols-args") == "ensure $KERNEL_GUID 1" ]] &&
+        requests_satisfy 'assert any(r["path"] == "/retrieve" and r["form"]["filepath"] == r"C:\Windows\Sysnative\ntoskrnl.exe" for r in requests), requests'
+}
+
+test_symbols_leaves_no_copy_of_the_kernel_behind() {
+    symbols_sandbox
+    run_symbols_step
+    assert_status 0 && [[ ! -e $SB/build/ntoskrnl.exe ]]
+}
+
+test_symbols_that_cannot_be_made_is_logged_and_does_not_fail_the_build() {
+    symbols_sandbox 1 "symbols: unavailable (the symbol server could not be reached (no DNS))"
+    run_symbols_step
+    assert_status 0 &&
+        assert_contains "symbols: unavailable (the symbol server could not be reached (no DNS))" &&
+        [[ ! -e $SB/build/ntoskrnl.exe ]]
+}
+
+test_symbols_without_a_kernel_on_the_guest_is_unavailable_not_a_failure() {
+    symbols_sandbox
+    rm "$SB/disk/Windows/Sysnative/ntoskrnl.exe"
+    run_symbols_step
+    assert_status 0 && assert_contains "symbols: unavailable (" && assert_contains "ntoskrnl.exe"
+}
+
+test_symbols_with_the_agent_unreachable_is_unavailable_not_a_failure() {
+    symbols_sandbox
+    stop_agent
+    run_symbols_step
+    assert_status 0 && assert_contains "symbols: unavailable ("
+}
+
+test_symbols_of_a_file_that_is_not_a_pe_image_is_unavailable_not_a_failure() {
+    symbols_sandbox
+    echo "not an image" >"$SB/disk/Windows/Sysnative/ntoskrnl.exe"
+    run_symbols_step
+    assert_status 0 && assert_contains "symbols: unavailable (not a PE image)" && [[ ! -e $STUB_DIR/symbols-args ]]
+}
+
+test_symbols_of_a_kernel_with_another_pdb_name_is_unavailable_and_asks_for_nothing() {
+    symbols_sandbox 0 "symbols: ready x" ntkrnlpa.pdb
+    run_symbols_step
+    assert_status 0 && assert_contains "symbols: unavailable (" && assert_contains "ntkrnlpa.pdb" && [[ ! -e $STUB_DIR/symbols-args ]]
+}
+
+test_symbols_without_the_command_installed_is_unavailable_not_a_failure() {
+    symbols_sandbox
+    rm "$SB/guest/guest-symbols"
+    run_symbols_step
+    assert_status 0 && assert_contains "symbols: unavailable ("
+}
+
+test_symbols_that_take_too_long_are_stopped_and_reported() {
+    symbols_sandbox
+    printf '#!/usr/bin/env bash\nsleep 30\n' >"$SB/guest/guest-symbols"
+    run_symbols_step SYMBOLS_TIMEOUT_S=1
+    assert_status 0 && assert_contains "symbols: unavailable (timed out after 1 s)"
+}
+
+test_symbols_output_cannot_be_taken_for_protocol_lines() {
+    symbols_sandbox 0 'ready
+PAUSE evil
+STEP evil'
+    run_symbols_step
+    assert_status 0 || return 1
+    if grep -qE '^(PAUSE|STEP evil|PROGRESS evil)' <<<"$OUTPUT"; then
+        echo "  a line of the command was taken for a protocol line:"
+        indent <<<"$OUTPUT"
+        return 1
+    fi
+}
+
 test_every_step_is_executable_and_is_bash_with_strict_mode() {
     local step
-    for step in install provision tamper-off defender-on remove-ghost-drives; do
+    for step in install provision tamper-off defender-on remove-ghost-drives symbols; do
         [[ -x $REPO/guest/profiles/windows/steps/$step ]] || { echo "  $step is not executable"; return 1; }
         head -n1 "$REPO/guest/profiles/windows/steps/$step" | grep -qx '#!/usr/bin/env bash' || { echo "  $step: wrong shebang"; return 1; }
         grep -q '^set -uo pipefail' "$REPO/guest/profiles/windows/steps/$step" || { echo "  $step: no strict mode"; return 1; }

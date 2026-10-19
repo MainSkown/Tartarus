@@ -73,6 +73,41 @@ def agent(guest):
     return guest_agent.GuestAgent(guest.url, WORK_DIR, timeout=5)
 
 
+def put_system_file(guest, name: str, content: bytes) -> None:
+    path = guest.root / "Windows" / "Sysnative" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+class TestSystemFiles:
+    def test_a_system_file_comes_back_byte_for_byte_from_the_64_bit_system_folder(
+        self, agent, guest
+    ):
+        put_system_file(guest, "ntoskrnl.exe", b"MZ\x90\x00 kernel")
+
+        assert agent.retrieve_system_file("ntoskrnl.exe") == b"MZ\x90\x00 kernel"
+
+    def test_the_request_names_sysnative_because_the_agent_is_32_bit(self, agent, guest):
+        put_system_file(guest, "ntoskrnl.exe", b"x")
+        agent.retrieve_system_file("ntoskrnl.exe")
+
+        (request,) = [r for r in guest.requests() if r["path"] == "/retrieve"]
+        assert request["form"]["filepath"] == "C:\\Windows\\Sysnative\\ntoskrnl.exe"
+
+    def test_a_missing_system_file_is_an_error_that_says_which(self, agent):
+        with pytest.raises(guest_agent.AgentError, match=r"ntoskrnl\.exe.*404"):
+            agent.retrieve_system_file("ntoskrnl.exe")
+
+    @pytest.mark.parametrize("name", ["..\\x", "a/b", "C:\\x", "", "a b", "x" * 65])
+    def test_a_name_that_is_not_a_plain_file_name_is_refused_without_asking_the_guest(
+        self, agent, guest, name
+    ):
+        with pytest.raises(guest_agent.AgentError, match="plain file name"):
+            agent.retrieve_system_file(name)
+
+        assert guest.requests() == []
+
+
 class TestReachingTheAgent:
     def test_it_answers_when_the_index_does(self, agent):
         assert agent.answers() is True
@@ -284,6 +319,28 @@ class TestTheCommandLine:
         target = tmp_path / "out.log"
         assert self.call(environment, "retrieve", "setup.log", str(target)).returncode == 0
         assert target.read_bytes() == b"one\r\ntwo\r\n"
+
+    def test_retrieve_system_writes_the_file_from_the_systems_folder(
+        self, environment, guest, tmp_path
+    ):
+        put_system_file(guest, "ntoskrnl.exe", b"kernel bytes")
+        target = tmp_path / "ntoskrnl.exe"
+
+        result = self.call(environment, "retrieve-system", "ntoskrnl.exe", str(target))
+
+        assert result.returncode == 0
+        assert target.read_bytes() == b"kernel bytes"
+
+    def test_retrieve_system_of_a_missing_file_exits_70_and_writes_nothing(
+        self, environment, tmp_path
+    ):
+        target = tmp_path / "ntoskrnl.exe"
+
+        result = self.call(environment, "retrieve-system", "ntoskrnl.exe", str(target))
+
+        assert result.returncode == guest_agent.AGENT_FAILED
+        assert "ntoskrnl.exe" in result.stderr
+        assert not target.exists()
 
     def test_run_exits_with_the_scripts_code_and_logs_its_lines(self, environment, guest):
         guest.behave(scripts={"tamper.ps1": {"stdout": "RESULT a=b\r\nEXITCODE 10\r\n"}})

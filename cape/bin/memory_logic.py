@@ -21,21 +21,23 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from finish_logic import TASK_ID_NOT_DIGITS, parse_task_id
-from volatility import PluginRun, Runner, Volatility, VolatilityUnavailableError, run_command
+from volatility import (
+    CAPE_ENVIRONMENT,
+    CAPE_USER,
+    SYMBOLS_DIRECTORY,
+    MissingSymbols,
+    PluginRun,
+    Runner,
+    Volatility,
+    VolatilityUnavailableError,
+    run_command,
+)
 
 STORAGE_DIRECTORY = Path("/opt/CAPEv2/storage")
-# On the `guest-images` volume next to the guest registry, so it survives `docker compose down`;
-# Volatility looks for ISF files in its `windows/` subdirectory.
-SYMBOLS_DIRECTORY = Path("/var/lib/libvirt/tartarus/symbols")
 PLUGIN_TIMEOUT_SECONDS = 120.0
 OVERALL_TIMEOUT_SECONDS = 300.0
 ANALYSIS_FILE_MODE = 0o644
 ANALYSIS_DIRECTORY_MODE = 0o755
-
-CAPE_USER = "cape"
-# All that `vol` gets: the service's own environment holds the bearer token. HOME is where
-# Volatility keeps its identifier cache.
-CAPE_ENVIRONMENT = {"HOME": "/home/cape", "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"}
 
 PROBE_PLUGIN = "windows.info"
 CONTEXT_PLUGINS = ("windows.pslist", "windows.cmdline")
@@ -72,6 +74,7 @@ class Scan:
     pids: list[int]
     runs: dict[str, PluginRun]
     skipped: dict[str, str]
+    missing_symbols: MissingSymbols | None = None
 
 
 def in_container(log: Callable[[str], None]) -> "MemoryAnalyser":
@@ -171,11 +174,12 @@ class MemoryAnalyser:
 
     def _scan(self, volatility: Volatility, pids: list[int]) -> Scan:
         deadline = self.clock() + self.overall_timeout
-        probe = self._run(volatility, PROBE_PLUGIN, deadline)
+        probe = self._run(volatility, PROBE_PLUGIN, deadline, verbose=True)
         plugins = (*CONTEXT_PLUGINS, *PER_PROCESS_PLUGINS)
         if probe.error:
             failed = PluginRun(None, 0.0, probe.error)
-            return Scan(probe.version, None, pids, dict.fromkeys(plugins, failed), {})
+            runs = dict.fromkeys(plugins, failed)
+            return Scan(probe.version, None, pids, runs, {}, probe.missing_symbols)
         runs: dict[str, PluginRun] = {}
         skipped: dict[str, str] = {}
         for plugin in plugins:
@@ -187,14 +191,20 @@ class MemoryAnalyser:
         return Scan(probe.version, symbols_file(probe.rows or []), pids, runs, skipped)
 
     def _run(
-        self, volatility: Volatility, plugin: str, deadline: float, pids: Sequence[int] = ()
+        self,
+        volatility: Volatility,
+        plugin: str,
+        deadline: float,
+        pids: Sequence[int] = (),
+        *,
+        verbose: bool = False,
     ) -> PluginRun:
         remaining = deadline - self.clock()
         if remaining <= 0:
             return PluginRun(
                 None, 0.0, f"the overall time limit of {self.overall_timeout:g} s was reached"
             )
-        return volatility.run(plugin, min(self.plugin_timeout, remaining), pids)
+        return volatility.run(plugin, min(self.plugin_timeout, remaining), pids, verbose=verbose)
 
     def _write(self, task_id: int, scan: Scan, dump_bytes: int) -> None:
         folder = self._analysis(task_id) / "memory"
@@ -255,6 +265,10 @@ def _plugin_entries(scan: Scan) -> dict[str, dict[str, Any]]:
     return entries
 
 
+def _missing_symbols_entry(scan: Scan) -> dict[str, Any]:
+    return {"missing_symbols": scan.missing_symbols.to_json()} if scan.missing_symbols else {}
+
+
 def _run_json(scan: Scan, dump_bytes: int) -> dict[str, Any]:
     return {
         "volatility": scan.version,
@@ -262,6 +276,7 @@ def _run_json(scan: Scan, dump_bytes: int) -> dict[str, Any]:
         "pids": scan.pids,
         "plugins": _plugin_entries(scan),
         "symbols": scan.symbols,
+        **_missing_symbols_entry(scan),
     }
 
 
@@ -272,6 +287,7 @@ def _summary(scan: Scan, seconds: float) -> dict[str, Any]:
         "errors": {plugin: entry["error"] for plugin, entry in entries.items() if entry["error"]},
         "seconds": seconds,
         "pids": scan.pids,
+        **_missing_symbols_entry(scan),
     }
 
 

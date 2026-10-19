@@ -1,0 +1,27 @@
+#!/usr/bin/python3
+"""Makes the Volatility3 symbol file of a Windows kernel: `guest-symbols ensure GUID AGE`.
+
+Run by the Windows profile's `symbols` build step, which is a process of its own with a stripped
+environment (no control token), so it cannot call `POST /symbols`; this is the same logic
+(symbols_logic.py), called directly. Prints one line, `symbols: ready ...` or
+`symbols: unavailable (reason)`, and exits 0, 1 (could not be made) or 2 (bad usage or id).
+"""
+
+import os
+import sys
+from typing import TextIO
+
+# `python3 -I` does not put the script's directory on the path.
+sys.path[:0] = [os.path.dirname(os.path.realpath(__file__))]
+
+from symbols_logic import SymbolStore, command_line, in_container  # noqa: E402
+
+
+def main(argv: list[str], store: SymbolStore | None = None, out: TextIO = sys.stdout) -> int:
+    status, line = command_line(argv, store or in_container())
+    out.write(f"{line}\n")
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

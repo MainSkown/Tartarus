@@ -7,6 +7,7 @@ scripts to upload):
     guest_agent.py answers                      exit 0 if the agent answers, else 1
     guest_agent.py exists NAME                  exit 0 if NAME is in the work folder, else 1
     guest_agent.py retrieve NAME LOCAL_FILE     copy NAME from the work folder
+    guest_agent.py retrieve-system NAME LOCAL_FILE   copy NAME from the 64-bit Windows system folder
     guest_agent.py run SCRIPT [--with FILE]... [--arg NAME=VALUE]... [--async]
 
 SCRIPT is a file name in the profile folder, or a path inside it (`selftest/guest-facts.ps1`): the
@@ -44,6 +45,9 @@ DRIVER_NAME = "run.ps1"
 # The agent's PowerShell is 32-bit; the 64-bit one is reached through Sysnative. Slash paths,
 # because the agent splits the command line like a POSIX shell, which eats backslashes.
 POWERSHELL = "C:/Windows/Sysnative/WindowsPowerShell/v1.0/powershell.exe"
+# The agent is 32-bit, so `System32` is redirected for it to the 32-bit folder; `Sysnative` is the
+# real 64-bit one, where the kernel is.
+SYSTEM_DIR = "C:\\Windows\\Sysnative"
 EXIT_CODE_LINE = re.compile(r"EXITCODE (-?\d+)\s*")
 RESULT_LINE = re.compile(r"\s*RESULT ([^=\s]+)=(.*)")
 PLAIN_FILE_NAME = re.compile(r"[A-Za-z0-9_.-]{1,64}")
@@ -148,6 +152,19 @@ class GuestAgent:
         )
         if status != HTTPStatus.OK:
             raise AgentError(f"could not fetch {name} from the guest (agent answered {status})")
+        return body
+
+    def retrieve_system_file(self, name: str) -> bytes:
+        """A file of the 64-bit system folder (the kernel, for its symbol id), by plain name."""
+        if not PLAIN_FILE_NAME.fullmatch(name):
+            raise AgentError(f"'{name}' is not a plain file name")
+        status, body = self._post(
+            "/retrieve", {"filepath": f"{SYSTEM_DIR}\\{name}"}, timeout=RETRIEVE_TIMEOUT_S
+        )
+        if status != HTTPStatus.OK:
+            raise AgentError(
+                f"could not fetch {name} from the guest's system folder (agent answered {status})"
+            )
         return body
 
     def store(self, name: str, data: bytes) -> None:
@@ -304,6 +321,9 @@ def _parser() -> argparse.ArgumentParser:
     retrieve = commands.add_parser("retrieve")
     retrieve.add_argument("name")
     retrieve.add_argument("local_file", type=Path)
+    retrieve_system = commands.add_parser("retrieve-system")
+    retrieve_system.add_argument("name")
+    retrieve_system.add_argument("local_file", type=Path)
     run = commands.add_parser("run")
     run.add_argument("script")
     run.add_argument("--with", dest="with_files", action="append", default=[])
@@ -323,6 +343,9 @@ def main(argv: Sequence[str]) -> int:
             return 0 if agent.exists(options.name) else 1
         if options.command == "retrieve":
             options.local_file.write_bytes(agent.retrieve(options.name))
+            return 0
+        if options.command == "retrieve-system":
+            options.local_file.write_bytes(agent.retrieve_system_file(options.name))
             return 0
         return _run(agent, options)
     except AgentError as problem:

@@ -24,3 +24,18 @@ def success(plugin: str) -> CommandResult:
 
 def failure(returncode: int = 1, stdout: str = "", stderr: str = BANNER) -> CommandResult:
     return CommandResult(returncode, stdout, stderr)
+
+
+# The INFO line `pdbutil.load_windows_symbol_table` logs (volatility3 2.28.2) when the kernel's PDB
+# is found in the dump but no ISF matches; the age is appended to the GUID in decimal, as Volatility
+# prints it. Read from the wheel's source: no real dump with missing symbols has been run.
+KERNEL_GUID = "24DE61DB3A27C5B383DFF181CB51F7E1"
+
+
+def missing_symbols_log(
+    guid: str = KERNEL_GUID, age: int | str = 1, pdb: str = "ntkrnlmp.pdb"
+) -> str:
+    return (
+        f"INFO     volatility3.framework.symbols.windows.pdbutil: The symbols can be downloaded"
+        f" later using pdbconv.py -p {pdb} -g {guid}{age}\n"
+    )

@@ -8,7 +8,14 @@ import json
 
 import memory_logic
 import pytest
-from fixtures.volatility_output import success
+from fixtures.volatility_output import (
+    BANNER,
+    KERNEL_GUID,
+    UNSATISFIED,
+    failure,
+    missing_symbols_log,
+    success,
+)
 from test_control_http import AUTH, TOKEN, load_script, served
 from test_guest_control import FakeEngine
 from test_memory_logic import report_with_processes
@@ -124,3 +131,22 @@ def test_the_service_builds_the_real_analyser_for_the_container_by_default():
     assert analyser.runner.keywords["environment"] == memory_logic.CAPE_ENVIRONMENT
     assert set(memory_logic.CAPE_ENVIRONMENT) == {"HOME", "PATH", "LANG"}
     assert memory_logic.CAPE_ENVIRONMENT["HOME"] == "/home/cape"
+
+
+def test_analyse_of_a_dump_without_symbols_names_the_pdb_id_that_would_fix_it(storage, tmp_path):
+    def runner(command, timeout):
+        plugin = next(word for word in command if word.startswith("windows."))
+        if plugin == "windows.info":
+            return failure(stdout=UNSATISFIED, stderr=BANNER + missing_symbols_log())
+        return success(plugin)
+
+    analyser = memory_logic.MemoryAnalyser(
+        storage, tmp_path / "symbols", runner, log=lambda _m: None
+    )
+    handler = guest_control.make_handler(FakeEngine(), token=TOKEN, memory=analyser)
+    with served(handler) as client:
+        reply = client.request("POST", "/memory/7/analyse", headers=AUTH)
+
+    assert reply.status == 200
+    assert reply.json["missing_symbols"] == {"guid": KERNEL_GUID, "age": 1}
+    assert set(reply.json["errors"].values()) == {"no symbols for this Windows build"}

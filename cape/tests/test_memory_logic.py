@@ -12,7 +12,15 @@ import sys
 from pathlib import Path
 
 import pytest
-from fixtures.volatility_output import BANNER, UNSATISFIED, failure, fixture_rows, success
+from fixtures.volatility_output import (
+    BANNER,
+    KERNEL_GUID,
+    UNSATISFIED,
+    failure,
+    fixture_rows,
+    missing_symbols_log,
+    success,
+)
 from memory_logic import (
     ANALYSIS_FILE_MODE,
     AlreadyRunningError,
@@ -353,6 +361,44 @@ def test_missing_symbols_fail_every_plugin_the_same_way_and_nothing_else_runs(
     assert set(run["plugins"]) == set(PLUGINS)
     assert summary["errors"] == dict.fromkeys(PLUGINS, NO_SYMBOLS)
     assert sorted(file.name for file in memory_folder(storage).iterdir()) == ["run.json"]
+
+
+def test_only_the_probe_asks_volatility_for_its_info_log(analyser, runner):
+    analyser.analyse(7)
+
+    verbose = {runner.plugin_of(command): "-v" in command for command, _ in runner.calls}
+    assert verbose == {"windows.info": True, **dict.fromkeys(PLUGINS, False)}
+
+
+def test_missing_symbols_name_the_kernels_pdb_id_in_the_answer_and_in_run_json(
+    analyser, storage, runner
+):
+    runner.overrides["windows.info"] = failure(
+        stdout=UNSATISFIED, stderr=BANNER + missing_symbols_log(age=3)
+    )
+
+    summary = analyser.analyse(7)
+
+    expected = {"guid": KERNEL_GUID, "age": 3}
+    assert summary["missing_symbols"] == expected
+    assert run_json(storage)["missing_symbols"] == expected
+    assert summary["errors"] == dict.fromkeys(PLUGINS, NO_SYMBOLS)
+
+
+def test_missing_symbols_whose_id_cannot_be_read_say_so_without_an_id(analyser, storage, runner):
+    runner.overrides["windows.info"] = failure(stdout=UNSATISFIED)
+
+    summary = analyser.analyse(7)
+
+    assert "missing_symbols" not in summary
+    assert "missing_symbols" not in run_json(storage)
+
+
+def test_a_dump_that_has_its_symbols_carries_no_missing_symbols_key(analyser, storage):
+    summary = analyser.analyse(7)
+
+    assert "missing_symbols" not in summary
+    assert "missing_symbols" not in run_json(storage)
 
 
 def test_a_dump_volatility_cannot_open_fails_every_plugin_with_the_probes_reason(analyser, runner):

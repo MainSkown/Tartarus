@@ -159,6 +159,11 @@
           }
         },
         {
+          "step": "symbols",
+          "timeout_s": 900,
+          "weight": 2
+        },
+        {
           "step": "snapshot",
           "timeout_s": 600,
           "weight": 5
@@ -207,6 +212,11 @@
           "option": "defender",
           "value": true
         }
+      },
+      {
+        "step": "symbols",
+        "timeout_s": 900,
+        "weight": 2
       },
       {
         "step": "snapshot",
