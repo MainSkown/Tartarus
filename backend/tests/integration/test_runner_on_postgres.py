@@ -63,7 +63,12 @@ async def test_an_analysis_goes_from_queued_to_done_on_postgres(
     assert done.cape_task_id == 100
     assert (done.score, done.max_severity) == (7.5, Severity.HIGH)
     assert done.detected_families == ["emotet", "trickbot"]
-    assert done.summary == {**OUTCOME.summary, "lane_counts": {}}
+    assert done.summary == {
+        **OUTCOME.summary,
+        "lane_counts": {},
+        "defender": None,
+        "hidden_events": {},
+    }
     assert done.started_at == CAPE_STARTED_ON
     assert done.finished_at is not None
     assert reports.paths == [tmp_path / "analyses" / "100" / "reports" / "report.json"]

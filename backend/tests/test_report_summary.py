@@ -4,8 +4,9 @@ from typing import Any
 
 import pytest
 
+from app.analyses.defender import DefenderStatus
 from app.analyses.ports import ReportUnreadableError
-from app.analyses.summary import ReportSummary, read_report
+from app.analyses.summary import ReportSummary, process_count_of, read_report
 from app.db.models.analysis import Severity
 
 # Derived from a real CAPE run of the benign test sample (tests/samples), with the call lists,
@@ -157,3 +158,36 @@ def test_a_summary_read_from_a_report_has_no_lane_counts_until_the_events_are_in
     summary = ReportSummary.model_validate(read_report(TRIMMED_REPORT).summary)
 
     assert summary.lane_counts == {}
+
+
+def test_a_summary_stored_before_the_verdict_existed_still_validates() -> None:
+    stored_before_m8 = {"duration_s": 55, "process_count": 2, "lane_counts": {"api": 7}}
+
+    summary = ReportSummary.model_validate(stored_before_m8)
+
+    assert summary.defender is None
+    assert summary.hidden_events == {}
+
+
+def test_a_stored_defender_verdict_is_read_back_typed() -> None:
+    stored = {
+        "defender": {
+            "status": "removed",
+            "sample_removed": True,
+            "blocked_before_run": True,
+            "threats": [],
+        },
+        "hidden_events": {"windows-background": 12},
+    }
+
+    summary = ReportSummary.model_validate(stored)
+
+    assert summary.defender is not None
+    assert summary.defender.status is DefenderStatus.REMOVED
+    assert summary.hidden_events == {"windows-background": 12}
+
+
+def test_the_process_count_is_the_number_of_processes_the_report_lists() -> None:
+    assert process_count_of({"behavior": {"processes": [{}, {}, {}]}}) == 3
+    assert process_count_of({"behavior": {}}) == 0
+    assert process_count_of({}) == 0

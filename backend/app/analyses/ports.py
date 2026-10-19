@@ -6,11 +6,12 @@ fakes, and the sample store and the report reader implement them without importi
 
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.analyses.defender import DefenderVerdict
 from app.db.models.analysis import Severity
 from app.guest.schemas import Guest, GuestProfile
 
@@ -46,8 +47,16 @@ class IngestFailedError(Exception):
 
 @dataclass(frozen=True)
 class IngestResult:
+    """What an ingest learned. `defender` is None only when the ingester ran without a Defender
+    normaliser; with one it is always a verdict, `no_export` when the guest left no export.
+    `hidden_events` counts the Sysmon events left out as background, by reason; empty when
+    there was no Sysmon file.
+    """
+
     event_count: int
     lane_counts: dict[str, int]
+    defender: DefenderVerdict | None = None
+    hidden_events: dict[str, int] = field(default_factory=dict)
 
 
 class EventIngester(Protocol):

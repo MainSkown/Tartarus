@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.analyses.defender import DefenderStatus, DefenderVerdict
 from app.analyses.ports import (
     IngestFailedError,
     IngestResult,
@@ -26,7 +27,15 @@ REPORT_PATH = Path("/cape-storage/analyses/7/reports/report.json")
 OUTCOME = ReportOutcome(
     score=7.5, max_severity=None, detected_families=[], summary={"process_count": 2}
 )
-INDEXED = IngestResult(event_count=1204, lane_counts={"api": 900, "process": 300, "network": 4})
+REMOVED_SAMPLE = DefenderVerdict(
+    status=DefenderStatus.REMOVED, sample_removed=True, blocked_before_run=True, threats=[]
+)
+INDEXED = IngestResult(
+    event_count=1204,
+    lane_counts={"api": 900, "process": 300, "network": 4},
+    defender=REMOVED_SAMPLE,
+    hidden_events={"windows-background": 3000, "cape-tooling": 12},
+)
 
 
 async def reported_analysis(session_factory: Factory, cape: FakeCape, reports: FakeReports) -> int:
@@ -51,8 +60,31 @@ async def test_a_finished_ingest_ends_done_with_the_event_count_and_lane_counts(
     assert done.status is AnalysisStatus.DONE
     assert done.phase is AnalysisPhase.FINAL
     assert done.event_count == 1204
-    assert done.summary == {"process_count": 2, "lane_counts": INDEXED.lane_counts}
+    assert done.summary == {
+        "process_count": 2,
+        "lane_counts": INDEXED.lane_counts,
+        "defender": REMOVED_SAMPLE.model_dump(mode="json"),
+        "hidden_events": {"windows-background": 3000, "cape-tooling": 12},
+    }
     assert ingester.requests == [(analysis_id, REPORT_PATH)]
+
+
+async def test_an_ingest_without_a_verdict_stores_none_and_nothing_hidden(
+    runner: Runner,
+    session_factory: Factory,
+    cape: FakeCape,
+    reports: FakeReports,
+    ingester: FakeIngester,
+) -> None:
+    ingester.result = IngestResult(event_count=3, lane_counts={"api": 3})
+    analysis_id = await reported_analysis(session_factory, cape, reports)
+
+    await runner.run_once()
+
+    done = await load(session_factory, analysis_id)
+    assert done.summary is not None
+    assert done.summary["defender"] is None
+    assert done.summary["hidden_events"] == {}
 
 
 async def test_a_failed_ingest_ends_report_failed_with_its_message_and_no_events(

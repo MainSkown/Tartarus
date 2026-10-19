@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
-from typing import Protocol, Self, Unpack
+from typing import Any, Protocol, Self, Unpack
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.analyses.deadline import MAX_RUN_S, initial_deadline
+from app.analyses.defender import DefenderVerdict
 from app.analyses.guest_choice import recorded_guest
 from app.analyses.monitor import first_monitor_log_time
 from app.analyses.ports import (
@@ -496,7 +497,12 @@ class Runner:
             score=outcome.score,
             max_severity=outcome.max_severity,
             detected_families=outcome.detected_families,
-            summary={**outcome.summary, "lane_counts": indexed.lane_counts},
+            summary={
+                **outcome.summary,
+                "lane_counts": indexed.lane_counts,
+                "defender": _dumped(indexed.defender),
+                "hidden_events": indexed.hidden_events,
+            },
             event_count=indexed.event_count,
         )
 
@@ -535,6 +541,10 @@ class Runner:
         self._consecutive_errors.pop(analysis_id, None)
         self._end_requested.discard(analysis_id)
         logger.info("Analysis %s ended as %s", analysis_id, changes["status"])
+
+
+def _dumped(verdict: DefenderVerdict | None) -> dict[str, Any] | None:
+    return None if verdict is None else verdict.model_dump(mode="json")
 
 
 def _is_interactive_run(analysis: Analysis) -> bool:

@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.analyses.defender import DefenderVerdict
 from app.analyses.ports import ReportOutcome, ReportUnreadableError
 from app.db.models.analysis import Severity
 
@@ -48,6 +49,8 @@ class ReportSummary(BaseModel):
     registry_keys_written: int = 0
     sample: SampleSummary = SampleSummary()
     lane_counts: dict[str, int] = {}
+    defender: DefenderVerdict | None = None
+    hidden_events: dict[str, int] = {}
 
 
 def read_report(path: Path) -> ReportOutcome:
@@ -83,7 +86,7 @@ def _summarise(report: dict[str, Any], signatures: list[SignatureSummary]) -> Re
     network = _section(report, "network")
     return ReportSummary(
         duration_s=_integer(report["info"].get("duration")),
-        process_count=_length(behavior.get("processes")),
+        process_count=process_count_of(report),
         signatures=signatures,
         techniques=_techniques(report.get("ttps")),
         network=NetworkCounts(
@@ -97,6 +100,10 @@ def _summarise(report: dict[str, Any], signatures: list[SignatureSummary]) -> Re
             name=_text(target_file.get("name")), type=_text(target_file.get("type"))
         ),
     )
+
+
+def process_count_of(report: dict[str, Any]) -> int:
+    return _length(_section(report, "behavior").get("processes"))
 
 
 def _signatures(report: dict[str, Any]) -> list[SignatureSummary]:

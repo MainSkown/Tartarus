@@ -165,10 +165,11 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
    turns it off, verified by `IsTamperProtected` and proved with the EICAR test string (kept on a
    Defender-off guest, removed on a Defender-on one, checked by every guest's self-test); a manual pause
    remains only as a fallback if the toggle cannot be found. See
-   [CAPE integration](../specs/cape-integration.md#defender). **Still open, and moved out of M6: report what
-   Defender did in an analysis.** When it is on, record its verdict (the Windows Defender operational event
-   log, and whether the sample file or its process was removed), so an analysis says "Defender removed the
-   sample" instead of showing an empty run. It touches the ingest and the normalisers, not the guest wizard.
+   [CAPE integration](../specs/cape-integration.md#defender). **Report what Defender did in an analysis: built in the backend in M8, the Overview chip still to come.**
+   When Defender is on, the ingest records its verdict (the Windows Defender operational event log, and
+   whether the sample file or its process was removed) as `summary.defender`
+   ([backend spec](../specs/backend.md)), so the analysis can say "Defender removed the sample" instead of
+   showing an empty run. It touches the ingest and the normalisers, not the guest wizard.
 6. **Default analysis timeout. Decided: 180 s.**
 7. **App icon. The user supplies the logo later;** wiring it in (favicon, PWA manifest, header) is part of the release (M11).
 8. **PDF report styling. Closed:** the print variant (white background, blue accents) shipped in M5.

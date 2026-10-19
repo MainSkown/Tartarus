@@ -5,9 +5,9 @@ and the events always agree. Definition: docs/plans/m8-spikes/S4-findings.md, "V
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any
 
+from app.analyses.defender import DefenderStatus, DefenderThreat, DefenderVerdict
 from app.ingest.defender_export import (
     Detection,
     Export,
@@ -26,82 +26,54 @@ from app.ingest.windows_events import WindowsEvent
 CONSEQUENTIAL_SCOPES = frozenset({Scope.SAMPLE, Scope.DROPPED})
 
 
-@dataclass(frozen=True)
-class Threat:
-    detection_id: str
-    threat_id: int | None
-    name: str | None
-    severity: int
-    category_id: int | None
-    scope: Scope
-    path: str | None
-    process: str | None
-    user: str | None
-    detected_at: str | None
-    action: str
-    outcome: Outcome
-    removed_at: str | None
-
-    def as_json(self) -> dict[str, Any]:
-        return {
-            "detection_id": self.detection_id,
-            "threat_id": self.threat_id,
-            "name": self.name,
-            "severity": self.severity,
-            "category_id": self.category_id,
-            "scope": self.scope.value,
-            "path": self.path,
-            "process": self.process,
-            "user": self.user,
-            "detected_at": self.detected_at,
-            "action": self.action,
-            "outcome": self.outcome.value,
-            "removed_at": self.removed_at,
-        }
-
-
 def defender_verdict(
     report: Mapping[str, Any], context: IngestContext, process_count: int
-) -> dict[str, Any]:
+) -> DefenderVerdict:
     """`process_count` is how many processes the run monitored: none means the sample never ran."""
-    export = read_export(report, context)
+    return verdict_of_export(read_export(report, context), process_count)
+
+
+def verdict_of_export(export: Export | None, process_count: int) -> DefenderVerdict:
+    """The verdict of an export already read, so the normaliser and the verdict share one read."""
     if export is None:
-        return _summary("no_export", [], process_count)
+        return _verdict(DefenderStatus.NO_EXPORT, [], process_count)
     threats = [
         _threat(detection, export)
         for detection in export.detections.values()
         if detection.scope in CONSEQUENTIAL_SCOPES
     ]
-    return _summary(_status(threats), threats, process_count)
+    return _verdict(_status(threats), threats, process_count)
 
 
-def _summary(status: str, threats: list[Threat], process_count: int) -> dict[str, Any]:
+def _verdict(
+    status: DefenderStatus, threats: list[DefenderThreat], process_count: int
+) -> DefenderVerdict:
     sample_removed = any(
         threat.scope is Scope.SAMPLE and threat.outcome is Outcome.REMOVED for threat in threats
     )
-    return {
-        "status": status,
-        "sample_removed": sample_removed,
-        "blocked_before_run": sample_removed and process_count == 0,
-        "threats": [threat.as_json() for threat in threats],
-    }
+    return DefenderVerdict(
+        status=status,
+        sample_removed=sample_removed,
+        blocked_before_run=sample_removed and process_count == 0,
+        threats=threats,
+    )
 
 
-def _status(threats: list[Threat]) -> str:
+def _status(threats: list[DefenderThreat]) -> DefenderStatus:
     if not threats:
-        return "clean"
+        return DefenderStatus.CLEAN
     outcomes = {threat.outcome for threat in threats}
     if Outcome.FAILED in outcomes:
-        return "failed"
+        return DefenderStatus.FAILED
     if Outcome.REMOVED in outcomes:
-        return "removed"
-    return "detected"
+        return DefenderStatus.REMOVED
+    return DefenderStatus.DETECTED
 
 
-def _threat(detection: Detection, export: Export) -> Threat:
+def _threat(detection: Detection, export: Export) -> DefenderThreat:
     lead = detection.lead
     path = file_path_of(lead)
-    return Threat(
+    return DefenderThreat(
         detection_id=detection.detection_id,
         threat_id=int_of(lead, "Threat ID"),
         name=text_of(lead, "Threat Name"),

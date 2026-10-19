@@ -42,18 +42,22 @@ class DefenderNormalizer:
     """Defender's detections become alerts; their actions become events linked to them.
 
     Time and clock rules: docs/plans/m8-spikes/S4-findings.md, "Normaliser mapping".
+
+    `export` is what the last `normalise` call read, kept so the analysis verdict comes from the
+    same read; like `ignored_tooling_detections` it belongs to one ingest at a time.
     """
 
     source = SOURCE
 
     def __init__(self) -> None:
         self.ignored_tooling_detections = 0
+        self.export: Export | None = None
 
     def normalise(
         self, report: Mapping[str, Any], context: IngestContext
     ) -> Iterator[dict[str, Any]]:
         self.ignored_tooling_detections = 0
-        export = read_export(report, context)
+        self.export = export = read_export(report, context)
         if export is None:
             return
         factory = EventFactory(context, source=SOURCE, source_file=SOURCE_FILE, module=MODULE)

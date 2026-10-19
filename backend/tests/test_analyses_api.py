@@ -641,6 +641,55 @@ async def test_an_analysis_is_read_with_its_summary(harness: Harness) -> None:
     assert body["summary"]["process_count"] == 2
 
 
+async def test_a_summary_stored_before_the_verdict_existed_is_served_with_empty_defaults(
+    harness: Harness,
+) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], summary={"process_count": 2, "lane_counts": {"api": 4}})
+
+    body = (await harness.client.get(f"/api/analyses/{created['id']}")).json()
+
+    assert body["summary"]["defender"] is None
+    assert body["summary"]["hidden_events"] == {}
+
+
+async def test_the_defender_verdict_and_hidden_event_counts_are_served_on_read_and_list(
+    harness: Harness,
+) -> None:
+    created = (await harness.upload()).json()
+    verdict = {
+        "status": "removed",
+        "sample_removed": True,
+        "blocked_before_run": True,
+        "threats": [
+            {
+                "detection_id": "{2F76116E-F537-4C6D-9327-BE2C781A26F9}",
+                "threat_id": 2147519003,
+                "name": "Virus:DOS/EICAR_Test_File",
+                "severity": 4,
+                "category_id": 42,
+                "scope": "sample",
+                "path": "C:\\Temp\\321\\eicar.com",
+                "process": None,
+                "user": None,
+                "detected_at": "2026-10-18T23:33:45.000Z",
+                "action": "quarantine",
+                "outcome": "removed",
+                "removed_at": None,
+            }
+        ],
+    }
+    hidden = {"windows-background": 3000}
+    await harness.set_state(created["id"], summary={"defender": verdict, "hidden_events": hidden})
+
+    read = (await harness.client.get(f"/api/analyses/{created['id']}")).json()
+    listed = (await harness.client.get("/api/analyses")).json()["items"][0]
+
+    for summary in (read["summary"], listed["summary"]):
+        assert summary["defender"] == verdict
+        assert summary["hidden_events"] == hidden
+
+
 async def test_a_submission_reports_its_place_in_the_queue(harness: Harness) -> None:
     first = (await harness.upload(name="a.exe")).json()
     second = (await harness.upload(content=OTHER_CONTENT, name="b.exe")).json()
@@ -1368,6 +1417,8 @@ def test_the_openapi_schema_describes_the_summary_and_the_upload() -> None:
 
     assert "ReportSummary" in schemas
     assert "lane_counts" in schemas["ReportSummary"]["properties"]
+    assert {"defender", "hidden_events"} <= set(schemas["ReportSummary"]["properties"])
+    assert {"DefenderVerdict", "DefenderThreat"} <= set(schemas)
     assert set(schemas["Body_analyses_create"]["properties"]) == {"file", "options"}
 
 

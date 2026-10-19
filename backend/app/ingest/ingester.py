@@ -7,8 +7,9 @@ from itertools import chain
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.analyses.defender import DefenderVerdict
 from app.analyses.ports import IngestFailedError, IngestResult, ReportUnreadableError
-from app.analyses.summary import load_report
+from app.analyses.summary import load_report, process_count_of
 from app.ingest.cape_network import CapeNetworkNormalizer
 from app.ingest.cape_signatures import CapeSignaturesNormalizer
 from app.ingest.capemon import CapemonNormalizer
@@ -19,6 +20,7 @@ from app.ingest.clock import (
     task_log_of,
 )
 from app.ingest.defender import DefenderNormalizer
+from app.ingest.defender_verdict import verdict_of_export
 from app.ingest.protocol import IngestContext, Normalizer
 from app.ingest.sigma import RulesProvider, can_match_a_rule, final_detections, no_rules
 from app.ingest.sysmon import SysmonNormalizer
@@ -66,6 +68,9 @@ class ReportIngester:
     event set after the normalisers are done and indexed after the other events, numbered
     with them. Only the events a rule could apply to are held back for that (a small part of
     a report, which is mostly API calls); the rest is streamed into the index as before.
+
+    Without injected normalisers every ingest builds its own, because a normaliser keeps what it
+    counted in itself and ingests of different analyses run at the same time.
     """
 
     def __init__(
@@ -76,7 +81,7 @@ class ReportIngester:
         rules: RulesProvider = no_rules,
     ) -> None:
         self._index = index
-        self._normalizers = normalizers if normalizers is not None else default_normalizers()
+        self._injected_normalizers = normalizers
         self._rules = rules
 
     async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
@@ -101,18 +106,25 @@ class ReportIngester:
     async def _fill(
         self, analysis_id: int, report: dict[str, Any], context: IngestContext
     ) -> IngestResult:
+        injected = self._injected_normalizers
+        normalizers = injected if injected is not None else default_normalizers()
         lane_counts: Counter[str] = Counter()
-        events = self._numbered(self._with_detections(report, context), lane_counts)
+        events = self._numbered(self._with_detections(normalizers, report, context), lane_counts)
         event_count = await self._index.bulk_index(analysis_id, events)
         await self._index.set_refresh_interval(analysis_id, SETTLED_REFRESH_INTERVAL)
         await self._index.refresh(analysis_id)
-        return IngestResult(event_count=event_count, lane_counts=dict(lane_counts))
+        return IngestResult(
+            event_count=event_count,
+            lane_counts=dict(lane_counts),
+            defender=_defender_verdict(normalizers, report),
+            hidden_events=_hidden_events(normalizers),
+        )
 
     def _with_detections(
-        self, report: dict[str, Any], context: IngestContext
+        self, normalizers: Iterable[Normalizer], report: dict[str, Any], context: IngestContext
     ) -> Iterator[dict[str, Any]]:
         """The sources' events as they come, then the Sigma alerts over all of them."""
-        merged = chain.from_iterable(n.normalise(report, context) for n in self._normalizers)
+        merged = chain.from_iterable(n.normalise(report, context) for n in normalizers)
         rules = list(self._rules())
         if not rules:
             return merged
@@ -136,6 +148,24 @@ class ReportIngester:
     async def _discard_partial_index(self, analysis_id: int) -> None:
         with contextlib.suppress(Exception):
             await self._index.drop(analysis_id)
+
+
+def _first_of[N: Normalizer](normalizers: Iterable[Normalizer], kind: type[N]) -> N | None:
+    return next((n for n in normalizers if isinstance(n, kind)), None)
+
+
+def _defender_verdict(
+    normalizers: Iterable[Normalizer], report: dict[str, Any]
+) -> DefenderVerdict | None:
+    defender = _first_of(normalizers, DefenderNormalizer)
+    if defender is None:
+        return None
+    return verdict_of_export(defender.export, process_count_of(report))
+
+
+def _hidden_events(normalizers: Iterable[Normalizer]) -> dict[str, int]:
+    sysmon = _first_of(normalizers, SysmonNormalizer)
+    return {} if sysmon is None else dict(sysmon.dropped)
 
 
 def _remembering(

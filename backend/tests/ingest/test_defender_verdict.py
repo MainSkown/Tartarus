@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Any
 
+from app.analyses.defender import DefenderStatus, DefenderVerdict
 from app.ingest.defender import DefenderNormalizer
-from app.ingest.defender_verdict import defender_verdict
+from app.ingest.defender_verdict import defender_verdict, verdict_of_export
 from tests.ingest.defender_cases import (
     DROPPED_STARTED,
     DROPPED_TASK,
@@ -24,7 +25,8 @@ from tests.ingest.defender_cases import (
 
 def verdict_of(root: Path | None, *, process_count: int = 0) -> dict[str, Any]:
     report = report_of(EICAR_TASK, EICAR_STARTED)
-    return defender_verdict(report, context_of(root, EICAR_STARTED), process_count)
+    verdict = defender_verdict(report, context_of(root, EICAR_STARTED), process_count)
+    return verdict.model_dump(mode="json")
 
 
 def test_eicar_sample_removed_before_the_run_is_blocked_before_run(tmp_path: Path) -> None:
@@ -67,7 +69,9 @@ def test_dropped_file_removal_is_a_threat_but_not_the_sample(tmp_path: Path) -> 
     root = copy_export(tmp_path, "defender-dropped-file.xml")
     report = report_of(DROPPED_TASK, DROPPED_STARTED, (DROPPER_IMAGE,))
 
-    verdict = defender_verdict(report, context_of(root, DROPPED_STARTED), process_count=1)
+    verdict = defender_verdict(
+        report, context_of(root, DROPPED_STARTED), process_count=1
+    ).model_dump(mode="json")
 
     assert verdict["status"] == "removed"
     assert verdict["sample_removed"] is False
@@ -160,8 +164,45 @@ def test_verdict_and_normaliser_agree_on_the_threats(tmp_path: Path) -> None:
     report = report_of(DROPPED_TASK, DROPPED_STARTED, (DROPPER_IMAGE,))
     context = context_of(root, DROPPED_STARTED)
 
-    verdict = defender_verdict(report, context, process_count=1)
+    verdict = defender_verdict(report, context, process_count=1).model_dump(mode="json")
     events = list(DefenderNormalizer().normalise(report, context))
 
     emitted = {event["tartarus"]["defender"]["detection_id"] for event in events}
     assert emitted == {threat["detection_id"] for threat in verdict["threats"]}
+
+
+def test_the_verdict_is_a_typed_model(tmp_path: Path) -> None:
+    root = copy_export(tmp_path, "defender-eicar-sample.xml")
+    report = report_of(EICAR_TASK, EICAR_STARTED)
+
+    verdict = defender_verdict(report, context_of(root, EICAR_STARTED), process_count=0)
+
+    assert isinstance(verdict, DefenderVerdict)
+    assert verdict.status is DefenderStatus.REMOVED
+    assert verdict.threats[0].detection_id == EICAR_DETECTION
+
+
+def test_no_export_is_a_verdict_of_its_own(tmp_path: Path) -> None:
+    report = report_of(EICAR_TASK, EICAR_STARTED)
+
+    verdict = defender_verdict(report, context_of(tmp_path, EICAR_STARTED), process_count=0)
+
+    assert verdict == DefenderVerdict(
+        status=DefenderStatus.NO_EXPORT, sample_removed=False, blocked_before_run=False, threats=[]
+    )
+
+
+def test_the_normaliser_keeps_the_export_it_read_so_the_verdict_needs_no_second_read(
+    tmp_path: Path,
+) -> None:
+    root = copy_export(tmp_path, "defender-eicar-sample.xml")
+    report = report_of(EICAR_TASK, EICAR_STARTED)
+    context = context_of(root, EICAR_STARTED)
+    normalizer = DefenderNormalizer()
+    assert normalizer.export is None
+
+    list(normalizer.normalise(report, context))
+
+    assert verdict_of_export(normalizer.export, process_count=0) == defender_verdict(
+        report, context, process_count=0
+    )
