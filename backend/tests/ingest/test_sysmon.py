@@ -10,8 +10,10 @@ from app.ingest.capemon import CapemonNormalizer
 from app.ingest.protocol import IngestContext
 from app.ingest.sysmon import SysmonNormalizer
 from tests.ingest.contract import check_normalizer_contract
+from tests.ingest.reports import call
 from tests.ingest.sysmon_cases import (
     BENIGN,
+    CMD,
     SHELL_HOST,
     WIDE_REPORT,
     analysis_with,
@@ -131,6 +133,83 @@ def test_a_sysmon_event_and_a_capemon_event_of_one_process_share_the_entity_id(
 
     assert fixture_events[2667]["process"]["entity_id"] == capemon_entity
     assert fixture_events[2686]["process"]["entity_id"] == capemon_entity
+
+
+CHILD_PID = 501
+CHILD_STARTED_AT = "2026-10-18 20:43:50.000"
+CHILD_START_ON_UTC = "2026-10-18T22:43:50.000Z"
+
+
+def process_created_eid1(pid: int, process_guid: str) -> str:
+    return event_xml(
+        1,
+        pid,
+        CHILD_STARTED_AT,
+        {
+            "UtcTime": CHILD_STARTED_AT,
+            "ProcessGuid": process_guid,
+            "ProcessId": pid,
+            "Image": CMD,
+            "CommandLine": CMD,
+            "ParentProcessGuid": guid(1),
+            "ParentProcessId": 500,
+            "ParentImage": BENIGN,
+            "ParentCommandLine": BENIGN,
+        },
+    )
+
+
+def sample_calling(api: str, child_pid: int, **fields: Any) -> dict[str, Any]:
+    started = call(api, {"ProcessId": str(child_pid), "ApplicationName": CMD}, **fields)
+    return monitored(500, BENIGN, calls=[started])
+
+
+def entity_ids_of_started(events: list[Event]) -> dict[int, str]:
+    return {e["process"]["pid"]: e["process"]["entity_id"] for e in events}
+
+
+def test_a_monitored_process_takes_capemons_start_in_its_entity_id(tmp_path: Path) -> None:
+    report = report_with(
+        sample_calling("CreateProcessInternalW", CHILD_PID),
+        monitored(CHILD_PID, CMD, first_seen="2026-10-18 20:43:51"),
+    )
+
+    events = hand_written(tmp_path, process_created_eid1(CHILD_PID, guid(2)), report=report)
+
+    assert entity_ids_of_started(events) == {CHILD_PID: "6:501@2026-10-18T22:43:51.000Z"}
+
+
+def test_a_child_capemon_only_saw_created_has_capemons_bare_entity_id(tmp_path: Path) -> None:
+    report = report_with(sample_calling("CreateProcessInternalW", CHILD_PID))
+
+    events = hand_written(tmp_path, process_created_eid1(CHILD_PID, guid(2)), report=report)
+
+    assert entity_ids_of_started(events) == {CHILD_PID: "6:501"}
+
+
+def test_the_bare_entity_id_holds_for_every_process_creating_api(tmp_path: Path) -> None:
+    report = report_with(sample_calling("NtCreateUserProcess", CHILD_PID))
+
+    events = hand_written(tmp_path, process_created_eid1(CHILD_PID, guid(2)), report=report)
+
+    assert entity_ids_of_started(events) == {CHILD_PID: "6:501"}
+
+
+def test_a_failed_create_call_does_not_make_the_child_capemons(tmp_path: Path) -> None:
+    report = report_with(sample_calling("CreateProcessInternalW", CHILD_PID, status=False))
+
+    events = hand_written(tmp_path, process_created_eid1(CHILD_PID, guid(2)), report=report)
+
+    assert entity_ids_of_started(events) == {CHILD_PID: f"6:501@{CHILD_START_ON_UTC}"}
+
+
+def test_a_process_capemon_knows_nothing_about_keeps_sysmons_start(tmp_path: Path) -> None:
+    other_pid = 502
+    report = report_with(sample_calling("CreateProcessInternalW", CHILD_PID))
+
+    events = hand_written(tmp_path, process_created_eid1(other_pid, guid(3)), report=report)
+
+    assert entity_ids_of_started(events) == {other_pid: f"6:502@{CHILD_START_ON_UTC}"}
 
 
 def test_eid_5_process_terminated(fixture_events: dict[int, Event]) -> None:

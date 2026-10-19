@@ -129,6 +129,15 @@ def created_child_pid(call: Call) -> int | None:
     return child_pid if call.succeeded and child_pid and child_pid > 0 else None
 
 
+def created_children(calls: Iterable[Call]) -> frozenset[int]:
+    """The pids the calls name as started children, as `process-created` derives them."""
+    return frozenset(
+        child_pid
+        for call in calls
+        if call.api in PROCESS_CREATING_APIS and (child_pid := created_child_pid(call)) is not None
+    )
+
+
 def _process_created(call: Call, run: DerivationRun) -> Derived | None:
     child_pid = created_child_pid(call)
     if child_pid is None:

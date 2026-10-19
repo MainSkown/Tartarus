@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from app.ingest.capemon_calls import read_processes
+from app.ingest.capemon_calls import calls_in_sequence_order, read_processes
+from app.ingest.capemon_rules import created_children
 from app.ingest.clock import guest_clock_offset
 from app.ingest.ecs import EventFactory, SourceRecord, truncate
 from app.ingest.protocol import IngestContext
@@ -71,7 +72,11 @@ class SysmonNormalizer:
             return
         path = context.analysis_dir.joinpath(*EXPORT)
         offset = guest_clock_offset(report, context.host_registrations)
-        sample = SampleProcesses(process.identity for process in read_processes(report, offset))
+        processes = read_processes(report, offset)
+        calls = calls_in_sequence_order(processes, offset, context.started_at)
+        sample = SampleProcesses(
+            (process.identity for process in processes), created_children(calls)
+        )
         ledger = ProcessLedger.read(read_windows_events(path), offset)
         noise = NoiseFilter(SampleTree(sample, ledger), ledger)
         kept = sorted(

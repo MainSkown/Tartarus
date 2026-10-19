@@ -384,7 +384,9 @@ streaming parse per pass, never the whole log in memory. `event.module: sysmon`,
 - **Process identity.** `process.*` comes from the event; `process.entity_id` is built by the same
   `process_fields` as capemon's, from the same `first_seen` start when the pid and image name are one capemon
   monitored, so a Sysmon and a capemon event of one process share an entity id (and `process.start` is then
-  capemon's). An unmonitored process takes its EID 1 time as start.
+  capemon's). A child capemon does not list but a monitored process's `CreateProcessInternalW` or
+  `NtCreateUserProcess` call names takes capemon's bare id (no start), as its `process-created` event does; a
+  process capemon knows nothing about takes its EID 1 time as start.
 - **Noise.** Windows background is 85 to 99% of a log, so only the sample's events are kept
   (`app/ingest/sysmon_noise.py`, rule in its docstring; reasons are counted on `SysmonNormalizer.dropped`):
   1. the acting process is in the sample's tree: a capemon-monitored process (pid + image name) or any

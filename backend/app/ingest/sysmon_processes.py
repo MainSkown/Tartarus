@@ -154,10 +154,17 @@ def _started_processes(
 
 
 class SampleProcesses:
-    """The processes capemon monitored, which is what the report calls the sample's tree."""
+    """The processes capemon monitored, which is what the report calls the sample's tree.
 
-    def __init__(self, identities: Iterable[ProcessIdentity]) -> None:
+    It also holds the children a monitored process's calls started that the report does not list:
+    capemon's `process-created` event gives those an entity id with no start.
+    """
+
+    def __init__(
+        self, identities: Iterable[ProcessIdentity], created_children: Iterable[int] = ()
+    ) -> None:
         known = list(identities)
+        self._created_children = frozenset(created_children)
         self._by_pid: defaultdict[int, list[ProcessIdentity]] = defaultdict(list)
         for identity in known:
             self._by_pid[identity.pid].append(identity)
@@ -168,6 +175,10 @@ class SampleProcesses:
 
     def has_pid(self, pid: int | None) -> bool:
         return pid in self._by_pid
+
+    def names_unmonitored_child(self, pid: int) -> bool:
+        # Like capemon, this keys by pid: a pid reused for a second child gets the same bare id.
+        return pid in self._created_children and pid not in self._by_pid
 
     def holds(self, pid: int | None, image: str | None) -> bool:
         return any(_same_image(identity, image) for identity in self._by_pid.get(pid or 0, ()))
@@ -245,10 +256,7 @@ class ProcessResolver:
     ) -> ProcessIdentity:
         started = self._ledger.get(actor.guid)
         image = actor.image or (started.image if started else None)
-        # capemon's `first_seen` is the start in the entity id; a monitored process takes it so
-        # that its Sysmon and capemon events share one entity.
-        shared = self._sample.identity_at(pid, image, when)
-        start = shared.start if shared else (started.start if started else None)
+        start = self._entity_start(pid, image, started, when)
         if created is not None:
             command_line, parent = created.get("CommandLine"), _parent_of(created)
         else:
@@ -261,6 +269,17 @@ class ProcessResolver:
             start=start,
             **parent,
         )
+
+    def _entity_start(
+        self, pid: int, image: str | None, started: StartedProcess | None, when: datetime
+    ) -> datetime | None:
+        # Whatever start capemon's events of this process carry (a monitored one its `first_seen`,
+        # a child it only saw created none) so both sources share one entity; else Sysmon's own.
+        if shared := self._sample.identity_at(pid, image, when):
+            return shared.start
+        if self._sample.names_unmonitored_child(pid):
+            return None
+        return started.start if started else None
 
 
 def _parent_of(created: EventFields) -> dict[str, Any]:
