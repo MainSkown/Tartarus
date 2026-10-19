@@ -62,7 +62,7 @@ def test_a_prefix_finds_a_field_through_its_alias() -> None:
 
 
 def test_a_prefix_of_a_composite_alias_finds_it() -> None:
-    assert names("dom") == ["domain", "destination.domain"]
+    assert names("dom") == ["domain", "destination.domain", "user.domain"]
 
 
 def test_prefix_matches_come_before_alias_matches_before_matches_inside_a_name() -> None:

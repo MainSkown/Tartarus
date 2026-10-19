@@ -52,6 +52,7 @@ _COMMON = (
     FieldDefinition(
         "event.kind", _K, "`event`, or `alert` for detections", "alert", aliases=("kind",)
     ),
+    FieldDefinition("event.outcome", _K, "Result of an action: success or failure", "success"),
     FieldDefinition(
         "event.category", _K, "ECS categories of the event", "process", aliases=("category",)
     ),
@@ -355,7 +356,11 @@ _DETECTION = (
         "Creates an executable in a temp directory",
     ),
     FieldDefinition(
-        "rule.ruleset", _K, "sigma, cape, yara or suricata", "cape", aliases=("ruleset",)
+        "rule.ruleset",
+        _K,
+        "sigma, cape, yara, suricata or defender",
+        "cape",
+        aliases=("ruleset",),
     ),
     FieldDefinition(
         "rule.reference",
@@ -395,6 +400,37 @@ _DETECTION = (
     ),
 )
 
+_ACCOUNT_AND_ERROR = (
+    FieldDefinition("user.name", _K, "Account the action ran as", "SYSTEM"),
+    FieldDefinition("user.domain", _K, "Domain of that account", "NT AUTHORITY"),
+    FieldDefinition("error.code", _K, "Error code of a failed action", "0x80070002"),
+    FieldDefinition(
+        "error.message",
+        FieldType.TEXT,
+        "Error text of a failed action",
+        "The system cannot find the file.",
+    ),
+)
+
+_DEFENDER = (
+    FieldDefinition(
+        "tartarus.defender.detection_id", _K, "Defender's id of the detection", "{94E00754-...}"
+    ),
+    FieldDefinition(
+        "tartarus.defender.scope", _K, "Scope of the detection: sample, dropped or other", "sample"
+    ),
+    FieldDefinition("tartarus.defender.action_id", _LONG, "Defender action id", "2"),
+    FieldDefinition("tartarus.defender.category_id", _LONG, "Defender category id", "42"),
+    FieldDefinition("tartarus.defender.state", _LONG, "Defender state of the threat", "1"),
+    FieldDefinition("tartarus.defender.status_code", _LONG, "Defender status code", "1"),
+    FieldDefinition(
+        "tartarus.defender.clock",
+        _K,
+        "snapshot when the record predates the run and was placed at the run start",
+        "snapshot",
+    ),
+)
+
 FIELDS: tuple[FieldDefinition, ...] = (
     *_COMMON,
     *_PROCESS,
@@ -404,6 +440,8 @@ FIELDS: tuple[FieldDefinition, ...] = (
     *_API,
     *_MEMORY,
     *_DETECTION,
+    *_ACCOUNT_AND_ERROR,
+    *_DEFENDER,
 )
 
 # A query alias that stands for several fields at once; the query compiler ORs them.

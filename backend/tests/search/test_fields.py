@@ -22,6 +22,7 @@ COMMON = [
     "event.module",
     "event.dataset",
     "event.severity",
+    "event.outcome",
     "tartarus.analysis_id",
     "tartarus.lane",
     "tartarus.phase",
@@ -113,7 +114,29 @@ INJECTION = [
     "tartarus.inject.target_executable",
     "tartarus.inject.target_command_line",
 ]
-SPEC_FIELDS = COMMON + PROCESS + INJECTION + FILE + REGISTRY + NETWORK + API + MEMORY + DETECTION
+ACCOUNT_AND_ERROR = ["user.name", "user.domain", "error.code", "error.message"]
+DEFENDER = [
+    "tartarus.defender.detection_id",
+    "tartarus.defender.scope",
+    "tartarus.defender.action_id",
+    "tartarus.defender.category_id",
+    "tartarus.defender.state",
+    "tartarus.defender.status_code",
+    "tartarus.defender.clock",
+]
+SPEC_FIELDS = (
+    COMMON
+    + PROCESS
+    + INJECTION
+    + FILE
+    + REGISTRY
+    + NETWORK
+    + API
+    + MEMORY
+    + DETECTION
+    + ACCOUNT_AND_ERROR
+    + DEFENDER
+)
 
 
 def test_the_catalog_holds_exactly_the_fields_of_the_data_model_spec() -> None:

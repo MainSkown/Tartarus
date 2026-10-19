@@ -1,11 +1,12 @@
 import copy
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 from app.ingest.ecs import LANES
 from app.ingest.protocol import IngestContext, Normalizer
+from app.search.fields import FieldType, field_by_name
 
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 EVENT_ID = re.compile(r"^[0-9a-f]{40}$")
@@ -26,6 +27,7 @@ def check_normalizer_contract(
         check_common_fields(event, context)
     assert_unique_ids(events)
     assert_increasing_sequence(events)
+    assert_fields_catalogued(events)
     return events
 
 
@@ -58,6 +60,37 @@ def assert_unique_ids(events: list[dict[str, Any]]) -> None:
 def assert_increasing_sequence(events: list[dict[str, Any]]) -> None:
     sequence = [event["event"]["sequence"] for event in events]
     assert sequence == sorted(set(sequence))
+
+
+def assert_fields_catalogued(events: list[dict[str, Any]]) -> None:
+    """Every emitted field is in the field catalog: the index maps only catalogued fields."""
+    for event in events:
+        for path in _leaf_paths(event):
+            assert _is_catalogued(path), f"{path} is not in the field catalog"
+
+
+def _leaf_paths(section: Mapping[str, Any], prefix: str = "") -> Iterator[str]:
+    for key, value in section.items():
+        path = f"{prefix}{key}"
+        if isinstance(value, Mapping) and not _is_opaque(path):
+            yield from _leaf_paths(value, f"{path}.")
+        else:
+            yield path
+
+
+def _is_catalogued(path: str) -> bool:
+    try:
+        field_by_name(path)
+    except KeyError:
+        return False
+    return True
+
+
+def _is_opaque(path: str) -> bool:
+    try:
+        return field_by_name(path).type in (FieldType.FLAT_OBJECT, FieldType.OBJECT_DISABLED)
+    except KeyError:
+        return False
 
 
 JUNK_REPORTS: tuple[dict[str, Any], ...] = (

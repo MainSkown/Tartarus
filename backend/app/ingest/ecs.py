@@ -156,6 +156,7 @@ class EventShape:
     lane: str
     dataset: str
     kind: str = "event"
+    outcome: str | None = None
 
     def __post_init__(self) -> None:
         if self.lane not in LANES:
@@ -217,24 +218,27 @@ class EventFactory:
         }
         if clashes := common.keys() & (tartarus or {}).keys():
             raise ValueError(f"tartarus fields {sorted(clashes)} would overwrite a common field")
+        meta: dict[str, Any] = {
+            "id": event_id(
+                self._context.analysis_id,
+                self._source,
+                record.source_file or self._source_file,
+                record.index,
+            ),
+            "sequence": next(self._sequence),
+            "kind": shape.kind,
+            "category": list(shape.categories),
+            "type": list(shape.types),
+            "action": shape.action,
+            "module": self._module,
+            "dataset": shape.dataset,
+            "severity": severity,
+        }
+        if shape.outcome is not None:
+            meta["outcome"] = shape.outcome
         return {
             "@timestamp": format_timestamp(record.timestamp),
-            "event": {
-                "id": event_id(
-                    self._context.analysis_id,
-                    self._source,
-                    record.source_file or self._source_file,
-                    record.index,
-                ),
-                "sequence": next(self._sequence),
-                "kind": shape.kind,
-                "category": list(shape.categories),
-                "type": list(shape.types),
-                "action": shape.action,
-                "module": self._module,
-                "dataset": shape.dataset,
-                "severity": severity,
-            },
+            "event": meta,
             "tartarus": common | dict(tartarus or {}),
             **sections,
         }
