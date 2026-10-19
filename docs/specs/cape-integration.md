@@ -216,7 +216,7 @@ off and the Docker socket is never mounted.**
   `DELETE /guests/{name}`, `POST /guests/{name}/check`, `POST /guests/{name}/clone`, `GET
   /guests/{name}/display`, `GET /guests/{name}/selftest/sample`, `POST /guests/{name}/selftest/checks`,
   `POST /builds`, `GET /builds/{id}` and `/log?tail=`, `POST /builds/{id}/resume|restart|continue|complete|cancel`,
-  and `POST /tasks/{id}/finish`. A refusal is `404` (unknown guest, build or profile), `409` (the current
+  `POST /tasks/{id}/finish`, and the memory routes `POST /memory/{id}/analyse` and `DELETE /memory/{id}/dump`. A refusal is `404` (unknown guest, build or profile), `409` (the current
   state refuses, with a message for the analyst), `422` (a parameter is wrong, with `fields`), or `400` for a
   guest name or build id that does not match its pattern; a sample that cannot be built is `500` and checks
   that cannot run `502`, each with its message; anything else is a generic `500` with the detail in the log.
@@ -235,6 +235,18 @@ off and the Docker socket is never mounted.**
 The same engine is reachable from a shell: `docker compose exec cape guest-build` (what `make build-guest`
 wraps, with the `GUEST_*` variables of `.env`) starts a build through the running service and prints the log. A
 guest it builds is accepted without the backend's self-test, so `make verify-guest` is what proves it.
+
+**Memory analysis.** `POST /memory/{task_id}/analyse` runs Volatility3 (`cape/bin/memory_logic.py`, command line in
+`cape/bin/volatility.py`) on `storage/analyses/<id>/memory.dmp`, in place, as the `cape` user, with `--offline`
+and the ISF files under `/var/lib/libvirt/tartarus/symbols/windows/` (on the `guest-images` volume). It runs
+`windows.pslist` and `windows.cmdline` over the whole dump and `windows.malware.malfind` and
+`windows.malware.hollowprocesses` with `--pid` of `behavior.processes[].process_id` from `reports/report.json`, and
+leaves one `<plugin>.json` per plugin and a `run.json` in `storage/analyses/<id>/memory/`, which the backend reads.
+`200` carries `{"plugins": {name: rows}, "errors": {name: text}, "seconds", "pids"}` (a plugin that fails, or
+missing symbols, is an entry in `errors`, never a download); `404` no dump, `409` already running, `502`
+`vol` cannot be started, `500` the results cannot be written. `DELETE /memory/{task_id}/dump` removes the dump
+(`204`, `404`, `409` while it is being read): the backend has the storage read-only, so only this service can.
+Why Volatility runs here and not in CAPE's own memory module: [S3 findings](../plans/m8-spikes/S3-findings.md).
 
 ### Several guests
 

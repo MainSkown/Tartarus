@@ -1,0 +1,5 @@
+# Volatility3 for the control service's memory analysis (bin/memory_logic.py). Installed with
+# --no-deps: what its plugins use (pefile, capstone, jsonschema, yara-python, pycryptodome) is
+# already in CAPE's lock at versions inside its ranges, and the wheel's hash is the only thing
+# fetched. Re-run the fixtures in tests/fixtures/volatility/ before bumping the version.
+volatility3==2.28.2 --hash=sha256:0461d6dd71b9ddbaf70c96e079c06efdf174ac65383b3dcf10dd165181fbd3c3

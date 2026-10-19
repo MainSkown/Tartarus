@@ -458,6 +458,8 @@ ALL_ROUTES = [
     ("POST", "/builds/b1/cancel"),
     ("POST", "/builds/b1/complete"),
     ("POST", "/tasks/7/finish"),
+    ("POST", "/memory/7/analyse"),
+    ("DELETE", "/memory/7/dump"),
 ]
 
 
@@ -585,9 +587,12 @@ def not_ready_client():
         yield started
 
 
-@pytest.mark.parametrize(
-    ("method", "path"), [route for route in ALL_ROUTES if route[1] != "/tasks/7/finish"]
-)
+ROUTES_OF_THE_ENGINE = [
+    route for route in ALL_ROUTES if route[1] != "/tasks/7/finish" and "/memory/" not in route[1]
+]
+
+
+@pytest.mark.parametrize(("method", "path"), ROUTES_OF_THE_ENGINE)
 def test_every_engine_route_is_409_while_the_engine_is_not_installed(
     not_ready_client, method, path
 ):
@@ -781,7 +786,13 @@ def launch_script_without_engine(tmp_path) -> tuple[subprocess.Popen, Client]:
         tmp_path / "guest_engine",
         ignore=shutil.ignore_patterns("engine.py", "__pycache__"),
     )
-    for name in ["guest-control", "control_http.py", "finish_logic.py"]:
+    for name in [
+        "guest-control",
+        "control_http.py",
+        "finish_logic.py",
+        "memory_logic.py",
+        "volatility.py",
+    ]:
         shutil.copy(BIN / name, tmp_path / name)
     port = free_port()
     environment = {

@@ -21,6 +21,8 @@ ERROR_MESSAGE_LIMIT = 200
 # The guest is on a local network; a proxy in the environment must never get this request.
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
+TASK_ID_NOT_DIGITS = {"error": "the task id must be digits only"}
+
 type Answer = tuple[int, dict[str, Any]]
 
 
@@ -57,7 +59,7 @@ def finish_response(
     task id is known to be digits, so a malformed request looks nothing up."""
     task_id = parse_task_id(raw_task_id)
     if task_id is None:
-        return 400, {"error": "the task id must be digits only"}
+        return 400, TASK_ID_NOT_DIGITS
     agent_url, finish_dir = destination()
     return finish_task(task_id, agent_url, finish_dir, timeout, send)
 

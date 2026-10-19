@@ -8,6 +8,9 @@ service, which runs in the cape container and listens only on the `tartarus-cont
 `InvalidParameters` 422, `Conflict` 409, a sample that cannot be built 500 with its message,
 checks that cannot run 502 with theirs, anything else a generic 500 whose detail stays in the log.
 
+The memory routes (POST /memory/{task}/analyse, DELETE /memory/{task}/dump) do not use the engine:
+they run Volatility3 on an analysis's dump and delete it (memory_logic.py).
+
 Every route but GET /healthz needs `Authorization: Bearer <GUEST_CONTROL_TOKEN>`.
 
 Environment: CAPE_CONTROL_IP (required), GUEST_CONTROL_TOKEN (required, 32+ characters),
@@ -33,6 +36,12 @@ sys.path[:0] = [SCRIPT_DIRECTORY, os.path.dirname(SCRIPT_DIRECTORY)]
 import control_http  # noqa: E402
 from control_http import HttpError, Request, Route  # noqa: E402
 from finish_logic import finish_response  # noqa: E402
+from memory_logic import (  # noqa: E402
+    MemoryAnalyser,
+    analyse_response,
+    delete_dump_response,
+    in_container,
+)
 
 from guest_engine.errors import Conflict, GuestNotFound, InvalidParameters  # noqa: E402
 from guest_engine.protocol import GuestEngine  # noqa: E402
@@ -140,9 +149,10 @@ def log_tail(request: Request) -> int:
 
 
 class Routes:
-    def __init__(self, engine: GuestEngine, agent_timeout: float) -> None:
+    def __init__(self, engine: GuestEngine, agent_timeout: float, memory: MemoryAnalyser) -> None:
         self.engine = engine
         self.agent_timeout = agent_timeout
+        self.memory = memory
 
     def table(self) -> list[Route]:
         guest = r"/guests/(?P<name>[^/]*)"
@@ -168,6 +178,8 @@ class Routes:
             self._route("POST", f"{build}/cancel", self.cancel),
             self._route("POST", f"{build}/complete", self.complete_build),
             self._route("POST", r"/tasks/(?P<task_id>[^/]*)/finish", self.finish_task),
+            self._route("POST", r"/memory/(?P<task_id>[^/]*)/analyse", self.analyse_memory),
+            self._route("DELETE", r"/memory/(?P<task_id>[^/]*)/dump", self.delete_memory_dump),
         ]
 
     def _route(self, method: str, pattern: str, handler: Callable[[Request], Any]) -> Route:
@@ -262,6 +274,16 @@ class Routes:
             request.arguments["task_id"], self._agent_of(guest), self.agent_timeout
         )
 
+    def analyse_memory(self, request: Request) -> control_http.Answer:
+        """Runs Volatility3 on the task's memory dump and leaves its JSON in `memory/` beside it.
+
+        Takes seconds with the analysis's own pids; the answer is the summary of what ran.
+        """
+        return analyse_response(request.arguments["task_id"], self.memory)
+
+    def delete_memory_dump(self, request: Request) -> control_http.Answer:
+        return delete_dump_response(request.arguments["task_id"], self.memory)
+
     def _agent_of(self, guest: str) -> Callable[[], tuple[str, str]]:
         def destination() -> tuple[str, str]:
             address = self.engine.guest_address(guest)
@@ -291,9 +313,14 @@ def _translating_engine_errors(
 
 
 def make_handler(
-    engine: GuestEngine, *, token: str, agent_timeout: float = DEFAULT_AGENT_TIMEOUT_SECONDS
+    engine: GuestEngine,
+    *,
+    token: str,
+    agent_timeout: float = DEFAULT_AGENT_TIMEOUT_SECONDS,
+    memory: MemoryAnalyser | None = None,
 ):
-    routes = Routes(engine, agent_timeout).table()
+    memory = memory or in_container(log=lambda message: control_http.log(SERVICE, message))
+    routes = Routes(engine, agent_timeout, memory).table()
     return control_http.make_handler(routes, service=SERVICE, token=token)
 
 
