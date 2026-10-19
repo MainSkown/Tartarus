@@ -15,7 +15,7 @@ import {
   type OptionValues,
 } from '@/services/guest-form'
 import { variantLabel } from '@/services/guest-media-view'
-import { quietOn } from '@/services/quiet-statuses'
+import { REFUSALS_SHOWN_INLINE } from '@/services/quiet-statuses'
 import { resourcesLabel } from '@/services/guest-view'
 import { useGuestsStore } from '@/stores/guests'
 
@@ -23,9 +23,6 @@ export type WizardStep = 1 | 2 | 3
 export type LoadStatus = 'loading' | 'loaded' | 'failed'
 
 const LAST_STEP: WizardStep = 3
-// Shown inline on the review step, so a toast on top would only repeat them.
-const REFUSALS_SHOWN_INLINE = quietOn(409, 422, 502, 503, 504)
-
 export interface MediaChoice {
   entry: MediaEntry
   profileName?: string

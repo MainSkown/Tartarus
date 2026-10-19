@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef } from 'vue'
-import { useDialogPluginComponent } from 'quasar'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { Notify, useDialogPluginComponent } from 'quasar'
 import { useRouter } from 'vue-router'
 import { settingsRead } from '@/api'
 import type { Route } from '@/api'
@@ -9,6 +9,7 @@ import { useGuestChoice } from '@/composables/use-guest-choice'
 import { t } from '@/i18n'
 import { sha256Hex } from '@/services/file-hash'
 import { formatFileSize } from '@/services/file-size'
+import { isMemoryDumpRefusal, memoryDumpDiskGb } from '@/services/memory-dump'
 import { useGuestBlockReason } from '@/services/guest-gate'
 import { BUILT_ROUTES } from '@/services/routes'
 import type { ValidationIssue } from '@/services/validation-errors'
@@ -38,12 +39,18 @@ const timeoutText = ref('180')
 const defaultGuestSetting = ref<string | null>()
 const guestChoice = useGuestChoice(defaultGuestSetting)
 const interactive = ref(false)
+const memoryDump = ref(false)
+const keepMemoryDump = ref(false)
+watch(memoryDump, (on) => {
+  if (!on) keepMemoryDump.value = false
+})
 
 const dragOver = ref(false)
 const dropError = ref<string>()
 const submitting = ref(false)
 const fieldErrors = ref<Partial<Record<FormField, string>>>({})
 const errorBanner = ref<string>()
+const memoryError = ref<string>()
 const fileInput = ref<HTMLInputElement>()
 
 const timeoutError = computed(() => {
@@ -58,6 +65,13 @@ const interactiveNote = computed(() => {
   if (!interactive.value) return t('submit.interactive.off')
   if (timeoutError.value) return t('submit.interactive.on')
   return t('submit.interactive.onWithLength', { minutes: formatMinutes(Number(timeoutText.value)) })
+})
+
+const memoryNote = computed(() => {
+  const ramMb = guestChoice.chosenOption.value?.ramMb
+  return ramMb === undefined
+    ? t('submit.memory.warningUnsized')
+    : t('submit.memory.warning', { gb: memoryDumpDiskGb(ramMb) })
 })
 
 const emptyGuestText = computed(() =>
@@ -76,6 +90,8 @@ const submitOptions = computed<SubmitOptions>(() => ({
   route: route.value,
   timeout: Number(timeoutText.value),
   interactive: interactive.value,
+  memory_dump: memoryDump.value,
+  ...(keepMemoryDump.value ? { keep_memory_dump: true } : {}),
   ...guestChoice.optionPayload.value,
 }))
 
@@ -129,6 +145,7 @@ function showRejection(rejection: SubmissionRejected): void {
   const hasUnplaced = unplaced.length > 0
   const noFieldNamed = rejection.issues.length === 0
   if (hasUnplaced) errorBanner.value = unplaced.map((issue) => issue.message).join('; ')
+  else if (noFieldNamed && isMemoryDumpRefusal(rejection.message)) memoryError.value = rejection.message
   else if (noFieldNamed) errorBanner.value = rejection.message
 }
 
@@ -137,8 +154,10 @@ async function submit(): Promise<void> {
   submitting.value = true
   fieldErrors.value = {}
   errorBanner.value = undefined
+  memoryError.value = undefined
   try {
     const analysis = await analyses.submit(file.value, submitOptions.value)
+    for (const warning of analysis.warnings) Notify.create({ type: 'tt-warning', message: warning })
     onDialogOK(analysis)
     void router.push({ name: 'analysis-workspace', params: { id: analysis.id } })
   } catch (error) {
@@ -363,6 +382,44 @@ onMounted(() => {
           </p>
         </div>
 
+        <div class="form-field">
+          <q-toggle
+            v-model="memoryDump"
+            dense
+            :label="t('submit.memory.label')"
+            :disable="submitting"
+            class="memory-toggle text-mono"
+          />
+          <p
+            v-if="memoryDump"
+            class="memory-note text-gray"
+          >
+            {{ memoryNote }}
+          </p>
+          <div
+            v-if="memoryDump"
+            class="memory-nested"
+          >
+            <q-toggle
+              v-model="keepMemoryDump"
+              dense
+              :label="t('submit.memory.keep.label')"
+              :disable="submitting"
+              class="keep-toggle text-mono"
+            />
+            <p class="keep-helper text-gray">
+              {{ t('submit.memory.keep.helper') }}
+            </p>
+          </div>
+          <p
+            v-if="memoryError"
+            class="field-error memory-error"
+            role="alert"
+          >
+            {{ memoryError }}
+          </p>
+        </div>
+
         <p
           v-if="errorBanner"
           class="error-banner text-mono"
@@ -553,7 +610,9 @@ onMounted(() => {
   min-width: 0;
 }
 
-.interactive-toggle {
+.interactive-toggle,
+.memory-toggle,
+.keep-toggle {
   align-self: flex-start;
   font-size: 0.8rem;
   letter-spacing: 1px;
@@ -565,6 +624,21 @@ onMounted(() => {
   /* Both notes fit two lines at the dialog width, so flipping the switch does not move the form. */
   line-height: 1.5;
   min-height: 3em;
+}
+
+.memory-note,
+.keep-helper {
+  margin: 0;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+/* The keep option belongs to the memory option above it; the indent is the scale's large step. */
+.memory-nested {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding-left: var(--spacing-lg);
 }
 
 .field-error {

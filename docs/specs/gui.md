@@ -120,7 +120,17 @@ The query-bar state (query plus chips) and the selected process are kept in the 
   (Windows: exe, dll, doc, xls, ppt, ps1, js, vbs, jar, msi, zip, pdf, python, hta, lnk), so changing the
   guest changes the list. Until the profiles are loaded a short fallback list (exe, dll, doc, xls, ps1,
   js) is shown.
-- The memory dump option warns: "Adds about 4 GB of disk and several minutes of processing."
+- **Full memory dump + Volatility** is a switch of its own, off by default, with its option block below
+  the interactive one. When on, it warns with the disk the chosen guest's dump takes: its RAM in GB plus
+  about 0.3 GB of findings, rounded up to one decimal (4096 MB gives "Adds about 4.3 GB of disk and several
+  minutes of processing."). The warning follows the chosen guest. A guest that does not report its RAM gets
+  "Adds the guest RAM in disk space and several minutes of processing." instead.
+  - A nested switch, **Keep the dump after the findings are extracted**, appears only while the dump is on,
+    off by default, with the helper "Kept dumps stay on disk until the analysis is deleted." Switching the dump
+    off clears it.
+  - A refusal of the dump, a 409 whose message starts "A memory dump needs", is shown under this block, as the
+    backend wrote it (not translated). Any other `warnings` the create response carries (for example low free
+    space) are shown as one notification each after the submit succeeded.
 - `DETONATE` is disabled when no guest is ready or disk is below the block threshold. The reason is
   shown inline: `No guest is ready: none has been built`, or `No guest is ready: lab1 is building,
   lab2 is failed`, with an `[OPEN GUEST VM]` link to `/guest`. While any guest is building or testing the

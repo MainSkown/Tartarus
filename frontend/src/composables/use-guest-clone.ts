@@ -4,12 +4,10 @@ import type { Guest, GuestProfile, GuestResources, ProfileOption } from '@/api'
 import { useGuestSubmission, type GuestSubmission } from '@/composables/use-guest-submission'
 import { t } from '@/i18n'
 import { guestNameProblem, identityProblem, profileDefaults, withoutBlanks, type OptionValues } from '@/services/guest-form'
-import { quietOn } from '@/services/quiet-statuses'
+import { REFUSALS_SHOWN_INLINE } from '@/services/quiet-statuses'
 import { useGuestsStore } from '@/stores/guests'
 
 export type CloneStatus = 'loading' | 'failed' | 'unknown' | 'not-ready' | 'ready'
-
-const REFUSALS_SHOWN_INLINE = quietOn(409, 422, 502, 503, 504)
 
 export interface OptionRow {
   option: ProfileOption

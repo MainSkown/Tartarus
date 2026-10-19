@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
 import { analysesCancel, analysesCreate, analysesDelete, analysesList, analysesRead, analysesReingest } from '@/api'
-import type { AnalysesListData, AnalysisRead, Route } from '@/api'
+import type { AnalysesListData, AnalysisCreated, AnalysisRead, Route } from '@/api'
 import { errorMessage } from '@/services/api-error'
 import { isTerminalStatus } from '@/services/analysis-status'
-import { NOT_FOUND_STATUS, quietOn } from '@/services/quiet-statuses'
+import { NOT_FOUND_STATUS, REFUSALS_SHOWN_INLINE, quietOn } from '@/services/quiet-statuses'
 import { validationIssues, type ValidationIssue } from '@/services/validation-errors'
 
 const POLL_INTERVAL_MS = 2_000
@@ -17,6 +17,8 @@ export interface SubmitOptions {
   route: Route
   timeout: number
   interactive?: boolean
+  memory_dump?: boolean
+  keep_memory_dump?: boolean
   guest?: string
   package?: string
 }
@@ -117,8 +119,11 @@ export const useAnalysesStore = defineStore('analyses', () => {
     return trackFetch(() => loadCurrent(id))
   }
 
-  async function submit(file: File, options: SubmitOptions): Promise<AnalysisRead> {
-    const { data, error } = await analysesCreate({ body: { file, options: JSON.stringify(options) } })
+  async function submit(file: File, options: SubmitOptions): Promise<AnalysisCreated> {
+    const { data, error } = await analysesCreate({
+      body: { file, options: JSON.stringify(options) },
+      meta: REFUSALS_SHOWN_INLINE,
+    })
     if (error || !data) throw new SubmissionRejected(errorMessage(error), validationIssues(error))
     if (listQuery) await loadList()
     startPolling()

@@ -12,5 +12,8 @@ export function isQuietFailure(response: Response | undefined, meta: Record<stri
   return response !== undefined && Array.isArray(quiet) && quiet.includes(response.status)
 }
 
+/** A refusal the caller shows on its own form, so a toast on top would only repeat it. */
+export const REFUSALS_SHOWN_INLINE = quietOn(409, 422, 502, 503, 504)
+
 /** Typing in the query bar asks for fields, values and validation on every pause: a failure there is not toast-worthy. */
 export const QUIET_ON_QUERY_FAILURES = quietOn(404, 422, 500, 502, 504)

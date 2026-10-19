@@ -35,6 +35,15 @@ export default {
     onWithLength:
       'Drive the guest yourself. The run lasts the full timeout ({minutes}) unless you press END RUN on the live page.',
   },
+  memory: {
+    label: 'FULL MEMORY DUMP + VOLATILITY',
+    warning: 'Adds about {gb} GB of disk and several minutes of processing.',
+    warningUnsized: 'Adds the guest RAM in disk space and several minutes of processing.',
+    keep: {
+      label: 'KEEP THE DUMP AFTER THE FINDINGS ARE EXTRACTED',
+      helper: 'Kept dumps stay on disk until the analysis is deleted.',
+    },
+  },
   blocked: {
     chooseSample: 'Choose a sample to analyse',
   },

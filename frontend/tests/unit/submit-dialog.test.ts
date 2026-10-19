@@ -1,10 +1,11 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { Quasar, QBtn, QInput, QSelect, QToggle } from 'quasar'
+import { Notify, Quasar, QBtn, QInput, QSelect, QToggle } from 'quasar'
 import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AnalysisRead, ErrorEnvelope, Guest, GuestProfile, SystemHealth } from '@/api'
+import type { AnalysisCreated, ErrorEnvelope, Guest, GuestProfile, SystemHealth } from '@/api'
+import { isQuietFailure } from '@/services/quiet-statuses'
 import { BUILT_ROUTES } from '@/services/routes'
 
 const READY: SystemHealth = {
@@ -14,7 +15,7 @@ const READY: SystemHealth = {
   guest: { status: 'ok', message: null },
 }
 
-const CREATED = { id: 7, filename: 'invoice.exe', status: 'queued' } as AnalysisRead
+const CREATED = { id: 7, filename: 'invoice.exe', status: 'queued', warnings: [] } as unknown as AnalysisCreated
 
 vi.mock('@/api', () => ({
   analysesCreate: vi.fn(),
@@ -52,8 +53,8 @@ const QDialogStub = defineComponent({
 })
 
 const GUESTS = [
-  { name: 'win', state: 'ready', profile: 'windows', badges: ['DEFENDER ON'] },
-  { name: 'lab2', state: 'ready', profile: 'windows', badges: ['DEFENDER OFF'] },
+  { name: 'win', state: 'ready', profile: 'windows', badges: ['DEFENDER ON'], resources: { vcpus: 2, ram_mb: 4096, disk_gb: 60 } },
+  { name: 'lab2', state: 'ready', profile: 'windows', badges: ['DEFENDER OFF'], resources: { vcpus: 4, ram_mb: 16384, disk_gb: 80 } },
   { name: 'lab3', state: 'building', profile: 'windows', badges: [] },
 ] as Guest[]
 const PROFILES = [{ id: 'windows', display_name: 'Windows 11', packages: ['exe', 'dll', 'doc'] }] as GuestProfile[]
@@ -129,6 +130,13 @@ function failedValidation(fields: { location: string[]; message: string }[]) {
 
 function created() {
   return { data: CREATED, error: undefined } as unknown as CreateResult
+}
+
+// Quasar's Notify has no `create` until its plugin is installed, which this mount does not do.
+function stubNotify() {
+  const create = vi.fn()
+  Notify.create = create as unknown as typeof Notify.create
+  return create
 }
 
 function sentOptions() {
@@ -381,7 +389,14 @@ describe('SubmitDialog', () => {
 
       expect(analysesCreate).toHaveBeenCalledTimes(1)
       expect(vi.mocked(analysesCreate).mock.calls[0]![0].body.file).toBe(SAMPLE)
-      expect(sentOptions()).toEqual({ route: 'drop', timeout: 300, interactive: false, guest: 'win', package: 'doc' })
+      expect(sentOptions()).toEqual({
+        route: 'drop',
+        timeout: 300,
+        interactive: false,
+        memory_dump: false,
+        guest: 'win',
+        package: 'doc',
+      })
     })
 
     it('leaves the package out while it is auto so the backend picks one', async () => {
@@ -391,7 +406,7 @@ describe('SubmitDialog', () => {
 
       await submit(wrapper)
 
-      expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false, guest: 'win' })
+      expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false, memory_dump: false, guest: 'win' })
     })
 
     it('shows the in-flight state and blocks a second submit while uploading', async () => {
@@ -477,6 +492,165 @@ describe('SubmitDialog', () => {
       await submit(wrapper)
 
       expect(wrapper.find('.error-banner').text()).toContain('extra not permitted')
+    })
+  })
+
+  describe('full memory dump', () => {
+    const MEMORY_LABEL = 'FULL MEMORY DUMP + VOLATILITY'
+    const KEEP_LABEL = 'KEEP THE DUMP AFTER THE FINDINGS ARE EXTRACTED'
+
+    function toggleLabelled(wrapper: VueWrapper, label: string) {
+      return wrapper.findAllComponents(QToggle).find((toggle) => toggle.props('label') === label)
+    }
+
+    async function switchMemory(wrapper: VueWrapper, on: boolean) {
+      toggleLabelled(wrapper, MEMORY_LABEL)!.vm.$emit('update:modelValue', on)
+      await flushPromises()
+    }
+
+    it('is a switch beside the interactive one, off by default, with no keep choice', async () => {
+      const { wrapper } = await mountDialog()
+
+      expect(toggleLabelled(wrapper, MEMORY_LABEL)!.props('modelValue')).toBe(false)
+      expect(toggleLabelled(wrapper, KEEP_LABEL)).toBeUndefined()
+      expect(wrapper.find('.memory-note').exists()).toBe(false)
+    })
+
+    it('sends memory_dump true once switched on', async () => {
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      await switchMemory(wrapper, true)
+
+      await submit(wrapper)
+
+      expect(sentOptions().memory_dump).toBe(true)
+    })
+
+    it('warns with the disk the dump of the chosen guest takes', async () => {
+      const { wrapper } = await mountDialog()
+      await switchMemory(wrapper, true)
+
+      expect(wrapper.find('.memory-note').text()).toBe(
+        'Adds about 4.3 GB of disk and several minutes of processing.',
+      )
+    })
+
+    it('recomputes the warning when the analyst picks another guest', async () => {
+      const { wrapper } = await mountDialog()
+      await switchMemory(wrapper, true)
+
+      selectLabelled(wrapper, 'GUEST').vm.$emit('update:modelValue', 'lab2')
+      await flushPromises()
+
+      expect(wrapper.find('.memory-note').text()).toBe(
+        'Adds about 16.3 GB of disk and several minutes of processing.',
+      )
+    })
+
+    it('warns without a size when the chosen guest does not report its RAM', async () => {
+      vi.mocked(guestsList).mockResolvedValue(listResult([{ ...GUESTS[0]!, resources: undefined } as Guest]))
+      const { wrapper } = await mountDialog()
+      await switchMemory(wrapper, true)
+
+      expect(wrapper.find('.memory-note').text()).toBe(
+        'Adds the guest RAM in disk space and several minutes of processing.',
+      )
+    })
+
+    it('offers keep once the dump is on, and sends it as the analyst set it', async () => {
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      await switchMemory(wrapper, true)
+      toggleLabelled(wrapper, KEEP_LABEL)!.vm.$emit('update:modelValue', true)
+      await flushPromises()
+
+      await submit(wrapper)
+
+      expect(sentOptions().keep_memory_dump).toBe(true)
+    })
+
+    it('clears keep when the dump is switched off, so it is not kept without the dump', async () => {
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      await switchMemory(wrapper, true)
+      toggleLabelled(wrapper, KEEP_LABEL)!.vm.$emit('update:modelValue', true)
+      await flushPromises()
+
+      await switchMemory(wrapper, false)
+      expect(toggleLabelled(wrapper, KEEP_LABEL)).toBeUndefined()
+      await switchMemory(wrapper, true)
+      expect(toggleLabelled(wrapper, KEEP_LABEL)!.props('modelValue')).toBe(false)
+      await submit(wrapper)
+
+      expect(sentOptions().memory_dump).toBe(true)
+      expect(sentOptions().keep_memory_dump).toBeUndefined()
+    })
+
+    it('shows the backend refusal for a dump that needs more disk under the switch, as received', async () => {
+      const refused = {
+        data: undefined,
+        error: {
+          error: {
+            code: 'conflict',
+            message: 'A memory dump needs 20.3 GB free on the CAPE volume; 12.0 GB are free.',
+          },
+        },
+      } as unknown as CreateResult
+      vi.mocked(analysesCreate).mockResolvedValue(refused)
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      await switchMemory(wrapper, true)
+
+      await submit(wrapper)
+
+      expect(wrapper.find('.memory-error').text()).toBe(
+        'A memory dump needs 20.3 GB free on the CAPE volume; 12.0 GB are free.',
+      )
+      expect(wrapper.find('.error-banner').exists()).toBe(false)
+    })
+
+    it('does not also toast the refusal the field shows', async () => {
+      vi.mocked(analysesCreate).mockResolvedValue({ data: undefined, error: { error: { code: 'conflict', message: 'A memory dump needs 20.3 GB free' } } } as unknown as CreateResult)
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      await switchMemory(wrapper, true)
+
+      await submit(wrapper)
+
+      const [{ meta }] = vi.mocked(analysesCreate).mock.calls[0]!
+      expect(isQuietFailure({ status: 409 } as Response, meta)).toBe(true)
+    })
+
+    it('notifies each warning the backend returns once the submit succeeded', async () => {
+      const notify = stubNotify()
+      const withWarnings = {
+        data: { ...CREATED, warnings: ['Disk is low: 12 GB free', 'Guest clock is behind'] } as AnalysisCreated,
+        error: undefined,
+      } as unknown as CreateResult
+      vi.mocked(analysesCreate).mockResolvedValue(withWarnings)
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await submit(wrapper)
+
+      expect(notify.mock.calls.map(([options]) => options)).toEqual([
+        expect.objectContaining({ type: 'tt-warning', message: 'Disk is low: 12 GB free' }),
+        expect.objectContaining({ type: 'tt-warning', message: 'Guest clock is behind' }),
+      ])
+    })
+
+    it('notifies nothing when the backend returns no warnings', async () => {
+      const notify = stubNotify()
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await submit(wrapper)
+
+      expect(notify).not.toHaveBeenCalled()
     })
   })
 
@@ -598,7 +772,7 @@ describe('SubmitDialog', () => {
         expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
 
         await submit(wrapper)
-        expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false })
+        expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false, memory_dump: false })
       })
     })
   })

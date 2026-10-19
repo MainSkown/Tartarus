@@ -11,6 +11,7 @@ export interface GuestOption {
   name: string
   badges: string[]
   profileName?: string
+  ramMb?: number
   disabled: boolean
   /** The guest's state, when that is what keeps it from being chosen. */
   reason?: string
@@ -59,6 +60,7 @@ export function useGuestChoice(defaultGuest: Ref<string | null | undefined>): Gu
         name: guest.name,
         badges: guest.badges ?? [],
         profileName: profileNameOf(guest),
+        ramMb: guest.resources?.ram_mb,
         disabled: !ready,
         reason: ready ? undefined : guest.state,
       }
