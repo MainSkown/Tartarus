@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AnalysisRead, AnalysisStatus, ReportSummary } from '@/api'
+import DefenderVerdict from '@/components/DefenderVerdict.vue'
+import HiddenEventsNote from '@/components/HiddenEventsNote.vue'
 import LaneBars from '@/components/LaneBars.vue'
+import MemoryStatus from '@/components/MemoryStatus.vue'
 import ScreenshotStrip from '@/components/ScreenshotStrip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatTile from '@/components/StatTile.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import { t, type MessageKey } from '@/i18n'
 import { compareSeverity } from '@/services/analysis-status'
+import { guestRunsDefender } from '@/services/defender-verdict'
 import { formatDuration } from '@/services/format-duration'
 import { laneBars } from '@/services/lanes'
 
@@ -48,6 +52,8 @@ const signatures = computed(() =>
 const techniques = computed(() => report.value.techniques ?? [])
 const hasDetections = computed(() => signatures.value.length > 0 || techniques.value.length > 0)
 const lanes = computed(() => laneBars(report.value.lane_counts))
+const defender = computed(() => (guestRunsDefender(props.analysis.guest_badges) ? (report.value.defender ?? null) : null))
+const blockedBeforeRun = computed(() => defender.value?.blocked_before_run === true)
 const duration = computed(() => (report.value.duration_s == null ? null : formatDuration(report.value.duration_s)))
 </script>
 
@@ -72,6 +78,11 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
     />
 
     <template v-else>
+      <DefenderVerdict
+        v-if="defender && blockedBeforeRun"
+        :verdict="defender"
+      />
+
       <div class="analysis-summary__tiles">
         <StatTile
           :label="t('analysis.summary.tile.score')"
@@ -106,6 +117,17 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
           {{ t('analysis.summary.eventsByLane') }}
         </h2>
         <LaneBars :bars="lanes" />
+      </template>
+      <HiddenEventsNote :counts="report.hidden_events" />
+
+      <template v-if="report.memory">
+        <h2 class="analysis-summary__heading text-mono">
+          {{ t('analysis.summary.memory.heading') }}
+        </h2>
+        <MemoryStatus
+          :memory="report.memory"
+          :finding-count="report.lane_counts?.memory"
+        />
       </template>
 
       <h2 class="analysis-summary__heading text-mono">
@@ -143,6 +165,13 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
             {{ family }}
           </li>
         </ul>
+      </template>
+
+      <template v-if="defender && !blockedBeforeRun">
+        <h2 class="analysis-summary__heading text-mono">
+          {{ t('analysis.summary.defender.heading') }}
+        </h2>
+        <DefenderVerdict :verdict="defender" />
       </template>
 
       <TerminalEmpty
