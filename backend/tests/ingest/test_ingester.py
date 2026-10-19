@@ -144,6 +144,7 @@ def test_every_source_the_analysis_can_hold_is_a_default_normaliser() -> None:
         "cape-signatures",
         "sysmon",
         "defender",
+        "volatility",
     }
 
 

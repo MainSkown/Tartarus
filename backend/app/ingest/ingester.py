@@ -24,6 +24,7 @@ from app.ingest.defender_verdict import verdict_of_export
 from app.ingest.protocol import IngestContext, Normalizer
 from app.ingest.sigma import RulesProvider, can_match_a_rule, final_detections, no_rules
 from app.ingest.sysmon import SysmonNormalizer
+from app.ingest.volatility import VolatilityNormalizer
 from app.rules.rule import Rule
 from app.search.index import IndexingError
 
@@ -55,6 +56,7 @@ def default_normalizers() -> list[Normalizer]:
         CapeSignaturesNormalizer(),
         SysmonNormalizer(),
         DefenderNormalizer(),
+        VolatilityNormalizer(),
     ]
 
 
