@@ -7,20 +7,43 @@ interface; none writes its own copy of the ECS helpers. The only new screen is t
 
 ## Status
 
-Planned 2026-10-18 from the [finish line](finish-line.md#m8-more-event-sources-and-defenders-verdict) and a read of
-CAPE's own modules in the `tartarus-cape` image. **The four spikes ran 2026-10-18 and 19** (findings and fixtures in
-[m8-spikes/](m8-spikes/)); nothing is built yet.
+**Built and proven on the real stack, 2026-10-19.** Planned 2026-10-18 from the [finish line](finish-line.md#m8-more-event-sources-and-defenders-verdict)
+and a read of CAPE's own modules. Four spikes ran first (findings and fixtures in [m8-spikes/](m8-spikes/)); the build
+followed in waves; two real-run passes on the rebuilt images ([R](m8-spikes/R-findings.md),
+[R2](m8-spikes/R2-findings.md)) found eight defects (D1 to D8), all fixed test-first. The three new screens were reviewed from
+screenshot Artifacts and **approved by the user** on 2026-10-19: the Overview additions, the Submit dialog's memory
+option, and the Artifacts > Memory sub-tab.
 
-| Spike | Outcome |
+What shipped: Sysmon events, Defender's verdict, the full memory dump with Volatility3 findings, and the per-build symbol
+file. ETW was dropped from v1 (S2).
+
+| Piece | Where |
 |---|---|
-| [S1 Sysmon](m8-spikes/S1-findings.md) | **Go, route B.** CAPE's own `sysmon` auxiliary is broken on a fresh guest (it clears the log before installing). Sysmon comes from the guest build; a Tartarus auxiliary exports the log to `sysmon/sysmon.xml`. The normaliser reads that XML with `iterparse`, applies `guest_clock_offset` and filters Windows background noise (85 to 99% of events). A tighter Sysmon config is proposed. Open: score impact on long interactive runs (n=4 is too few). |
-| [S4 Defender](m8-spikes/S4-findings.md) | **Go.** A guest-side module cannot collect it (Defender kills the analyzer before modules start), so collection is a **host-side** CAPE auxiliary that runs the export through the guest agent; it replaces S1's guest module (one module, a channel table, Sysmon and Defender). Verdict from events 1116/1117; `PPLinject.exe` is detected on every Defender-on run and must be excluded; clamp the sample's snapshot-clock 1116 to the analysis start. |
-| [S3 Memory](m8-spikes/S3-findings.md) | **Go: dump plus findings.** 4.0 GiB per analysis, ELF core, no effect on the analysis. Volatility3 runs from the guest-control service (not CAPE's `memory.py`, which adds ~150 s and leaks handles), `--offline`, `--pid` from the analysis's own processes, per-build ISF in `data/symbols`, generated at registration. `netscan` stays out. The form field `memory=1` is right; `options=memory=1` is not. New: the backend disk check before submit, and dump retention. |
-| [S2 ETW](m8-spikes/S2-findings.md) | **Dropped from v1.** It runs (the wheel works under the 32-bit Python), but DNS and network add nothing over Sysmon EID 22/3 and the pcap, AMSI gave no events, and only `wmi_etw` is usable. If WMI is wanted later: ship `etw/` in the analyzer, enable `wmi_etw` only. Add a `WmiEvent` rule to the Sysmon config instead. |
+| Host-side `event_logs` auxiliary (Sysmon and Defender, one channel table, record-id baseline) | `cape/auxiliary/event_logs.py`, the tighter Sysmon config in `guest/profiles/windows/sysmon-config.xml` |
+| Normalisers: Sysmon (noise rule, entity ids shared with capemon), Defender (one classification for events and verdict), Volatility (structural monitor-page rule, one finding per hollowed process) | `backend/app/ingest/{sysmon*,defender*,volatility*}.py`, `windows_events.py` (shared XML reader), `IngestContext.analysis_dir` |
+| Summary: `defender` verdict, `hidden_events`, `memory`; normalisers built per ingest | `backend/app/analyses/{defender,memory,memory_step,memory_disk}.py`, `ingester.py` |
+| Memory option: `memory_dump`, `keep_memory_dump`, the 409 disk check, `warnings`, the dump deleted after the findings unless kept | `backend/app/analyses/`, `POST /analyses` |
+| Volatility3 in the control service (`POST /memory/{task}/analyse`, `DELETE .../dump`), offline, `--pid` from the report | `cape/bin/{volatility,memory_logic}.py`, `cape/build/volatility3.requirements` |
+| Symbols: `POST /symbols`, the non-fatal `symbols` step before the snapshot, `missing_symbols` in the analyse answer | `cape/bin/{symbols_logic.py,guest-symbols}`, `guest/profiles/windows/steps/symbols` |
+| Screens | Overview (Defender verdict, hidden events, memory status), Submit dialog (memory option), Artifacts > Memory |
 
-Found on the way, for later milestones: the cape container is **not offline** (`tartarus-internal` is not `internal: true`;
-M11 security review); a clone's first reconfigure once failed with "guest did not start its reboot within 90s" and
-resumed fine (M10).
+Measured on the real stack: the dump is 4.0 GiB and costs 1 to 2 s of the run, the findings about 5 to 10 s; the dump is
+deleted afterwards unless kept; a blocked EICAR run now indexes 121 events (it was 1,185) and 0 Sysmon events.
+
+### Still open
+
+- **Submit dialog wording.** It says the dump adds "several minutes of processing"; measured is 5 to 10 s (the minutes
+  figure was the S3 spike's CAPE-module cost). Waiting for the user's word before changing approved copy.
+- **Two Defender detections of one file** are listed as two threats (real Defender logged the EICAR file twice); collapse by
+  threat and path. The `DefenderTamperingRestore` event keeps `severity: critical` although it is no longer an alert.
+- **Sysmon score impact** on long interactive runs (S1: 2 of 4 runs differed, n too small); run about ten of each.
+- **Not exercised:** the HTTP download of a kept 4 GB dump, an interactive run and a 1200 s run with the new modules, the
+  `created: true` answer of `POST /symbols` (the build step made the file first), and any non-INetSim route.
+- **For M10:** a clone's first reconfigure once failed with "guest did not start its reboot within 90s" and resumed fine;
+  Windows 10 22H2 needs its own symbol file (the `symbols` step makes one per build).
+- **For M11:** the cape container is not offline (`tartarus-internal` is not `internal: true`); the symbol fetch is the one
+  deliberate outbound connection of the memory pipeline, to a fixed Microsoft host; Volatility writes a cache under
+  `/home/cape/.cache` and creates a directory beside its symbols on a failed lookup.
 
 ## What the CAPE source already tells us
 
@@ -52,43 +75,3 @@ reads the diff before anything is committed (CLAUDE.md rule 5).
 
 S1 and S4 share one mechanism (a Tartarus auxiliary module that exports an event log at the end of the run), so S4
 starts from S1's findings, and the module is written once (rule 3).
-
-## Waves after the spikes
-
-Tasks are cut along module boundaries; a task that needs more than one spec section is cut wrong. Tiers follow rule 5.
-
-- **Wave A, Sysmon (after S1).** `SysmonNormalizer` (Haiku, a fixture of a real `sysmon.xml` and the mapping table
-  already in [data-model](../specs/data-model.md#normalisers)); the auxiliary or config change and the guest option
-  default (Sonnet, touches `cape/` and the guest profile); registering it in `default_normalizers()` and a check that
-  the Sigma rules for `process_creation`, `network_connection`, `file_event` and `registry_*` now match Sysmon
-  events too without double-firing against the capemon-derived ones (Sonnet: a cross-cutting judgment).
-- **Wave B, ETW (after S2, if it survives).** `EtwNormalizer` over the four JSON files (Haiku, fixtures), the config
-  and guest change (Sonnet).
-- **Wave C, Defender (after S4).** `DefenderNormalizer` (Haiku) emitting `malware`-category events and a detection;
-  a `defender` verdict on the analysis summary (`detected`, `removed`, the threat name, the file) in the backend
-  schema and the Overview tab (Sonnet for the summary field and its definition of "removed", Haiku for the Vue chip,
-  which follows the existing badges).
-- **Wave D, memory (after S3).** Submit dialog checkbox with the 4 GB and minutes warning and a disk check against
-  the existing thresholds, `memory_dump` in `options` (the field already exists), the Volatility install and
-  `memory.conf` (Sonnet), `VolatilityNormalizer` with `malfind` and hollowing findings as `memory-finding` events and
-  detections (Sonnet: it defines what a finding is), the `memory` lane in the timeline and a Memory view or lane
-  filter (Haiku after the first screen is approved; the view itself is Sonnet).
-- **Wave E, proof.** An e2e check per source on a real run through the public API, as M6 and M7 did, then
-  `make e2e`, `ruff`, `mypy`, `eslint`, `vue-tsc` clean.
-
-## Frontend work and the review loop
-
-The Memory view and the Submit dialog checkbox are the visual parts. Per rule 4 each gets its own screenshot
-Artifact covering default, empty (no dump), loading, error, and the long-path and narrow-window cases, reviewed by
-the user before the next screen. Every string goes through the i18n catalogue from the start (M7b's lint rule fails
-the build on raw text).
-
-## Open for the user
-
-1. **Sysmon binaries.** They cannot be committed. The proposal is to fetch them at guest build time from the ISO
-   media folder, as the guest already does for its own copy, so nothing is redistributed. Confirm, or name another
-   source.
-2. **Symbols for Volatility3.** If offline symbols are the only blocker, the spike may need one online fetch on the
-   host to build a symbol cache for Windows 11 25H2; the cache would be a data directory, not a repo file. Allowed?
-3. **Order.** The proposal is S1, then S4 (same mechanism), then S3 (largest unknown), then S2 (most likely to be
-   dropped), so the sources most likely to ship land first.

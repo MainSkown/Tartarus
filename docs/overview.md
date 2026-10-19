@@ -63,15 +63,15 @@ remote access. Everything binds to `127.0.0.1`.
 | M5 | **Analyst workflow** | **Done and approved** ([plan](plans/m5-analyst-workflow.md)): tags and notes, IOC exports (STIX, MISP, CSV), HTML and PDF report. |
 | M6 | **Guest wizard** | **Done** ([plan](plans/m6-guest-wizard.md)). Guests are built, cloned, checked and deleted from the GUI through a token-authenticated control service in the `cape` container; there can be up to five, the analyst picks one for each analysis, and an operating system is a [guest profile](specs/guest-profiles.md) (Windows is the first). Verified on the real stack through the public API with the user's Polish Windows 11 25H2 ISO: a build (about 16 minutes) and clones (about 5) reached `ready` through their self-tests, Defender went off by a scripted step and on again, a failing self-test left a guest `failed` and unregistered, and builds survived a backend restart and a control-service stop. Not run for real: a failing install step, a Windows 10 ISO, another UI language, the manual Defender pause, the build desktop in a browser, and a Linux profile (paper design only). |
 | M7 | **Foundations** | **Done 2026-10-17** ([plan](plans/m7-foundations.md)): a build can be cancelled, interactive runs can be extended with `+60s` (the backend ends them at the deadline), the resume race is fixed, failed guests are off the cap, `finish-run` is gone, run-mode guests have no optical drives, the wizard has a browser e2e in `make e2e`, and the open questions are closed. |
-| M7b | **Frontend i18n** | Planned ([finish line](plans/finish-line.md#m7b-frontend-i18n-english-only)): every user-facing string of the frontend moves into a locale catalogue, English only, before M8's and M9's new screens; the screenshots must come out identical. |
-| M8 | **More event sources** | Planned: Sysmon, ETW and Volatility3 events (final phase), the memory-dump option, and what Defender did in an analysis. |
+| M7b | **Frontend i18n** | Built ([plan](plans/m7b-frontend-i18n.md)): every user-facing string of the frontend lives in a locale catalogue, English only; a lint rule fails the build on raw template text. |
+| M8 | **More event sources** | Built and proven on a real guest ([plan](plans/m8-event-sources.md)): Sysmon events, Defender's verdict, the full memory dump with Volatility3 findings and its symbols. ETW was dropped from v1. A few small follow-ups are listed in the plan. |
 | M9 | **Beyond one run** | Planned: PCAP and memory-image import, a cross-analysis Search page with IOC pivot, parallel analyses on several guests. |
 | M10 | **Guest proofs** | Planned: the manual Defender pause, a failing install step, a Windows 10 ISO and an English-language Windows ISO, run for real. |
 | M11 | **Hardening and release** | Planned: security review, CI on GitHub Actions, docs cleanup, GPL-3.0 and release files, a clean-host install test, `v1.0.0`. |
 
 ### Next up
 
-M0 to M7 are built and M7b (frontend i18n) is next, then M8. The rest of v1 is M7b to M11, decided with the user on 2026-10-17 and written down in the
+M0 to M8 are built, including M7b (frontend i18n) and M8 (more event sources); M9 (beyond one run) is next. The rest of v1 is M9 to M11, decided with the user on 2026-10-17 and written down in the
 [finish line](plans/finish-line.md): foundations, then features, then guest proofs, then hardening and release.
 Open questions are closed there too (see the [v1 open questions](features/tartarus-v1.md#open-questions)).
 
