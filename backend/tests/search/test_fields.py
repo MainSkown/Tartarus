@@ -91,6 +91,7 @@ MEMORY = [
     "tartarus.memory.address",
     "tartarus.memory.protection",
     "tartarus.memory.dump_ref",
+    "tartarus.memory.note",
 ]
 DETECTION = [
     "rule.id",

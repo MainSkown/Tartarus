@@ -98,12 +98,21 @@ async def test_detections_are_grouped_by_ruleset_in_the_documented_order(
             alert("s-1", "Sigma rule", 3, rule={"ruleset": "sigma"}),
             alert("y-1", "yara hit", 4, rule={"ruleset": "yara"}),
             alert("x-1", "other", 1, rule={"ruleset": "zeta"}),
+            alert("v-1", "memory region", 3, rule={"ruleset": "volatility"}),
+            alert("d-1", "malware", 3, rule={"ruleset": "defender"}),
         ],
     )
 
     view = await get_view(stack, "detections")
 
-    assert [g["ruleset"] for g in view["groups"]] == ["sigma", "cape", "yara", "zeta"]
+    assert [g["ruleset"] for g in view["groups"]] == [
+        "sigma",
+        "cape",
+        "yara",
+        "defender",
+        "volatility",
+        "zeta",
+    ]
     assert view["groups"][2]["detections"][0]["severity"] == "critical"
 
 

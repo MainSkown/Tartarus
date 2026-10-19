@@ -93,7 +93,7 @@ Common fields on every document:
 | `event.type` | keyword[] | ECS types (`start`, `end`, `creation`, `deletion`, `change`, `access`, `connection`, `protocol`, `info`, `indicator`) |
 | `event.action` | keyword | Specific action, e.g. `process-created`, `file-written`, `reg-value-set`, `dns-query`, `api-call`, `inject-thread` |
 | `event.module` | keyword | `capemon`, `sysmon`, `etw`, `suricata`, `volatility`, `cape`, `defender`, `sigma`, `yara`, `tartarus` |
-| `event.dataset` | keyword | e.g. `capemon.api`, `sysmon.evtx`, `etw.dns`, `suricata.alert`, `cape.signature`, `defender.operational` |
+| `event.dataset` | keyword | e.g. `capemon.api`, `sysmon.evtx`, `etw.dns`, `suricata.alert`, `cape.signature`, `defender.operational`, `volatility.malfind` |
 | `event.severity` | integer | 0 info, 1 low, 2 medium, 3 high, 4 critical (alerts only) |
 | `event.outcome` | keyword | `success` or `failure`, on action events (Defender); omitted otherwise |
 | `tartarus.analysis_id` | long | |
@@ -125,14 +125,14 @@ Category fields:
 | registry | `registry.path`, `registry.hive`, `registry.key`, `registry.value`, `registry.data.type`, `registry.data.strings` |
 | network | `source.ip`/`port`, `destination.ip`/`port`/`domain`, `network.transport`, `network.protocol`, `dns.question.name`, `dns.question.type`, `dns.answers.data`, `url.full`, `http.request.method`, `http.response.status_code`, `user_agent.original`, `tls.server.sni`, `tls.server.ja3s`, `tls.client.ja3` |
 | api | `api.name` (keyword), `api.category` (capemon category: process, filesystem, registry, network, synchronisation, crypto, …), `api.status` (bool), `api.return_value` (keyword), `api.arguments` (`flat_object`: arbitrary argument names without mapping explosion), `api.repeated` (count when capemon collapsed repeats) |
-| memory | `tartarus.memory.plugin` (Volatility plugin), `tartarus.memory.address`, `tartarus.memory.protection`, `tartarus.memory.dump_ref` (artefact id) |
+| memory | `tartarus.memory.plugin` (Volatility plugin), `tartarus.memory.address`, `tartarus.memory.protection`, `tartarus.memory.dump_ref` (artefact id, unset: v1 does not extract regions), `tartarus.memory.note` (what the plugin says about the region) |
 
 Detections (`event.kind: alert`, lane = the lane of the triggering event, drawn on the
 detections track):
 
 | Field | Notes |
 |---|---|
-| `rule.id`, `rule.name`, `rule.description`, `rule.ruleset` | ruleset ∈ `sigma`, `cape`, `yara`, `suricata`, `defender` |
+| `rule.id`, `rule.name`, `rule.description`, `rule.ruleset` | ruleset ∈ `sigma`, `cape`, `yara`, `suricata`, `defender`, `volatility` |
 | `rule.reference` | URLs |
 | `threat.technique.id` / `.name`, `threat.tactic.name` | ATT&CK mapping (Sigma tags `attack.t1055` → `T1055`) |
 | `related.events` | `event.id`s that triggered it |
@@ -168,7 +168,7 @@ becomes in the event document.
 | CAPE signature | n/a | detection, `rule.ruleset: cape` | lane of the referenced call, or `process` |
 | Defender 1116 (malware detected), 1117/1118/1119 (action taken, failed), from the host export `aux/defender.xml` | n/a | detection `malware-detected`, `rule.ruleset: defender`; actions `malware-quarantined`, `malware-removed`, `malware-action-failed` | file |
 | YARA hit (file, memory or payload) | n/a | detection, `rule.ruleset: yara` | file or memory |
-| Volatility3 findings (malfind, hollowprocesses, …) | n/a | `memory-finding` | memory |
+| Volatility3 findings (malfind, hollowprocesses), from `memory/` | n/a | `memory-finding`, and a detection `injection-detected` / `hollowing-detected`, `rule.ruleset: volatility` | memory |
 
 The Sysmon rows are final-phase sources: the guest's Sysmon log is exported at the end of the run to
 `sysmon/sysmon.xml`, and there is no live forwarder, so these events arrive with the final report, never in the
@@ -434,6 +434,52 @@ after the run (S4 spike, `docs/plans/m8-spikes/S4-findings.md`). Final phase, `e
 Fields this source adds to the catalog: `event.outcome`, `user.name`, `user.domain`, `error.code`,
 `error.message`, `tartarus.defender.{detection_id, scope, action_id, category_id, state,
 status_code, clock}`.
+
+#### `volatility` (`memory/`)
+
+Reads the folder the memory step leaves in the analysis directory (`backend/app/ingest/volatility*.py`):
+`memory/run.json` (`{volatility, dump_bytes, pids, plugins: {<plugin>: {rows, seconds, error}}, symbols}`) and one
+`<plugin>.json` per plugin that worked, each the JSON array Volatility3 prints with `-r json` (S3 spike,
+`docs/plans/m8-spikes/S3-findings.md`). No `memory/run.json` is no memory step: no events, no error. A plugin
+entry with an `error`, a missing file, a file that is not a JSON array, or a row that is not an object naming a
+`PID` is skipped; the rest is used. At most 5000 rows per plugin are read, the overflow counted.
+Final phase, `event.module: volatility`, `event.dataset: volatility.<plugin>` (`volatility.malfind`), lane `memory`.
+
+- **What is a finding.** Every kept row of `windows.malware.malfind` and `windows.malware.hollowprocesses` is an
+  event `memory-finding` (`event.category: [malware, process]`, severity 0) and also raises a detection (below).
+  `windows.pslist` and `windows.cmdline` are context only: they fill `process.name` and `process.command_line`
+  and are never events (capemon and Sysmon own the process events).
+- **Fields.** `tartarus.memory.plugin` (the full plugin name), `.address` (hex string of `Start VPN`; for
+  hollowprocesses, which has no column, the first `0x...` in its note), `.protection` (malfind), `.note`
+  (malfind's `Notes`, hollowprocesses' sentence), never `.dump_ref`. `tartarus.raw` is the whole row, whose
+  `Hexdump` is the first 64 bytes of the region. Summary: `malfind found an executable private region in
+  notepad.exe (pid 2184) at 0x1e3eba60000, RWX, MZ header`; `hollowprocesses found a hollowed process image in
+  PING.EXE (pid 6304) at 0x140000000: <note>`.
+- **Process.** `process.entity_id` is built by capemon's own `process_fields` from the report's
+  `behavior.processes`, so a finding and the process's capemon events share an entity id (a reused pid resolves
+  to the last process, which is the one the dump shows). `process.name` and `process.command_line` fall back to
+  pslist and cmdline, then the plugin's own `Process` column. A pid the report has no process for still yields the
+  finding, with a start-less id (`<analysis>:<pid>`).
+- **Time.** A finding has no time (the dump is taken after the run): every event is at `info.ended`, or at
+  `info.started` (the context's start) when the report has no end.
+- **Detections.** One alert per finding, `event.kind: alert`, `rule.ruleset: volatility`, `rule.id`
+  `volatility.malfind` or `volatility.hollowprocesses`, same lane, dataset, process and `tartarus.memory.*`,
+  `related.events` the finding's id, `tartarus.detection.match` the address, protection and note, `event.action`
+  `injection-detected` / `hollowing-detected`. `threat.technique.id` is `T1055` (Process Injection) for malfind and
+  `T1055.012` (Process Hollowing) for hollowprocesses. Severity: malfind with the `MZ header` note (an executable
+  private region holding a PE image) **high** (3), any other kept malfind row **medium** (2), hollowprocesses
+  **high** (3): it needs a PEB base that disagrees with the mapped image or a missing VAD, which a running process
+  of a normal sample does not show. The two notes hollowprocesses gives one process are two findings and two alerts.
+- **Noise.** One rule (`app/ingest/volatility_noise.py`, counted on `VolatilityNormalizer.dropped` as
+  `monitor-page`; the others are `malformed-row` and `row-cap`): the capemon monitor keeps RWX pages in every
+  process it watches (8 of the 10 malfind rows of the sample's processes in S3, at the same three addresses in every
+  process and run), and the first eight bytes of each page, read as a little-endian qword, are the page's own
+  start address. A row with that self-pointer is dropped; a row that cannot be judged is kept, and no address is
+  matched, so a real region that lands on a known monitor address survives. Rows of processes outside the run are
+  not filtered here: the producer runs the plugins with `--pid` of the run's processes (without it the same dump has
+  12 more malfind rows, Defender and OneDrive). The rule rests on one guest and 4 runs.
+
+Fields this source adds to the catalog: `tartarus.memory.note`; `rule.ruleset` gains `volatility`.
 
 ### Sigma field mapping
 Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` →

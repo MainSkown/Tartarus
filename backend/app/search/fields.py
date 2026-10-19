@@ -340,6 +340,13 @@ _MEMORY = (
     FieldDefinition(
         "tartarus.memory.dump_ref", _K, "Artifact id of the memory dump", "dump-3", Lane.MEMORY
     ),
+    FieldDefinition(
+        "tartarus.memory.note",
+        FieldType.TEXT,
+        "What the plugin says about the region: MZ header, or the hollowing it found",
+        "MZ header",
+        Lane.MEMORY,
+    ),
 )
 
 _DETECTION = (
@@ -358,7 +365,7 @@ _DETECTION = (
     FieldDefinition(
         "rule.ruleset",
         _K,
-        "sigma, cape, yara, suricata or defender",
+        "sigma, cape, yara, suricata, defender or volatility",
         "cape",
         aliases=("ruleset",),
     ),

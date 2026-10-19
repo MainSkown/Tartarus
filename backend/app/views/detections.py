@@ -20,7 +20,7 @@ from app.views.event_fields import (
 
 RELATED_PER_DETECTION = 50
 MAX_RELATED_LOOKUP = 10_000
-RULESET_ORDER = ("sigma", "cape", "yara", "suricata", "defender")
+RULESET_ORDER = ("sigma", "cape", "yara", "suricata", "defender", "volatility")
 UNKNOWN_RULESET = "unknown"
 ALERT_FIELDS = (
     "event.id",
