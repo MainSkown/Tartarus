@@ -429,6 +429,24 @@ def test_the_injector_acting_on_the_sample_is_tooling_not_a_remote_thread(tmp_pa
     assert dropped == {TOOLING: 2}
 
 
+@pytest.mark.parametrize("folder", [r"C:\isxu_o0d", r"C:\_abcdefg", r"C:\x3mkx0ob"])
+def test_the_injector_is_tooling_in_an_unpack_folder_with_an_underscore(
+    tmp_path: Path, folder: str
+) -> None:
+    # Seen in the M8 real run (second pass): the agent unpacks the analyzer into a random folder
+    # of letters, digits and underscores (`C:\isxu_o0d`); the injector in it showed up as three
+    # root nodes of the process tree.
+    injector = (610, 8, f"{folder}\\bin\\SGpllakn.exe")
+    kept, dropped = run(
+        tmp_path,
+        process_event(10, 10, injector, (SAMPLE_PID, 1, BENIGN)),
+        image_loaded(11, 612, injector[2], f"{folder}\\dll\\lLAzkilk.dll", own=8),
+    )
+
+    assert kept == set()
+    assert dropped == {TOOLING: 2}
+
+
 def test_another_process_acting_on_the_sample_is_kept(tmp_path: Path) -> None:
     stranger = (9999, 9, SVCHOST)
     kept, _ = run(

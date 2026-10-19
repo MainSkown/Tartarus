@@ -56,10 +56,11 @@ TOOLING_IMAGES = frozenset(
     }
 )
 TOOLING_IMAGE_PREFIXES = ("pplinject", "inject-")
-# The analyzer unpacks into `C:\<8 random characters>\` and keeps its results in `C:\<6 to 10 random
-# characters>\` (CAPE's analyzer constants.py); the injector is renamed per task.
+# The analyzer unpacks into `C:\<8 random characters>\` (letters, digits and underscores, as the
+# real runs showed) and keeps its results in `C:\<6 to 10 random letters>\` (CAPE's analyzer
+# constants.py); the injector is renamed per task.
 ANALYZER_PATH = re.compile(
-    r"^[A-Za-z]:\\[A-Za-z0-9]{6,10}\\(?:bin|dll|data|lib|modules|CAPE)(?:\\|$)", re.I
+    r"^[A-Za-z]:\\[A-Za-z0-9_]{6,10}\\(?:bin|dll|data|lib|modules|CAPE)(?:\\|$)", re.I
 )
 MONITOR_PID_FILE = re.compile(r"^[A-Za-z]:\\\d+\.ini$")
 # The event field that names the file an event touches, for the events that have one.
