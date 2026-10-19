@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from opensearchpy import AsyncOpenSearch
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.analyses.memory_disk import StorageFreeSpace
 from app.analyses.runner import build_runner
 from app.analyses.submission import AnalysisSubmitter
 from app.analyses.summary import read_report
@@ -111,7 +112,9 @@ def _build_lifespan(
             ),
         )
         build_tracking = BuildTracking(job_runner)
-        submitter = AnalysisSubmitter(sample_store, guest_control, runner)
+        submitter = AnalysisSubmitter(
+            sample_store, guest_control, runner, StorageFreeSpace(resolved.cape_storage_path)
+        )
         selftest = GuestSelfTest(guest_control, submitter, app.state.session_factory, event_index)
         job_runner.register(
             JobType.GUEST_BUILD, guest_build_handler(guest_control, build_tracking, selftest)

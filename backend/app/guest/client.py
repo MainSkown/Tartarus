@@ -21,6 +21,7 @@ from app.guest.schemas import (
     GuestProfile,
     HealthCheckResult,
     MediaEntry,
+    MemoryAnalysis,
     SelfTestChecks,
     SelfTestSample,
 )
@@ -30,14 +31,17 @@ CONNECT_TIMEOUT_S = 5.0
 DEFAULT_TIMEOUT = httpx.Timeout(150.0, connect=CONNECT_TIMEOUT_S)
 # The self-test's checks run guest-facts and the EICAR proofs after the same restore.
 SELFTEST_CHECKS_TIMEOUT_S = 240.0
+# Volatility3 over a 4 GiB dump takes seconds, but the service gives itself five minutes.
+MEMORY_ANALYSIS_TIMEOUT_S = 300.0
 SAMPLE_CAP = 16 * 1024 * 1024
 NO_MESSAGE = "the guest control service refused the request without saying why"
 AUTH_REFUSED_STATUSES = frozenset({httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN})
 # The finish route answers 502 with the reason the guest agent could not be asked, and so do the
 # self-test's checks.
 EXPLAINED_SERVER_ERRORS = frozenset({httpx.codes.BAD_GATEWAY})
-# The sample route answers 500 with the reason building the sample failed.
-SAMPLE_EXPLAINED_SERVER_ERRORS = EXPLAINED_SERVER_ERRORS | {httpx.codes.INTERNAL_SERVER_ERROR}
+# The sample route answers 500 with the reason building the sample failed, and the memory routes
+# answer 500 (results not written) and 502 (Volatility3 could not start) with theirs.
+EXPLAINED_SERVER_ERRORS_WITH_500 = EXPLAINED_SERVER_ERRORS | {httpx.codes.INTERNAL_SERVER_ERROR}
 SAMPLE_FILENAME_HEADER = "X-Filename"
 
 _PROFILES = TypeAdapter(list[GuestProfile])
@@ -49,6 +53,7 @@ _BUILD = TypeAdapter(BuildStatus)
 _LOG_LINES = TypeAdapter(list[str])
 _DISPLAY = TypeAdapter(GuestDisplay)
 _SELFTEST_CHECKS = TypeAdapter(SelfTestChecks)
+_MEMORY_ANALYSIS = TypeAdapter(MemoryAnalysis)
 
 
 @dataclass(frozen=True)
@@ -104,6 +109,10 @@ class GuestControl(Protocol):
     async def selftest_sample(self, name: str) -> SelfTestSample: ...
 
     async def selftest_checks(self, name: str) -> SelfTestChecks: ...
+
+    async def analyse_memory(self, task_id: int) -> MemoryAnalysis: ...
+
+    async def delete_memory_dump(self, task_id: int) -> None: ...
 
 
 class HttpGuestControl:
@@ -213,7 +222,7 @@ class HttpGuestControl:
         reply = await self._exchange(
             call, "GET", f"/guests/{name}/selftest/sample", max_bytes=SAMPLE_CAP
         )
-        _fail_unless_ok(call, reply, SAMPLE_EXPLAINED_SERVER_ERRORS)
+        _fail_unless_ok(call, reply, EXPLAINED_SERVER_ERRORS_WITH_500)
         filename = reply.headers.get(SAMPLE_FILENAME_HEADER)
         if not filename:
             raise GuestControlBadResponse(call, f"no {SAMPLE_FILENAME_HEADER} header")
@@ -228,6 +237,25 @@ class HttpGuestControl:
         )
         return _parsed("selftest_checks", _SELFTEST_CHECKS, body)
 
+    async def analyse_memory(self, task_id: int) -> MemoryAnalysis:
+        call = "analyse_memory"
+        body = await self._send(
+            call,
+            "POST",
+            f"/memory/{task_id}/analyse",
+            patience=httpx.Timeout(MEMORY_ANALYSIS_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
+            explained_server_errors=EXPLAINED_SERVER_ERRORS_WITH_500,
+        )
+        return _parsed(call, _MEMORY_ANALYSIS, body)
+
+    async def delete_memory_dump(self, task_id: int) -> None:
+        await self._send(
+            "delete_memory_dump",
+            "DELETE",
+            f"/memory/{task_id}/dump",
+            explained_server_errors=EXPLAINED_SERVER_ERRORS_WITH_500,
+        )
+
     async def _send(  # noqa: PLR0913 - the request's parts
         self,
         call: str,
@@ -237,11 +265,12 @@ class HttpGuestControl:
         *,
         query: Mapping[str, Any] | None = None,
         patience: httpx.Timeout | None = None,
+        explained_server_errors: frozenset[int] = EXPLAINED_SERVER_ERRORS,
     ) -> Any:
         reply = await self._exchange(
             call, method, path, body, query=query, patience=patience, max_bytes=None
         )
-        return _answer(call, reply)
+        return _answer(call, reply, explained_server_errors)
 
     async def _exchange(  # noqa: PLR0913 - the request's parts
         self,
@@ -306,8 +335,10 @@ def _fail_unless_ok(
     raise _rejection(call, status, parsed)
 
 
-def _answer(call: str, reply: _Reply) -> Any:
-    _fail_unless_ok(call, reply)
+def _answer(
+    call: str, reply: _Reply, explained_server_errors: frozenset[int] = EXPLAINED_SERVER_ERRORS
+) -> Any:
+    _fail_unless_ok(call, reply, explained_server_errors)
     if reply.status == httpx.codes.NO_CONTENT:
         return None
     parsed = _json_or_none(reply.content)

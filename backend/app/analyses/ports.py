@@ -13,7 +13,7 @@ from typing import Any, Protocol
 
 from app.analyses.defender import DefenderVerdict
 from app.db.models.analysis import Severity
-from app.guest.schemas import Guest, GuestProfile
+from app.guest.schemas import Guest, GuestProfile, MemoryAnalysis
 
 
 class SampleSource(Protocol):
@@ -66,7 +66,17 @@ class EventIngester(Protocol):
         """Raises `IngestFailedError`, leaving no index behind, when the events cannot be stored."""
 
 
-class GuestSource(Protocol):
+class MemoryControl(Protocol):
+    """The memory routes of the guest control service."""
+
+    async def analyse_memory(self, task_id: int) -> MemoryAnalysis:
+        """Raises `GuestControlRejected` with status 404 when the task has no dump on disk."""
+
+    async def delete_memory_dump(self, task_id: int) -> None:
+        """Raises `GuestControlRejected` with status 404 when the task has no dump on disk."""
+
+
+class GuestSource(MemoryControl, Protocol):
     """What the runner asks the guest control service, to know where and how to run a task."""
 
     async def guest(self, name: str) -> Guest:

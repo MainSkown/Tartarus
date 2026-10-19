@@ -18,6 +18,16 @@ class ControlModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class MemoryAnalysis(ControlModel):
+    """What `POST /memory/{task}/analyse` answers: rows per plugin, the plugins that failed, and
+    the pids the per-process plugins were limited to."""
+
+    plugins: dict[str, int]
+    seconds: float
+    pids: list[int]
+    errors: dict[str, str] = Field(default_factory=dict)
+
+
 class GuestMedia(ControlModel):
     file: str
     variant: str | None = None

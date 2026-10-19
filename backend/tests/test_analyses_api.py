@@ -23,6 +23,7 @@ from app.api.dependencies import (
     get_cape_storage_path,
     get_event_index,
     get_exports_path,
+    get_free_space_probe,
     get_guest_control,
     get_runner,
     get_sample_store,
@@ -42,6 +43,7 @@ from app.guest.errors import GuestControlBadResponse, GuestControlRejected, Gues
 from app.guest.http_errors import install_guest_control_error_handler
 from app.live.utc import as_utc
 from app.samples.store import SampleStore
+from tests.analyses.fakes import FakeFreeSpace
 from tests.analyses.guest_fakes import ScriptedGuestControl, guest_named
 
 CONTENT = b"MZ\x90\x00 a pretend executable"
@@ -51,6 +53,8 @@ OPTIONS: dict[str, Any] = {
     "timeout": 180,
     "package": "auto",
     "interactive": False,
+    "memory_dump": False,
+    "keep_memory_dump": False,
     "guest": "win",
 }
 
@@ -106,6 +110,7 @@ class Harness:
     index: FakeEventIndex
     storage: Path
     exports: Path
+    free_space: FakeFreeSpace
 
     def start_monitor(self, cape_task_id: int = 7) -> None:
         """Writes the first log the analyzer's monitor makes in the guest."""
@@ -165,6 +170,7 @@ async def harness(
     store = SampleStore(tmp_path / "samples")
     runner, cape, index = FakeRunner(), FakeCape(), FakeEventIndex()
     guests = ScriptedGuestControl([guest_named("win"), guest_named("lab1")])
+    free_space = FakeFreeSpace()
 
     app = FastAPI(generate_unique_id_function=generate_operation_id)
     install_error_handlers(app)
@@ -178,6 +184,7 @@ async def harness(
     app.dependency_overrides[get_guest_control] = lambda: guests
     app.dependency_overrides[get_cape_storage_path] = lambda: tmp_path / "cape-storage"
     app.dependency_overrides[get_exports_path] = lambda: tmp_path / "exports"
+    app.dependency_overrides[get_free_space_probe] = lambda: free_space
 
     async with make_client(app) as client:
         yield Harness(
@@ -191,6 +198,7 @@ async def harness(
             index,
             tmp_path / "cape-storage",
             tmp_path / "exports",
+            free_space,
         )
     await engine.dispose()
 
@@ -230,6 +238,8 @@ async def test_submitted_options_are_kept(harness: Harness) -> None:
         "timeout": 600,
         "package": "dll",
         "interactive": True,
+        "memory_dump": True,
+        "keep_memory_dump": True,
         "guest": "lab1",
     }
 
@@ -253,6 +263,12 @@ async def test_a_file_name_with_a_path_is_shortened_to_its_last_part(harness: Ha
         ({"package": ""}, ["body", "options", "package"]),
         ({"package": "../exe"}, ["body", "options", "package"]),
         ({"interactive": "maybe"}, ["body", "options", "interactive"]),
+        ({"memory_dump": "maybe"}, ["body", "options", "memory_dump"]),
+        ({"keep_memory_dump": True}, ["body", "options", "keep_memory_dump"]),
+        (
+            {"memory_dump": False, "keep_memory_dump": True},
+            ["body", "options", "keep_memory_dump"],
+        ),
         ("{not json", ["body", "options"]),
         ("[]", ["body", "options"]),
     ],
@@ -306,6 +322,82 @@ async def assert_nothing_was_submitted(harness: Harness) -> None:
 
 def message_of(response: httpx.Response) -> str:
     return str(response.json()["error"]["message"])
+
+
+async def test_a_memory_dump_with_room_is_accepted_without_a_warning(harness: Harness) -> None:
+    response = await harness.upload(options={"memory_dump": True})
+
+    assert response.status_code == 201
+    assert response.json()["warnings"] == []
+    assert response.json()["options"]["memory_dump"] is True
+
+
+async def test_a_submission_without_a_memory_dump_never_asks_for_the_free_space(
+    harness: Harness,
+) -> None:
+    harness.free_space.unreadable = True
+
+    assert (await harness.upload()).status_code == 201
+
+
+async def test_a_memory_dump_without_the_room_is_refused_with_the_numbers_and_stores_nothing(
+    harness: Harness,
+) -> None:
+    harness.free_space.free = int(18.2 * 1024)
+
+    response = await harness.upload(options={"memory_dump": True})
+
+    assert response.status_code == 409
+    assert message_of(response) == "A memory dump needs 48.8 GB free and 18.2 GB is available"
+    await assert_nothing_was_submitted(harness)
+
+
+async def test_the_room_a_memory_dump_needs_grows_with_the_chosen_guests_ram(
+    harness: Harness,
+) -> None:
+    harness.guests.guests_listed = [guest_named("win", ram_mb=64 * 1024)]
+    harness.free_space.free = 80 * 1024
+
+    response = await harness.upload(options={"memory_dump": True})
+
+    assert response.status_code == 409
+    assert message_of(response) == "A memory dump needs 84.0 GB free and 80.0 GB is available"
+
+
+async def test_a_memory_dump_with_little_room_to_spare_is_accepted_with_a_warning(
+    harness: Harness,
+) -> None:
+    harness.free_space.free = 52 * 1024
+
+    response = await harness.upload(options={"memory_dump": True})
+
+    assert response.status_code == 201
+    assert response.json()["warnings"] == [
+        "Only 52.0 GB is free: a memory dump takes 4.0 GB, "
+        "and the disk warning is at 50 GB free before the dump"
+    ]
+
+
+async def test_a_memory_dump_on_a_guest_of_unknown_ram_is_refused(harness: Harness) -> None:
+    harness.guests.guests_listed = [guest_named("win", ram_mb=None)]
+
+    response = await harness.upload(options={"memory_dump": True})
+
+    assert response.status_code == 409
+    assert "RAM of win" in message_of(response)
+    await assert_nothing_was_submitted(harness)
+
+
+async def test_a_storage_whose_free_space_cannot_be_read_refuses_a_memory_dump(
+    harness: Harness,
+) -> None:
+    harness.free_space.unreadable = True
+
+    response = await harness.upload(options={"memory_dump": True})
+
+    assert response.status_code == 409
+    assert "free space of the CAPE storage" in message_of(response)
+    await assert_nothing_was_submitted(harness)
 
 
 async def test_a_guest_that_is_not_ready_is_refused_naming_it_and_its_state(
@@ -651,6 +743,7 @@ async def test_a_summary_stored_before_the_verdict_existed_is_served_with_empty_
 
     assert body["summary"]["defender"] is None
     assert body["summary"]["hidden_events"] == {}
+    assert body["summary"]["memory"] is None
 
 
 async def test_the_defender_verdict_and_hidden_event_counts_are_served_on_read_and_list(
@@ -688,6 +781,24 @@ async def test_the_defender_verdict_and_hidden_event_counts_are_served_on_read_a
     for summary in (read["summary"], listed["summary"]):
         assert summary["defender"] == verdict
         assert summary["hidden_events"] == hidden
+
+
+async def test_the_memory_summary_is_served_on_read_and_list(harness: Harness) -> None:
+    created = (await harness.upload(options={"memory_dump": True})).json()
+    memory = {
+        "dump_taken": True,
+        "findings": "ok",
+        "error": None,
+        "dump_bytes": 4_294_776_995,
+        "dump_deleted": True,
+    }
+    await harness.set_state(created["id"], summary={"memory": memory})
+
+    read = (await harness.client.get(f"/api/analyses/{created['id']}")).json()
+    listed = (await harness.client.get("/api/analyses")).json()["items"][0]
+
+    assert read["summary"]["memory"] == memory
+    assert listed["summary"]["memory"] == memory
 
 
 async def test_a_submission_reports_its_place_in_the_queue(harness: Harness) -> None:

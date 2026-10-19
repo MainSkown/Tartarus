@@ -8,6 +8,7 @@ import pytest
 from app.config import Settings
 from app.guest.client import (
     DEFAULT_TIMEOUT,
+    MEMORY_ANALYSIS_TIMEOUT_S,
     SAMPLE_CAP,
     SELFTEST_CHECKS_TIMEOUT_S,
     HttpGuestControl,
@@ -212,6 +213,78 @@ async def test_finish_task_reports_the_reason_when_the_guest_agent_cannot_be_ask
         await control_with(control).finish_task(7, "lab1")
 
     assert (error.value.status, error.value.message) == (502, reason)
+
+
+# --- memory ------------------------------------------------------------------------------------
+
+
+ANALYSED_MEMORY = {
+    "plugins": {"windows.pslist": 144, "windows.malware.malfind": 2},
+    "errors": {"windows.cmdline": "timed out"},
+    "seconds": 4.2,
+    "pids": [1234, 2345],
+}
+
+
+async def test_analyse_memory_posts_to_the_tasks_memory_route_and_parses_the_summary() -> None:
+    control = serving("POST", "/memory/7/analyse", json_response(ANALYSED_MEMORY))
+
+    analysed = await control_with(control).analyse_memory(7)
+
+    assert analysed.plugins == {"windows.pslist": 144, "windows.malware.malfind": 2}
+    assert (analysed.errors, analysed.pids) == ({"windows.cmdline": "timed out"}, [1234, 2345])
+    assert control.only_request.headers["Authorization"] == f"Bearer {TOKEN}"
+
+
+async def test_analyse_memory_waits_five_minutes_for_the_answer() -> None:
+    control = serving("POST", "/memory/7/analyse", json_response(ANALYSED_MEMORY))
+
+    await control_with(control).analyse_memory(7)
+
+    assert control.only_request.extensions["timeout"]["read"] == MEMORY_ANALYSIS_TIMEOUT_S == 300.0
+
+
+async def test_analyse_memory_without_errors_in_the_answer_has_none() -> None:
+    answer = {"plugins": {"windows.pslist": 1}, "seconds": 1.0, "pids": []}
+    control = serving("POST", "/memory/7/analyse", json_response(answer))
+
+    assert (await control_with(control).analyse_memory(7)).errors == {}
+
+
+@pytest.mark.parametrize("status", [404, 409, 500, 502])
+async def test_analyse_memory_keeps_the_services_reason_for_a_refusal(status: int) -> None:
+    refusal = json_response({"error": "no memory dump for this task"}, status_code=status)
+    control = serving("POST", "/memory/7/analyse", refusal)
+
+    with pytest.raises(GuestControlRejected) as error:
+        await control_with(control).analyse_memory(7)
+
+    assert (error.value.status, error.value.message) == (status, "no memory dump for this task")
+
+
+async def test_analyse_memory_answering_something_else_is_a_bad_response() -> None:
+    control = serving("POST", "/memory/7/analyse", json_response({"finished": True}))
+
+    with pytest.raises(GuestControlBadResponse):
+        await control_with(control).analyse_memory(7)
+
+
+async def test_delete_memory_dump_sends_a_delete_and_accepts_no_content() -> None:
+    control = serving("DELETE", "/memory/7/dump", httpx.Response(204))
+
+    await control_with(control).delete_memory_dump(7)
+
+    assert control.only_request.method == "DELETE"
+
+
+async def test_delete_memory_dump_of_a_missing_dump_is_a_404_rejection() -> None:
+    gone = json_response({"error": "no memory dump for this task"}, status_code=404)
+    control = serving("DELETE", "/memory/7/dump", gone)
+
+    with pytest.raises(GuestControlRejected) as error:
+        await control_with(control).delete_memory_dump(7)
+
+    assert error.value.status == 404
 
 
 # --- authentication ----------------------------------------------------------------------------

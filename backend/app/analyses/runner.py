@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.analyses.deadline import MAX_RUN_S, initial_deadline
 from app.analyses.defender import DefenderVerdict
 from app.analyses.guest_choice import recorded_guest
+from app.analyses.memory import MemorySummary
+from app.analyses.memory_step import MemoryStep
 from app.analyses.monitor import first_monitor_log_time
 from app.analyses.ports import (
     EventIngester,
@@ -131,6 +133,7 @@ class Runner:
         self._read_report = read_report
         self._ingester = ingester
         self._guests = guests
+        self._memory = MemoryStep(guests, config.cape_storage_path)
         self._config = config
         self._clock = clock
         self._now = now
@@ -261,7 +264,7 @@ class Runner:
                 timeout=MAX_RUN_S if is_interactive else options["timeout"],
                 package=options.get("package", "auto"),
                 options=interactive.options,
-                task_fields=interactive.task_fields,
+                task_fields=_task_fields(options, interactive),
             )
 
     async def _guest_of(self, analysis: Analysis) -> Guest:
@@ -447,7 +450,7 @@ class Runner:
         await self._advance(session, analysis, task_id, AnalysisStatus(progress.value))
         self._start_live_if_running(analysis, task_id)
         if progress is CapeProgress.INGESTING:
-            await self._ingest(session, analysis.id, task_id)
+            await self._ingest(session, analysis, task_id)
 
     async def _advance(
         self, session: AsyncSession, analysis: Analysis, task_id: int, target: AnalysisStatus
@@ -462,7 +465,8 @@ class Runner:
             changes["started_at"] = view.started_on or utc_now()
         await update_analysis(session, analysis.id, **changes)
 
-    async def _ingest(self, session: AsyncSession, analysis_id: int, task_id: int) -> None:
+    async def _ingest(self, session: AsyncSession, analysis: Analysis, task_id: int) -> None:
+        analysis_id = analysis.id
         report_file = self._config.cape_storage_path / "analyses" / str(task_id) / "reports"
         report_file /= "report.json"
         try:
@@ -472,6 +476,7 @@ class Runner:
                 session, analysis_id, status=AnalysisStatus.REPORT_FAILED, error=str(unreadable)
             )
             return
+        memory = await self._memory.run(analysis, task_id)
         try:
             indexed = await self._ingester.ingest(analysis_id, report_file)
         except IngestFailedError as failure:
@@ -484,10 +489,16 @@ class Runner:
                 event_count=0,
             )
             return
-        await self._finish_done(session, analysis_id, outcome, indexed)
+        memory = await self._memory.release(analysis, task_id, memory)
+        await self._finish_done(session, analysis_id, outcome, indexed, memory)
 
     async def _finish_done(
-        self, session: AsyncSession, analysis_id: int, outcome: ReportOutcome, indexed: IngestResult
+        self,
+        session: AsyncSession,
+        analysis_id: int,
+        outcome: ReportOutcome,
+        indexed: IngestResult,
+        memory: MemorySummary | None,
     ) -> None:
         await self._finish(
             session,
@@ -502,6 +513,7 @@ class Runner:
                 "lane_counts": indexed.lane_counts,
                 "defender": _dumped(indexed.defender),
                 "hidden_events": indexed.hidden_events,
+                **({} if memory is None else {"memory": memory.model_dump(mode="json")}),
             },
             event_count=indexed.event_count,
         )
@@ -545,6 +557,14 @@ class Runner:
 
 def _dumped(verdict: DefenderVerdict | None) -> dict[str, Any] | None:
     return None if verdict is None else verdict.model_dump(mode="json")
+
+
+def _task_fields(
+    options: Mapping[str, Any], interactive: InteractiveOptions
+) -> dict[str, bool | int | str]:
+    # CAPE reads `memory` as a form field; as an entry of the `options` string it takes no dump.
+    asked_for_dump = options.get("memory_dump") is True
+    return {**interactive.task_fields, **({"memory": True} if asked_for_dump else {})}
 
 
 def _is_interactive_run(analysis: Analysis) -> bool:

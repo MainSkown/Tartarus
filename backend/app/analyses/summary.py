@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.analyses.defender import DefenderVerdict
+from app.analyses.memory import MemorySummary
 from app.analyses.ports import ReportOutcome, ReportUnreadableError
 from app.db.models.analysis import Severity
 
@@ -51,6 +52,7 @@ class ReportSummary(BaseModel):
     lane_counts: dict[str, int] = {}
     defender: DefenderVerdict | None = None
     hidden_events: dict[str, int] = {}
+    memory: MemorySummary | None = None
 
 
 def read_report(path: Path) -> ReportOutcome:

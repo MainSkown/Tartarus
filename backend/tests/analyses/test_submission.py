@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.analyses.guest_choice import GuestRefusedError, PackageNotAcceptedError
+from app.analyses.memory_disk import MemoryDumpRefusedError
 from app.analyses.submission import AnalysisSubmitter
 from app.db.annotation_repository import analysis_level_tags
 from app.db.base import Base
@@ -14,6 +15,7 @@ from app.db.models import Analysis, Sample, Setting
 from app.guest.errors import GuestControlUnreachable
 from app.samples.store import BytesSource, EmptySampleError, SampleStore
 from app.schemas.analysis_requests import AnalysisOptions
+from tests.analyses.fakes import FakeFreeSpace
 from tests.analyses.guest_fakes import ScriptedGuestControl, guest_named
 
 
@@ -32,6 +34,7 @@ class Submission:
     runner: FakeRunner
     control: ScriptedGuestControl
     submitter: AnalysisSubmitter
+    free_space: FakeFreeSpace
 
     async def submit(
         self,
@@ -60,8 +63,10 @@ async def submission(tmp_path: Path) -> AsyncIterator[Submission]:
         await connection.run_sync(Base.metadata.create_all)
     store, runner = SampleStore(tmp_path / "samples"), FakeRunner()
     control = ScriptedGuestControl([guest_named("win"), guest_named("lab1")])
+    free_space = FakeFreeSpace()
     async with async_sessionmaker(engine, expire_on_commit=False)() as session:
-        yield Submission(session, store, runner, control, AnalysisSubmitter(store, control, runner))
+        submitter = AnalysisSubmitter(store, control, runner, free_space)
+        yield Submission(session, store, runner, control, submitter, free_space)
     await engine.dispose()
 
 
@@ -186,3 +191,42 @@ async def test_a_tag_that_is_not_a_tag_name_is_refused_before_anything_is_stored
         await submission.submit(tags=["Not A Tag!"])
 
     assert await submission.rows(Sample) == []
+
+
+async def test_a_memory_dump_without_room_stores_nothing_and_wakes_nobody(
+    submission: Submission,
+) -> None:
+    submission.free_space.free = 10 * 1024
+
+    with pytest.raises(MemoryDumpRefusedError):
+        await submission.submit(AnalysisOptions(memory_dump=True))
+
+    assert await submission.rows(Sample) == []
+    assert await submission.rows(Analysis) == []
+    assert submission.runner.nudges == 0
+    assert list(submission.store.root.glob("*")) == []
+
+
+async def test_the_room_a_memory_dump_needs_follows_the_stored_disk_thresholds(
+    submission: Submission,
+) -> None:
+    submission.session.add(Setting(key="disk_block_gb", value=80))
+    submission.session.add(Setting(key="disk_warn_gb", value=100))
+    await submission.session.commit()
+    submission.free_space.free = 83 * 1024
+
+    with pytest.raises(MemoryDumpRefusedError, match=r"needs 84\.0 GB free and 83\.0 GB"):
+        await submission.submit(AnalysisOptions(memory_dump=True))
+
+
+async def test_a_submission_with_little_room_left_carries_the_warning(
+    submission: Submission,
+) -> None:
+    submission.free_space.free = 52 * 1024
+
+    submitted = await submission.submitter.submit_with_warnings(
+        submission.session, BytesSource(b"MZ pretend"), "a.exe", AnalysisOptions(memory_dump=True)
+    )
+
+    assert len(submitted.warnings) == 1
+    assert submitted.analysis.options["memory_dump"] is True

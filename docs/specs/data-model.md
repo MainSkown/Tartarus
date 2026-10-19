@@ -33,7 +33,7 @@ writes to the shared storage volume. See [architecture](../architecture.md#compo
 | `cape_task_id` | int, nullable | Set when submitted to CAPE |
 | `status` | enum | `queued`, `starting`, `running`, `processing`, `ingesting`, `done`, `failed`, `report_failed`, `cancelled` |
 | `phase` | enum | `live`, `final` |
-| `options` | jsonb | `{route, timeout, package, memory_dump, interactive, guest}`. `guest` is the name of the guest the analysis runs on, written resolved when the analysis is queued (no migration: analyses from before guests have no `guest`, and the runner fails one that records none). The name is kept even after the guest is deleted |
+| `options` | jsonb | `{route, timeout, package, memory_dump, keep_memory_dump, interactive, guest}`. `guest` is the name of the guest the analysis runs on, written resolved when the analysis is queued (no migration: analyses from before guests have no `guest`, and the runner fails one that records none). The name is kept even after the guest is deleted |
 | `score` | numeric(3,1), nullable | CAPE malscore 0–10 |
 | `max_severity` | enum, nullable | `info`, `low`, `medium`, `high`, `critical` |
 | `detected_families` | text[] | From CAPE detections and config extraction |

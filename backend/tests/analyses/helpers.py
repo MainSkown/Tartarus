@@ -37,10 +37,11 @@ async def adopt_by_cape(
     session_factory: async_sessionmaker[AsyncSession],
     task_id: int,
     status: AnalysisStatus = AnalysisStatus.STARTING,
+    options: dict[str, object] | None = None,
     **changes: Any,
 ) -> int:
     """An analysis the runner already submitted to CAPE as `task_id`."""
-    analysis_id = await enqueue(session_factory)
+    analysis_id = await enqueue(session_factory, options=options)
     async with session_factory() as session:
         await repository.update_analysis(
             session, analysis_id, status=status, cape_task_id=task_id, **changes

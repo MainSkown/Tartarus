@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.analyses.memory_disk import MemoryDumpRefusedError
 from app.analyses.ports import IngestFailedError, IngestResult, ReportOutcome
 from app.cape.models import TaskView
 
@@ -169,3 +170,16 @@ class FakeLive:
             await asyncio.Event().wait()
         if self.stop_error is not None:
             raise self.stop_error
+
+
+class FakeFreeSpace:
+    """The CAPE storage's free space as a test sets it; plenty by default."""
+
+    def __init__(self, free_mb: int = 400 * 1024) -> None:
+        self.free = free_mb
+        self.unreadable = False
+
+    def free_mb(self) -> int:
+        if self.unreadable:
+            raise MemoryDumpRefusedError("The free space of the CAPE storage cannot be read")
+        return self.free

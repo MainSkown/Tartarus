@@ -4,6 +4,7 @@ from typing import Annotated, cast
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analyses.memory_disk import FreeSpaceProbe, StorageFreeSpace
 from app.analyses.ports import RunnerControl
 from app.cape.client import CapeClient
 from app.config import Settings, get_settings
@@ -67,6 +68,12 @@ async def require_no_analysis_needing_a_guest(session: AsyncSession, outcome: st
 
 def get_cape_storage_path(settings: Annotated[Settings, Depends(get_settings)]) -> Path:
     return settings.cape_storage_path
+
+
+def get_free_space_probe(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> FreeSpaceProbe:
+    return StorageFreeSpace(settings.cape_storage_path)
 
 
 def get_exports_path(settings: Annotated[Settings, Depends(get_settings)]) -> Path:

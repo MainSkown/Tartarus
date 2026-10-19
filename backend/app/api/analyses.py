@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.analyses.deadline import MAX_RUN_S, at_the_latest, extended_deadline
 from app.analyses.guest_badges import badges_by_guest
 from app.analyses.guest_choice import GuestRefusedError, PackageNotAcceptedError, recorded_guest
+from app.analyses.memory_disk import FreeSpaceProbe, MemoryDumpRefusedError
 from app.analyses.monitor import monitor_started
 from app.analyses.ports import RunnerControl
 from app.analyses.submission import AnalysisSubmitter, discard_unreferenced_sample
@@ -31,6 +32,7 @@ from app.api.dependencies import (
     get_cape_storage_path,
     get_event_index,
     get_exports_path,
+    get_free_space_probe,
     get_guest_control,
     get_runner,
     get_sample_store,
@@ -63,7 +65,12 @@ from app.samples.store import (
     SampleTooLargeError,
 )
 from app.schemas.analysis import AnalysisRead
-from app.schemas.analysis_requests import AnalysisOptions, AnalysisPage, ExtendRequest
+from app.schemas.analysis_requests import (
+    AnalysisCreated,
+    AnalysisOptions,
+    AnalysisPage,
+    ExtendRequest,
+)
 from app.search.index import EventIndex
 
 logger = logging.getLogger(__name__)
@@ -81,7 +88,9 @@ def parse_options(
             description=(
                 "JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's "
                 "profile lists), `interactive` (a desktop to drive; the run then lasts the whole "
-                "timeout) and `guest` (a ready guest; the default guest when omitted)."
+                "timeout), `memory_dump` (dump the guest's RAM and read it; needs free disk), "
+                "`keep_memory_dump` (keep the dump afterwards; only with `memory_dump`) and "
+                "`guest` (a ready guest; the default guest when omitted)."
             )
         ),
     ] = DEFAULT_OPTIONS_JSON,
@@ -105,19 +114,22 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
     store: Annotated[SampleStore, Depends(get_sample_store)],
     guests: Annotated[GuestControl, Depends(get_guest_control)],
     runner: Annotated[RunnerControl, Depends(get_runner)],
+    free_space: Annotated[FreeSpaceProbe, Depends(get_free_space_probe)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> AnalysisRead:
+) -> AnalysisCreated:
     """Stores the sample and queues an analysis on the chosen guest, or on the default guest.
 
     `409` when the guest does not exist or is not ready, when no guest has been built or is ready,
-    and while any guest is being built or tested; `422` for a package the guest does not accept;
-    `502` when the guest control service cannot be asked.
+    and while any guest is being built or tested, and for a memory dump when the CAPE storage has
+    less free disk than the dump needs (the message gives both numbers); `422` for a package the
+    guest does not accept; `502` when the guest control service cannot be asked. `warnings` is
+    filled when the submission was accepted with little free disk left.
     """
     try:
-        analysis = await AnalysisSubmitter(store, guests, runner).submit(
+        submitted = await AnalysisSubmitter(store, guests, runner, free_space).submit_with_warnings(
             session, file, file.filename or "", options
         )
-    except GuestRefusedError as refused:
+    except (GuestRefusedError, MemoryDumpRefusedError) as refused:
         raise HTTPException(409, str(refused)) from None
     except PackageNotAcceptedError as refused:
         raise RequestValidationError(
@@ -127,7 +139,8 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
         raise _rejected_file("The uploaded file is empty", "value_error.empty") from None
     except SampleTooLargeError as too_large:
         raise HTTPException(413, f"The file is larger than {too_large.max_bytes} bytes") from None
-    return await _read_one(session, guests, analysis)
+    read_back = await _read_one(session, guests, submitted.analysis)
+    return AnalysisCreated(**read_back.model_dump(), warnings=submitted.warnings)
 
 
 @router.get("", name="list")

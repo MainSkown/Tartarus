@@ -1,13 +1,25 @@
 from app.guest.errors import GuestControlRejected
-from app.guest.schemas import Guest, GuestProfile, GuestState, InteractiveOptions
+from app.guest.schemas import (
+    Guest,
+    GuestProfile,
+    GuestResources,
+    GuestState,
+    InteractiveOptions,
+    MemoryAnalysis,
+)
 from tests.guest.conftest import captured
 from tests.guest.fakes import FakeGuestControl
 
 
 def guest_named(
-    name: str, state: GuestState = "ready", profile: str = "windows", badges: tuple[str, ...] = ()
+    name: str,
+    state: GuestState = "ready",
+    profile: str = "windows",
+    badges: tuple[str, ...] = (),
+    ram_mb: int | None = 4096,
 ) -> Guest:
-    return Guest(name=name, state=state, profile=profile, badges=list(badges))
+    resources = None if ram_mb is None else GuestResources(vcpus=2, ram_mb=ram_mb, disk_gb=60)
+    return Guest(name=name, state=state, profile=profile, badges=list(badges), resources=resources)
 
 
 def windows_profile() -> GuestProfile:
@@ -39,6 +51,10 @@ class ScriptedGuestControl(FakeGuestControl):
         self.profiles_listed = profiles if profiles is not None else [windows_profile()]
         self.finish_error = finish_error
         self.finished: list[tuple[int, str]] = []
+        self.memory_analysis: MemoryAnalysis | Exception = MemoryAnalysis(
+            plugins={"windows.pslist": 144}, seconds=1.0, pids=[1234]
+        )
+        self.memory_deletion: Exception | None = None
 
     async def guest(self, name: str) -> Guest:
         self._record("guest", name)
@@ -56,3 +72,14 @@ class ScriptedGuestControl(FakeGuestControl):
         if self.finish_error is not None:
             raise self.finish_error
         self.finished.append((task_id, guest))
+
+    async def analyse_memory(self, task_id: int) -> MemoryAnalysis:
+        self._record("analyse_memory", task_id)
+        if isinstance(self.memory_analysis, Exception):
+            raise self.memory_analysis
+        return self.memory_analysis
+
+    async def delete_memory_dump(self, task_id: int) -> None:
+        self._record("delete_memory_dump", task_id)
+        if self.memory_deletion is not None:
+            raise self.memory_deletion

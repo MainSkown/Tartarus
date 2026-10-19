@@ -17,6 +17,7 @@ from app.guest.schemas import Guest, GuestIdentity, ProofResult, SelfTestSample
 from app.guest.selftest import SelfTestVerdict
 from app.guest.selftest_runner import GuestSelfTest, SelfTestTiming
 from app.samples.store import SampleStore
+from tests.analyses.fakes import FakeFreeSpace
 from tests.analyses.guest_fakes import ScriptedGuestControl, guest_named
 from tests.guest.fakes import clean_checks
 from tests.guest.selftest_fakes import CannedIndex, FakePipeline, aggregations
@@ -65,7 +66,9 @@ async def stack(tmp_path: Path) -> AsyncIterator[Run]:
     control = ScriptedGuestControl([guest_named("win"), testing, guest_named("lab2", "building")])
     pipeline = FakePipeline(factory)
     index = CannedIndex(aggregations())
-    submitter = AnalysisSubmitter(SampleStore(tmp_path / "samples"), control, pipeline)
+    submitter = AnalysisSubmitter(
+        SampleStore(tmp_path / "samples"), control, pipeline, FakeFreeSpace()
+    )
     runner = GuestSelfTest(control, submitter, factory, index, TIMING)
     yield Run(runner, submitter, control, pipeline, index, factory)
     await pipeline.stop()
@@ -102,6 +105,8 @@ async def test_the_sample_is_submitted_ungated_on_that_guest_with_the_self_test_
         "timeout": 60,
         "package": "exe",
         "interactive": False,
+        "memory_dump": False,
+        "keep_memory_dump": False,
         "guest": "lab1",
     }
     assert analysis.filename == "benign.exe"

@@ -1,6 +1,7 @@
 """Queues an analysis: the one path `POST /analyses` and the guest self-test both take."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from sqlalchemy.exc import IntegrityError
@@ -12,6 +13,7 @@ from app.analyses.guest_choice import (
     choose_guest,
     require_package_accepted,
 )
+from app.analyses.memory_disk import FreeSpaceProbe, MemoryDumpRefusedError, check_room_for_dump
 from app.analyses.ports import RunnerControl
 from app.annotations.validation import Target, normalise_tag_name
 from app.db.analysis_repository import (
@@ -27,6 +29,7 @@ from app.db.settings_repository import read_settings
 from app.guest.schemas import Guest, GuestProfile
 from app.samples.store import ByteSource, SampleStore, StoredSample, safe_file_name
 from app.schemas.analysis_requests import AnalysisOptions
+from app.schemas.settings import SettingsBody
 
 
 class GuestDirectory(Protocol):
@@ -37,13 +40,33 @@ class GuestDirectory(Protocol):
     async def profiles(self) -> list[GuestProfile]: ...
 
 
+@dataclass(frozen=True)
+class Submitted:
+    analysis: Analysis
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class _Resolved:
+    options: AnalysisOptions
+    guest: Guest
+    settings: SettingsBody
+
+
 class AnalysisSubmitter:
     """Validates the options against the guests, stores the sample and queues the analysis."""
 
-    def __init__(self, store: SampleStore, guests: GuestDirectory, runner: RunnerControl) -> None:
+    def __init__(
+        self,
+        store: SampleStore,
+        guests: GuestDirectory,
+        runner: RunnerControl,
+        free_space: FreeSpaceProbe,
+    ) -> None:
         self._store = store
         self._guests = guests
         self._runner = runner
+        self._free_space = free_space
 
     async def submit(  # noqa: PLR0913 - what an analysis is made of, plus the two internal switches
         self,
@@ -55,23 +78,42 @@ class AnalysisSubmitter:
         gate: bool = True,
         tags: Sequence[str] = (),
     ) -> Analysis:
-        """Queues an analysis of the sample and returns it, with its guest written into `options`.
+        """`submit_with_warnings` for the callers that have no use for the warnings."""
+        submitted = await self.submit_with_warnings(
+            session, stream, filename, options, gate=gate, tags=tags
+        )
+        return submitted.analysis
 
-        This is what the route calls with the defaults. The self-test of a guest being built calls
+    async def submit_with_warnings(  # noqa: PLR0913 - see `submit`
+        self,
+        session: AsyncSession,
+        stream: ByteSource,
+        filename: str,
+        options: AnalysisOptions,
+        *,
+        gate: bool = True,
+        tags: Sequence[str] = (),
+    ) -> Submitted:
+        """Queues an analysis of the sample; its guest is written into the analysis's `options`.
+
+        `warnings` are what the analyst should read though the analysis was accepted. The route
+        calls this with the defaults. The self-test of a guest being built calls
         it with `gate=False`, which lets it run on a `testing` guest while others build or test
         (the named guest must still exist and be registered), and with `tags=["self-test"]`.
 
         Raises `GuestRefusedError` (the guest cannot run it), `PackageNotAcceptedError`,
-        `ValueError` (a bad tag name), the sample store's `EmptySampleError` and
-        `SampleTooLargeError`, and `GuestControlError` when the control service cannot be asked.
+        `MemoryDumpRefusedError` (too little free disk for the dump), `ValueError` (a bad tag
+        name), the sample store's `EmptySampleError` and `SampleTooLargeError`, and
+        `GuestControlError` when the control service cannot be asked.
         Nothing is stored when any of them is raised.
         """
         tag_names = [normalise_tag_name(tag) for tag in tags]
-        resolved = await self._with_guest(session, options, gate=gate)
+        resolved = await self._resolve(session, options, gate=gate)
+        warnings = self._room_for_memory_dump(resolved)
         name = safe_file_name(filename)
         stored = await self._store.save(stream, name)
         try:
-            analysis = await _queue_analysis(session, stored, name, resolved)
+            analysis = await _queue_analysis(session, stored, name, resolved.options)
             for tag in tag_names:
                 await add_tag(session, analysis.id, Target(TargetType.ANALYSIS), tag)
         except Exception:
@@ -79,17 +121,33 @@ class AnalysisSubmitter:
             await discard_unreferenced_sample(session, self._store, stored.sha256)
             raise
         self._runner.nudge()
-        return analysis
+        return Submitted(analysis, warnings)
 
-    async def _with_guest(
+    async def _resolve(
         self, session: AsyncSession, options: AnalysisOptions, *, gate: bool
-    ) -> AnalysisOptions:
+    ) -> _Resolved:
         guests = await self._guests.guests()
-        preferred = (await read_settings(session)).default_guest
-        guest = choose_guest(guests, options.guest, preferred, gate=gate)
+        settings = await read_settings(session)
+        guest = choose_guest(guests, options.guest, settings.default_guest, gate=gate)
         if options.package != AUTO_PACKAGE:
             require_package_accepted(guest, await self._profile_of(guest), options.package)
-        return options.model_copy(update={"guest": guest.name})
+        return _Resolved(options.model_copy(update={"guest": guest.name}), guest, settings)
+
+    def _room_for_memory_dump(self, resolved: _Resolved) -> list[str]:
+        if not resolved.options.memory_dump:
+            return []
+        guest = resolved.guest
+        if guest.resources is None:
+            raise MemoryDumpRefusedError(
+                f"The RAM of {guest.name} is not known, so the room for its memory dump "
+                "cannot be worked out"
+            )
+        return check_room_for_dump(
+            self._free_space.free_mb(),
+            ram_mb=guest.resources.ram_mb,
+            disk_block_gb=resolved.settings.disk_block_gb,
+            disk_warn_gb=resolved.settings.disk_warn_gb,
+        )
 
     async def _profile_of(self, guest: Guest) -> GuestProfile:
         profile = next(
