@@ -74,10 +74,11 @@ class VolatilityNormalizer:
         processes = _ProcessLabels(report, context, ProcessTable.read(folder, run))
         when = analysis_ended(report) or context.started_at
         factory = EventFactory(context, source=SOURCE, source_file=SOURCE_FILE, module=SOURCE)
-        for plugin in mapping.RULES:
+        for plugin, rule in mapping.RULES.items():
             rows = read_rows(folder, run, plugin)
             dropped[ROW_CAP_EXCEEDED] += max(0, len(rows) - ROW_CAP)
-            for finding in _findings(plugin, rows[:ROW_CAP], dropped):
+            findings = _findings(plugin, rows[:ROW_CAP], dropped)
+            for finding in mapping.one_finding_per_pid(findings) if rule.one_per_pid else findings:
                 yield from _events(factory, finding, processes.section(finding), when)
         _forget_zero_counts(dropped)
 

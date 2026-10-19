@@ -5,8 +5,8 @@ plugins are context. Mapping and severities: docs/specs/data-model.md, "volatili
 """
 
 import re
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, replace
 from typing import Any
 
 from app.ingest.ecs import EventShape, detection_match
@@ -31,10 +31,11 @@ class Rule:
     action: str
     technique_id: str
     technique_name: str
-    what_it_found: str
+    what_it_found: str | None
     note_separator: str
     severity: int
     severity_with_pe_header: int
+    one_per_pid: bool
 
 
 RULES: Mapping[str, Rule] = {
@@ -52,6 +53,7 @@ RULES: Mapping[str, Rule] = {
         note_separator=", ",
         severity=2,
         severity_with_pe_header=3,
+        one_per_pid=False,
     ),
     HOLLOWPROCESSES: Rule(
         id="volatility.hollowprocesses",
@@ -63,10 +65,11 @@ RULES: Mapping[str, Rule] = {
         action="hollowing-detected",
         technique_id="T1055.012",
         technique_name="Process Hollowing",
-        what_it_found="a hollowed process image",
+        what_it_found=None,
         note_separator=": ",
         severity=3,
         severity_with_pe_header=3,
+        one_per_pid=True,
     ),
 }
 
@@ -81,6 +84,7 @@ class Finding:
     protection: str | None
     note: str | None
     row: Mapping[str, Any]
+    problems: int = 1
 
     @property
     def rule(self) -> Rule:
@@ -111,6 +115,27 @@ def read_finding(plugin: str, index: int, row: object) -> Finding | None:
         note=note,
         row=row,
     )
+
+
+def one_finding_per_pid(findings: Iterable[Finding]) -> Iterator[Finding]:
+    """The findings of one pid become one, at the pid's first row, with every note kept once.
+
+    Volatility gives one row per problem it found in a process, so the notes of a pid are the
+    problems of one hollowed image, not findings of their own.
+    """
+    by_pid: dict[int, list[Finding]] = {}
+    for finding in findings:
+        by_pid.setdefault(finding.pid, []).append(finding)
+    for group in by_pid.values():
+        yield _joined(group)
+
+
+def _joined(group: list[Finding]) -> Finding:
+    first = group[0]
+    if len(group) == 1:
+        return first
+    notes = list(dict.fromkeys(finding.note for finding in group if finding.note))
+    return replace(first, note="; ".join(notes) or None, problems=len(group))
 
 
 def _address(row: Mapping[str, Any], note: str | None) -> str | None:
@@ -153,7 +178,7 @@ def process_label(finding: Finding, name: str | None) -> str:
 
 def finding_summary(finding: Finding, label: str) -> str:
     rule = finding.rule
-    summary = f"{finding.plugin_name} found {rule.what_it_found} in {label}"
+    summary = f"{finding.plugin_name} found {_what_it_found(finding)} in {label}"
     if finding.address:
         summary += f" at {finding.address}"
     if finding.protection:
@@ -161,6 +186,13 @@ def finding_summary(finding: Finding, label: str) -> str:
     if finding.note:
         summary += f"{rule.note_separator}{finding.note}"
     return summary
+
+
+def _what_it_found(finding: Finding) -> str:
+    if finding.rule.what_it_found is not None:
+        return finding.rule.what_it_found
+    noun = "problem" if finding.problems == 1 else "problems"
+    return f"{finding.problems} {noun}"
 
 
 def detection_summary(finding: Finding, label: str) -> str:

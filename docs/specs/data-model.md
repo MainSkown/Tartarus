@@ -445,16 +445,17 @@ entry with an `error`, a missing file, a file that is not a JSON array, or a row
 `PID` is skipped; the rest is used. At most 5000 rows per plugin are read, the overflow counted.
 Final phase, `event.module: volatility`, `event.dataset: volatility.<plugin>` (`volatility.malfind`), lane `memory`.
 
-- **What is a finding.** Every kept row of `windows.malware.malfind` and `windows.malware.hollowprocesses` is an
-  event `memory-finding` (`event.category: [malware, process]`, severity 0) and also raises a detection (below).
+- **What is a finding.** Every kept row of `windows.malware.malfind` is an event `memory-finding`
+  (`event.category: [malware, process]`, severity 0) and also raises a detection (below). A kept row of
+  `windows.malware.hollowprocesses` is not: the rows of one pid are one finding, at the position of the pid's first row.
   `windows.pslist` and `windows.cmdline` are context only: they fill `process.name` and `process.command_line`
   and are never events (capemon and Sysmon own the process events).
 - **Fields.** `tartarus.memory.plugin` (the full plugin name), `.address` (hex string of `Start VPN`; for
   hollowprocesses, which has no column, the first `0x...` in its note), `.protection` (malfind), `.note`
   (malfind's `Notes`, hollowprocesses' sentence), never `.dump_ref`. `tartarus.raw` is the whole row, whose
   `Hexdump` is the first 64 bytes of the region. Summary: `malfind found an executable private region in
-  notepad.exe (pid 2184) at 0x1e3eba60000, RWX, MZ header`; `hollowprocesses found a hollowed process image in
-  PING.EXE (pid 6304) at 0x140000000: <note>`.
+  notepad.exe (pid 2184) at 0x1e3eba60000, RWX, MZ header`; `hollowprocesses found 2 problems in PING.EXE (pid 6304)
+  at 0x140000000: <note>; <note>`.
 - **Process.** `process.entity_id` is built by capemon's own `process_fields` from the report's
   `behavior.processes`, so a finding and the process's capemon events share an entity id (a reused pid resolves
   to the last process, which is the one the dump shows). `process.name` and `process.command_line` fall back to
@@ -469,7 +470,8 @@ Final phase, `event.module: volatility`, `event.dataset: volatility.<plugin>` (`
   `T1055.012` (Process Hollowing) for hollowprocesses. Severity: malfind with the `MZ header` note (an executable
   private region holding a PE image) **high** (3), any other kept malfind row **medium** (2), hollowprocesses
   **high** (3): it needs a PEB base that disagrees with the mapped image or a missing VAD, which a running process
-  of a normal sample does not show. The two notes hollowprocesses gives one process are two findings and two alerts.
+  of a normal sample does not show. The notes hollowprocesses gives one process are one finding and one alert: the notes
+  are joined with `; ` in row order, identical notes kept once, and the address is the first note's.
 - **Noise.** One rule (`app/ingest/volatility_noise.py`, counted on `VolatilityNormalizer.dropped` as
   `monitor-page`; the others are `malformed-row` and `row-cap`): the capemon monitor keeps RWX pages in every
   process it watches (8 of the 10 malfind rows of the sample's processes in S3, at the same three addresses in every

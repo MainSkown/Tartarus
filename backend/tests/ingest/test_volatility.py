@@ -104,9 +104,9 @@ def test_a_real_run_yields_the_two_real_regions_and_the_hollowing(tmp_path: Path
     ) == {
         (INJECTED_PID, MALFIND): 1,
         (HOLLOWED_PID, MALFIND): 1,
-        (HOLLOWED_PID, HOLLOWPROCESSES): 2,
+        (HOLLOWED_PID, HOLLOWPROCESSES): 1,
     }
-    assert len(alerts(events)) == 4
+    assert len(alerts(events)) == 3
 
 
 def test_the_context_plugins_alone_yield_no_events(tmp_path: Path) -> None:
@@ -275,28 +275,79 @@ def test_detection_match_names_the_note_protection_and_address(tmp_path: Path) -
     )
 
 
-def test_hollowprocesses_address_is_parsed_from_the_note_and_the_note_is_kept(
+def test_hollowprocesses_is_one_finding_per_pid_with_both_notes_in_order(
     tmp_path: Path,
 ) -> None:
     events = real_run(tmp_path)
+    hollowed = [
+        event
+        for event in findings(events)
+        if event["tartarus"]["memory"]["plugin"] == HOLLOWPROCESSES
+    ]
+    (finding,) = hollowed
+    peb_note, vad_note = (row["Notes"] for row in read_fixture(HOLLOWPROCESSES))
 
-    (peb_mismatch, no_vad) = sorted(
-        (
-            event
-            for event in findings(events)
-            if event["tartarus"]["memory"]["plugin"] == HOLLOWPROCESSES
-        ),
-        key=lambda event: event["tartarus"]["raw"]["Notes"],
+    assert finding["tartarus"]["memory"]["address"] == HOLLOWED_ADDRESS
+    assert finding["tartarus"]["memory"]["note"] == f"{peb_note}; {vad_note}"
+    assert "protection" not in finding["tartarus"]["memory"]
+    assert finding["tartarus"]["summary"] == (
+        "hollowprocesses found 2 problems in PING.EXE (pid 6304) at 0x140000000: "
+        f"{peb_note}; {vad_note}"
     )
+    assert finding["tartarus"]["raw"]["Notes"] == peb_note
 
-    assert no_vad["tartarus"]["memory"]["address"] == "0x7ff73f160000"
-    assert peb_mismatch["tartarus"]["memory"]["address"] == HOLLOWED_ADDRESS
-    assert peb_mismatch["tartarus"]["memory"]["note"].startswith("The ImageBaseAddress")
-    assert "protection" not in peb_mismatch["tartarus"]["memory"]
-    assert peb_mismatch["tartarus"]["summary"] == (
-        "hollowprocesses found a hollowed process image in PING.EXE (pid 6304) at 0x140000000: "
-        + peb_mismatch["tartarus"]["memory"]["note"]
+
+def test_hollowprocesses_rows_of_one_pid_join_their_notes_without_repeats(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        {"PID": SAMPLE_PID, "Process": "memtest3.exe", "Notes": "first problem"},
+        {"PID": SAMPLE_PID, "Process": "memtest3.exe", "Notes": "second problem"},
+        {"PID": SAMPLE_PID, "Process": "memtest3.exe", "Notes": "first problem"},
+    ]
+    write_memory(tmp_path, {HOLLOWPROCESSES: rows})
+
+    events, _ = normalise(tmp_path)
+
+    (finding,) = findings(events)
+    assert finding["tartarus"]["memory"]["note"] == "first problem; second problem"
+    assert finding["tartarus"]["summary"] == (
+        "hollowprocesses found 3 problems in memtest3.exe (pid 1936): first problem; second problem"
     )
+    assert len(alerts(events)) == 1
+
+
+def test_hollowprocesses_finding_id_follows_the_first_row_of_its_pid(tmp_path: Path) -> None:
+    rows = [
+        {"PID": SAMPLE_PID, "Process": "memtest3.exe", "Notes": "one"},
+        {"PID": INJECTED_PID, "Process": "PING.EXE", "Notes": "two"},
+        {"PID": SAMPLE_PID, "Process": "memtest3.exe", "Notes": "three"},
+    ]
+    write_memory(tmp_path, {HOLLOWPROCESSES: rows})
+
+    events, _ = normalise(tmp_path)
+
+    ids_by_pid = {event["process"]["pid"]: event["event"]["id"] for event in findings(events)}
+    assert ids_by_pid == {
+        SAMPLE_PID: event_id(ANALYSIS_ID, "volatility", f"memory/{HOLLOWPROCESSES}", 0),
+        INJECTED_PID: event_id(ANALYSIS_ID, "volatility", f"memory/{HOLLOWPROCESSES}", 1),
+    }
+
+
+def test_malfind_regions_of_one_pid_stay_separate_findings(tmp_path: Path) -> None:
+    rows = [
+        malfind_row(SAMPLE_PID, 0x1000, hexdump_of(b"\x90")),
+        malfind_row(SAMPLE_PID, 0x2000, hexdump_of(b"\x90")),
+    ]
+    write_memory(tmp_path, {MALFIND: rows})
+
+    events, _ = normalise(tmp_path)
+
+    assert [event["tartarus"]["memory"]["address"] for event in findings(events)] == [
+        "0x1000",
+        "0x2000",
+    ]
+    assert len(alerts(events)) == 2
 
 
 def test_hollowprocesses_detection_is_high_and_names_process_hollowing(tmp_path: Path) -> None:
@@ -508,4 +559,4 @@ def test_it_keeps_the_contract_on_a_real_run(tmp_path: Path) -> None:
         VolatilityNormalizer(), sample_report(), context_of(tmp_path)
     )
 
-    assert len(events) == 8
+    assert len(events) == 6
