@@ -17,8 +17,16 @@ Inside a sample process, the monitor's own files (`CapeOutput.bin`, `capemon.yac
 its DLL) are dropped as monitor artefacts.
 
 Dropping a real sample event is worse than keeping some noise, so attribution errs towards
-keeping: a process the log never saw start is matched by pid alone, an event without a process id
-is kept, and a report with no monitored process at all (capemon blind) drops only the tooling.
+keeping: a process the log never saw start is matched by pid alone and an event without a process
+id is kept.
+
+When capemon monitored no process at all (Defender removed the sample before it ran, or the
+monitor never attached) there is no tree to start from, so it is found in Sysmon's own process
+creations (`sample_tree_of`): the processes whose image file name is the sample's, or whose
+command line contains it (a dll opened by rundll32, a document by its viewer, a script by its
+interpreter), and what they started. Everything outside it is dropped, as with a monitored tree:
+a sample that never ran leaves no Sysmon event, one that ran while capemon was blind is still
+seen. Only a report that names no sample keeps everything but the tooling.
 """
 
 import re
@@ -27,6 +35,7 @@ from app.ingest.ecs import base_name
 from app.ingest.sysmon_processes import (
     EventFields,
     ProcessLedger,
+    SampleProcesses,
     SampleTree,
     Subject,
     acting_and_target,
@@ -79,6 +88,29 @@ def is_monitor_artefact(path: str | None) -> bool:
     )
 
 
+def sample_tree_of(
+    sample: SampleProcesses, ledger: ProcessLedger, sample_name: str | None
+) -> SampleTree:
+    """The sample's processes: capemon's, or, when it monitored none, the ones that launched
+    `sample_name` according to the log itself."""
+    if sample or sample_name is None:
+        return SampleTree(sample, ledger)
+    return SampleTree(sample, ledger, seeds=_launched_as(sample_name, ledger))
+
+
+def _launched_as(sample_name: str, ledger: ProcessLedger) -> list[str]:
+    wanted = sample_name.casefold()
+    return [
+        started.guid
+        for started in ledger
+        if not is_tooling_image(started.image)
+        and (
+            (started.image is not None and base_name(started.image).casefold() == wanted)
+            or wanted in (started.command_line or "").casefold()
+        )
+    ]
+
+
 class NoiseFilter:
     def __init__(self, tree: SampleTree, ledger: ProcessLedger) -> None:
         self._tree = tree
@@ -93,7 +125,7 @@ class NoiseFilter:
             return self._artefact_reason(event_id, fields)
         if is_tooling_image(actor.image):
             return TOOLING
-        if not self._tree.has_sample or self._tree.contains(target):
+        if not self._tree.can_tell_background or self._tree.contains(target):
             return None
         return TOOLING if self._started_by_tooling(actor) else BACKGROUND
 

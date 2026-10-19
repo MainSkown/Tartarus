@@ -12,9 +12,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from app.ingest.clock import guest_clock_offset
+from app.ingest.clock import analysis_clock_offset
 from app.ingest.protocol import IngestContext
-from app.ingest.reading import mapping_list, section, text_or_none, to_int
+from app.ingest.reading import mapping_list, sample_file_name, section, text_or_none, to_int
 from app.ingest.windows_events import WindowsEvent, read_windows_events
 
 EXPORT_PARTS = ("aux", "defender.xml")
@@ -27,7 +27,6 @@ SEVERITY_LEVELS = {5: 4, 4: 3, 2: 2, 1: 1}
 DEFAULT_SEVERITY = 2
 FILE_PREFIX = "file:_"
 TOOLING_PATH = re.compile(r"^[A-Za-z]:\\[^\\]{8}\\(bin|dll|lib|data)\\", re.IGNORECASE)
-NON_ASCII = re.compile(r"[^\x00-\x7f]")
 
 
 class Scope(StrEnum):
@@ -125,7 +124,7 @@ def read_export(report: Mapping[str, Any], context: IngestContext) -> Export | N
     return Export(
         records=records,
         detections=classify(records, sample_facts(report)),
-        offset=guest_clock_offset(report, context.host_registrations),
+        offset=analysis_clock_offset(report, context),
         started_at=context.started_at,
     )
 
@@ -139,7 +138,6 @@ def _export_path(context: IngestContext) -> Path | None:
 
 def sample_facts(report: Mapping[str, Any]) -> SampleFacts:
     task_id = to_int(section(report, "info").get("id"))
-    sample_name = text_or_none(section(section(report, "target"), "file").get("name"))
     images = frozenset(
         image.lower()
         for entry in mapping_list(section(report, "behavior").get("processes"))
@@ -147,7 +145,7 @@ def sample_facts(report: Mapping[str, Any]) -> SampleFacts:
     )
     return SampleFacts(
         task_id=None if task_id is None else str(task_id),
-        sample_name=None if sample_name is None else NON_ASCII.sub("_", sample_name),
+        sample_name=sample_file_name(report),
         images=images,
     )
 

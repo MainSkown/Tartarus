@@ -227,6 +227,152 @@ def test_wmi_events_name_no_process_and_are_kept(tmp_path: Path) -> None:
     assert kept == {10, 11, 12}
 
 
+# --- capemon blind: no monitored process ----------------------------------------------------
+
+SAMPLE_NAME = "benign.exe"
+
+
+def blind_run(
+    tmp_path: Path, *events: str, sample_name: str | None = SAMPLE_NAME
+) -> tuple[set[int], Counter[str]]:
+    """Like `run`, for a report in which capemon monitored nothing; the log holds only `events`."""
+    report = report_with()
+    if sample_name is not None:
+        report["target"] = {"file": {"name": sample_name}}
+    normalizer = SysmonNormalizer()
+    root = analysis_with(tmp_path, *events)
+    kept = {
+        event["tartarus"]["raw"]["EventRecordID"]
+        for event in normalizer.normalise(report, context_of(root))
+    }
+    return kept, normalizer.dropped
+
+
+def test_blind_the_sample_found_by_its_image_name_and_its_descendants_are_kept(
+    tmp_path: Path,
+) -> None:
+    kept, dropped = blind_run(
+        tmp_path,
+        SAMPLE_STARTED,
+        file_created(2, SAMPLE_PID, BENIGN, "C:\\Users\\Megan\\a.txt", own=1),
+        sysmon(
+            3,
+            3,
+            ProcessGuid=guid(1),
+            ProcessId=SAMPLE_PID,
+            Image=BENIGN,
+            DestinationIp="10.0.0.1",
+            DestinationPort=80,
+            Protocol="tcp",
+        ),
+        process_started(4, Proc(501, CMD, 3), Proc(SAMPLE_PID, BENIGN, 1)),
+        file_created(5, 501, CMD, "C:\\Users\\Megan\\b.txt", own=3),
+        file_created(6, 9999, SVCHOST, "C:\\x.txt", own=70),
+        process_started(7, Proc(9998, NOTEPAD, 71), Proc(9999, SVCHOST, 70)),
+        file_created(8, AGENT_PID, AGENT, "C:\\y.txt", own=2),
+    )
+
+    assert kept == {1, 2, 3, 4, 5}
+    assert dropped == {BACKGROUND: 2, TOOLING: 1}
+
+
+def test_blind_a_sample_that_never_ran_leaves_no_sysmon_event(tmp_path: Path) -> None:
+    kept, dropped = blind_run(
+        tmp_path,
+        file_created(1, 9999, SVCHOST, "C:\\x.txt", own=70),
+        process_started(2, Proc(9998, NOTEPAD, 71), Proc(9999, SVCHOST, 70)),
+        sysmon(13, 3, ProcessGuid=guid(72), ProcessId=4242, Image=NOTEPAD),
+        file_created(4, AGENT_PID, AGENT, "C:\\y.txt", own=2),
+    )
+
+    assert kept == set()
+    assert dropped == {BACKGROUND: 3, TOOLING: 1}
+
+
+def test_blind_a_sample_a_host_process_opened_is_found_by_the_command_line(
+    tmp_path: Path,
+) -> None:
+    payload = "C:\\Users\\Megan\\AppData\\Local\\Temp\\payload.dll"
+    rundll32 = "C:\\Windows\\System32\\rundll32.exe"
+    kept, dropped = blind_run(
+        tmp_path,
+        sysmon(
+            1,
+            1,
+            ProcessGuid=guid(1),
+            ProcessId=SAMPLE_PID,
+            Image=rundll32,
+            CommandLine=f"{rundll32} {payload.upper()},Run",
+            ParentProcessGuid=guid(2),
+            ParentProcessId=AGENT_PID,
+            ParentImage=AGENT,
+        ),
+        file_created(2, SAMPLE_PID, rundll32, "C:\\Users\\Megan\\a.txt", own=1),
+        process_started(3, Proc(501, CMD, 3), Proc(SAMPLE_PID, rundll32, 1)),
+        file_created(4, 9999, SVCHOST, "C:\\x.txt", own=70),
+        sysmon(
+            1,
+            5,
+            ProcessGuid=guid(71),
+            ProcessId=9998,
+            Image=rundll32,
+            CommandLine=f"{rundll32} C:\\Windows\\System32\\other.dll,Run",
+        ),
+        sample_name="payload.dll",
+    )
+
+    assert kept == {1, 2, 3}
+    assert dropped == {BACKGROUND: 2}
+
+
+def test_blind_the_injector_that_names_the_sample_on_its_command_line_is_still_tooling(
+    tmp_path: Path,
+) -> None:
+    kept, dropped = blind_run(
+        tmp_path,
+        sysmon(
+            1,
+            1,
+            ProcessGuid=guid(5),
+            ProcessId=401,
+            Image=INJECTOR,
+            CommandLine=f"{INJECTOR} --app {BENIGN}",
+            ParentProcessGuid=guid(2),
+            ParentProcessId=AGENT_PID,
+            ParentImage=AGENT,
+        ),
+        file_created(2, 401, INJECTOR, "C:\\x.txt", own=5),
+    )
+
+    assert kept == set()
+    assert dropped == {TOOLING: 2}
+
+
+def test_blind_a_report_without_a_sample_name_keeps_everything_but_the_tooling(
+    tmp_path: Path,
+) -> None:
+    kept, dropped = blind_run(
+        tmp_path,
+        file_created(1, 9999, SVCHOST, "C:\\x.txt", own=70),
+        file_created(2, AGENT_PID, AGENT, "C:\\y.txt", own=2),
+        sample_name=None,
+    )
+
+    assert kept == {1}
+    assert dropped == {TOOLING: 1}
+
+
+def test_the_sample_name_is_ignored_when_capemon_monitored_something(tmp_path: Path) -> None:
+    kept, dropped = run(
+        tmp_path,
+        process_started(10, Proc(9998, BENIGN, 71), Proc(9999, SVCHOST, 70)),
+        processes=(monitored(SAMPLE_PID, BENIGN),),
+    )
+
+    assert kept == set()
+    assert dropped == {BACKGROUND: 1}
+
+
 # --- CAPE's own tooling --------------------------------------------------------------------
 
 
@@ -410,3 +556,14 @@ def test_in_the_fixture_with_no_sample_only_tooling_is_dropped(tmp_path: Path) -
 
     assert dropped == {TOOLING: 75}
     assert len(events) == 212
+
+
+def test_in_the_fixture_a_blind_report_whose_sample_never_started_keeps_nothing(
+    tmp_path: Path,
+) -> None:
+    normalizer = SysmonNormalizer()
+    report = {**report_with(), "target": {"file": {"name": "benign.exe"}}}
+    events = list(normalizer.normalise(report, context_of(analysis_with_fixture(tmp_path))))
+
+    assert not events
+    assert normalizer.dropped == {TOOLING: 75, BACKGROUND: 212}

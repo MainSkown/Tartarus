@@ -19,17 +19,17 @@ from typing import Any
 
 from app.ingest.capemon_calls import calls_in_sequence_order, read_processes
 from app.ingest.capemon_rules import created_children
-from app.ingest.clock import guest_clock_offset
+from app.ingest.clock import analysis_clock_offset
 from app.ingest.ecs import EventFactory, SourceRecord, truncate
 from app.ingest.protocol import IngestContext
+from app.ingest.reading import sample_file_name
 from app.ingest.sysmon_mapping import MAPPERS, SERVICE_EVENTS, user_section
-from app.ingest.sysmon_noise import NoiseFilter
+from app.ingest.sysmon_noise import NoiseFilter, sample_tree_of
 from app.ingest.sysmon_processes import (
     EventFields,
     ProcessLedger,
     ProcessResolver,
     SampleProcesses,
-    SampleTree,
     guest_time,
 )
 from app.ingest.windows_events import WindowsEvent, read_windows_events
@@ -71,14 +71,14 @@ class SysmonNormalizer:
         if context.analysis_dir is None:
             return
         path = context.analysis_dir.joinpath(*EXPORT)
-        offset = guest_clock_offset(report, context.host_registrations)
+        offset = analysis_clock_offset(report, context)
         processes = read_processes(report, offset)
         calls = calls_in_sequence_order(processes, offset, context.started_at)
         sample = SampleProcesses(
             (process.identity for process in processes), created_children(calls)
         )
         ledger = ProcessLedger.read(read_windows_events(path), offset)
-        noise = NoiseFilter(SampleTree(sample, ledger), ledger)
+        noise = NoiseFilter(sample_tree_of(sample, ledger, sample_file_name(report)), ledger)
         kept = sorted(
             _screened(read_windows_events(path), noise, offset, context.started_at, dropped),
             key=lambda item: (item.moment, item.position),

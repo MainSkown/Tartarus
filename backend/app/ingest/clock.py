@@ -20,12 +20,16 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from app.ingest.protocol import IngestContext
 from app.ingest.reading import mapping_list, section, to_int
+from app.ingest.windows_events import read_windows_events
 
 OFFSET_GRANULARITY = timedelta(minutes=15)
 MAX_PLAUSIBLE_OFFSET = timedelta(hours=14)
 ANCHOR_TOLERANCE = timedelta(minutes=5)
 TASK_LOG_NAME = "cuckoo.log"
+# The guest-side logs a run leaves, in the order they are asked for the clock.
+GUEST_LOG_EXPORTS = (("sysmon", "sysmon.xml"), ("aux", "defender.xml"))
 
 _REGISTRATION = re.compile(
     r"^(?P<time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \[lib\.cuckoo\.core\.resultserver\] "
@@ -108,6 +112,12 @@ def _processes_by_start(report: Mapping[str, Any]) -> list[tuple[datetime, int]]
     return sorted(starts, key=lambda start: start[0])
 
 
+def _quarter_hours_between(true_time: datetime, guest_time: datetime) -> timedelta | None:
+    """The gap rounded to a quarter hour; `None` when it is no timezone's."""
+    offset = round((true_time - guest_time) / OFFSET_GRANULARITY) * OFFSET_GRANULARITY
+    return None if abs(offset) > MAX_PLAUSIBLE_OFFSET else offset
+
+
 def calibrated_offset(
     started: datetime, first_process: datetime, registered_at: datetime | None = None
 ) -> timedelta:
@@ -121,8 +131,8 @@ def calibrated_offset(
     difference to its guest time is the whole offset, skew included. It is used only when it
     agrees with the rounded offset to within `ANCHOR_TOLERANCE`; otherwise the rounded one stands.
     """
-    offset = round((started - first_process) / OFFSET_GRANULARITY) * OFFSET_GRANULARITY
-    if abs(offset) > MAX_PLAUSIBLE_OFFSET:
+    offset = _quarter_hours_between(started, first_process)
+    if offset is None:
         return timedelta(0)
     if (
         registered_at is not None
@@ -130,6 +140,21 @@ def calibrated_offset(
     ):
         return registered_at - first_process
     return offset
+
+
+def _offset_from_processes(
+    report: Mapping[str, Any], registrations: Mapping[int, datetime] | None
+) -> timedelta | None:
+    """The offset the report's monitored processes give; `None` when it lists none."""
+    processes = _processes_by_start(report)
+    if not processes:
+        return None
+    started = analysis_started(report)
+    if started is None:
+        return timedelta(0)
+    known = registrations or {}
+    first_seen, pid = next(((start, pid) for start, pid in processes if pid in known), processes[0])
+    return calibrated_offset(started, first_seen, known.get(pid))
 
 
 def guest_clock_offset(
@@ -140,10 +165,37 @@ def guest_clock_offset(
     `registrations` (`host_registrations`) anchors it exactly on the earliest process the log
     knows.
     """
-    started = analysis_started(report)
-    processes = _processes_by_start(report)
-    if started is None or not processes:
+    offset = _offset_from_processes(report, registrations)
+    return timedelta(0) if offset is None else offset
+
+
+def analysis_clock_offset(report: Mapping[str, Any], context: IngestContext) -> timedelta:
+    """The offset of the guest clock for the sources that read a guest log (Sysmon, Defender).
+
+    It is `guest_clock_offset` whenever capemon monitored a process. When it monitored none (a
+    sample Defender removed before it ran) there is no process to anchor on, so the clock is read
+    off the guest's own log: its last record was written seconds before the analysis ended, and
+    the gap rounds to the same quarter-hour granularity. Zero when that cannot be said.
+    """
+    offset = _offset_from_processes(report, context.host_registrations)
+    if offset is not None:
+        return offset
+    ended = analysis_ended(report)
+    latest = _latest_guest_log_time(context.analysis_dir) if ended is not None else None
+    if ended is None or latest is None:
         return timedelta(0)
-    known = registrations or {}
-    first_seen, pid = next(((start, pid) for start, pid in processes if pid in known), processes[0])
-    return calibrated_offset(started, first_seen, known.get(pid))
+    return _quarter_hours_between(ended, latest) or timedelta(0)
+
+
+def _latest_guest_log_time(analysis_dir: Path | None) -> datetime | None:
+    if analysis_dir is None:
+        return None
+    for parts in GUEST_LOG_EXPORTS:
+        written = (
+            event.system_time
+            for event in read_windows_events(analysis_dir.joinpath(*parts))
+            if event.system_time is not None
+        )
+        if (latest := max(written, default=None)) is not None:
+            return latest
+    return None

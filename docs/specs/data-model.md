@@ -297,6 +297,12 @@ time, and logs it before it writes the process's first bytes (`BsonStore.handle`
   no process of the report, the offset is the rounded one (the previous behaviour).
 - A report that cannot be calibrated (no readable `info.started`, no process, a gap beyond 14 hours)
   has offset 0; the helper never raises.
+- **No monitored process** (a sample Defender removed before it ran): `analysis_clock_offset(report, context)`,
+  which the Sysmon and Defender normalisers call, reads the offset off the guest's own log instead. The newest
+  `TimeCreated` of `sysmon/sysmon.xml` (else of `aux/defender.xml`) was written seconds before the analysis ended, so
+  `info.ended - newest`, rounded to 15 minutes, is the hour-level offset (12:34:49 against an end of 14:35:11 gives
+  2:00:21, so 2:00; the few seconds of skew stay unknown). Zero without `info.ended`, without a record with a time,
+  or beyond 14 hours. A report with a monitored process never takes this path.
 - `IngestContext.started_at` is `info.started` read as UTC (`analysis_started(report)`); the caller
   builds the context with it.
 - **Live uses the rounded offset only.** CAPE's per-task `cuckoo.log` is opened buffered and never
@@ -380,8 +386,8 @@ streaming parse per pass, never the whole log in memory. `event.module: sysmon`,
 - **Time.** `UtcTime` (not `TimeCreated`, the log write time) on the guest clock, except EID 3 and 22, which take
   `TimeCreated`: they are built from ETW timestamps that do not follow the clock step CAPE makes at the start of a
   run (the M8 real run saw a DNS query two minutes before the sample started; the write time is 1 to 2 s late).
-  Plus `guest_clock_offset(report,
-  host_registrations)`, the offset capemon's times get. Output is oldest first whatever the file's order (the
+  Plus `analysis_clock_offset(report, context)`: the offset capemon's times get (`guest_clock_offset`), or, when
+  capemon monitored no process, the one read off the log (see below). Output is oldest first whatever the file's order (the
   kept events are buffered and sorted); the event id follows the record's position in the file, so a noise rule
   changing does not renumber the survivors.
 - **Process identity.** `process.*` comes from the event; `process.entity_id` is built by the same
@@ -403,8 +409,14 @@ streaming parse per pass, never the whole log in memory. `event.module: sysmon`,
      directory, `C:\<pid>.ini`);
   4. dropped `windows-background`: everything else; `sysmon-service` (EID 4, 16) and `unmapped-event` (any other id)
      are counted apart.
-  A process the log never saw start is matched by pid alone (a reused pid is kept), and a report with no monitored
-  process drops only the tooling, so that a blind capemon still shows the sample.
+  A process the log never saw start is matched by pid alone (a reused pid is kept).
+  When capemon monitored no process at all (`behavior.processes` empty or absent: Defender removed the sample before
+  it ran, or the monitor never attached) the tree is seeded from Sysmon's own EID 1 instead: the processes whose
+  image file name is the sample's (`target.file.name`; CAPE runs it as `%TEMP%\<name>`) or whose command line
+  contains it (a dll opened by rundll32, a document by its viewer, a script by its interpreter; CAPE's tooling is
+  never a seed), and their descendants. Everything else is dropped (`cape-tooling` or `windows-background`), so a
+  sample that never ran leaves no Sysmon event and one that ran while capemon was blind is still seen. Only a report
+  that names no sample keeps everything but the tooling.
 - **Duplicates with capemon** are not removed here. Both sources emit `process-created`, `network-connection`,
   `dns-query`, `file-created`, `file-deleted` and registry events for one action; tell them apart by
   `event.module` (`sysmon` or `capemon`), and pair them by `process.entity_id`.
@@ -430,8 +442,10 @@ after the run (S4 spike, `docs/plans/m8-spikes/S4-findings.md`). Final phase, `e
   `C:\<8 characters>\bin|dll|lib|data\`) is not an event: it is counted on the normaliser. `sample` (under
   `\Temp\<task id>\`, or the moved copy in `%TEMP%`). `dropped` (written by a process the sample started;
   `process.*` is set). `other` (Windows background, kept as an event).
-- `@timestamp` is SystemTime plus the calibrated guest clock offset. A record that predates the run (the
-  snapshot's clock) is placed at the analysis start with `tartarus.defender.clock: snapshot`.
+- `@timestamp` is SystemTime plus the calibrated guest clock offset (`analysis_clock_offset`, which reads it off the
+  export itself when capemon monitored no process). A record that predates the run (the snapshot's clock) is placed at
+  the analysis start with `tartarus.defender.clock: snapshot`; one inside the run keeps its real time, so a blocked
+  sample's 1117 is not clamped to its 1116.
 - `rule.reference` (the FWLink) and `rule.description` (the category) are set on 1116 only.
 - The same classification (`app/ingest/defender_export.py`) gives the analysis `defender` verdict
   (`app/ingest/defender_verdict.py`), so the summary and the events cannot disagree.

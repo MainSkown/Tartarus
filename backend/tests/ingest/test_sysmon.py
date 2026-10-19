@@ -711,6 +711,41 @@ def test_an_event_without_any_time_takes_the_analysis_start(tmp_path: Path) -> N
     assert only(hand_written(tmp_path, xml))["@timestamp"] == "2026-10-18T22:43:30.000Z"
 
 
+def test_without_a_monitored_process_the_events_are_brought_onto_the_run_by_the_export_clock(
+    tmp_path: Path,
+) -> None:
+    # A sample Defender removed before it ran: capemon saw nothing, so the guest clock is read off
+    # the export, whose last record is seconds before `info.ended` (two hours ahead).
+    started = event_xml(
+        1,
+        1,
+        "2026-10-18 20:43:49.000",
+        {
+            "UtcTime": "2026-10-18 20:43:49.000",
+            "ProcessGuid": guid(1),
+            "ProcessId": 500,
+            "Image": BENIGN,
+            "CommandLine": BENIGN,
+        },
+    )
+    last = event_xml(
+        5,
+        2,
+        "2026-10-18 20:44:10.250",
+        {"UtcTime": "2026-10-18 20:44:10.250", "ProcessGuid": guid(1), "ProcessId": 500},
+    )
+    report = {
+        **report_with(),
+        "target": {"file": {"name": "benign.exe"}},
+        "info": {"started": "2026-10-18 22:43:30", "ended": "2026-10-18 22:44:21"},
+    }
+
+    events = by_record(hand_written(tmp_path, started, last, report=report))
+
+    assert events[1]["@timestamp"] == "2026-10-18T22:43:49.000Z"
+    assert events[2]["@timestamp"] == "2026-10-18T22:44:10.250Z"
+
+
 def test_data_is_read_by_name_not_by_position(tmp_path: Path) -> None:
     shuffled = event_xml(
         22,

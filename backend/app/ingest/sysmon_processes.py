@@ -1,7 +1,7 @@
 """The processes behind Sysmon events: who an event is about, and which of them are the sample's."""
 
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -207,16 +207,23 @@ class SampleTree:
     name, and everything they started (`ParentProcessGuid`). A process the log never saw start
     cannot be told apart from the sample by guid, so there the pid alone decides: a pid reused by
     an unrelated process is then kept, which is cheaper than losing the sample's events.
+
+    `seeds` are further roots, the guids of the log's own process creations that launched the
+    sample when capemon monitored none; `None` means the report gave no way to find them.
     """
 
-    def __init__(self, sample: SampleProcesses, ledger: ProcessLedger) -> None:
+    def __init__(
+        self, sample: SampleProcesses, ledger: ProcessLedger, seeds: Collection[str] | None = None
+    ) -> None:
         self._sample = sample
         self._ledger = ledger
-        self._guids = ledger.descendants(self._roots())
+        self._decides = bool(sample) or seeds is not None
+        self._guids = ledger.descendants((*self._roots(), *(seeds or ())))
 
     @property
-    def has_sample(self) -> bool:
-        return bool(self._sample)
+    def can_tell_background(self) -> bool:
+        """Whether a process outside the tree is known not to be the sample's."""
+        return self._decides
 
     def contains(self, subject: Subject | None) -> bool:
         if subject is None:

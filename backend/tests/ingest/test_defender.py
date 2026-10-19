@@ -116,6 +116,24 @@ def test_timestamps_are_the_guest_clock_calibrated_and_clamped_to_the_run(tmp_pa
     assert "clock" not in quarantine["tartarus"]["defender"]
 
 
+def test_a_run_capemon_never_saw_still_gets_real_times_from_the_exports_own_clock(
+    tmp_path: Path,
+) -> None:
+    # Blocked before it ran: no monitored process anchors the guest clock, but the export's last
+    # record is seconds before `info.ended`, which gives the two hours.
+    report = report_of(EICAR_TASK, EICAR_STARTED, images=())
+    report["info"]["ended"] = "2026-10-18 23:34:11"
+    root = copy_export(tmp_path, "defender-eicar-sample.xml")
+
+    detection, quarantine = normalise(root, report)[0]
+
+    assert detection["@timestamp"] == "2026-10-18T23:33:45.000Z"
+    assert detection["tartarus"]["defender"]["clock"] == "snapshot"
+    assert quarantine["@timestamp"] == "2026-10-18T23:33:59.121Z"
+    assert quarantine["@timestamp"] != detection["@timestamp"]
+    assert "clock" not in quarantine["tartarus"]["defender"]
+
+
 def test_dropped_file_names_the_process_that_wrote_it(tmp_path: Path) -> None:
     events, normalizer = dropped_events(tmp_path)
     dropped = next(event for event in events if event["event"]["action"] == "malware-detected")

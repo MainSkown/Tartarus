@@ -1,7 +1,10 @@
 """Defensive readers for report fields whose type CAPE does not guarantee."""
 
+import re
 from collections.abc import Mapping
 from typing import Any
+
+NON_ASCII = re.compile(r"[^\x00-\x7f]")
 
 
 def to_int(value: object) -> int | None:
@@ -29,3 +32,9 @@ def mapping_list(value: object) -> list[Mapping[str, Any]]:
 def section(report: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     value = report.get(key)
     return value if isinstance(value, Mapping) else {}
+
+
+def sample_file_name(report: Mapping[str, Any]) -> str | None:
+    """The sample's file name as the guest has it: each non-ASCII character is an `_`."""
+    name = text_or_none(section(section(report, "target"), "file").get("name"))
+    return None if name is None else NON_ASCII.sub("_", name)
