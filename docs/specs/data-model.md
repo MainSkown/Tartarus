@@ -92,9 +92,10 @@ Common fields on every document:
 | `event.category` | keyword[] | ECS categories (`process`, `file`, `registry`, `network`, `malware`, `intrusion_detection`, …) |
 | `event.type` | keyword[] | ECS types (`start`, `end`, `creation`, `deletion`, `change`, `access`, `connection`, `protocol`, `info`, `indicator`) |
 | `event.action` | keyword | Specific action, e.g. `process-created`, `file-written`, `reg-value-set`, `dns-query`, `api-call`, `inject-thread` |
-| `event.module` | keyword | `capemon`, `sysmon`, `etw`, `suricata`, `volatility`, `cape`, `sigma`, `yara`, `tartarus` |
-| `event.dataset` | keyword | e.g. `capemon.api`, `sysmon.evtx`, `etw.dns`, `suricata.alert`, `cape.signature` |
+| `event.module` | keyword | `capemon`, `sysmon`, `etw`, `suricata`, `volatility`, `cape`, `defender`, `sigma`, `yara`, `tartarus` |
+| `event.dataset` | keyword | e.g. `capemon.api`, `sysmon.evtx`, `etw.dns`, `suricata.alert`, `cape.signature`, `defender.operational` |
 | `event.severity` | integer | 0 info, 1 low, 2 medium, 3 high, 4 critical (alerts only) |
+| `event.outcome` | keyword | `success` or `failure`, on action events (Defender); omitted otherwise |
 | `tartarus.analysis_id` | long | |
 | `tartarus.lane` | keyword | `process`, `file`, `registry`, `network`, `memory`, `api`. The timeline lane, which drives category colour |
 | `tartarus.phase` | keyword | `live` or `final` (which phase produced it) |
@@ -131,7 +132,7 @@ detections track):
 
 | Field | Notes |
 |---|---|
-| `rule.id`, `rule.name`, `rule.description`, `rule.ruleset` | ruleset ∈ `sigma`, `cape`, `yara`, `suricata` |
+| `rule.id`, `rule.name`, `rule.description`, `rule.ruleset` | ruleset ∈ `sigma`, `cape`, `yara`, `suricata`, `defender` |
 | `rule.reference` | URLs |
 | `threat.technique.id` / `.name`, `threat.tactic.name` | ATT&CK mapping (Sigma tags `attack.t1055` → `T1055`) |
 | `related.events` | `event.id`s that triggered it |
@@ -158,17 +159,20 @@ becomes in the event document.
 | Sysmon EID 7 | n/a | `image-loaded` | process |
 | Sysmon EID 8 / 10 | n/a | `create-remote-thread` / `process-access` | process |
 | Sysmon EID 11 / 23 / 26 | n/a | `file-created` / `file-deleted` | file |
-| Sysmon EID 12 / 13 / 14 | n/a | `reg-key` / `reg-value-set` / `reg-rename` | registry |
+| Sysmon EID 12 / 13 / 14 | n/a | `reg-key-created`, `reg-key-deleted` or `reg-value-deleted` (by `EventType`) / `reg-value-set` / `reg-rename` | registry |
+| Sysmon EID 19 / 20 / 21 (WMI filter, consumer, binding) | n/a | `wmi-filter` / `wmi-consumer` / `wmi-binding` | process |
+| Sysmon EID 4 / 16 (the service's own state and configuration) | n/a | dropped | |
 | ETW DNS / network / WMI / AMSI | n/a | `dns-query` / `network-*` / `wmi-*` / `amsi-scan` | network / network / process / process |
 | Suricata flow, http, dns, tls | n/a | `flow` / `http-request` / `dns-query` / `tls-handshake` | network |
 | Suricata alert | n/a | detection, `rule.ruleset: suricata` | network |
 | CAPE signature | n/a | detection, `rule.ruleset: cape` | lane of the referenced call, or `process` |
+| Defender 1116 (malware detected), 1117/1118/1119 (action taken, failed), from the host export `aux/defender.xml` | n/a | detection `malware-detected`, `rule.ruleset: defender`; actions `malware-quarantined`, `malware-removed`, `malware-action-failed` | file |
 | YARA hit (file, memory or payload) | n/a | detection, `rule.ruleset: yara` | file or memory |
 | Volatility3 findings (malfind, hollowprocesses, …) | n/a | `memory-finding` | memory |
 
-The Sysmon rows are final-phase sources: CAPE collects the Sysmon EVTX at the end of the run, and there is no
-live forwarder, so these events arrive with the final report, never in the live stream (decided 2026-10-17; the
-normaliser is M8).
+The Sysmon rows are final-phase sources: the guest's Sysmon log is exported at the end of the run to
+`sysmon/sysmon.xml`, and there is no live forwarder, so these events arrive with the final report, never in the
+live stream (decided 2026-10-17). Which Sysmon events are kept, and how, is [`sysmon`](#sysmon-sysmonsysmonxml).
 
 "Derived" means the raw API call stays in the `api` lane, and the backend also emits a
 higher-level event in the semantic lane. That derived event links back through
@@ -357,6 +361,77 @@ One `event.kind: alert` event (`event.action: signature-matched`, `event.dataset
   call the alert happens at `info.ended` and is in lane `process`.
 - `tartarus.detection.match` is the non-call `data` entries as `key: value` pieces (structured values as
   compact JSON), identical pieces once, joined by `; `, cut to 300 characters with an ellipsis.
+
+#### `sysmon` (`sysmon/sysmon.xml`)
+
+Reads the log the guest exports (`backend/app/ingest/sysmon*.py`), not `report.json["sysmon"]`: one
+streaming parse per pass, never the whole log in memory. `event.module: sysmon`, `event.dataset: sysmon.evtx`,
+`phase: final`. `EventData` is read by `Data/@Name` (case-insensitively: EID 8 writes `SourceProcessGuid`, EID 10
+`SourceProcessGUID`), never by position. A missing `analysis_dir`, file or unreadable file is no events, no error.
+
+- **Mapping.** The Sysmon rows of the [table above](#mapping-from-sources). EID 12 maps by `EventType`:
+  `CreateKey` is `reg-key-created`, `DeleteKey` `reg-key-deleted`, `DeleteValue` `reg-value-deleted`: the names
+  the Sigma registry categories already use. EID 7 puts the loaded image in `file.*` (`file.path`, `file.hash.sha256`;
+  the catalog has no `dll.*`). EID 8 and 10 name the target in `tartarus.inject.target_pid/_name/_executable`, so a
+  Sigma `create_remote_thread` rule reads EID 8 like a capemon `inject-thread`. EID 3 keeps Sysmon's source and
+  destination as logged: for an inbound connection (`Initiated` false) the source is the remote end. EID 13's
+  `Details` is `registry.data.strings` verbatim (`DWORD (0x00000001)`, what Sigma rules match), with the type
+  read from its prefix. `User` is `user.name`/`user.domain`. The WMI events name no process.
+- **Time.** `UtcTime` (not `TimeCreated`, the log write time) on the guest clock, plus `guest_clock_offset(report,
+  host_registrations)`, the offset capemon's times get. Output is oldest first whatever the file's order (the
+  kept events are buffered and sorted); the event id follows the record's position in the file, so a noise rule
+  changing does not renumber the survivors.
+- **Process identity.** `process.*` comes from the event; `process.entity_id` is built by the same
+  `process_fields` as capemon's, from the same `first_seen` start when the pid and image name are one capemon
+  monitored, so a Sysmon and a capemon event of one process share an entity id (and `process.start` is then
+  capemon's). An unmonitored process takes its EID 1 time as start.
+- **Noise.** Windows background is 85 to 99% of a log, so only the sample's events are kept
+  (`app/ingest/sysmon_noise.py`, rule in its docstring; reasons are counted on `SysmonNormalizer.dropped`):
+  1. the acting process is in the sample's tree: a capemon-monitored process (pid + image name) or any
+     descendant by `ParentProcessGuid`; or it names such a process as the **target** (EID 8, 10) and the actor
+     is not CAPE's tooling; or it names no (identifiable) process, as the WMI events;
+  2. dropped `cape-tooling`: the agent (`pythonw.exe`), `inject-*.exe` and the executables under
+     `C:\<8 chars>\bin|dll|data|lib|modules|CAPE\` the injector is renamed to, `PPLinject*`, `wevtutil.exe`, Sysmon's
+     binaries, and a process started by one of those. The injector acting on the sample is CAPE injecting its
+     monitor, not an injection by the sample;
+  3. dropped `monitor-artefact`: inside a sample process, the monitor's own files (anything under the analyzer
+     directory, `C:\<pid>.ini`);
+  4. dropped `windows-background`: everything else; `sysmon-service` (EID 4, 16) and `unmapped-event` (any other id)
+     are counted apart.
+  A process the log never saw start is matched by pid alone (a reused pid is kept), and a report with no monitored
+  process drops only the tooling, so that a blind capemon still shows the sample.
+- **Duplicates with capemon** are not removed here. Both sources emit `process-created`, `network-connection`,
+  `dns-query`, `file-created`, `file-deleted` and registry events for one action; tell them apart by
+  `event.module` (`sysmon` or `capemon`), and pair them by `process.entity_id`.
+
+#### `defender` (host-collected export)
+
+Reads `aux/defender.xml`: the Defender Operational events that the host-side auxiliary module exports
+after the run (S4 spike, `docs/plans/m8-spikes/S4-findings.md`). Final phase, `event.module: defender`,
+`event.dataset: defender.operational`, `event.category: [malware, file]`, lane `file`.
+
+- Only 1116 (malware detected) and 1117, 1118, 1119 (action taken, failed) are events. Every other id
+  (5007 configuration changes, 2001 update failures, ...) is dropped.
+- 1116 is an alert, `event.action: malware-detected`, severity from Severity ID (5 to 4, 4 to 3, 2 to 2,
+  1 to 1, else 2). 1117 is an event with `malware-quarantined` (Action ID 2), `malware-removed` (3) or
+  `malware-action-taken` (any other id), `event.outcome: success`. 1118 and 1119 are
+  `malware-action-failed` with `event.outcome: failure`, severity 3, and `error.code` and `error.message`.
+- Records are read by their numeric ids and Detection ID, never by the localised `*Name` values. A closing
+  event links to the 1116 with the same Detection ID through `related.events`; one with no such 1116 links
+  nothing.
+- `tartarus.defender.scope` follows the path. `tooling` (CAPE's own helpers under
+  `C:\<8 characters>\bin|dll|lib|data\`) is not an event: it is counted on the normaliser. `sample` (under
+  `\Temp\<task id>\`, or the moved copy in `%TEMP%`). `dropped` (written by a process the sample started;
+  `process.*` is set). `other` (Windows background, kept as an event).
+- `@timestamp` is SystemTime plus the calibrated guest clock offset. A record that predates the run (the
+  snapshot's clock) is placed at the analysis start with `tartarus.defender.clock: snapshot`.
+- `rule.reference` (the FWLink) and `rule.description` (the category) are set on 1116 only.
+- The same classification (`app/ingest/defender_export.py`) gives the analysis `defender` verdict
+  (`app/ingest/defender_verdict.py`), so the summary and the events cannot disagree.
+
+Fields this source adds to the catalog: `event.outcome`, `user.name`, `user.domain`, `error.code`,
+`error.message`, `tartarus.defender.{detection_id, scope, action_id, category_id, state,
+status_code, clock}`.
 
 ### Sigma field mapping
 Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` →

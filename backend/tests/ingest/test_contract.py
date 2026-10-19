@@ -8,6 +8,7 @@ from app.ingest.cape_signatures import CapeSignaturesNormalizer
 from app.ingest.capemon import CapemonNormalizer
 from app.ingest.defender import DefenderNormalizer
 from app.ingest.protocol import IngestContext, Normalizer
+from app.ingest.sysmon import SysmonNormalizer
 from tests.ingest.contract import (
     assert_fields_catalogued,
     check_normalizer_contract,
@@ -21,6 +22,8 @@ from tests.ingest.defender_cases import (
     copy_export,
     report_of,
 )
+from tests.ingest.sysmon_cases import WIDE_REPORT, analysis_with_fixture
+from tests.ingest.sysmon_cases import context_of as sysmon_context_of
 
 NORMALIZERS = [
     pytest.param(CapemonNormalizer(), id="capemon"),
@@ -59,3 +62,13 @@ def test_an_emitted_field_missing_from_the_catalog_fails_the_check() -> None:
 
     with pytest.raises(AssertionError, match=r"event\.bogus_field"):
         assert_fields_catalogued([event])
+
+
+def test_sysmon_keeps_the_contract_on_its_export(tmp_path: Path) -> None:
+    context = sysmon_context_of(analysis_with_fixture(tmp_path))
+
+    check_normalizer_contract(SysmonNormalizer(), WIDE_REPORT, context)
+
+
+def test_sysmon_does_not_raise_on_a_report_without_processes(tmp_path: Path) -> None:
+    check_tolerates_junk(SysmonNormalizer(), sysmon_context_of(analysis_with_fixture(tmp_path)))
