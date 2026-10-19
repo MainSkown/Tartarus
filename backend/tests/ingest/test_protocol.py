@@ -36,6 +36,10 @@ def test_context_is_immutable() -> None:
         context.analysis_id = 7  # type: ignore[misc]
 
 
+def test_context_has_no_analysis_folder_unless_given_one() -> None:
+    assert IngestContext(analysis_id=6, started_at=STARTED).analysis_dir is None
+
+
 def test_context_refuses_a_naive_start_time() -> None:
     with pytest.raises(ValueError, match="timezone"):
         IngestContext(analysis_id=6, started_at=datetime(2026, 10, 13, 10, 12, 18))

@@ -80,9 +80,14 @@ def host_registrations(log_text: str) -> dict[int, datetime]:
     return registered
 
 
+def analysis_dir_of(report_path: Path) -> Path:
+    """CAPE's folder of the task: the parent of its `reports/` folder."""
+    return report_path.parent.parent
+
+
 def task_log_of(report_path: Path) -> Path:
     """The task's `cuckoo.log` beside its `reports/` folder."""
-    return report_path.parent.parent / TASK_LOG_NAME
+    return analysis_dir_of(report_path) / TASK_LOG_NAME
 
 
 def read_host_registrations(log_path: Path) -> dict[int, datetime]:

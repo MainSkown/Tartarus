@@ -1,6 +1,7 @@
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -14,11 +15,16 @@ class IngestContext:
 
     `host_registrations` is when the host logged each process registering (pid to UTC time, see
     `app.ingest.clock`); it anchors the guest clock exactly and may be empty.
+
+    `analysis_dir` is the folder of CAPE's task, where the sources that are not part of
+    `report.json` leave their files (`sysmon/sysmon.xml`, `aux/defender.xml`); `None` when the
+    caller has no folder to offer.
     """
 
     analysis_id: int
     started_at: datetime
     host_registrations: Mapping[int, datetime] = field(default_factory=dict)
+    analysis_dir: Path | None = None
 
     def __post_init__(self) -> None:
         if self.started_at.tzinfo is None:

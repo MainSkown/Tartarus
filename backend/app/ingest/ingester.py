@@ -12,7 +12,12 @@ from app.analyses.summary import load_report
 from app.ingest.cape_network import CapeNetworkNormalizer
 from app.ingest.cape_signatures import CapeSignaturesNormalizer
 from app.ingest.capemon import CapemonNormalizer
-from app.ingest.clock import analysis_started, read_host_registrations, task_log_of
+from app.ingest.clock import (
+    analysis_dir_of,
+    analysis_started,
+    read_host_registrations,
+    task_log_of,
+)
 from app.ingest.protocol import IngestContext, Normalizer
 from app.ingest.sigma import RulesProvider, can_match_a_rule, final_detections, no_rules
 from app.rules.rule import Rule
@@ -150,7 +155,12 @@ def _read(analysis_id: int, report_path: Path) -> tuple[IngestContext, dict[str,
     if started_at is None:
         raise IngestFailedError(f"report {report_path.name} has no analysis start time")
     registrations = read_host_registrations(task_log_of(report_path))
-    context = IngestContext(analysis_id, started_at, host_registrations=registrations)
+    context = IngestContext(
+        analysis_id,
+        started_at,
+        host_registrations=registrations,
+        analysis_dir=analysis_dir_of(report_path),
+    )
     return context, report
 
 

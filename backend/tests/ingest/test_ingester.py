@@ -137,6 +137,32 @@ async def test_opensearch_being_down_when_the_template_is_ensured_fails_the_inge
     assert index.calls == ["ensure_template"]
 
 
+class _ContextRecorder:
+    source = "recorder"
+
+    def __init__(self) -> None:
+        self.contexts: list[IngestContext] = []
+
+    def normalise(
+        self, report: Mapping[str, Any], context: IngestContext
+    ) -> Iterator[dict[str, Any]]:
+        self.contexts.append(context)
+        return iter(())
+
+
+async def test_normalisers_are_told_the_analysis_folder_the_report_sits_in(
+    index: FakeIndex, tmp_path: Path
+) -> None:
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    shutil.copy(FULL_REPORT, reports / "report.json")
+    recorder = _ContextRecorder()
+
+    await ReportIngester(index, [recorder]).ingest(ANALYSIS_ID, reports / "report.json")
+
+    assert [context.analysis_dir for context in recorder.contexts] == [tmp_path]
+
+
 async def test_a_missing_report_fails_before_any_index_is_created(
     ingester: ReportIngester, index: FakeIndex, tmp_path: Path
 ) -> None:
