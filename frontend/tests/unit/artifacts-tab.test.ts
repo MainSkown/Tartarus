@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import ArtifactMemory from '@/components/ArtifactMemory.vue'
 import ArtifactTable from '@/components/ArtifactTable.vue'
 import ArtifactsTab from '@/components/tabs/ArtifactsTab.vue'
 import {
@@ -10,15 +11,24 @@ import {
   iocsViewFixture,
   registryViewFixture,
 } from './artifacts-fixtures'
+import { analysisFixture, DETECTIONS_SUMMARY } from './analysis-fixtures'
+import { eventPage } from './events-fixtures'
 import { filterEventsPlugins } from './filter-events-plugins'
+import { findingEvent, hollowEvent, memorySummary } from './memory-fixtures'
 
 const { plugins } = await filterEventsPlugins()
 
-const api = vi.hoisted(() => ({ viewsArtifacts: vi.fn(), viewsRegistry: vi.fn(), viewsIocs: vi.fn() }))
+const api = vi.hoisted(() => ({
+  viewsArtifacts: vi.fn(),
+  viewsRegistry: vi.fn(),
+  viewsIocs: vi.fn(),
+  eventsSearch: vi.fn(),
+  eventsDetail: vi.fn(),
+}))
 vi.mock('@/api', () => api)
 
-async function mountTab() {
-  const wrapper = mount(ArtifactsTab, { global: { plugins }, props: { analysis: ANALYSIS } })
+async function mountTab(analysis = ANALYSIS) {
+  const wrapper = mount(ArtifactsTab, { global: { plugins }, props: { analysis } })
   await flushPromises()
   return wrapper
 }
@@ -41,7 +51,12 @@ beforeEach(() => {
   api.viewsArtifacts.mockResolvedValue({ data: artifactsViewFixture() })
   api.viewsRegistry.mockResolvedValue({ data: registryViewFixture() })
   api.viewsIocs.mockResolvedValue({ data: iocsViewFixture() })
+  api.eventsSearch.mockReset()
+  api.eventsSearch.mockResolvedValue({ data: eventPage([findingEvent('a1'), hollowEvent('h1')]), response: { status: 200 } })
 })
+
+const withMemory = (memory = memorySummary({ dump_deleted: null })) =>
+  analysisFixture({ id: 45, summary: { ...DETECTIONS_SUMMARY, memory } })
 
 describe('ArtifactsTab', () => {
   it('keeps the marker the page tests look for', async () => {
@@ -69,18 +84,28 @@ describe('ArtifactsTab', () => {
         }),
       })
       const labels = subTabLabels(await mountTab())
-      expect(labels.slice(0, 3)).toEqual(['DROPPED FILES (2)', 'PAYLOADS & CONFIGS (1)', 'PROCESS DUMPS (2)'])
+      expect(labels.slice(0, 3)).toEqual(['DROPPED FILES (2)', 'PAYLOADS & CONFIGS (1)', 'PROCESS DUMPS (1)'])
     })
 
-    it('have no count for registry and indicators until they are loaded', async () => {
-      expect(subTabLabels(await mountTab()).slice(3)).toEqual(['REGISTRY', 'IOCs'])
+    it('have the memory sub-tab after the process dumps, and no count for memory, registry and indicators until they are loaded', async () => {
+      expect(subTabLabels(await mountTab()).slice(3)).toEqual(['MEMORY', 'REGISTRY', 'IOCs'])
     })
 
     it('show the registry and indicator counts once those sub-tabs have loaded', async () => {
       const wrapper = await mountTab()
       await open(wrapper, 'REGISTRY')
       await open(wrapper, 'IOCs')
-      expect(subTabLabels(wrapper).slice(3)).toEqual(['REGISTRY (3)', 'IOCs (4)'])
+      expect(subTabLabels(wrapper).slice(3)).toEqual(['MEMORY', 'REGISTRY (3)', 'IOCs (4)'])
+    })
+
+    it('show how many memory findings there are as soon as the analysis says its dump was read', async () => {
+      const labels = subTabLabels(await mountTab(withMemory()))
+      expect(labels[3]).toBe('MEMORY (2)')
+    })
+
+    it('show no memory count when the findings were not read', async () => {
+      const labels = subTabLabels(await mountTab(withMemory(memorySummary({ findings: 'failed', error: 'x' }))))
+      expect(labels[3]).toBe('MEMORY')
     })
 
     it('have no counts while the artifacts load', () => {
@@ -111,6 +136,55 @@ describe('ArtifactsTab', () => {
       await open(wrapper, 'IOCs')
       expect(api.viewsIocs).toHaveBeenCalledWith({ path: { analysis_id: 45 } })
       expect(visiblePanel(wrapper).text()).toContain('tartarus-selftest.example')
+    })
+  })
+
+  describe('memory', () => {
+    it('asks for the findings only when the analysis says there are findings to read', async () => {
+      await mountTab()
+      expect(api.eventsSearch).not.toHaveBeenCalled()
+      await mountTab(withMemory(memorySummary({ dump_taken: false, findings: 'unavailable', error: 'no dump' })))
+      expect(api.eventsSearch).not.toHaveBeenCalled()
+      await mountTab(withMemory())
+      expect(api.eventsSearch).toHaveBeenCalledTimes(1)
+    })
+
+    it('hands the sub-tab the memory summary and the dump found on disk', async () => {
+      const dump = artifactFixture({ id: 'mem1', name: 'memory.dmp' })
+      api.viewsArtifacts.mockResolvedValue({ data: artifactsViewFixture({ memory_dump: dump }) })
+      const wrapper = await mountTab(withMemory())
+      await open(wrapper, 'MEMORY')
+      const memory = visiblePanel(wrapper).findComponent(ArtifactMemory)
+      expect(memory.props('analysisId')).toBe(45)
+      expect(memory.props('memory')).toEqual(memorySummary({ dump_deleted: null }))
+      expect(memory.props('dump')).toEqual(dump)
+    })
+
+    it('shows the dump with its size and download, and the findings grouped by plugin', async () => {
+      const dump = artifactFixture({ id: 'mem1', name: 'memory.dmp', size: 2147483648, guest_path: null })
+      api.viewsArtifacts.mockResolvedValue({ data: artifactsViewFixture({ memory_dump: dump }) })
+      const wrapper = await mountTab(withMemory())
+      await open(wrapper, 'MEMORY')
+      const panel = visiblePanel(wrapper)
+      expect(panel.find('a.download-link').attributes('href')).toBe('/api/analyses/45/artifacts/mem1/download')
+      expect(panel.findAll('.finding-group__name').map((name) => name.text())).toEqual(['malfind', 'hollowprocesses'])
+    })
+
+    it('says no dump was requested for an analysis with no memory data, as before for the rest', async () => {
+      const wrapper = await mountTab()
+      await open(wrapper, 'MEMORY')
+      expect(visiblePanel(wrapper).text()).toContain('no memory dump was requested for this analysis')
+      expect(api.eventsSearch).not.toHaveBeenCalled()
+    })
+
+    it('shows the artifacts error in the dump block, with a retry that asks the artifacts again', async () => {
+      api.viewsArtifacts.mockResolvedValueOnce({ error: { error: { code: 'x', message: 'index is down' } } })
+      const wrapper = await mountTab()
+      await open(wrapper, 'MEMORY')
+      expect(visiblePanel(wrapper).text()).toContain('index is down')
+      await visiblePanel(wrapper).find('.retry-btn').trigger('click')
+      await flushPromises()
+      expect(api.viewsArtifacts).toHaveBeenCalledTimes(2)
     })
   })
 
@@ -193,33 +267,30 @@ describe('ArtifactsTab', () => {
       expect(table.props('artifacts')).toEqual(artifactsViewFixture().procdumps)
     })
 
-    it('adds the memory dump with its size and download when there is one', async () => {
+    it('leaves the memory dump to the memory sub-tab', async () => {
       const memory = artifactFixture({ id: 'mem1', name: 'memory.dmp', size: 2147483648, guest_path: null })
       api.viewsArtifacts.mockResolvedValue({ data: artifactsViewFixture({ memory_dump: memory }) })
       const wrapper = await mountTab()
       await open(wrapper, 'PROCESS DUMPS')
       const panel = visiblePanel(wrapper)
-      expect(panel.find('.memory-heading').exists()).toBe(true)
-      const memoryTable = panel.findAllComponents(ArtifactTable)[1]!
-      expect(memoryTable.text()).toContain('2 GB')
-      expect(memoryTable.find('a.download-link').attributes('href')).toBe('/api/analyses/45/artifacts/mem1/download')
+      expect(panel.findAllComponents(ArtifactTable)).toHaveLength(1)
+      expect(panel.text()).not.toContain('memory.dmp')
     })
 
-    it('shows a memory dump alone when no process was dumped', async () => {
+    it('says when no process was dumped, even with a memory dump', async () => {
       api.viewsArtifacts.mockResolvedValue({
         data: artifactsViewFixture({ procdumps: [], memory_dump: artifactFixture({ name: 'memory.dmp' }) }),
       })
       const wrapper = await mountTab()
       await open(wrapper, 'PROCESS DUMPS')
-      expect(visiblePanel(wrapper).findAllComponents(ArtifactTable)).toHaveLength(1)
-      expect(visiblePanel(wrapper).text()).not.toContain('no process dumps')
+      expect(visiblePanel(wrapper).text()).toContain('no process dumps were captured')
     })
 
     it('says when nothing was dumped', async () => {
       api.viewsArtifacts.mockResolvedValue({ data: EMPTY_ARTIFACTS_VIEW })
       const wrapper = await mountTab()
       await open(wrapper, 'PROCESS DUMPS')
-      expect(visiblePanel(wrapper).text()).toContain('no process or memory dumps were captured')
+      expect(visiblePanel(wrapper).text()).toContain('no process dumps were captured')
     })
   })
 

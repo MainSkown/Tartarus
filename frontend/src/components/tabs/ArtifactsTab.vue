@@ -3,18 +3,20 @@ import { computed, reactive, ref } from 'vue'
 import { viewsArtifacts, type AnalysisRead } from '@/api'
 import ArtifactConfigs from '@/components/ArtifactConfigs.vue'
 import ArtifactIocs from '@/components/ArtifactIocs.vue'
+import ArtifactMemory from '@/components/ArtifactMemory.vue'
 import ArtifactRegistry from '@/components/ArtifactRegistry.vue'
 import ArtifactTable from '@/components/ArtifactTable.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
 import { t } from '@/i18n'
 
-type SubTabKey = 'dropped' | 'payloads' | 'dumps' | 'registry' | 'iocs'
+type SubTabKey = 'dropped' | 'payloads' | 'dumps' | 'memory' | 'registry' | 'iocs'
 
 const props = defineProps<{ analysis: AnalysisRead }>()
 
 const active = ref<SubTabKey>('dropped')
 const opened = reactive(new Set<SubTabKey>(['dropped']))
+const memoryCount = ref<number>()
 const registryCount = ref<number>()
 const iocCount = ref<number>()
 
@@ -23,12 +25,15 @@ const { data, loading, error, reload } = useAnalysisView(
   (id) => viewsArtifacts({ path: { analysis_id: id } }),
 )
 
-const dumpCount = computed(() => data.value && data.value.procdumps.length + (data.value.memory_dump ? 1 : 0))
+const memory = computed(() => props.analysis.summary?.memory ?? null)
+// The findings count belongs on the sub-tab before it is opened, as the dropped files' does.
+const loadMemoryAtOnce = computed(() => memory.value?.findings === 'ok')
 
 const subTabs = computed<{ key: SubTabKey; label: string; count: number | undefined }[]>(() => [
   { key: 'dropped', label: t('artifacts.tabs.droppedFiles'), count: data.value?.dropped.length },
   { key: 'payloads', label: t('artifacts.tabs.payloadsAndConfigs'), count: data.value?.payloads.length },
-  { key: 'dumps', label: t('artifacts.tabs.processDumps'), count: dumpCount.value },
+  { key: 'dumps', label: t('artifacts.tabs.processDumps'), count: data.value?.procdumps.length },
+  { key: 'memory', label: t('artifacts.tabs.memory'), count: memoryCount.value },
   { key: 'registry', label: t('artifacts.tabs.registry'), count: registryCount.value },
   { key: 'iocs', label: t('artifacts.tabs.iocs'), count: iocCount.value },
 ])
@@ -43,7 +48,7 @@ function select(key: SubTabKey): void {
 }
 
 const noPayloads = computed(() => data.value?.payloads.length === 0 && data.value.configs.length === 0)
-const noDumps = computed(() => dumpCount.value === 0)
+const noDumps = computed(() => data.value?.procdumps.length === 0)
 </script>
 
 <template>
@@ -123,23 +128,28 @@ const noDumps = computed(() => dumpCount.value === 0)
         :empty-message="t('artifacts.empty.processDumps')"
         @retry="reload"
       >
-        <template v-if="data">
-          <ArtifactTable
-            v-if="data.procdumps.length"
-            :analysis-id="analysis.id"
-            :artifacts="data.procdumps"
-          />
-          <template v-if="data.memory_dump">
-            <h3 class="memory-heading text-mono">
-              {{ t('artifacts.memoryDump') }}
-            </h3>
-            <ArtifactTable
-              :analysis-id="analysis.id"
-              :artifacts="[data.memory_dump]"
-            />
-          </template>
-        </template>
+        <ArtifactTable
+          v-if="data?.procdumps.length"
+          :analysis-id="analysis.id"
+          :artifacts="data.procdumps"
+        />
       </ViewState>
+    </div>
+
+    <div
+      v-if="opened.has('memory') || loadMemoryAtOnce"
+      v-show="active === 'memory'"
+      class="artifact-panel"
+    >
+      <ArtifactMemory
+        :analysis-id="analysis.id"
+        :memory="memory"
+        :dump="data?.memory_dump ?? null"
+        :artifacts-loading="loading"
+        :artifacts-error="error"
+        @counted="memoryCount = $event"
+        @retry-artifacts="reload"
+      />
     </div>
 
     <div
@@ -175,13 +185,6 @@ const noDumps = computed(() => dumpCount.value === 0)
 .artifact-sub-tabs {
   margin-bottom: var(--spacing-md);
   border-bottom: 2px solid var(--border-primary);
-}
-
-.memory-heading {
-  margin: var(--spacing-md) 0 var(--spacing-xs);
-  color: var(--blue-primary);
-  font-size: 0.75rem;
-  letter-spacing: 1px;
 }
 
 .artifact-panel {

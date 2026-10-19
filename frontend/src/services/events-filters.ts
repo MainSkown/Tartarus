@@ -67,3 +67,20 @@ export function describeTarget(target: EventsTarget): string {
   if ('text' in target) return t('events.filter.queryTarget', { text: target.text })
   return target.chips.map(describeFilter).join(` ${t('events.filter.joiner')} `)
 }
+
+/** The plugin, the process and the address that make one memory finding; the events of that finding (the observation and its detection) share them. */
+export function memoryFindingFilters({
+  plugin,
+  process,
+  address,
+}: {
+  plugin: string
+  process: { pid: number } | null
+  address: string | null
+}): EventsFilter[] {
+  return [
+    ...filterOn('tartarus.memory.plugin', plugin),
+    ...filterOn('process.pid', process?.pid),
+    ...filterOn('tartarus.memory.address', address),
+  ]
+}

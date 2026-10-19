@@ -20,7 +20,7 @@ import {
 } from './fixtures'
 
 const ID = 45
-const SUB_TABS = ['DROPPED', 'PAYLOADS', 'PROCESS DUMPS', 'REGISTRY', 'IOCs']
+const SUB_TABS = ['DROPPED', 'PAYLOADS', 'PROCESS DUMPS', 'MEMORY', 'REGISTRY', 'IOCs']
 const LONG_PATH = `C:\\Users\\Administrator\\AppData\\Local\\Temp\\${'deeply_nested_directory_name\\'.repeat(8)}payload_with_a_very_long_file_name.bin`
 const SERVER_ERROR: ViewMock = { status: 500, body: errorEnvelope('internal_error', 'OpenSearch is not answering') }
 
@@ -157,7 +157,7 @@ test.describe('empty', () => {
   const cases: { name: string; overrides: Overrides; tab: string; message: string }[] = [
     { name: 'artifacts-empty-dropped', overrides: { artifacts: { body: emptyArtifacts() } }, tab: 'DROPPED', message: 'no files were dropped' },
     { name: 'artifacts-empty-payloads', overrides: { artifacts: { body: emptyArtifacts() } }, tab: 'PAYLOADS', message: 'no payloads or configs were extracted' },
-    { name: 'artifacts-empty-dumps', overrides: { artifacts: { body: emptyArtifacts() } }, tab: 'PROCESS DUMPS', message: 'no process or memory dumps were captured' },
+    { name: 'artifacts-empty-dumps', overrides: { artifacts: { body: emptyArtifacts() } }, tab: 'PROCESS DUMPS', message: 'no process dumps were captured' },
     { name: 'artifacts-empty-registry', overrides: { registry: { body: { keys: [], total: 0 } } }, tab: 'REGISTRY', message: 'no registry changes were recorded' },
     { name: 'artifacts-empty-iocs', overrides: { iocs: { body: { iocs: [], truncated_types: [] } } }, tab: 'IOCs', message: 'no indicators were extracted' },
   ]
@@ -208,7 +208,8 @@ test.describe('rich data', () => {
 
   test('artifacts-rich-dumps', async ({ page }) => {
     await openArtifacts(page, RICH, 'PROCESS DUMPS')
-    await expect(page.locator('.memory-heading')).toBeVisible()
+    await expect(page.locator('.artifact-panel:visible tbody tr')).toHaveCount(6)
+    await expect(page.getByText('memory.dmp')).toHaveCount(0)
     await page.screenshot({ path: screenshotPath('artifacts-rich-dumps'), fullPage: true })
   })
 

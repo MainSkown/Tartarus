@@ -6,6 +6,7 @@ import {
   flowDestinationFilters,
   hostEntryFilters,
   iocFilters,
+  memoryFindingFilters,
   registryChangeFilters,
 } from '@/services/events-filters'
 
@@ -118,5 +119,21 @@ describe('describeTarget', () => {
 
   it('quotes a query text', () => {
     expect(describeTarget({ text: 'event.id:(a OR b)' })).toBe('query: event.id:(a OR b)')
+  })
+})
+
+describe('memoryFindingFilters', () => {
+  it('is the plugin, the process and the address of the finding', () => {
+    expect(memoryFindingFilters({ plugin: 'windows.malware.malfind', process: { pid: 2184 }, address: '0x1e3eba60000' })).toEqual([
+      { field: 'tartarus.memory.plugin', value: 'windows.malware.malfind' },
+      { field: 'process.pid', value: 2184 },
+      { field: 'tartarus.memory.address', value: '0x1e3eba60000' },
+    ])
+  })
+
+  it('leaves out the process and the address a finding does not have', () => {
+    expect(memoryFindingFilters({ plugin: 'windows.malware.malfind', process: null, address: null })).toEqual([
+      { field: 'tartarus.memory.plugin', value: 'windows.malware.malfind' },
+    ])
   })
 })
