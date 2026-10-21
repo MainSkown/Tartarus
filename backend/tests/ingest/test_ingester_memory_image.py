@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.db.models.analysis import Severity
 from app.ingest.ingester import ReportIngester
 from tests.ingest.fake_index import FakeIndex
 from tests.ingest.volatility_cases import P9_INJECTED_PID, write_p9_image_memory
@@ -51,3 +52,23 @@ async def test_an_image_with_no_findings_folder_gives_an_empty_index(tmp_path: P
     result = await ReportIngester(index).ingest_memory_image(3, tmp_path, started_at=IMPORTED_AT)
 
     assert (result.event_count, index.calls[:2]) == (0, ["ensure_template", "drop"])
+
+
+async def test_the_ingest_reports_the_highest_severity_of_the_detections_it_indexed(
+    tmp_path: Path,
+) -> None:
+    write_p9_image_memory(tmp_path)
+
+    result = await ReportIngester(FakeIndex()).ingest_memory_image(
+        3, tmp_path, started_at=IMPORTED_AT
+    )
+
+    assert result.max_alert_severity is Severity.HIGH
+
+
+async def test_an_ingest_without_detections_reports_no_severity(tmp_path: Path) -> None:
+    result = await ReportIngester(FakeIndex()).ingest_memory_image(
+        3, tmp_path, started_at=IMPORTED_AT
+    )
+
+    assert result.max_alert_severity is None

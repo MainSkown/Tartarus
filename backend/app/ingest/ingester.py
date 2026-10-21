@@ -11,7 +11,8 @@ from typing import Any, Protocol
 
 from app.analyses.defender import DefenderVerdict
 from app.analyses.ports import IngestFailedError, IngestResult, ReportUnreadableError
-from app.analyses.summary import load_report, process_count_of
+from app.analyses.summary import SEVERITY_ORDER, load_report, process_count_of
+from app.db.models.analysis import Severity
 from app.ingest.cape_network import CapeNetworkNormalizer
 from app.ingest.cape_signatures import CapeSignaturesNormalizer
 from app.ingest.capemon import CapemonNormalizer
@@ -33,6 +34,7 @@ from app.search.index import IndexingError
 logger = logging.getLogger(__name__)
 
 SETTLED_REFRESH_INTERVAL = "30s"
+ALERT_KIND = "alert"
 
 type Reading = Callable[[], tuple[IngestContext, dict[str, Any]]]
 
@@ -130,7 +132,10 @@ class ReportIngester:
         injected = self._injected_normalizers
         normalizers = injected if injected is not None else default_normalizers()
         lane_counts: Counter[str] = Counter()
-        events = self._numbered(self._with_detections(normalizers, report, context), lane_counts)
+        alert_severities: set[int] = set()
+        events = self._numbered(
+            self._with_detections(normalizers, report, context), lane_counts, alert_severities
+        )
         event_count = await self._index.bulk_index(analysis_id, events)
         await self._index.set_refresh_interval(analysis_id, SETTLED_REFRESH_INTERVAL)
         await self._index.refresh(analysis_id)
@@ -139,6 +144,7 @@ class ReportIngester:
             lane_counts=dict(lane_counts),
             defender=_defender_verdict(normalizers, report),
             hidden_events=_hidden_events(normalizers),
+            max_alert_severity=_severity_of_level(max(alert_severities, default=None)),
         )
 
     def _with_detections(
@@ -154,9 +160,10 @@ class ReportIngester:
 
     @staticmethod
     def _numbered(
-        events: Iterable[dict[str, Any]], lane_counts: Counter[str]
+        events: Iterable[dict[str, Any]], lane_counts: Counter[str], alert_severities: set[int]
     ) -> Iterator[dict[str, Any]]:
-        """Numbers events in stream order and counts them per lane.
+        """Numbers events in stream order, counts them per lane and notes the severities of the
+        alerts.
 
         Each normaliser numbers its own events from zero, so the numbers only become unique
         across sources here.
@@ -164,11 +171,17 @@ class ReportIngester:
         for sequence, event in enumerate(events):
             event["event"]["sequence"] = sequence
             lane_counts[event["tartarus"]["lane"]] += 1
+            if event["event"]["kind"] == ALERT_KIND:
+                alert_severities.add(event["event"]["severity"])
             yield event
 
     async def _discard_partial_index(self, analysis_id: int) -> None:
         with contextlib.suppress(Exception):
             await self._index.drop(analysis_id)
+
+
+def _severity_of_level(level: int | None) -> Severity | None:
+    return None if level is None else SEVERITY_ORDER[level]
 
 
 def _first_of[N: Normalizer](normalizers: Iterable[Normalizer], kind: type[N]) -> N | None:

@@ -6,6 +6,7 @@ The `vol` runner is a fake that returns real Volatility3 output; the storage is 
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -24,11 +25,13 @@ from fixtures.volatility_output import (
 )
 from memory_logic import (
     ANALYSIS_FILE_MODE,
+    IMAGE_TASK_ID_BASE,
     AlreadyRunningError,
     DumpMissingError,
     ImageMissingError,
     ImageRejectedError,
     MemoryAnalyser,
+    NotAnImageTaskError,
     analyse_response,
     delete_dump_response,
     pids_from_report,
@@ -959,3 +962,47 @@ def test_delete_while_analysing_is_409(analyser, runner):
     analyser.analyse(7)
 
     assert answers[0] == (409, {"error": "this task's memory dump is being analysed"})
+
+
+# delete_image_findings
+
+IMAGE_TASK = IMAGE_TASK_ID_BASE + 3
+
+
+def test_deleting_the_findings_of_an_image_removes_its_whole_task_folder(analyser, storage):
+    analyser.analyse(7)
+    shutil.copytree(storage / "analyses" / "7", storage / "analyses" / str(IMAGE_TASK))
+
+    analyser.delete_image_findings(IMAGE_TASK)
+
+    assert not (storage / "analyses" / str(IMAGE_TASK)).exists()
+    assert (storage / "analyses" / "7" / "memory" / "run.json").exists()
+
+
+def test_deleting_the_findings_of_an_image_that_left_none_is_not_an_error(analyser):
+    analyser.delete_image_findings(IMAGE_TASK)
+
+
+def test_a_cape_task_folder_is_never_removed_as_an_image_s_findings(analyser, storage):
+    with pytest.raises(NotAnImageTaskError):
+        analyser.delete_image_findings(7)
+
+    assert (storage / "analyses" / "7" / "memory.dmp").exists()
+
+
+def test_the_findings_cannot_be_deleted_while_the_image_is_being_read(analyser, runner):
+    refused = []
+
+    def deletes(plugin):
+        if plugin == "windows.pslist":
+            with pytest.raises(AlreadyRunningError) as raised:
+                analyser.delete_image_findings(IMAGE_TASK)
+            refused.append(raised.value)
+
+    runner.on_call = deletes
+    (analyser.imports_directory).mkdir()
+    (analyser.imports_directory / IMAGE_NAME).write_bytes(DUMP_CONTENT)
+
+    analyser.analyse(IMAGE_TASK, IMAGE_NAME)
+
+    assert len(refused) == 1

@@ -12,9 +12,12 @@ from pathlib import Path
 from app.analyses.memory import MemoryFindings, MemorySummary
 from app.analyses.memory_step import summarise_analysis
 from app.analyses.ports import EventIngester, IngestResult, MemoryControl
+from app.db.models import Analysis
+from app.db.models.analysis import AnalysisKind
 from app.guest.errors import GuestControlError, GuestControlRejected
 from app.guest.schemas import MemoryAnalysis, MissingSymbols
-from app.imports.upload import UPLOAD_NAME, import_file
+from app.imports.sniff import ImportKind
+from app.imports.upload import UPLOAD_NAME, import_file, recorded_import_kind
 
 # CAPE's own task ids are small; the control service takes any run of digits.
 IMAGE_TASK_ID_BASE = 900_000_000
@@ -32,6 +35,13 @@ class ImportedImage:
 
 def image_task_id(analysis_id: int) -> int:
     return IMAGE_TASK_ID_BASE + analysis_id
+
+
+def is_memory_image_import(analysis: Analysis) -> bool:
+    return (
+        analysis.kind is AnalysisKind.IMPORTED
+        and recorded_import_kind(analysis.options) == ImportKind.MEMORY_IMAGE
+    )
 
 
 class MemoryImport:

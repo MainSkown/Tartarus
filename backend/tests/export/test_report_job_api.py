@@ -20,6 +20,7 @@ from app.api.dependencies import (
     get_cape_storage_path,
     get_event_index,
     get_exports_path,
+    get_guest_control,
     get_imports_dir,
     get_job_runner,
     get_sample_store,
@@ -40,6 +41,7 @@ from app.jobs.runner import JobRunner
 from app.samples.store import SampleStore
 from app.views.attack_table import load_attack_table
 from tests.export.report.fixtures import SAMPLE_NAME, make_inputs
+from tests.guest.fakes import FakeGuestControl
 from tests.test_analysis_repository import _enable_foreign_keys, seeded_analysis
 
 POLL_INTERVAL_S = 0.02
@@ -118,6 +120,8 @@ async def harness(
     app.dependency_overrides[get_exports_path] = lambda: exports
     app.dependency_overrides[get_imports_dir] = lambda: tmp_path / "imports"
     app.dependency_overrides[get_cape] = UnusedCape
+    guests = FakeGuestControl()
+    app.dependency_overrides[get_guest_control] = lambda: guests
     app.dependency_overrides[get_event_index] = FakeIndex
     app.dependency_overrides[get_cape_storage_path] = lambda: tmp_path / "cape"
     app.dependency_overrides[get_sample_store] = lambda: SampleStore(tmp_path / "samples")

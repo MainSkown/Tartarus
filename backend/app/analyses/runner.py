@@ -15,7 +15,7 @@ from app.analyses.deadline import MAX_RUN_S, initial_deadline
 from app.analyses.defender import DefenderVerdict
 from app.analyses.guest_choice import recorded_guest
 from app.analyses.memory import MemorySummary
-from app.analyses.memory_import import MemoryImport, MemoryImportFailedError
+from app.analyses.memory_import import MemoryImport, MemoryImportFailedError, is_memory_image_import
 from app.analyses.memory_step import MemoryStep
 from app.analyses.monitor import first_monitor_log_time
 from app.analyses.pcap_import import ImportRefusedError, Submitted, submit_import
@@ -31,7 +31,7 @@ from app.analyses.ports import (
     ReportUnreadableError,
     SampleSource,
 )
-from app.analyses.summary import ReportSummary
+from app.analyses.summary import SEVERITY_ORDER, ReportSummary
 from app.cape.errors import (
     CapeAuthError,
     CapeError,
@@ -52,7 +52,13 @@ from app.db.analysis_repository import (
 )
 from app.db.base import utc_now
 from app.db.models import Analysis
-from app.db.models.analysis import ACTIVE_STATUSES, AnalysisKind, AnalysisPhase, AnalysisStatus
+from app.db.models.analysis import (
+    ACTIVE_STATUSES,
+    AnalysisKind,
+    AnalysisPhase,
+    AnalysisStatus,
+    Severity,
+)
 from app.guest.errors import (
     GuestControlError,
     GuestControlNotConfigured,
@@ -60,8 +66,6 @@ from app.guest.errors import (
     GuestControlUnreachable,
 )
 from app.guest.schemas import Guest, InteractiveOptions
-from app.imports.sniff import ImportKind
-from app.imports.upload import recorded_import_kind
 from app.live.utc import as_utc
 
 logger = logging.getLogger(__name__)
@@ -255,7 +259,7 @@ class Runner:
                 )
 
     async def _submit(self, session: AsyncSession, claimed: Analysis) -> None:
-        if _is_memory_image_import(claimed):
+        if is_memory_image_import(claimed):
             await self._follow_memory_image(session, claimed)
             return
         try:
@@ -363,7 +367,7 @@ class Runner:
             )
 
     async def _track(self, session: AsyncSession, analysis: Analysis) -> None:
-        if _is_memory_image_import(analysis):
+        if is_memory_image_import(analysis):
             await self._follow_memory_image(session, analysis)
             return
         task_id = analysis.cape_task_id
@@ -559,7 +563,7 @@ class Runner:
             status=AnalysisStatus.DONE,
             phase=AnalysisPhase.FINAL,
             score=outcome.score,
-            max_severity=outcome.max_severity,
+            max_severity=_highest(outcome.max_severity, indexed.max_alert_severity),
             detected_families=outcome.detected_families,
             summary={
                 **outcome.summary,
@@ -655,6 +659,10 @@ class Runner:
         logger.info("Analysis %s ended as %s", analysis_id, changes["status"])
 
 
+def _highest(*severities: Severity | None) -> Severity | None:
+    return max((s for s in severities if s is not None), key=SEVERITY_ORDER.index, default=None)
+
+
 def _dumped(verdict: DefenderVerdict | None) -> dict[str, Any] | None:
     return None if verdict is None else verdict.model_dump(mode="json")
 
@@ -671,13 +679,6 @@ def _capture_start(analysis: Analysis) -> datetime | None:
     if analysis.kind is not AnalysisKind.IMPORTED or analysis.started_at is None:
         return None
     return as_utc(analysis.started_at)
-
-
-def _is_memory_image_import(analysis: Analysis) -> bool:
-    return (
-        analysis.kind is AnalysisKind.IMPORTED
-        and recorded_import_kind(analysis.options) == ImportKind.MEMORY_IMAGE
-    )
 
 
 def _is_interactive_run(analysis: Analysis) -> bool:

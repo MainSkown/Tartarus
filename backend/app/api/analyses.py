@@ -25,6 +25,7 @@ from app.analyses.deadline import MAX_RUN_S, at_the_latest, extended_deadline
 from app.analyses.guest_badges import badges_by_guest
 from app.analyses.guest_choice import GuestRefusedError, PackageNotAcceptedError, recorded_guest
 from app.analyses.memory_disk import FreeSpaceProbe, MemoryDumpRefusedError
+from app.analyses.memory_import import image_task_id, is_memory_image_import
 from app.analyses.monitor import monitor_started
 from app.analyses.ports import RunnerControl
 from app.analyses.submission import AnalysisSubmitter, discard_unreferenced_sample
@@ -315,9 +316,11 @@ async def delete(  # noqa: PLR0913 - one argument per resource the analysis owns
     store: Annotated[SampleStore, Depends(get_sample_store)],
     exports: Annotated[Path, Depends(get_exports_path)],
     imports: Annotated[Path, Depends(get_imports_dir)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
 ) -> Response:
-    """Removes the analysis, its CAPE task, its event index, its exported files, and its sample
-    once unused. `409` while the analysis is active or has a job (an export) in progress.
+    """Removes the analysis, its CAPE task, its event index, its exported files, its upload and
+    the findings of an imported memory image, and its sample once unused. `409` while the
+    analysis is active or has a job (an export) in progress.
     """
     analysis = await require_analysis(session, analysis_id)
     if analysis.status in ACTIVE_STATUSES:
@@ -329,6 +332,7 @@ async def delete(  # noqa: PLR0913 - one argument per resource the analysis owns
     await _drop_event_index(index, analysis_id)
     await _remove_exports(exports, analysis_id)
     await _remove_import(imports, analysis_id)
+    await _remove_image_findings(guests, analysis)
     await delete_analysis(session, analysis_id)
     await discard_unreferenced_sample(session, store, analysis.sample_sha256)
     return Response(status_code=204)
@@ -450,6 +454,17 @@ async def _remove_import(imports: Path, analysis_id: int) -> None:
         await asyncio.to_thread(shutil.rmtree, import_directory(imports, analysis_id), True)
     except OSError as error:
         logger.warning("The upload of analysis %s was left behind: %s", analysis_id, error)
+
+
+async def _remove_image_findings(guests: GuestControl, analysis: Analysis) -> None:
+    # CAPE owns its storage, so the control service removes what a memory image's scan wrote there.
+    # Findings that cannot be removed must not make the analysis undeletable.
+    if not is_memory_image_import(analysis):
+        return
+    try:
+        await guests.delete_image_findings(image_task_id(analysis.id))
+    except GuestControlError as error:
+        logger.warning("The findings of analysis %s were left behind: %s", analysis.id, error)
 
 
 async def _remove_exports(exports: Path, analysis_id: int) -> None:

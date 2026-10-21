@@ -72,6 +72,9 @@ class FakeGuestControl:
     async def delete_guest(self, name: str) -> None:
         self._record("delete_guest", name)
 
+    async def delete_image_findings(self, task_id: int) -> None:
+        self._record("delete_image_findings", task_id)
+
     async def check(self, name: str) -> HealthCheckResult:
         self._record("check", name)
         return self.check_result or HealthCheckResult.model_validate(captured("check_result.json"))

@@ -347,6 +347,14 @@ async def test_delete_memory_dump_of_a_missing_dump_is_a_404_rejection() -> None
     assert error.value.status == 404
 
 
+async def test_delete_image_findings_sends_a_delete_and_accepts_no_content() -> None:
+    control = serving("DELETE", "/memory/900000003/findings", httpx.Response(204))
+
+    await control_with(control).delete_image_findings(900_000_003)
+
+    assert control.only_request.method == "DELETE"
+
+
 # --- authentication ----------------------------------------------------------------------------
 
 

@@ -50,13 +50,15 @@ class IngestResult:
     """What an ingest learned. `defender` is None only when the ingester ran without a Defender
     normaliser; with one it is always a verdict, `no_export` when the guest left no export.
     `hidden_events` counts the Sysmon events left out as background, by reason; empty when
-    there was no Sysmon file.
+    there was no Sysmon file. `max_alert_severity` is the highest severity among the indexed
+    detections (alert events), None when there are none.
     """
 
     event_count: int
     lane_counts: dict[str, int]
     defender: DefenderVerdict | None = None
     hidden_events: dict[str, int] = field(default_factory=dict)
+    max_alert_severity: Severity | None = None
 
 
 class EventIngester(Protocol):

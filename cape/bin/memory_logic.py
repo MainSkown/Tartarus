@@ -50,6 +50,10 @@ DUMP_MISSING = {"error": "no memory dump for this task"}
 IMAGE_REJECTED = {"error": "the image must be a file under /imports"}
 IMAGE_MISSING = {"error": "no such image under /imports"}
 RUNNING = {"error": "this task's memory dump is being analysed"}
+NOT_AN_IMAGE_TASK = {"error": "only the findings of an imported memory image can be deleted here"}
+# CAPE's own task ids are small; the backend gives an imported image's findings a task id from here
+# up (backend/app/analyses/memory_import.py), so this route can never touch a real task's folder.
+IMAGE_TASK_ID_BASE = 900_000_000
 
 type Answer = tuple[int, dict[str, Any] | None]
 
@@ -66,6 +70,10 @@ class ImageMissingError(Exception):
     """The requested image is not a regular file inside the imports folder, symlinks included."""
 
 
+class NotAnImageTaskError(Exception):
+    """The task id is a CAPE task's, not an imported image's."""
+
+
 class AlreadyRunningError(Exception):
     """Another analyse of the same task is reading the dump."""
 
@@ -79,6 +87,7 @@ REFUSALS: dict[type[Exception], Answer] = {
     ImageRejectedError: (400, IMAGE_REJECTED),
     ImageMissingError: (404, IMAGE_MISSING),
     AlreadyRunningError: (409, RUNNING),
+    NotAnImageTaskError: (400, NOT_AN_IMAGE_TASK),
 }
 
 
@@ -180,6 +189,13 @@ class MemoryAnalyser:
                 f" (pid {holder.pid}); its disk space is not freed until that process closes it"
             )
         return holders
+
+    def delete_image_findings(self, task_id: int) -> None:
+        """Removes the task folder an imported image's scan wrote; nothing to remove is fine."""
+        if task_id < IMAGE_TASK_ID_BASE:
+            raise NotAnImageTaskError
+        with self._claimed(task_id):
+            shutil.rmtree(self._analysis(task_id), ignore_errors=True)
 
     def _analysis(self, task_id: int) -> Path:
         return self.storage / "analyses" / str(task_id)
@@ -392,4 +408,15 @@ def delete_dump_response(raw_task_id: str, analyser: MemoryAnalyser) -> Answer:
         return 404, DUMP_MISSING
     except AlreadyRunningError:
         return 409, RUNNING
+    return 204, None
+
+
+def delete_findings_response(raw_task_id: str, analyser: MemoryAnalyser) -> Answer:
+    task_id = parse_task_id(raw_task_id)
+    if task_id is None:
+        return 400, TASK_ID_NOT_DIGITS
+    try:
+        analyser.delete_image_findings(task_id)
+    except (NotAnImageTaskError, AlreadyRunningError) as refused:
+        return REFUSALS[type(refused)]
     return 204, None

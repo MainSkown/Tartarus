@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.analyses.memory_import import image_task_id
 from app.api.analyses import router as analyses_router
 from app.api.dependencies import (
     get_cape,
@@ -25,6 +26,7 @@ from app.db.base import Base
 from app.db.models import Analysis, Sample
 from app.db.models.analysis import AnalysisKind, AnalysisStatus
 from app.errors import install_error_handlers
+from app.guest.errors import GuestControlUnreachable
 from app.samples.store import SampleStore
 from tests.analyses.guest_fakes import ScriptedGuestControl
 from tests.test_analyses_api import FakeCape, FakeEventIndex, FakeRunner
@@ -45,6 +47,7 @@ class ImportHarness:
     runner: FakeRunner
     imports: Path
     samples: Path
+    guests: ScriptedGuestControl
 
     def limit(self, *, pcap: int | None = None, memory_image: int | None = None) -> None:
         settings = self.app.dependency_overrides[get_settings]()
@@ -92,7 +95,8 @@ async def imports_harness(
     app.include_router(analyses_router, prefix="/api")
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_runner] = lambda: runner
-    app.dependency_overrides[get_guest_control] = lambda: ScriptedGuestControl([])
+    guests = ScriptedGuestControl([])
+    app.dependency_overrides[get_guest_control] = lambda: guests
     app.dependency_overrides[get_sample_store] = lambda: SampleStore(samples)
     cape, index = FakeCape(), FakeEventIndex()
     app.dependency_overrides[get_cape] = lambda: cape
@@ -100,7 +104,7 @@ async def imports_harness(
     app.dependency_overrides[get_exports_path] = lambda: tmp_path / "exports"
 
     async with make_client(app) as client:
-        yield ImportHarness(client, app, factory, runner, imports, samples)
+        yield ImportHarness(client, app, factory, runner, imports, samples, guests)
     await engine.dispose()
 
 
@@ -266,6 +270,49 @@ async def test_deleting_an_imported_analysis_removes_its_upload_and_its_sample_r
     assert response.status_code == 204
     assert imports_harness.files_under_imports() == []
     assert await imports_harness.rows(Sample) == []
+
+
+async def test_deleting_an_imported_memory_image_removes_the_findings_the_scan_left(
+    imports_harness: ImportHarness,
+) -> None:
+    created = (await imports_harness.upload(MEMORY_IMAGE, MEMORY_PATH, "memory.raw")).json()
+    async with imports_harness.factory() as session:
+        await update_analysis(session, created["id"], status=AnalysisStatus.DONE)
+
+    response = await imports_harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert response.status_code == 204
+    assert imports_harness.guests.calls_named("delete_image_findings") == [
+        image_task_id(created["id"])
+    ]
+
+
+async def test_an_image_whose_findings_cannot_be_removed_is_still_deleted(
+    imports_harness: ImportHarness,
+) -> None:
+    created = (await imports_harness.upload(MEMORY_IMAGE, MEMORY_PATH, "memory.raw")).json()
+    async with imports_harness.factory() as session:
+        await update_analysis(session, created["id"], status=AnalysisStatus.FAILED)
+    imports_harness.guests.error_by_call["delete_image_findings"] = GuestControlUnreachable(
+        "delete_image_findings", "down"
+    )
+
+    response = await imports_harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert response.status_code == 204
+    assert await imports_harness.rows(Analysis) == []
+
+
+async def test_deleting_an_imported_pcap_asks_the_control_service_for_nothing(
+    imports_harness: ImportHarness,
+) -> None:
+    created = (await imports_harness.upload(PCAP)).json()
+    async with imports_harness.factory() as session:
+        await update_analysis(session, created["id"], status=AnalysisStatus.DONE)
+
+    await imports_harness.client.delete(f"/api/analyses/{created['id']}")
+
+    assert imports_harness.guests.calls_named("delete_image_findings") == []
 
 
 async def assert_nothing_kept(imports_harness: ImportHarness) -> None:

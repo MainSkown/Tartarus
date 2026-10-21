@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ from app.cape.errors import CapeTaskNotFound
 from app.db import analysis_repository as repository
 from app.db import annotation_repository
 from app.db.base import utc_now
-from app.db.models.analysis import AnalysisPhase, AnalysisStatus
+from app.db.models.analysis import AnalysisPhase, AnalysisStatus, Severity
 from app.db.models.annotation import TargetType
 from tests.analyses.fakes import FakeCape, FakeIngester, FakeReports
 from tests.analyses.helpers import adopt_by_cape, load
@@ -202,3 +203,35 @@ async def test_a_reingest_of_a_task_cape_has_forgotten_ends_report_failed_instea
 async def _active_count(session_factory: Factory) -> int:
     async with session_factory() as session:
         return 0 if await repository.get_active_analysis(session) is None else 1
+
+
+@pytest.mark.parametrize(
+    ("signatures", "detections", "expected"),
+    [
+        (Severity.MEDIUM, Severity.HIGH, Severity.HIGH),
+        (Severity.CRITICAL, Severity.LOW, Severity.CRITICAL),
+        (None, Severity.LOW, Severity.LOW),
+        (Severity.LOW, None, Severity.LOW),
+        (None, None, None),
+    ],
+)
+async def test_max_severity_is_the_highest_of_the_signatures_and_the_indexed_detections(  # noqa: PLR0913, PLR0917 - fixtures and parameters
+    runner: Runner,
+    session_factory: Factory,
+    cape: FakeCape,
+    reports: FakeReports,
+    ingester: FakeIngester,
+    signatures: Severity | None,
+    detections: Severity | None,
+    expected: Severity | None,
+) -> None:
+    ingester.result = IngestResult(
+        event_count=3, lane_counts={"api": 3}, max_alert_severity=detections
+    )
+    reports.outcome = replace(OUTCOME, max_severity=signatures)
+    cape.scripts[7] = ["reported"]
+    analysis_id = await adopt_by_cape(session_factory, 7)
+
+    await runner.run_once()
+
+    assert (await load(session_factory, analysis_id)).max_severity is expected

@@ -91,8 +91,30 @@ def test_delete_removes_the_dump_with_204_and_then_answers_404(client, storage):
     assert not (storage / "analyses" / "7" / "memory.dmp").exists()
 
 
+def test_deleting_the_findings_of_an_image_is_204_and_repeatable(client, storage):
+    folder = storage / "analyses" / str(memory_logic.IMAGE_TASK_ID_BASE + 3) / "memory"
+    folder.mkdir(parents=True)
+    (folder / "run.json").write_text("{}")
+    path = f"/memory/{memory_logic.IMAGE_TASK_ID_BASE + 3}/findings"
+
+    first = client.request("DELETE", path, headers=AUTH)
+    second = client.request("DELETE", path, headers=AUTH)
+
+    assert (first.status, first.raw) == (204, b"")
+    assert second.status == 204
+    assert not folder.parent.exists()
+
+
+def test_deleting_the_findings_of_a_cape_task_is_refused(client, storage):
+    reply = client.request("DELETE", "/memory/7/findings", headers=AUTH)
+
+    assert reply.status == 400
+    assert (storage / "analyses" / "7" / "memory.dmp").exists()
+
+
 @pytest.mark.parametrize(
-    ("method", "path"), [("GET", "/memory/7/analyse"), ("POST", "/memory/7/dump")]
+    ("method", "path"),
+    [("GET", "/memory/7/analyse"), ("POST", "/memory/7/dump"), ("POST", "/memory/7/findings")],
 )
 def test_the_routes_accept_only_their_method(client, method, path):
     assert client.request(method, path, headers=AUTH).status == 405

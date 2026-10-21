@@ -117,6 +117,8 @@ class GuestControl(Protocol):
 
     async def delete_memory_dump(self, task_id: int) -> None: ...
 
+    async def delete_image_findings(self, task_id: int) -> None: ...
+
     async def make_symbols(self, missing: MissingSymbols) -> None: ...
 
 
@@ -259,6 +261,14 @@ class HttpGuestControl:
             "delete_memory_dump",
             "DELETE",
             f"/memory/{task_id}/dump",
+            explained_server_errors=EXPLAINED_SERVER_ERRORS_WITH_500,
+        )
+
+    async def delete_image_findings(self, task_id: int) -> None:
+        await self._send(
+            "delete_image_findings",
+            "DELETE",
+            f"/memory/{task_id}/findings",
             explained_server_errors=EXPLAINED_SERVER_ERRORS_WITH_500,
         )
 

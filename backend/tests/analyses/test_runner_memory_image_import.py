@@ -11,7 +11,7 @@ from app.analyses.ports import IngestFailedError, IngestResult
 from app.analyses.runner import Runner, RunnerConfig
 from app.db import analysis_repository as repository
 from app.db.base import utc_now
-from app.db.models.analysis import AnalysisKind, AnalysisPhase, AnalysisStatus
+from app.db.models.analysis import AnalysisKind, AnalysisPhase, AnalysisStatus, Severity
 from app.guest.errors import GuestControlUnreachable
 from app.guest.schemas import MemoryAnalysis, MissingSymbols
 from app.imports.upload import import_file
@@ -107,6 +107,21 @@ async def test_an_imported_image_ends_done_with_its_events_and_its_memory_summar
             as_utc(done.started_at),
         )
     ]
+
+
+async def test_the_most_severe_finding_of_an_image_is_the_analysis_max_severity(
+    runner: Runner,
+    session_factory: Factory,
+    ingester: FakeIngester,
+    imports_dir: Path,
+) -> None:
+    ingester.result = IngestResult(
+        event_count=26, lane_counts={"memory": 26}, max_alert_severity=Severity.HIGH
+    )
+
+    analysis_id = await imported(runner, session_factory, imports_dir)
+
+    assert (await load(session_factory, analysis_id)).max_severity is Severity.HIGH
 
 
 async def test_an_imported_image_needs_neither_a_guest_nor_a_cape_task(
