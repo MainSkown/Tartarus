@@ -181,3 +181,40 @@ All on the real stack (2026-10-21), notes in [m10-notes/](m10-notes/).
 
 What the user's two checks became: the ISO is Windows 10 (19045.2965, `DisplayVersion` 22H2) and English is **en-GB**.
 Left in place: `w10` (Defender off) and `w10b` (Defender on). The clones `w10-on` and `w10-q5` were deleted.
+
+## Open items, all in M10 (decided with the user, 2026-10-21)
+
+Every finding stays in M10: F1, F5, F7, F8, F9 and tasks 10.5b, 10.6, 10.9, 10.10, 10.11, plus 10.12 (F5's retry).
+Only one agent at a time may use the real stack's guests; the others write code and run unit tests only, and the
+planner runs every real-guest proof itself after reading the diff.
+
+**Design decisions made now**
+
+- **F1, real progress and live words (10.5b + 10.9).** `provision.ps1` registers the CAPE agent right after the
+  payload, the static address and Python, so the agent answers a few minutes into the install; the `install` step
+  then reads the guest's own `setup.log` through the agent every few seconds, relays each new line as a `LOG`
+  line and computes the percentage from the provisioning steps done over the steps there are. Until the agent
+  answers, the page says Windows is installing, with the elapsed time. The same step fails early, with a readable
+  message, when the agent has not answered some minutes after the desktop is up (F2's symptom). The build response
+  gains `phase` (the newest step label) and `last_activity` (when the log last grew), which the page shows.
+- **F5, retry for a failed guest (10.12).** A guest that failed its self-test (disks and snapshot kept, unregistered)
+  gets `[RE-RUN SELF-TEST]`: the control service registers it again and the backend runs the same self-test job.
+  Cloning and deleting it keep working as before.
+- **10.6, the profile names no operating system.** `display_name` and the CAPE tag come from the media's own
+  product (Windows 10, Windows 11), not from the profile; the `win11` tag goes.
+- **F9, an export failure is a warning on the analysis**, stored with it, shown on the summary and the Events tab.
+
+### Tasks (rule 5; each test-first, ruff/mypy or eslint/vue-tsc clean, no commits by agents)
+
+| ID | Task | Tier | Files it owns | Check that can fail |
+|---|---|---|---|---|
+| 10.5b/F1a | `provision.ps1` order, the `install` step's live log relay, real progress, early failure | S+ | `guest/profiles/windows/provision.ps1`, `steps/install`, `steps/lib/*`, their tests | a fake-agent test: lines relayed, progress from steps, no agent after the grace period fails with the message |
+| 10.6 | media-derived `display_name` and CAPE tag | H | `cape/guest_engine/profile.py`, `registration.py`, `profile.json`, frontend guest labels | a 19041 image registers `windows,win10`; a 26200 one `windows,win11` |
+| 10.11/F9 | the export failure recorded on the analysis and shown | S | `cape/auxiliary/event_logs.py`, backend ingest, `AnalysisSummaryTab.vue` | an export failure reaches the analysis's warnings and the summary |
+| 10.12/F5 | `[RE-RUN SELF-TEST]` on a failed guest | S | control service route, `backend/app/api/guests.py`, guest card | a failed guest re-runs and becomes `ready`; a ready one is refused |
+| 10.10/F8 | the spike on the PowerShell stall; it may use guest `w10` for analyses | S+ | notes only until a fix is decided | the same sample exports its Sysmon events, or the limit is written down |
+| 10.9/F1b, F7 | the build page: phase line, last-activity age, labelled progress, one shared panel header | S | `GuestBuildPage.vue`, `BuildLogPanel.vue`, `PaneHeading.vue`, messages | component tests; the screenshot loop (rule 4) |
+
+Order: 10.5b/F1a, 10.6, 10.11 and 10.12 start together, with the F8 spike beside them; 10.9 starts once F1a has
+fixed the `phase` and `last_activity` fields. Real-guest proofs after each: a clean Windows 10 build for F1a, an
+analysis for F9, a failed self-test retried for F5.
