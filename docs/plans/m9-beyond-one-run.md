@@ -7,7 +7,7 @@ gates at once.
 
 ## Status
 
-**Planned 2026-10-21. P1 and P2 ran: both go ([P1](m9-spikes/P1-findings.md), [P2](m9-spikes/P2-findings.md)). Waves 1 and 2 built and proven on the real stack, see [Proof](#proof); wave 3 not started.** Starting point, read from the code:
+**Planned 2026-10-21. P1 and P2 ran: both go ([P1](m9-spikes/P1-findings.md), [P2](m9-spikes/P2-findings.md)). Waves 1 and 2 built and proven on the real stack, see [Proof](#proof); wave 3 rewritten from spike P3 ([findings](m9-spikes/P3-findings.md): go with two prerequisites), not started.** Starting point, read from the code:
 
 - Events live in one OpenSearch index per analysis (`tartarus-events-{id}`, `search/index.py`); `search_all` already
   queries `tartarus-events-*`, so Search needs no alias migration, only a query path that spans analyses.
@@ -21,7 +21,7 @@ gates at once.
 |---|---|---|---|
 | **P1 PCAP** | Can CAPE's own network processing (Suricata, DNS/HTTP/TLS extraction) run on an uploaded PCAP with no task and no guest, or must Tartarus run a reduced pipeline itself? | A PCAP from a known run yields the same DNS and connection events as that run's analysis | Go on the cheapest route that matches the run's network events; record the gap otherwise |
 | **P2 Memory image** | Can the control service's Volatility step take a standalone image (no CAPE task, `--pid` unknown)? Which images are accepted (raw, `.dmp`, LiME), and how are symbols found for an unknown build? | `malfind` finds the injection in the M8 dump re-uploaded as a file | Go if symbols resolve; otherwise import is limited to images whose build has a symbol file |
-| **P3 Two tasks** | How does CAPE behave with two tasks at once: two guests, two ResultServer streams, one `br`/iptables set, the analysis folders, the scheduler (`max_machines_count`)? Does Tartarus' guest isolation hold for both? | Two benign samples on two clones, both finish with their own events and no cross-talk in the pcaps | Go if isolation holds; the failure modes decide wave 3's scope |
+| **P3 Two tasks** | How does CAPE behave with two tasks at once: two guests, two ResultServer streams, one `br`/iptables set, the analysis folders, the scheduler (`max_machines_count`)? Does Tartarus' guest isolation hold for both? | Two benign samples on two clones, both finish with their own events and no cross-talk in the pcaps | **Ran 2026-10-21: go, isolation does not hold between guests** (fixed by 3.0); see [P3](m9-spikes/P3-findings.md) |
 
 P1 and P2 run before wave 1; P3 before wave 3 (waves 1 and 2 do not depend on it).
 
@@ -75,20 +75,33 @@ of 1.8 (rule 4: states default, file chosen, wrong type, too large, uploading, e
 Launch groups: **A** = 2.1, 2.2; **B** = 2.3; **C** = 2.4, 2.5; **D** = 2.6. Waves 1 and 2 can run in parallel (they
 share no files except the Submit dialog's neighbours and the router), so group A of each starts together.
 
-### Wave 3: parallel analyses (after spike P3)
+### Wave 3: parallel analyses (rewritten from spike P3)
+
+[P3](m9-spikes/P3-findings.md) ran on 2026-10-21: **go, with two prerequisites** (3.0 and 3.1b) and a smaller wave than first
+planned. CAPE runs two and three tasks at once unchanged; the live manager, hub, WebSocket routes, desktop resolver and
+tunnel, finish route and gates are already keyed per analysis. What is single-slot is the runner, four repository
+queries and a few messages; the file:line list is in the findings. A new fact the old table did not have: guests can
+reach each other (3.0).
 
 | ID | Task | Tier | Depends on | Check that can fail |
 |---|---|---|---|---|
-| 3.0 | Spike P3 (table above), notes file `m9-spikes/P3-notes.md`; its findings rewrite 3.1 to 3.6 before they start | S+ | none | two analyses on two clones finish with no cross-talk in the pcaps |
-| 3.1 | Runner: one analysis per ready guest at the same time; a guest never gets two | S+ | 3.0 | test with two ready guests and three queued analyses |
-| 3.2 | Live manager and collector per analysis; the hub and websocket topics keyed by analysis id | S+ | 3.0 | two simulated live runs stream independently |
-| 3.3 | Desktop and admission per analysis (resolver, tunnel, interactive options) | S | 3.2 | two desktops open at once, each on its own guest |
-| 3.4 | Gates: build, clone and delete wait for every running analysis; "analysis refused while a guest is built" reviewed for several | S+ | 3.1 | build requested while two analyses run waits for both |
-| 3.5 | Frontend: header live chip shows the count and a list, LIVE tab and desktop take the analysis id, no global "current live" state left | H, then reviewed | 3.2 | store and component tests; screenshot loop |
-| 3.6 | Real-stack proof: two analyses running at once to `done`, then a build waiting for them | S+ | 3.1 to 3.5 | `make e2e` green plus the two-run proof |
+| 3.0 | **Guest-to-guest isolation.** `<port isolated='yes'/>` on the interface in `guest/domain/domain.xml.tpl` (libvirt 10.0 accepts it, measured); the control service adds it to every already-defined guest domain that lacks it (the four existing guests), tried first on a throwaway clone for the snapshot metadata; `scripts/verify-isolation.sh` probes through the guest agents | S+ | none | cape unit tests (template, migration on a fake host); on the real stack the script exits 0 with two guests started by snapshot revert (A to B on 8000, 445 and ping all fail, both reach `.1:2042` and `.1:80`) and exits 1 after `bridge link set dev vnetN isolated off` |
+| 3.1a | **Runner and repository.** `get_active_analyses` (all), a claim that takes the oldest queued analysis whose guest has no active one (skips a queued row whose guest is busy), `queue_positions` among the analyses waiting for the same guest, `_collecting` becomes a set, every active analysis followed in its own task so one analysis' ingest and memory step never delays another's deadline, `begin_reingest` keeps its gate with a message that no longer says "another" | S+ | none | test with two ready guests and three queued analyses (two on one guest): two start, the third starts when its guest frees, a queued row behind a busy guest does not hold up an idle guest's; a slow ingest of one does not move the other's interactive deadline |
+| 3.1b | **`event_logs` waits for the agent.** `start()` polls the agent's `/status` (inside its 90 s budget) before reading the code page and baselines; when a channel still cannot be baselined the module writes `aux/event_logs.json` naming the channel and the reason, and the ingest turns it into a `summary` note so a missing Sysmon export is visible, never silent | S | none | unit test: a fake agent that refuses the first connections still exports; one that never answers leaves the marker and the note; on the real stack the lab3 back-to-back case (task 397 of P3) is repeated three times and each has `sysmon.xml` |
+| 3.1c | **Idle-first default guest and cumulative dump room.** `choose_guest` prefers a ready guest with no queued or active analysis when none is requested and the stored default is busy; `check_room_for_dump` counts the RAM of dumps already asked for by queued and active analyses | S | 3.1a | `test_guest_choice.py` and `test_memory_disk.py` cases: default busy and another idle picks the idle one; two dump analyses that fit alone but not together: the second is refused with both numbers |
+| 3.2 | **Live manager and collector, two at once.** No code expected (`LiveCollectionManager`, `LiveHub` and `/ws/analyses/{id}/live` are keyed by analysis id): the test that proves it, plus the runner's use of the set from 3.1a | H | none | two collectors on two fixture log directories written incrementally stream independently, counts and process trees apart, stopping one leaves the other; the test fails when `_collectors` is made a single slot |
+| 3.3 | **Desktop and admission, two at once.** Resolver and tunnel are per analysis already; add the check that the CAPE task's `machine` is the analysis' guest before a tunnel opens (a reused VNC port can never show another guest), and tests for two resolvers with two ports | H, then reviewed | none | tests: two analyses on two guests resolve to their own ports; a task whose machine differs from the recorded guest is refused (4409); real two-tunnel proof is in 3.6 |
+| 3.4 | **Gates for several analyses.** The 409 of `require_no_analysis_needing_a_guest` names the analyses (ids and guests) that hold it; tests with two running and one queued across build, resume, restart, continue, cancel, clone, delete and check; "a guest is being built" refusal re-read for two guests | H | none | tests: every guest-mutating route answers 409 naming both running analyses and 2xx once both ended |
+| 3.5a | **Running-analyses data.** `GET /system/queue` (running analyses with guest, filename, elapsed; queued count) and the `queue` push on `/ws/system`, as the backend spec already describes | H | none | endpoint and WebSocket tests; OpenAPI and client regenerated |
+| 3.5b | **Frontend.** Header chip `LIVE n` with a list linking to each analysis, queue count, a busy marker per guest in the Submit dialog's picker, Dashboard queue position as "N for lab3"; no global "current live" state | H, then reviewed | 3.5a, 3.1a | store and component tests; screenshot loop (rule 4): none running, one, three, long file names, narrow window |
+| 3.7 | **Docs.** `cape-integration.md` ("One analysis at a time stays the rule" and the exclusion section), `backend.md` (reingest, queue, positions, `/system/queue`), `guest-profiles.md` (hardware and isolation), `finish-line.md` | H | 3.1a, 3.0 | the grep gate for the stale sentences finds none |
+| 3.8 | **Interactive runs lose the event-log exports** (P3 side finding, not parallel-specific): find why the guest agent's `/execute` hangs after an interactive analyzer ends (even `cmd /c echo hi`; `/status` still answers), fix it or make the module skip fast with the 3.1b marker | S+ | 3.1b | an interactive run ended by `/finish` reports in under 60 s after the analyzer ends and has `sysmon.xml`, solo and in parallel |
+| 3.6 | **Real-stack proof** through the public API: two analyses on two guests at once to `done`, a third on a busy guest waits and then runs, header endpoint lists both, a build request while two run is refused naming both, `verify-isolation.sh` green | S+ | 3.0 to 3.5b, 3.8 | solo vs parallel: `process`, `file` and `registry` lane counts equal, `api` and `network` within 10 %, `sysmon.xml` present, PCAPs hold only their guest's IP; `make e2e` green; two desktops open at once each on its own guest |
 
-3.1 and 3.2 are cut along different modules and start together; 3.3 and 3.4 follow; the planner re-runs every
-`S+` check itself and reads the diff before each commit.
+Launch groups (modules are disjoint inside a group; the planner merges one after the other where two touch `runner.py`
+or `event_logs.py`): **A** = 3.0, 3.1a, 3.1b, 3.2, 3.4; **B** = 3.1c, 3.3, 3.5a (after 3.1a); **C** = 3.5b, 3.8, 3.7;
+**D** = 3.6. The planner re-runs every `S+` check itself, reads the diff before each commit, and does not ship wave 3
+without 3.0 and 3.1b green: with two guests up, a sample can drive the other guest's agent until 3.0 is in.
 
 ## Done when
 
