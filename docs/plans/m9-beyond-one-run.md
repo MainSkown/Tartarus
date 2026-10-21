@@ -7,7 +7,7 @@ gates at once.
 
 ## Status
 
-**Planned 2026-10-21. Nothing built.** Starting point, read from the code:
+**Planned 2026-10-21. P1 and P2 ran: both go ([P1](m9-spikes/P1-findings.md), [P2](m9-spikes/P2-findings.md)); nothing built yet.** Starting point, read from the code:
 
 - Events live in one OpenSearch index per analysis (`tartarus-events-{id}`, `search/index.py`); `search_all` already
   queries `tartarus-events-*`, so Search needs no alias migration, only a query path that spans analyses.
@@ -37,15 +37,58 @@ P1 and P2 run before wave 1; P3 before wave 3 (waves 1 and 2 do not depend on it
    become per-analysis; build, clone and delete wait for every running analysis; the "analysis refused while a guest is
    built" gate is reviewed for several analyses. Scope fixed by P3.
 
-## Delegation (rule 5)
+## Tasks for agents (rule 5)
 
-| Piece | Tier |
-|---|---|
-| Import endpoint, schemas, upload limits, kind column migration | Sonnet (touches runner, ingester, API) |
-| Import tab, Search page components following existing patterns | Haiku, then reviewed |
-| Search endpoint and IOC pivot on the existing compiler | Sonnet |
-| Per-analysis collector/manager/desktop/chip, runner concurrency | Sonnet with notes file (extreme) |
-| Tests for already specified behavior, i18n keys, docs | Haiku |
+Models: **H** = Haiku, **S** = Sonnet, **S+** = Sonnet with a notes file (done/running/next) and a check the planner
+re-runs. Every task is test-first and ends with `ruff`/`mypy` or `eslint`/`vue-tsc` clean. Tasks in one launch group
+have no dependency on each other and start in one message. Each brief carries only the spec sections it names.
+
+### Wave 1: import (P1 and P2 findings are the input)
+
+| ID | Task | Tier | Depends on | Check that can fail |
+|---|---|---|---|---|
+| 1.1 | `Analysis.kind` (`run`, `imported`) and optional guest: model, Alembic migration, summary and API schemas, `ACTIVE_STATUSES` and listing unaffected for old rows | S | none | migration up/down on a populated DB; old analyses still read as `run` |
+| 1.2 | `sniff_import(file) -> pcap, pcapng, memory_image or unsupported` as a pure function (magic bytes, not extension) | H | none | fixtures: the P1 pcap, a pcapng, an ELF core, a garbage file |
+| 1.3 | Config and conf edits: `resolve_dns = off`, `max_sample_size` raised, nginx location for a 4 GB memory upload, shared import volume in compose | H | none | `docker compose config` valid; values asserted in a config test |
+| 1.4 | Control service all-pids mode: `memory_logic` runs malfind and hollowprocesses in parallel without `--pid`; a garbage image reports "not a memory image", not "no symbols" | S | none | unit test on the P2 fixtures; garbage input answer |
+| 1.5 | `POST /analyses/import`: streamed upload, size limits per kind, sniffing (1.2), store the file, create the `imported` analysis (needs 1.1, 1.2) | S | 1.1, 1.2 | 415 on garbage, 413 over the limit, 201 creates a queued analysis without a guest |
+| 1.6 | Runner path for `imported` PCAP: submit CAPE `pcap=1` task, `started_at` from the first packet, ingest through the existing `ReportIngester`, no guest slot taken (needs 1.1) | S+ | 1.1, 1.3 | the P1 fixture pcap gives 196 network events; a queued run is not blocked behind it |
+| 1.7 | Runner path for imported memory images: hand the file to the control service (1.4), reuse the Volatility normaliser and the symbols step, findings as detections | S+ | 1.1, 1.4, 1.5 | the P2 injecting image yields the PING.EXE malfind detection |
+| 1.8 | Import tab on the Submit dialog (file picker, kind hint, size and symbols warnings), message keys, regenerated API client | H | 1.5 | component test; then the screenshot loop below |
+| 1.9 | Real-stack proof through the public API: import a PCAP and a memory image, read events and findings; write the results into this plan | S | 1.6, 1.7 | `make e2e` green plus the two imports |
+
+Launch groups: **A** = 1.1, 1.2, 1.3, 1.4 (together); **B** = 1.5, 1.6, 1.7 once A is done (1.6 and 1.7 touch the
+runner, so the planner merges them one after the other); **C** = 1.8; **D** = 1.9. The planner reviews the screenshots
+of 1.8 (rule 4: states default, file chosen, wrong type, too large, uploading, error).
+
+### Wave 2: Search and IOC pivot (independent of wave 1)
+
+| ID | Task | Tier | Depends on | Check that can fail |
+|---|---|---|---|---|
+| 2.1 | Cross-analysis search service: the existing query compiler over `tartarus-events-*`, each hit carrying its analysis id from `_index`, cursor paging across indices | S | none | two fixture indices, one query returns both analyses' events in order, paging stable |
+| 2.2 | IOC pivot service: for a value of an IOC field (ip, domain, hash, url), the analyses containing it with a hit count | S | none | two indices share one domain; the pivot lists both and not a third |
+| 2.3 | `POST /search` and `GET /iocs/{kind}/{value}/analyses` with schemas, following the events endpoints' pattern | H | 2.1, 2.2 | endpoint tests; OpenAPI regenerated |
+| 2.4 | Search page: route, nav entry, query bar and event table reused with an analysis column and a link per row | H | 2.3 | component test; screenshot loop |
+| 2.5 | IOC link component ("seen in N analyses") used wherever the IOC lists and the detail drawer show a value | H | 2.3 | component test; screenshot loop |
+| 2.6 | Real-stack proof: two analyses sharing an IOC, found by Search and by the pivot | S | 2.4, 2.5 | the pivot lists both analyses |
+
+Launch groups: **A** = 2.1, 2.2; **B** = 2.3; **C** = 2.4, 2.5; **D** = 2.6. Waves 1 and 2 can run in parallel (they
+share no files except the Submit dialog's neighbours and the router), so group A of each starts together.
+
+### Wave 3: parallel analyses (after spike P3)
+
+| ID | Task | Tier | Depends on | Check that can fail |
+|---|---|---|---|---|
+| 3.0 | Spike P3 (table above), notes file `m9-spikes/P3-notes.md`; its findings rewrite 3.1 to 3.6 before they start | S+ | none | two analyses on two clones finish with no cross-talk in the pcaps |
+| 3.1 | Runner: one analysis per ready guest at the same time; a guest never gets two | S+ | 3.0 | test with two ready guests and three queued analyses |
+| 3.2 | Live manager and collector per analysis; the hub and websocket topics keyed by analysis id | S+ | 3.0 | two simulated live runs stream independently |
+| 3.3 | Desktop and admission per analysis (resolver, tunnel, interactive options) | S | 3.2 | two desktops open at once, each on its own guest |
+| 3.4 | Gates: build, clone and delete wait for every running analysis; "analysis refused while a guest is built" reviewed for several | S+ | 3.1 | build requested while two analyses run waits for both |
+| 3.5 | Frontend: header live chip shows the count and a list, LIVE tab and desktop take the analysis id, no global "current live" state left | H, then reviewed | 3.2 | store and component tests; screenshot loop |
+| 3.6 | Real-stack proof: two analyses running at once to `done`, then a build waiting for them | S+ | 3.1 to 3.5 | `make e2e` green plus the two-run proof |
+
+3.1 and 3.2 are cut along different modules and start together; 3.3 and 3.4 follow; the planner re-runs every
+`S+` check itself and reads the diff before each commit.
 
 ## Done when
 
