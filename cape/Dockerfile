@@ -146,6 +146,14 @@ RUN python3 /tmp/skip-packaged-apps.py /opt/CAPEv2/analyzer/windows/analyzer.py 
     && grep -q 'skips_packaged_app(filepath, self.analyzer.package_name)' /opt/CAPEv2/analyzer/windows/analyzer.py \
     && rm /tmp/skip-packaged-apps.py
 
+# An interactive analysis also injects the DCOM launcher service, and the monitor left there stalls every
+# process the agent starts once the analyzer has exited, which costs the run its event-log exports.
+COPY cape/patches/leave-dcom-launch-alone.py /tmp/leave-dcom-launch-alone.py
+RUN python3 /tmp/leave-dcom-launch-alone.py /opt/CAPEv2/analyzer/windows/analyzer.py \
+    && python3 -c "import ast; ast.parse(open('/opt/CAPEv2/analyzer/windows/analyzer.py').read())" \
+    && grep -q 'self.MONITORED_DCOM = True' /opt/CAPEv2/analyzer/windows/analyzer.py \
+    && rm /tmp/leave-dcom-launch-alone.py
+
 # Host-side auxiliary that exports the guest's Sysmon and Defender logs through the agent at the end of
 # a run. CAPE imports every module in this directory; auxiliary.conf enables it by file name. It reads
 # the Sysmon config from the profiles copied below.

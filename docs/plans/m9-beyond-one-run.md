@@ -135,3 +135,28 @@ separate.
 
 Not covered: a real Windows-written `MEMORY.DMP`, an image of another build, the Import tab and Search page in a browser
 (`make e2e` does not drive them), wave 3. An image's `score` stays null by design (CAPE's malscore has no counterpart).
+
+## Wave 3 stack checks
+
+Tasks 3.0, 3.1b and 3.8 run on the real stack on 2026-10-21 (images rebuilt from `32da431`, the cape image once more with the
+3.8 fix), through the public API on nginx port 8080; notes and timings in
+[T30-31b-38-notes.md](m9-spikes/T30-31b-38-notes.md).
+
+| Check | Result | Numbers |
+|---|---|---|
+| 3.0 migration | pass, not on a throwaway clone first | the engine ran it by itself when the rebuilt `cape` started, so all four guests (`win`, `lab1`, `lab3`, `lab5`) were migrated before a clone could be tried: log `isolated the network port of <guest>` four times; every persistent domain and the `tartarus-clean` snapshot XML carry `isolated='yes'`, `tartarus-clean` is still the current snapshot, libvirt accepted the redefinition (the `--redefine --current` path is therefore proven on four real guests, not separately on a clone) |
+| 3.0 `make verify-isolation GUESTS="lab3 lab5"` | pass | both guests started by snapshot revert; 17 `[ OK ]`, 0 `[FAIL]`, exit 0: A to B on 8000, 445 and ping fail both ways, both reach `.1:2042` and `.1:80` |
+| 3.0 revert keeps the isolation | pass | the run above started both guests by `snapshot-revert`; `bridge -d link show` then listed `vnet2` and `vnet3` with `isolated on` |
+| 3.0 the check can fail | pass | `bridge link set dev vnet2/vnet3 isolated off` on both running taps: 6 `[FAIL]` (8000, 445, ping, both ways: "-> yes, expected no"), the gateway lines stayed `[ OK ]`, the script exited 1 (`make` printed `Błąd 1`, its own status 2) |
+| 3.0 restore | pass | both guests destroyed, script run again: exit 0, 17 `[ OK ]`; no guest left running |
+| 3.1b three back-to-back runs on lab3 | pass | three unique copies of the self-test `benign.exe`, `guest=lab3`, `timeout=60`, submitted in the same second (analyses 386 to 388, CAPE tasks 402 to 404): `done` after 79, 69 and 67 s (the next started 2 s after the previous ended); each has `sysmon/sysmon.xml` (7.3, 6.8 and 6.1 MB) and no `aux/event_logs.json`; `summary.missing_exports == []` in all three; 647, 638 and 616 events |
+| 3.8 reproduced | yes | interactive run on lab3 ended by `POST /finish` 30 to 40 s in, no other traffic: `done` 161 s after `/finish` (analysis 393), `sysmon.xml` missing, `missing_exports` naming both channels with the 120 s and 30 s read timeouts; four of the five runs made this way hung (159 to 161 s), the fifth was ended before the monitor reached the launcher and exported fine |
+| 3.8 cause | found | `analysis.log` of every hung run holds `Monitor config for process 940` and `svchost.exe -k DcomLaunch -p`: the analyzer's `_handle_interop` injects the DCOM launcher service when the monitor in Explorer reports COM activity (the interactive desktop starts Windows Terminal and Edge). After the analyzer exits the monitor stays in that service and every new process the agent starts hangs: from a probe loop during the hang `/execute` of `cmd /c echo hi` timed out at 8 s every time, `/status` timed out at 5 s, `/environ` and `/mktemp` took 5 to 7 s; a Python helper stored and run through `/execpy` started, but its `tasklist`, `wevtutil` and `cmd` children, even with `CREATE_NO_WINDOW`, did not return within 25 s (so it is not console or Windows Terminal delegation). A run without the DCOM injection, the same steps: no hang. The exact mechanism inside the monitor was not traced |
+| 3.8 fix | pass | `cape/patches/leave-dcom-launch-alone.py` (image patch, test-first in `cape/tests/test_analyzer_patches.py`, fails the build if CAPE's anchor moved) sets `MONITORED_DCOM` in an interactive analysis, the analyzer's own "already injected" switch. Five runs solo, ended by `/finish` 30 to 60 s in (two with a hot-patched analyzer, three with the rebuilt image): `done` 20 s after `/finish` each, `sysmon.xml` present, no `event_logs.json`, `missing_exports == []`, no `DcomLaunch` line in any `analysis.log`. cape unit suite 1941 passed |
+| 3.8 in parallel | not run | needs two interactive runs at once: task 3.6 |
+
+| Finding | State |
+|---|---|
+| Interactive runs lost the event-log exports and reported 2.5 min late (P3 F7) | fixed by the DCOM patch above; documented in `cape-integration.md` ("The DCOM launcher is not monitored in an interactive analysis"); the cost is that processes COM activation starts in an interactive run are not followed through the launcher |
+| One Defender export failed with `Invalid base64-encoded string: number of data characters (13)` in an interactive run (CAPE task 408, run ended 4 s earlier by `/finish`, with my diagnostic helper active in the guest) | not reproduced in the five later runs; recorded, not fixed (an answer cut short is skipped and named in `missing_exports`, so it is visible) |
+| The migration cannot be tried on a throwaway clone before the engine touches the real guests: it runs at every `cape` start | recorded; the order the task asked for needs the migration disabled for one start, which no switch offers; it worked on all four |

@@ -19,7 +19,7 @@ with `make verify-cape`.
 | libvirt | Local UNIX socket only, for CAPE inside the container. The TCP endpoint is **off** (`libvirtd` runs without `--listen`): it has no authentication, and the guest wizard does not need it, because it goes through the [control service](#the-control-service) instead (see Findings). `security_driver = "none"` and `cgroup_controllers = [ ]` in `qemu.conf`. |
 | Guest network | `tt-guest` is a transient libvirt network rebuilt on every start: isolated (no forward), each guest NIC a `<port isolated='yes'/>` so guests cannot reach each other (the gateway's ResultServer and INetSim stay reachable), libvirt's DNS off so INetSim owns port 53, DHCP offering the pool `.100` to `.119` with router and DNS `.1`, for guests that cold-boot; registered guests have static addresses from `.10` to `.99`, because the rooter's INetSim route DNATs DHCP renewals. |
 | INetSim | Ubuntu's 1.3.2, patched at build time because its DNS service dies with the Net::DNS in Ubuntu 24.04 (`main_loop` becomes `loop_once`); the build fails if the patch stops applying. |
-| Analyzer patch | CAPE zips `analyzer/windows` and uploads it to the guest for every task, so the image patches it (`cape/patches/skip-packaged-apps.py`, run by the Dockerfile; it fails the build if CAPE's code moved) to not inject the monitor into Store apps in an interactive analysis, see "Store apps" under Interactive desktop. No change to the guest or its snapshot. |
+| Analyzer patch | CAPE zips `analyzer/windows` and uploads it to the guest for every task, so the image patches it (`cape/patches/skip-packaged-apps.py`, run by the Dockerfile; it fails the build if CAPE's code moved) to not inject the monitor into Store apps in an interactive analysis, see "Store apps" under Interactive desktop, and (`cape/patches/leave-dcom-launch-alone.py`) to not inject the DCOM launcher service in an interactive analysis, see "The DCOM launcher" under Interactive desktop. No change to the guest or its snapshot. |
 | Databases | The `cape` database on the `postgres` service. No Mongo: `web.conf [web_reporting]` and `reporting.conf [mongodb]` stay disabled. `pymongo` stays installed because CAPE imports `bson` unconditionally. The entrypoint creates the schema once before any process starts, because CAPE's processes race on `CREATE TYPE`. |
 | Volumes | `cape-storage` at `/opt/CAPEv2/storage` (the backend mounts it read-only). `guest-images` at `/var/lib/libvirt`, with `/etc/libvirt/qemu` symlinked into it, so domain XML, disks, snapshots, the registry of guests (`tartarus/guests/`) and their CAPE registration survive recreating the container. `./data/iso` is bind-mounted read-only at `/data/iso`. |
 | Compose | Part of the default stack (`make up`, `make dev`); `backend` waits for its health check. Publishes no ports. It is on two networks: `tartarus-internal` and `tartarus-control`, which only it and `backend` share. Without `/dev/kvm`, start the rest with `docker compose up -d --no-deps postgres opensearch backend frontend`. |
@@ -648,6 +648,21 @@ in ntdll lock waits): 7 threads instead of about 20, no window, no taskbar butto
   with the monitor injected, so the hooks are what stops it, but it also leaves the sample
   unmonitored. No option that keeps the hooks was found (only `zerohook=1` was tried, on one run), so
   `INTERACTIVE_OPTIONS` stays `interactive=1,nohuman=yes`.
+
+### The DCOM launcher is not monitored in an interactive analysis
+
+The monitor in Explorer reports COM activity (Windows Terminal, Edge, Store apps) and CAPE's analyzer answers by
+injecting `svchost.exe -k DcomLaunch`. The monitor stays loaded there when the analyzer exits, and from then on every
+new process the guest agent starts hangs (even `cmd /c echo hi`; `/status` and `/store` still answer, slowly). The
+host-side event-log export is such a process, so it waited out its read timeouts (120 s Sysmon, 30 s Defender): the run
+reported 2.5 minutes late with no `sysmon.xml` and a `missing_exports` note (spike P3 finding F7, task 3.8).
+
+- **Fix:** in an interactive analysis the analyzer counts the launcher as monitored already (`MONITORED_DCOM`, the
+  switch its interop, WMI and BITS handlers test), so it never injects it. Measured, solo on one guest, ended by
+  `/finish` 30 to 60 s into the run: with the launcher injected 4 of 4 runs hung (159 to 161 s from `/finish` to `done`,
+  no `sysmon.xml`; a fifth, ended before the launcher was injected, did not); without it 5 of 5 took 20 s and exported.
+- **Cost:** a process that COM activation starts in an interactive analysis is not followed through the launcher, and
+  the launcher's own API calls are not in the event stream. Non-interactive analyses are unchanged.
 
 ## Windows hosts (post-v1, experimental)
 
