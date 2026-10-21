@@ -133,6 +133,17 @@ class EventPage(ApiModel):
     next_cursor: str | None
 
 
+class CrossSearchEvent(ApiModel):
+    analysis_id: int
+    event: Event
+
+
+class CrossSearchResponse(ApiModel):
+    events: list[CrossSearchEvent]
+    total: int
+    next_cursor: str | None
+
+
 class ValueCount(ApiModel):
     value: str
     count: int

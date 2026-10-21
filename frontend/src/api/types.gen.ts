@@ -123,6 +123,20 @@ export type AnalysisCreated = {
 };
 
 /**
+ * AnalysisHitRead
+ */
+export type AnalysisHitRead = {
+    /**
+     * Analysis Id
+     */
+    analysis_id: number;
+    /**
+     * Count
+     */
+    count: number;
+};
+
+/**
  * AnalysisPage
  */
 export type AnalysisPage = {
@@ -585,6 +599,35 @@ export type ComponentHealth = {
      * Message
      */
     message?: string | null;
+};
+
+/**
+ * CrossSearchEvent
+ */
+export type CrossSearchEvent = {
+    /**
+     * Analysis Id
+     */
+    analysis_id: number;
+    event: Event;
+};
+
+/**
+ * CrossSearchResponse
+ */
+export type CrossSearchResponse = {
+    /**
+     * Events
+     */
+    events: Array<CrossSearchEvent>;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Next Cursor
+     */
+    next_cursor: string | null;
 };
 
 /**
@@ -4920,6 +4963,64 @@ export type JobsDownloadResponses = {
      */
     200: unknown;
 };
+
+export type SearchAcrossAnalysesData = {
+    body: SearchRequest;
+    path?: never;
+    query?: never;
+    url: '/api/search';
+};
+
+export type SearchAcrossAnalysesErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type SearchAcrossAnalysesError = SearchAcrossAnalysesErrors[keyof SearchAcrossAnalysesErrors];
+
+export type SearchAcrossAnalysesResponses = {
+    /**
+     * Successful Response
+     */
+    200: CrossSearchResponse;
+};
+
+export type SearchAcrossAnalysesResponse = SearchAcrossAnalysesResponses[keyof SearchAcrossAnalysesResponses];
+
+export type IocsAnalysesData = {
+    body?: never;
+    path: {
+        kind: IocType;
+        /**
+         * Value
+         */
+        value: string;
+    };
+    query?: never;
+    url: '/api/iocs/{kind}/{value}/analyses';
+};
+
+export type IocsAnalysesErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type IocsAnalysesError = IocsAnalysesErrors[keyof IocsAnalysesErrors];
+
+export type IocsAnalysesResponses = {
+    /**
+     * Response Iocs Analyses
+     *
+     * Successful Response
+     */
+    200: Array<AnalysisHitRead>;
+};
+
+export type IocsAnalysesResponse = IocsAnalysesResponses[keyof IocsAnalysesResponses];
 
 export type SystemWsMessageSchemasData = {
     body?: never;

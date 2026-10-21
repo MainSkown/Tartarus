@@ -6,9 +6,11 @@ from app.api import (
     events,
     export,
     guests,
+    iocs,
     jobs,
     query,
     rules,
+    search,
     settings,
     system,
     views_events,
@@ -29,3 +31,5 @@ api_router.include_router(rules.analysis_router)
 api_router.include_router(export.router)
 api_router.include_router(annotations.router)
 api_router.include_router(jobs.router)
+api_router.include_router(search.router)
+api_router.include_router(iocs.router)

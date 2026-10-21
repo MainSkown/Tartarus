@@ -119,3 +119,8 @@ class ArtifactsView(ApiModel):
     pcap: Artifact | None
     screenshots: list[Screenshot]
     configs: list[ExtractedConfig]
+
+
+class AnalysisHitRead(ApiModel):
+    analysis_id: int
+    count: int
