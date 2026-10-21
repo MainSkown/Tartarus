@@ -24,6 +24,7 @@ OPTION_KEY = re.compile(r"[a-z][a-z0-9_]{0,31}")
 TASK_FIELD = re.compile(r"[a-z][a-z0-9_]{0,63}")
 MODULE_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")
 PACKAGE_NAME = re.compile(r"[A-Za-z0-9_]{1,64}")
+MEDIA_VERSION = re.compile(r"\d+\.\d+\.(?P<build>\d+)")
 CAPE_TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,31}")
 SAMPLE_FILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 SOURCE_PLACEHOLDER = "{source}"
@@ -59,9 +60,35 @@ DEFAULT_PERSONA = "default"
 
 
 @dataclass(frozen=True)
+class TagRule:
+    """Adds `tag` to the guests whose media has a build of at least `build_min`."""
+
+    build_min: int
+    tag: str
+
+
+@dataclass(frozen=True)
 class Cape:
     platform: str
     tags: list[str]
+    tag_rules: list[TagRule] = field(default_factory=list)
+
+    def tags_for(self, media_version: str | None) -> list[str]:
+        """The CAPE tags of a guest built from media of this version ("major.minor.build").
+
+        The profile's own tags always apply; the first rule the media's build reaches adds its tag.
+        A version with no readable build gets the profile's tags alone.
+        """
+        build = _build_of(media_version)
+        rule = next((r for r in self.tag_rules if build is not None and build >= r.build_min), None)
+        if rule is None or rule.tag in self.tags:
+            return list(self.tags)
+        return [*self.tags, rule.tag]
+
+
+def _build_of(media_version: str | None) -> int | None:
+    version = MEDIA_VERSION.fullmatch(media_version or "")
+    return int(version["build"]) if version else None
 
 
 @dataclass(frozen=True)
@@ -508,6 +535,9 @@ class _Reader:
             for index, item in enumerate(value)
         ]
 
+    def optional_objects(self, key: str) -> "list[_Reader]":
+        return self.objects(key) if self.value(key) is not None else []
+
     def _child(self, key: str) -> str:
         return ".".join(part for part in (self._path, key) if part)
 
@@ -523,8 +553,26 @@ def option_value_problem(option: Option, value: Any) -> str | None:
     return None
 
 
+def _tag_rule(reader: _Reader) -> TagRule:
+    rule = TagRule(reader.integer("build_min", minimum=1), reader.string("tag", rule=CAPE_TAG))
+    reader.done()
+    return rule
+
+
+def _tag_rules(readers: list[_Reader]) -> list[TagRule]:
+    rules = [_tag_rule(reader) for reader in readers]
+    for index in range(1, len(rules)):
+        if rules[index].build_min >= rules[index - 1].build_min:
+            readers[index].fail("build_min", "is never reached: list the highest build_min first")
+    return rules
+
+
 def _cape(reader: _Reader) -> Cape:
-    cape = Cape(reader.choice("platform", PLATFORMS), reader.string_list("tags", rule=CAPE_TAG))
+    cape = Cape(
+        reader.choice("platform", PLATFORMS),
+        reader.string_list("tags", rule=CAPE_TAG),
+        _tag_rules(reader.optional_objects("tag_rules")),
+    )
     reader.done()
     return cape
 

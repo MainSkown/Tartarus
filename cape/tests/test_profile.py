@@ -49,9 +49,13 @@ def test_the_windows_fixture_expresses_the_decisions_of_the_plan():
 
     assert (profile.cape.platform, profile.cape.tags, profile.arch) == (
         "windows",
-        ["windows", "win11"],
+        ["windows"],
         "x64",
     )
+    assert [(rule.build_min, rule.tag) for rule in profile.cape.tag_rules] == [
+        (22000, "win11"),
+        (10240, "win10"),
+    ]
     assert profile.hardware.secure_boot
     assert profile.hardware.tpm
     assert [option.key for option in profile.options] == [
@@ -320,6 +324,17 @@ CASES = [
     ("windows", "cape.tags", "windows", None),
     ("windows", "cape.tags", [1], "cape.tags[0]"),
     ("windows", "cape.tags", ["a", "a"], "cape.tags[1]"),
+    ("windows", "cape.tag_rules", "win10", None),
+    ("windows", "cape.tag_rules", ["win10"], "cape.tag_rules[0]"),
+    ("windows", "cape.tag_rules.0.build_min", "22000", None),
+    ("windows", "cape.tag_rules.0.build_min", True, None),
+    ("windows", "cape.tag_rules.0.build_min", 0, None),
+    ("windows", "cape.tag_rules.0.build_min", GONE, None),
+    ("windows", "cape.tag_rules.0.tag", "win 11", None),
+    ("windows", "cape.tag_rules.0.tag", 11, None),
+    ("windows", "cape.tag_rules.0.tag", GONE, None),
+    ("windows", "cape.tag_rules.0.edition", "pro", None),
+    ("windows", "cape.tag_rules.1.build_min", 22000, None),
     ("windows", "arch", "arm64", None),
     ("windows", "hardware.boot", "efi", None),
     ("windows", "hardware.secure_boot", "yes", None),
@@ -475,6 +490,44 @@ def test_a_field_error_is_reported_with_its_path(name, path, value, expected):
     broken = without(base, path) if value is GONE else with_value(base, path, value)
 
     assert (expected or bracketed(path)) in problems_of(broken)
+
+
+def test_a_profile_without_tag_rules_tags_every_guest_with_its_base_tags():
+    profile = sample_profile("ubuntu")
+
+    assert profile.cape.tag_rules == []
+    assert profile.cape.tags_for("22.04") == ["linux", "ubuntu"]
+
+
+def test_a_rule_that_an_earlier_one_always_wins_over_is_refused_with_a_readable_message():
+    data = with_value(profile_data("windows"), "cape.tag_rules.1.build_min", 30000)
+
+    assert "never reached" in problems_of(data)["cape.tag_rules[1].build_min"]
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ("10.0.19041", ["windows", "win10"]),
+        ("10.0.26200", ["windows", "win11"]),
+        ("10.0.22000", ["windows", "win11"]),
+        ("10.0.21999", ["windows", "win10"]),
+        ("10.0.10240", ["windows", "win10"]),
+        ("6.1.7601", ["windows"]),
+        ("not a version", ["windows"]),
+        ("10.0", ["windows"]),
+        ("", ["windows"]),
+        (None, ["windows"]),
+    ],
+)
+def test_the_tags_of_a_guest_follow_the_build_of_its_media(version, expected):
+    assert sample_profile("windows").cape.tags_for(version) == expected
+
+
+def test_a_rule_does_not_repeat_a_tag_the_profile_always_has():
+    data = with_value(profile_data("windows"), "cape.tags", ["windows", "win10"])
+
+    assert parse_profile(data).cape.tags_for("10.0.19041") == ["windows", "win10"]
 
 
 def test_every_field_error_is_collected_not_just_the_first():

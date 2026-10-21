@@ -1,13 +1,22 @@
 {
   "schema_version": 1,
   "id": "windows",
-  "display_name": "Windows 11",
+  "display_name": "Windows",
   "family": "windows",
   "cape": {
     "platform": "windows",
     "tags": [
-      "windows",
-      "win11"
+      "windows"
+    ],
+    "tag_rules": [
+      {
+        "build_min": 22000,
+        "tag": "win11"
+      },
+      {
+        "build_min": 10240,
+        "tag": "win10"
+      }
     ]
   },
   "arch": "x64",

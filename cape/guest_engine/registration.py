@@ -21,7 +21,7 @@ def _section(guest: Guest, profile: Profile) -> str:
         f"snapshot = {guest.snapshot}\n"
         f"arch = {profile.arch}\n"
         f"interface = {INTERFACE}\n"
-        f"tags = {','.join(profile.cape.tags)}\n"
+        f"tags = {','.join(profile.cape.tags_for(guest.media.version))}\n"
     )
 
 

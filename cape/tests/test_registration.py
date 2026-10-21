@@ -7,6 +7,7 @@ from fixtures.profile_samples import FIXTURE_DIR, sample_profile
 
 from guest_engine import registry
 from guest_engine.errors import Conflict, GuestNotFound
+from guest_engine.profile import MediaRef
 from guest_engine.registration import apply_registration, render_registration
 
 PROFILES = {"windows": sample_profile("windows"), "ubuntu": sample_profile("ubuntu")}
@@ -94,6 +95,39 @@ def test_platform_arch_and_tags_come_from_each_guests_profile():
     assert parsed["tux"]["platform"] == "linux"
     assert parsed["tux"]["tags"] == "linux,ubuntu"
     assert parsed["win"]["tags"] == "windows,win11"
+
+
+def tags_of(media_version):
+    media = MediaRef("disc.iso", "6", media_version, "en-GB", "amd64")
+    parsed = configparser.ConfigParser()
+    parsed.read_string(render_registration([ready("w", "192.168.150.10", media=media)], PROFILES))
+    return parsed["w"]["tags"]
+
+
+@pytest.mark.parametrize(
+    ("media_version", "tags"),
+    [
+        ("10.0.19041", "windows,win10"),
+        ("10.0.26200", "windows,win11"),
+        (None, "windows"),
+        ("unreadable", "windows"),
+    ],
+)
+def test_the_tags_of_a_guest_follow_the_product_of_its_media(media_version, tags):
+    assert tags_of(media_version) == tags
+
+
+def test_guests_of_one_profile_built_from_different_media_get_different_tags():
+    older = MediaRef("w10.iso", "6", "10.0.19041", "en-GB", "amd64")
+    guests = [
+        ready("w10", "192.168.150.10", media=older),
+        ready("w11", "192.168.150.11"),
+    ]
+
+    parsed = configparser.ConfigParser()
+    parsed.read_string(render_registration(guests, PROFILES))
+
+    assert (parsed["w10"]["tags"], parsed["w11"]["tags"]) == ("windows,win10", "windows,win11")
 
 
 def test_the_snapshot_name_comes_from_the_guest():
