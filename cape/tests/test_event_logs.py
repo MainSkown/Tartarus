@@ -713,6 +713,7 @@ class TestGuestAgent:
         def __init__(self):
             self.calls = []
             self.status_error = None
+            self.stdout = base64.b64encode(b"out").decode()
 
         def get(self, url, timeout=None):
             return self.post(url, timeout=timeout)
@@ -727,7 +728,7 @@ class TestGuestAgent:
                         raise outer.status_error
 
                 def json(self):
-                    return {"stdout": base64.b64encode(b"out").decode()}
+                    return {"stdout": outer.stdout}
 
             return Answer()
 
@@ -739,6 +740,21 @@ class TestGuestAgent:
         assert call.url == "http://192.168.150.10:8000/execute"
         assert call.data == {"command": "C:/Windows/System32/reg.exe query", "encoding": "base64"}
         assert call.timeout == (event_logs.CONNECT_TIMEOUT_S, 12)
+
+    def test_an_answer_that_is_not_base64_is_reported_with_what_the_agent_said(self):
+        http = self.Http()
+        http.stdout = "Access denied."
+        agent = event_logs.GuestAgent("192.168.150.10", http)
+        with pytest.raises(event_logs.AgentAnswerError, match="Access denied"):
+            agent.execute("x", 5)
+
+    def test_a_long_answer_that_is_not_base64_is_cut_in_the_report(self):
+        http = self.Http()
+        http.stdout = "not base64 " * 100
+        agent = event_logs.GuestAgent("192.168.150.10", http)
+        with pytest.raises(event_logs.AgentAnswerError) as raised:
+            agent.execute("x", 5)
+        assert len(str(raised.value)) < 250
 
     def test_status_asks_the_agent_for_its_status_and_raises_when_it_cannot(self):
         http = self.Http()

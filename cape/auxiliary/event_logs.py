@@ -6,6 +6,7 @@ modules (Defender kills it on the first read of a detected sample). Each channel
 """
 
 import base64
+import binascii
 import codecs
 import importlib
 import json
@@ -26,6 +27,7 @@ log = logging.getLogger(__name__)
 
 AGENT_PORT = 8000
 CONNECT_TIMEOUT_S = 5
+ANSWER_PREVIEW_CHARS = 80
 BASELINE_TIMEOUT_S = 15
 START_BUDGET_S = 90
 # A guest can be slow to answer after its snapshot revert (11 s instead of 4 to 6, spike P3 task
@@ -85,6 +87,10 @@ class BudgetExhaustedError(Exception):
     pass
 
 
+class AgentAnswerError(Exception):
+    pass
+
+
 class SystemClock:
     def now(self) -> float:
         return time.monotonic()
@@ -105,7 +111,14 @@ class GuestAgent:
         answer = self._send(
             "post", "execute", read_timeout, data={"command": command, "encoding": "base64"}
         )
-        return base64.b64decode(answer.json()["stdout"])
+        stdout = answer.json()["stdout"]
+        try:
+            return base64.b64decode(stdout, validate=True)
+        except binascii.Error:
+            # The agent answered with its own text (an error, say), not the export: report it.
+            raise AgentAnswerError(
+                f"the guest agent's answer was not an export: {stdout[:ANSWER_PREVIEW_CHARS]!r}"
+            ) from None
 
     def store(self, guest_path: str, data: bytes, read_timeout: float) -> None:
         self._send(
