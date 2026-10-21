@@ -11,8 +11,8 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH="/opt/venv/bin:$PATH"
 
 RUN useradd --system --create-home --uid 1000 tartarus \
-    && mkdir -p /app /opt/venv /data/samples /data/exports \
-    && chown tartarus:tartarus /app /opt/venv /data/samples /data/exports
+    && mkdir -p /app /opt/venv /data/samples /data/exports /imports \
+    && chown tartarus:tartarus /app /opt/venv /data/samples /data/exports /imports
 
 # WeasyPrint's text layout (Pango) and the report's print fonts: Liberation matches the design
 # system's Courier New / Arial, DejaVu is the per-glyph fallback.

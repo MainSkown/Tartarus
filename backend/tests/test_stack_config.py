@@ -60,3 +60,11 @@ def test_backend_writes_imports_and_cape_reads_them_read_only() -> None:
 
 def test_imports_volume_is_declared() -> None:
     assert "imports" in (_compose()["volumes"] or {})
+
+
+def test_backend_image_hands_the_imports_folder_to_its_user() -> None:
+    # A named volume takes the owner of the image's folder on first use; without the folder the
+    # volume is root's and the unprivileged backend cannot write an upload.
+    dockerfile = (REPO / "backend" / "Dockerfile").read_text()
+    assert re.search(r"mkdir -p[^\n]*\s/imports\b", dockerfile)
+    assert re.search(r"chown tartarus:tartarus[^\n]*\s/imports\b", dockerfile)
