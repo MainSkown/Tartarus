@@ -14,7 +14,11 @@
 
      The two optical drives exist only while a guest is being installed: the first holds the
      installation medium and the second an extra disc (an answer file, a seed). A running guest has
-     no optical drive, because an empty one is a tell (decision 6 of the M7 foundations). -->
+     no optical drive, because an empty one is a tell (decision 6 of the M7 foundations).
+
+     The NIC is an isolated bridge port: tt-guest is a plain bridge, so without the flag two running
+     guests reach each other's agent, SMB and ping (P3 of M9); isolated ports still reach the
+     gateway, where ResultServer and INetSim listen. -->
 
 <domain type='kvm'>
   <name>${name}</name>
@@ -66,6 +70,7 @@
       <mac address='${mac}'/>
       <source network='tt-guest'/>
       ${nic_model}
+      <port isolated='yes'/>
     </interface>
     ${tpm}
     <input type='tablet' bus='usb'/>

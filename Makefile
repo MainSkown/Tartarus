@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-cape test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest verify-wizard e2e hooks
+.PHONY: help dev up down logs test test-cape test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest verify-isolation verify-wizard e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -59,6 +59,9 @@ build-guest: ## Build the Windows analysis guest unattended and register it with
 
 verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; needs make build-guest first)
 	scripts/verify-guest.sh
+
+verify-isolation: ## Prove two running guests cannot reach each other but both reach the gateway: make verify-isolation GUESTS="lab1 lab5" (needs the stack up and two ready guests; starts them by snapshot revert)
+	scripts/verify-isolation.sh $${GUESTS:?GUESTS="labelA labelB"}
 
 verify-wizard: ## Prove the guest wizard's path through the public API: clone a ready guest, check the gates, run an analysis on it, delete it (about 6 minutes; needs the stack up and a ready guest)
 	python3 -I scripts/verify-wizard.py --sample "$${SAMPLE:?SAMPLE=path to a harmless Windows .exe}"

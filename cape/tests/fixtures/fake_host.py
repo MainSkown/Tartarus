@@ -5,6 +5,7 @@ snapshot once `snapshotted` exists, so the fake profile's steps drive what libvi
 `cape` reads `guests.conf` the way CAPE does: the machines it lists are what `machines()` returns.
 """
 
+import re
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
@@ -38,6 +39,10 @@ class FakeHost:
         self.undefined: list[str] = []
         self.listed_when_undefined: dict[str, list[str]] = {}
         self.extra_domains: dict[str, str] = {}
+        self.defines: list[str] = []
+        self.define_fails = False
+        self.snapshot_xmls: dict[str, dict[str, str]] = {}
+        self.redefined_snapshots: list[tuple[str, str, bool]] = []
         self.compiler_error: str | None = None
         self.outside_file = libvirt_dir.parent / "outside" / "iso-of-the-user.iso"
 
@@ -82,6 +87,8 @@ class FakeHost:
 
     def _virsh(self, command: str, rest: list[str]) -> CommandResult:
         name = rest[0] if rest else ""
+        if command == "define":
+            return self._define(Path(name).read_text())
         if command == "dominfo":
             return (
                 ok("Name: " + name)
@@ -112,11 +119,33 @@ class FakeHost:
             "</devices></domain>"
         )
 
+    def _define(self, xml: str) -> CommandResult:
+        if self.define_fails:
+            return failure("error: operation failed: domain already exists")
+        name = re.search(r"<name>(.*?)</name>", xml).group(1)
+        self.defines.append(name)
+        self.extra_domains[name] = xml
+        return ok(f"Domain '{name}' defined\n")
+
     def _virsh_snapshot_list(self, name: str, _rest: list[str]) -> CommandResult:
         snapshotted = (self.guests_root / name / SNAPSHOTTED).exists()
-        return ok(f"{SNAPSHOT}\n\n" if snapshotted else "\n")
+        names = ([SNAPSHOT] if snapshotted else []) + list(self.snapshot_xmls.get(name, {}))
+        return ok("".join(f"{snapshot}\n" for snapshot in names) + "\n")
 
-    def _virsh_snapshot_dumpxml(self, name: str, _rest: list[str]) -> CommandResult:
+    def _virsh_snapshot_current(self, name: str, _rest: list[str]) -> CommandResult:
+        stored = list(self.snapshot_xmls.get(name, {}))
+        return ok(stored[0] + "\n") if stored else failure("error: domain has no current snapshot")
+
+    def _virsh_snapshot_create(self, name: str, rest: list[str]) -> CommandResult:
+        xml = Path(rest[0]).read_text()
+        snapshot = re.search(r"<name>(.*?)</name>", xml).group(1)
+        self.snapshot_xmls.setdefault(name, {})[snapshot] = xml
+        self.redefined_snapshots.append((name, snapshot, "--current" in rest))
+        return ok()
+
+    def _virsh_snapshot_dumpxml(self, name: str, rest: list[str]) -> CommandResult:
+        if rest and rest[0] in self.snapshot_xmls.get(name, {}):
+            return ok(self.snapshot_xmls[name][rest[0]])
         memory, overlay = self.files_of(name)[2], self.files_of(name)[3]
         return ok(
             f"<domainsnapshot><name>{SNAPSHOT}</name>"

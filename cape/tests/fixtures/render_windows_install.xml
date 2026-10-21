@@ -113,6 +113,7 @@
       <mac address='00:14:22:ab:cd:ef'/>
       <source network='tt-guest'/>
       <model type='e1000e'/>
+      <port isolated='yes'/>
     </interface>
     <tpm model='tpm-crb'>
       <backend type='emulator' version='2.0'/>

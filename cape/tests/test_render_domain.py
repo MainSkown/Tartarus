@@ -123,6 +123,13 @@ def test_virtio_disk_and_nic(linux_domain):
     assert linux_domain.find("devices/interface/model").get("type") == "virtio"
 
 
+@pytest.mark.parametrize("mode", ["install", "run"])
+def test_the_nic_is_an_isolated_bridge_port_so_guests_cannot_reach_each_other(mode):
+    port = rendered(context(), mode).find("devices/interface/port")
+    assert port is not None
+    assert port.get("isolated") == "yes"
+
+
 def test_utc_clock(linux_domain):
     assert linux_domain.find("clock").get("offset") == "utc"
 

@@ -1,5 +1,6 @@
 """What the engine does to libvirt and to `cape`, through the injected command runner."""
 
+import tempfile
 import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from pathlib import Path
@@ -83,9 +84,29 @@ class Host:
         result = self._virsh("snapshot-list", name, "--name")
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
-    def domain_xml(self, name: str) -> str | None:
-        result = self._virsh("dumpxml", name)
+    def domain_xml(self, name: str, inactive: bool = False) -> str | None:
+        flags = ["--inactive"] if inactive else []
+        result = self._virsh("dumpxml", name, *flags)
         return result.stdout if result.returncode == 0 else None
+
+    def snapshot_xml(self, name: str, snapshot: str) -> str | None:
+        result = self._virsh("snapshot-dumpxml", name, snapshot)
+        return result.stdout if result.returncode == 0 else None
+
+    def current_snapshot(self, name: str) -> str | None:
+        result = self._virsh("snapshot-current", name, "--name")
+        return result.stdout.strip() or None if result.returncode == 0 else None
+
+    def define(self, xml: str) -> None:
+        self._require(self._virsh_with_file("define", xml), "define a domain")
+
+    def redefine_snapshot(self, name: str, xml: str, keep_current: bool) -> None:
+        """Replace a snapshot's metadata only; no disk or memory file is touched."""
+        flags = ["--redefine", *(["--current"] if keep_current else [])]
+        self._require(
+            self._virsh_with_file("snapshot-create", xml, name, flags),
+            f"redefine a snapshot of {name}",
+        )
 
     def owned_files(self, name: str) -> list[Path]:
         """The files of the domain and of all its snapshots, read before they are undefined."""
@@ -115,6 +136,15 @@ class Host:
         self._require(self._run(["supervisorctl", "restart", CAPE_PROGRAM]), "restart cape")
         # The sniffer of a task that the restart cut short outlives it (S0b).
         self._run(["pkill", "-x", SNIFFER])
+
+    def _virsh_with_file(
+        self, command: str, text: str, domain: str | None = None, flags: Sequence[str] = ()
+    ) -> CommandResult:
+        with tempfile.NamedTemporaryFile("w", suffix=".xml") as file:
+            file.write(text)
+            file.flush()
+            arguments = [command, *([domain] if domain else []), file.name, *flags]
+            return self._virsh(*arguments)
 
     def _virsh(self, *arguments: str) -> CommandResult:
         return self._run(["virsh", "-c", self._uri, *arguments])
