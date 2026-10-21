@@ -6,6 +6,7 @@ import { settingsRead } from '@/api'
 import type { Route } from '@/api'
 import GuestOptionRow from '@/components/GuestOptionRow.vue'
 import ImportPane from '@/components/ImportPane.vue'
+import NumberInput from '@/components/NumberInput.vue'
 import { useGuestChoice } from '@/composables/use-guest-choice'
 import { t } from '@/i18n'
 import { sha256Hex } from '@/services/file-hash'
@@ -372,12 +373,8 @@ onMounted(() => {
             </div>
 
             <div class="option-row">
-              <q-input
+              <number-input
                 v-model="timeoutText"
-                outlined
-                dense
-                hide-bottom-space
-                type="number"
                 :label="t('submit.timeout.label')"
                 :suffix="t('submit.timeout.unit')"
                 :disable="submitting"
@@ -643,14 +640,6 @@ onMounted(() => {
 
 .timeout-input {
   flex: 0 0 12rem;
-}
-
-.timeout-input :deep(input[type='number']) {
-  appearance: textfield;
-}
-
-.timeout-input :deep(input[type='number']::-webkit-inner-spin-button) {
-  appearance: none;
 }
 
 .package-input {

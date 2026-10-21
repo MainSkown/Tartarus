@@ -3,6 +3,7 @@ import { onMounted, reactive, ref, toRef } from 'vue'
 import { Notify } from 'quasar'
 import { settingsRead, settingsReplace } from '@/api'
 import type { SettingsBody } from '@/api'
+import NumberInput from '@/components/NumberInput.vue'
 import { t } from '@/i18n'
 import { useDefaultGuestField } from '@/composables/use-default-guest-field'
 import { BUILT_ROUTES } from '@/services/routes'
@@ -147,12 +148,8 @@ onMounted(() => {
 
       <!-- hide-bottom-space on all three inputs: without it Quasar reserves 20px under each
            for an error message, making gaps uneven. An error now pushes the form down instead. -->
-      <q-input
+      <number-input
         :model-value="form.default_timeout"
-        outlined
-        dense
-        hide-bottom-space
-        type="number"
         :label="t('settings.timeout.label')"
         :suffix="t('settings.timeout.unit')"
         :error="Boolean(fieldErrors.default_timeout)"
@@ -183,12 +180,8 @@ onMounted(() => {
         </p>
       </div>
 
-      <q-input
+      <number-input
         :model-value="form.disk_warn_gb"
-        outlined
-        dense
-        hide-bottom-space
-        type="number"
         :label="t('settings.diskWarn')"
         :error="Boolean(fieldErrors.disk_warn_gb)"
         :error-message="fieldErrors.disk_warn_gb"
@@ -196,12 +189,8 @@ onMounted(() => {
         @update:model-value="(value) => (form.disk_warn_gb = Number(value))"
       />
 
-      <q-input
+      <number-input
         :model-value="form.disk_block_gb"
-        outlined
-        dense
-        hide-bottom-space
-        type="number"
         :label="t('settings.diskBlock')"
         :error="Boolean(fieldErrors.disk_block_gb)"
         :error-message="fieldErrors.disk_block_gb"

@@ -4,6 +4,10 @@ export default {
     copied: '{what} copied',
     failed: 'Could not copy the {what}',
   },
+  numberInput: {
+    increase: 'Increase',
+    decrease: 'Decrease',
+  },
   terminal: {
     notImplemented: 'not implemented yet',
   },

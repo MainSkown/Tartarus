@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GuestResources } from '@/api'
+import NumberInput from '@/components/NumberInput.vue'
 import { t } from '@/i18n'
 
 const props = defineProps<{
@@ -40,19 +41,15 @@ function noteOf(key: keyof GuestResources): string | undefined {
       :key="field.key"
       class="resources-fields__item"
     >
-      <q-input
+      <number-input
         :model-value="modelValue[field.key]"
         :label="t(field.labelKey)"
         :suffix="field.suffixKey && t(field.suffixKey)"
         :disable="disable || (field.key === 'disk_gb' && diskLocked)"
         :error="Boolean(errorOf(field.key))"
         :error-message="errorOf(field.key)"
-        type="number"
-        outlined
-        dense
         square
         dark
-        hide-bottom-space
         stack-label
         class="resources-fields__input text-mono"
         @update:model-value="(value) => change(field.key, value)"
@@ -79,14 +76,6 @@ function noteOf(key: keyof GuestResources): string | undefined {
   flex-direction: column;
   gap: var(--spacing-xs);
   min-width: 0;
-}
-
-.resources-fields__input :deep(input[type='number']) {
-  appearance: textfield;
-}
-
-.resources-fields__input :deep(input[type='number']::-webkit-inner-spin-button) {
-  appearance: none;
 }
 
 .resources-fields__note {

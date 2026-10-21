@@ -98,3 +98,21 @@ test('settings-saved', async ({ page }) => {
   await expect(page.locator('.tt-toast--success')).toContainText('Settings saved')
   await page.screenshot({ path: screenshotPath('settings-saved') })
 })
+
+test('number-input-steppers', async ({ page }) => {
+  await mockShell(page)
+  await mockSettings(page, { getBody: STORED_SETTINGS })
+  await page.goto('/settings')
+  const timeout = page.getByLabel('DEFAULT TIMEOUT')
+  await expect(timeout).toHaveValue('240')
+
+  const field = page.locator('.number-input').first()
+  await page.screenshot({ path: screenshotPath('number-input-default') })
+  await field.getByLabel('Increase').hover()
+  await field.screenshot({ path: screenshotPath('number-input-hover') })
+  await field.getByLabel('Increase').click()
+  await expect(timeout).toHaveValue('241')
+  await field.getByLabel('Decrease').click()
+  await field.getByLabel('Decrease').click()
+  await expect(timeout).toHaveValue('239')
+})
