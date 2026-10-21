@@ -132,6 +132,10 @@ submit_and_remember() { # file
     submit_sample "$1" && remember "$SUBMITTED_ID"
 }
 
+submit_on_the_guest_of_and_remember() { # file analysis-id
+    submit_sample "$1" "$(options_on_the_guest_of "$2")" && remember "$SUBMITTED_ID"
+}
+
 # --- (a) a submitted sample runs to done -------------------------------------
 
 has_score_and_signature() { # id
@@ -255,8 +259,8 @@ step_bc_order_and_cancel() {
     B_FILE=$(unique_sample e2e-b.exe)
     B_SHA=$(sha256_of "$B_FILE")
     submit_and_remember "$B_FILE" && B1_ID=$SUBMITTED_ID &&
-        submit_and_remember "$B_FILE" && B2_ID=$SUBMITTED_ID &&
-        submit_and_remember "$B_FILE" && B3_ID=$SUBMITTED_ID ||
+        submit_on_the_guest_of_and_remember "$B_FILE" "$B1_ID" && B2_ID=$SUBMITTED_ID &&
+        submit_on_the_guest_of_and_remember "$B_FILE" "$B1_ID" && B3_ID=$SUBMITTED_ID ||
         { fail "(b) submitting three analyses at once"; return 1; }
     ok "(b) three analyses submitted at once: $B1_ID, $B2_ID, $B3_ID"
     check "(c) cancelling queued analysis $B3_ID answers cancelled" cancel_answers_cancelled "$B3_ID"

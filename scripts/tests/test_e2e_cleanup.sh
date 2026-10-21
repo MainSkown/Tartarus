@@ -89,6 +89,14 @@ test_the_analyses_of_a_sample_are_found_by_its_hash() {
     [[ $(analyses_of_sample "$mine" | tr '\n' ' ') == "1 3 " ]]
 }
 
+# Two analyses on different guests run together, so a step that needs the second to wait for the first
+# pins both to the guest the first one was given.
+test_options_are_pinned_to_the_guest_of_another_analysis() {
+    start_server 7:running || return 1
+    [[ $(options_on_the_guest_of 7 '"timeout": 60') == '{"timeout": 60, "guest": "lab-7"}' ]] &&
+        [[ $(options_on_the_guest_of 7) == '{"guest": "lab-7"}' ]]
+}
+
 failures=0
 for name in $(declare -F | awk '{print $3}' | grep '^test_'); do
     stop_server

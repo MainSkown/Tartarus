@@ -79,6 +79,14 @@ analysis_field() { # id field
 
 analysis_status() { analysis_field "$1" status; }
 
+# Analyses on different guests run together, so a step that needs one to wait for another submits it with
+# the guest the other was given: the options JSON of a submission, `fields` (without braces) first.
+options_on_the_guest_of() { # id [fields]
+    local guest
+    guest=$(analysis_field "$1" options.guest) || return 1
+    echo "{${2:+$2, }\"guest\": \"$guest\"}"
+}
+
 # Waits until the analysis reaches one of the wanted states. A terminal state that is not wanted
 # ends the wait at once, since it can never change; the timeout covers a hung CAPE.
 wait_for_status() { # id "wanted states" timeout-seconds

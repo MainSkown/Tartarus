@@ -85,7 +85,7 @@ finishing_a_run_ends_it() {
     id=$SUBMITTED_ID
     check "(j) interactive analysis $id is running" wait_for_running "$id" || return 1
     ANALYSIS_TIMEOUT=$((FINISH_RUN_SECONDS + 60)) watch_live_in_background "$id"
-    submit_sample "$(unique_sample e2e-finish-queued.exe)" '{"timeout": 60}' &&
+    submit_sample "$(unique_sample e2e-finish-queued.exe)" "$(options_on_the_guest_of "$id" '"timeout": 60')" &&
         queued=$SUBMITTED_ID && remember "$queued" || { fail "(j) submitting the second analysis"; return 1; }
     check "(j) the second analysis waits for the guest, and finishing it answers 409" finish_is_refused_with "$queued" 409 "queued"
     check "(j) the queued analysis $queued is cancelled" cancel_analysis "$queued"

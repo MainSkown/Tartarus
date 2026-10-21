@@ -24,7 +24,7 @@ def read_status(analysis):
         analysis["polls_left"] -= 1
         if analysis["polls_left"] == 0:
             analysis["status"] = "done"
-    return {key: analysis[key] for key in ("id", "status", "sample_sha256")}
+    return {**{key: analysis[key] for key in ("id", "status", "sample_sha256")}, "options": {"guest": f"lab-{analysis['id']}"}}
 
 
 class Handler(BaseHTTPRequestHandler):
