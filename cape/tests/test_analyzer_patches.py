@@ -54,10 +54,12 @@ def test_an_interactive_analysis_counts_the_dcom_launcher_as_monitored(
     assert run_analyzer(patched, interactive=True).MONITORED_DCOM is True
 
 
-def test_a_non_interactive_analysis_still_monitors_the_dcom_launcher(leave_dcom_launch_alone):
+def test_a_non_interactive_analysis_counts_the_dcom_launcher_as_monitored_too(
+    leave_dcom_launch_alone,
+):
     patched = leave_dcom_launch_alone.patched(ANALYZER)
 
-    assert run_analyzer(patched, interactive=False).MONITORED_DCOM is False
+    assert run_analyzer(patched, interactive=False).MONITORED_DCOM is True
 
 
 def test_the_patch_gives_up_when_the_anchor_moved(leave_dcom_launch_alone):
