@@ -30,5 +30,8 @@ defineProps<{ warnings: string[] | undefined }>()
   margin: 0 0 var(--spacing-md);
   padding: 0;
   list-style: none;
+  /* A long reason must not push the Events table off the screen: the list scrolls on its own. */
+  max-height: 25vh;
+  overflow-y: auto;
 }
 </style>
