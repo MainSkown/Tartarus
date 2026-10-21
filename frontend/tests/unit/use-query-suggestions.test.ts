@@ -21,11 +21,11 @@ const PROCESS_NAME = field({ name: 'process.name', aliases: ['proc'], example: '
 const PROCESS_PID = field({ name: 'process.pid', type: 'long', aliases: ['pid'] })
 const CATALOG = [PROCESS_NAME, PROCESS_PID, field({ name: 'file.path', type: 'keyword_with_text' })]
 
-function suggestions(initial = '', caret?: number) {
+function suggestions(initial = '', caret?: number, analysisId: number | null = 7) {
   const draft = ref(initial)
   const caretRef = ref(caret ?? initial.length)
   const scope = effectScope()
-  const result = scope.run(() => useQuerySuggestions(draft, caretRef, () => 7))!
+  const result = scope.run(() => useQuerySuggestions(draft, caretRef, () => analysisId ?? undefined))!
   async function type(text: string): Promise<void> {
     draft.value = text
     caretRef.value = text.length
@@ -153,6 +153,14 @@ describe('value suggestions', () => {
     await type('proc:c')
     await settle()
     expect(queryValuesMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers no values when no analysis is bound, as on the search page', async () => {
+    const { type, settle, result } = suggestions('', undefined, null)
+    await type('process.name:c')
+    await settle()
+    expect(queryValuesMock).not.toHaveBeenCalled()
+    expect(result.items.value).toEqual([])
   })
 
   it('offers no values for a field that is not a keyword', async () => {

@@ -4,6 +4,7 @@ import GuestClonePage from '@/pages/GuestClonePage.vue'
 import GuestPage from '@/pages/GuestPage.vue'
 import GuestWizardPage from '@/pages/GuestWizardPage.vue'
 import RulesPage from '@/pages/RulesPage.vue'
+import SearchPage from '@/pages/SearchPage.vue'
 import { routes } from '@/router/routes'
 
 describe('routes', () => {
@@ -11,6 +12,12 @@ describe('routes', () => {
     const rules = routes[0]!.children!.find((route) => route.path === 'rules')!
     const loaded = await (rules.component as () => Promise<{ default: unknown }>)()
     expect(loaded.default).toBe(RulesPage)
+  })
+
+  it('serves /search with the Search page', async () => {
+    const search = routes[0]!.children!.find((route) => route.path === 'search')!
+    const loaded = await (search.component as () => Promise<{ default: unknown }>)()
+    expect(loaded.default).toBe(SearchPage)
   })
 
   const guestRoutes = [

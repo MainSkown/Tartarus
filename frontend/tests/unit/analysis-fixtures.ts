@@ -8,6 +8,7 @@ export function analysisFixture(overrides: Partial<AnalysisRead> = {}): Analysis
     sample_sha256: SHA256,
     filename: 'invoice.exe',
     cape_task_id: 7,
+    kind: 'run',
     status: 'done',
     phase: 'live',
     options: {},

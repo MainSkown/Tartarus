@@ -1,4 +1,4 @@
-<script setup lang="ts">
+<script setup lang="ts" generic="T extends Event">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { QVirtualScroll } from 'quasar'
 import type { Event, SortOrder } from '@/api'
@@ -28,7 +28,7 @@ const GAP_REM = 0.5
 const PADDING_REM = 1
 
 const props = defineProps<{
-  events: Event[]
+  events: T[]
   total: number
   loading: boolean
   loadingMore: boolean
@@ -39,7 +39,10 @@ const props = defineProps<{
   filtered: boolean
   error?: string
   loadMoreError?: string
+  /** Header of an extra column that the parent fills through the `end` slot, one cell per row. */
+  endColumn?: string
 }>()
+defineSlots<{ end?: (props: { item: T }) => unknown }>()
 const emit = defineEmits<{
   select: [id: string]
   open: [id: string]
@@ -59,16 +62,18 @@ const isStale = computed(() => props.loading && props.events.length > 0)
 const ascending = computed(() => props.sort === '@timestamp')
 
 const extraColumns = computed(() => columns.chosen.map((field) => ({ field, label: field.toUpperCase() })))
+const endColumnCount = computed(() => (props.endColumn === undefined ? 0 : 1))
+const extraColumnCount = computed(() => extraColumns.value.length + endColumnCount.value)
 const HEAD_END_REM = 2.25
 const gridColumns = computed(() => {
   const { time, lane, process, action, summary, severity } = DEFAULT_COLUMN_REMS
-  const extras = extraColumns.value.map(() => `${EXTRA_COLUMN_REM}rem`)
+  const extras = Array.from({ length: extraColumnCount.value }, () => `${EXTRA_COLUMN_REM}rem`)
   return [`${time}rem`, `${lane}rem`, `${process}rem`, `${action}rem`, `minmax(${summary}rem, 1fr)`, `${severity}rem`, ...extras, `${HEAD_END_REM}rem`].join(' ')
 })
 const gridMinWidth = computed(() => {
   const fixed = Object.values(DEFAULT_COLUMN_REMS).reduce((sum, width) => sum + width, 0)
-  const columnCount = Object.keys(DEFAULT_COLUMN_REMS).length + extraColumns.value.length + 1
-  return `${fixed + HEAD_END_REM + extraColumns.value.length * EXTRA_COLUMN_REM + (columnCount - 1) * GAP_REM + 2 * PADDING_REM}rem`
+  const columnCount = Object.keys(DEFAULT_COLUMN_REMS).length + extraColumnCount.value + 1
+  return `${fixed + HEAD_END_REM + extraColumnCount.value * EXTRA_COLUMN_REM + (columnCount - 1) * GAP_REM + 2 * PADDING_REM}rem`
 })
 
 const showsFooter = computed(() => !showsSkeleton.value && !isEmpty.value && !props.error)
@@ -214,6 +219,12 @@ watch(
                 {{ t('events.column.severity') }}
               </div>
               <div
+                v-if="endColumn"
+                role="columnheader"
+              >
+                {{ endColumn }}
+              </div>
+              <div
                 v-for="column in extraColumns"
                 :key="column.field"
                 role="columnheader"
@@ -248,6 +259,10 @@ watch(
                 <span class="skeleton" />
                 <span class="skeleton" />
                 <span />
+                <span
+                  v-if="endColumn"
+                  class="skeleton"
+                />
                 <span
                   v-for="column in extraColumns"
                   :key="column.field"
@@ -311,6 +326,15 @@ watch(
                   ><SeverityBadge
                     v-if="item.severity"
                     :severity="item.severity"
+                  /></span>
+                  <span
+                    v-if="endColumn"
+                    class="event-row__text"
+                    role="gridcell"
+                    data-column="end"
+                  ><slot
+                    name="end"
+                    :item="item"
                   /></span>
                   <span
                     v-for="column in extraColumns"

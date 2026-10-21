@@ -9,7 +9,8 @@ import type { QueryErrorRead } from '@/api'
 import { I18nT, t } from '@/i18n'
 import { useQueryStateStore } from '@/stores/query-state'
 
-const props = defineProps<{ analysisId: number }>()
+/** Without an analysis (the Search page) the bar completes field names only, since values are per analysis. */
+const props = defineProps<{ analysisId?: number }>()
 
 const store = useQueryStateStore()
 const uid = useId()

@@ -42,6 +42,10 @@ export type AnalysisCreated = {
      * Cape Task Id
      */
     cape_task_id: number | null;
+    /**
+     * `run` is analysed in a guest; `imported` is read from an uploaded file and has no guest.
+     */
+    kind: AnalysisKind;
     status: AnalysisStatus;
     phase: AnalysisPhase;
     /**
@@ -137,6 +141,11 @@ export type AnalysisHitRead = {
 };
 
 /**
+ * AnalysisKind
+ */
+export type AnalysisKind = 'run' | 'imported';
+
+/**
  * AnalysisPage
  */
 export type AnalysisPage = {
@@ -175,6 +184,10 @@ export type AnalysisRead = {
      * Cape Task Id
      */
     cape_task_id: number | null;
+    /**
+     * `run` is analysed in a guest; `imported` is read from an uploaded file and has no guest.
+     */
+    kind: AnalysisKind;
     status: AnalysisStatus;
     phase: AnalysisPhase;
     /**

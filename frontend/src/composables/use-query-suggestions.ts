@@ -34,7 +34,7 @@ async function valueItems(analysisId: number, field: string, prefix: string): Pr
  * keyword field from the analysis. The list is closed until the user types, so focusing the bar
  * on a finished query does not pop it open.
  */
-export function useQuerySuggestions(draft: Ref<string>, caret: Ref<number>, analysisId: () => number) {
+export function useQuerySuggestions(draft: Ref<string>, caret: Ref<number>, analysisId: () => number | undefined) {
   const catalog = useFieldCatalogStore()
   const token = computed(() => tokenAt(draft.value, caret.value))
   const items = ref<SuggestionItem[]>([])
@@ -51,7 +51,8 @@ export function useQuerySuggestions(draft: Ref<string>, caret: Ref<number>, anal
       if (current.kind === 'field') return await fieldItems(current.prefix)
       if (current.kind !== 'value') return []
       await catalog.load()
-      return catalog.offersValues(current.field) ? await valueItems(analysisId(), current.field, current.prefix) : []
+      const bound = analysisId()
+      return bound !== undefined && catalog.offersValues(current.field) ? await valueItems(bound, current.field, current.prefix) : []
     } catch {
       return []
     }

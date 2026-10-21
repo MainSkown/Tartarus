@@ -11,6 +11,7 @@ import network from './network'
 import notes from './notes'
 import reports from './reports'
 import rules from './rules'
+import search from './search'
 import settings from './settings'
 import shell from './shell'
 import submit from './submit'
@@ -19,4 +20,4 @@ import timeline from './timeline'
 import widgets from './widgets'
 
 export { datetimeFormats, numberFormats } from './formats'
-export default { analysis, artifacts, common, dashboard, detections, events, guests, iocs, live, network, notes, reports, rules, settings, shell, submit, tags, timeline, widgets }
+export default { analysis, artifacts, common, dashboard, detections, events, guests, iocs, live, network, notes, reports, rules, search, settings, shell, submit, tags, timeline, widgets }

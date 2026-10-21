@@ -209,6 +209,7 @@ export function makeAnalysis(overrides: Partial<AnalysisRead> & Pick<AnalysisRea
     sample_sha256: sha256Of(overrides.id),
     filename: `sample-${overrides.id}.exe`,
     cape_task_id: overrides.id + 100,
+    kind: 'run',
     status: 'queued',
     phase: 'final',
     options: { route: 'inetsim', timeout: 180 },

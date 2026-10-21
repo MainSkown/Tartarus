@@ -21,6 +21,7 @@ interface NavItem {
 // system "Iconography").
 const NAV_ITEMS: NavItem[] = [
   { to: '/', labelKey: 'shell.nav.dashboard', iconOutlined: 'o_dashboard', iconFilled: 'dashboard' },
+  { to: '/search', labelKey: 'shell.nav.search', iconOutlined: 'o_search', iconFilled: 'search' },
   { to: '/rules', labelKey: 'shell.nav.rules', iconOutlined: 'o_policy', iconFilled: 'policy' },
   { to: '/guest', labelKey: 'shell.nav.guestVm', iconOutlined: 'o_dns', iconFilled: 'dns' },
   { to: '/settings', labelKey: 'shell.nav.settings', iconOutlined: 'o_settings', iconFilled: 'settings' },

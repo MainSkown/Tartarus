@@ -2,8 +2,8 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { Quasar, QVirtualScroll } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
-import type { Event } from '@/api'
+import { h, nextTick } from 'vue'
+import type { Event, SortOrder } from '@/api'
 import { COLUMNS_STORAGE_KEY } from '@/stores/event-columns'
 import { eventFixture, eventList } from './events-fixtures'
 
@@ -11,7 +11,19 @@ vi.mock('@/api', () => ({ queryFields: vi.fn().mockResolvedValue({ data: [] }) }
 
 const { default: EventTable } = await import('@/components/EventTable.vue')
 
-type Props = InstanceType<typeof EventTable>['$props']
+interface Props {
+  events: Event[]
+  total: number
+  loading: boolean
+  loadingMore: boolean
+  hasMore: boolean
+  sort: SortOrder
+  selectedId: string | null
+  filtered: boolean
+  error?: string
+  loadMoreError?: string
+  endColumn?: string
+}
 
 const EVENTS: Event[] = [
   eventFixture({ id: 'a', time: '2026-10-13T15:39:34.123Z', lane: 'file', action: 'file-written', summary: 'cmd.exe wrote C:\\a.ps1', file_path: 'C:\\a.ps1' }),
@@ -298,5 +310,34 @@ describe('the first page replaced', () => {
     await wrapper.setProps({ events: eventList(100, 200) })
     await nextTick()
     expect(list.scrollTop).toBe(0)
+  })
+})
+
+describe('the end column', () => {
+  function mountWithEndColumn(endColumn?: string) {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    return mount(EventTable, {
+      attachTo: document.body,
+      global: { plugins: [Quasar, pinia] },
+      props: { events: EVENTS, total: 3, loading: false, loadingMore: false, hasMore: false, sort: '@timestamp', selectedId: null, filtered: false, endColumn },
+      slots: { end: ({ item }: { item: Event }) => h('a', { href: `/analyses/${item.id}` }, `open ${item.id}`) },
+    })
+  }
+
+  it('is named by the prop, last among the default columns', () => {
+    const headers = mountWithEndColumn('ANALYSIS')
+      .findAll('[role="columnheader"]')
+      .map((header) => header.text().replace(/arrow_\w+/, ''))
+    expect(headers.slice(0, 7)).toEqual(['TIME', 'LANE', 'PROCESS', 'ACTION', 'SUMMARY', 'SEVERITY', 'ANALYSIS'])
+  })
+
+  it('fills each row with what the slot renders for that row', () => {
+    const cells = mountWithEndColumn('ANALYSIS').findAll('[data-column="end"]')
+    expect(cells.map((cell) => cell.find('a').attributes('href'))).toEqual(['/analyses/a', '/analyses/b', '/analyses/c'])
+  })
+
+  it('is left out when no label is given', () => {
+    expect(mountWithEndColumn().find('[data-column="end"]').exists()).toBe(false)
   })
 })

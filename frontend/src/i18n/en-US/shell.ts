@@ -7,6 +7,7 @@ export default {
   nav: {
     dashboard: 'Dashboard',
     rules: 'Rules',
+    search: 'Search',
     guestVm: 'Guest VM',
     settings: 'Settings',
   },
