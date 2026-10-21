@@ -51,7 +51,7 @@ restore_clean_snapshot() {
 
 read_guest_facts() {
     local passed_on
-    run_in_guest "$FACTS_SCRIPT" --timeout "$SCRIPT_TIMEOUT_S"
+    run_in_guest "$FACTS_SCRIPT" --with desktop-apps.ps1 --timeout "$SCRIPT_TIMEOUT_S"
     passed_on=$(pass_on_facts "$GUEST_OUTPUT")
     [[ -z $passed_on ]] || printf '%s\n' "$passed_on"
     case $GUEST_CODE in

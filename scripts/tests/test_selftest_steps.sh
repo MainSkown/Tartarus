@@ -229,6 +229,16 @@ for run in runs:
 "
 }
 
+test_the_facts_script_is_uploaded_with_the_desktop_helper_it_loads() {
+    new_sandbox
+    run_step
+    assert_status 0 &&
+        requests_satisfy "
+stored = [r['form']['filepath'] for r in requests if r['path'] == '/store']
+assert 'C:\\\\ProgramData\\\\abcdefgh\\\\desktop-apps.ps1' in stored, stored
+"
+}
+
 test_the_domain_is_destroyed_last_when_everything_worked() {
     new_sandbox
     run_step

@@ -74,7 +74,7 @@ Unknown fields are rejected; every field below is required unless a default is g
 | `agent.work_root` | Where a guest's neutral working folder is made; the folder name is random per guest |
 | `agent.shutdown` | `acpi` or `agent-command`. Parsed; the generic `snapshot` step always shuts down with ACPI, so `agent-command` is not implemented |
 | `agent.interactive` | `{options, task_fields}`: the CAPE task options string and extra task fields for a run the analyst drives. Windows: `interactive=1,nohuman=yes` and no fields |
-| `agent.pre_snapshot` | A step name run by `snapshot` just before it takes the snapshot (a `sync` on Linux), or `null`. The Windows profile sets `remove-ghost-drives`, which removes the non-present CD-ROM device nodes the install left ([CAPE integration](cape-integration.md#self-test)) |
+| `agent.pre_snapshot` | An ordered list of step names `snapshot` runs, each in turn, just before it takes the snapshot (a `sync` on Linux); `null` or `[]` means none, and a step that fails fails the snapshot. The Windows profile lists `remove-ghost-drives`, which removes the non-present CD-ROM device nodes the install left ([CAPE integration](cape-integration.md#self-test)), then `quiet-desktop`, which closes every app Windows opened on the way up |
 | `selftest.sample` | `{source, build, output}`: the benign sample's source file, the build command as an argument list holding `{source}` and `{output}` exactly once each, and the file it produces. Optional |
 | `selftest.signals[]` | The signals the analysis of the sample must show. See [Self-test](#self-test) |
 | `selftest.facts.script` | The guest-side script that prints facts and giveaways, a file in the profile directory. Optional |

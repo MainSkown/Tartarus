@@ -367,7 +367,7 @@ class TestTheCommandLine:
         folder = Path(environment["TT_PROFILE_DIR"]) / "selftest"
         folder.mkdir()
         (folder / "facts.ps1").write_text("facts script")
-        (folder / "helper.ps1").write_text("helper")
+        (Path(environment["TT_PROFILE_DIR"]) / "helper.ps1").write_text("helper")
         guest.behave(scripts={"facts.ps1": {"stdout": "FACT a=1\r\nEXITCODE 0\r\n"}})
 
         result = self.call(environment, "run", "selftest/facts.ps1", "--with", "helper.ps1")
@@ -375,6 +375,14 @@ class TestTheCommandLine:
         assert (result.returncode, result.stdout.splitlines()) == (0, ["LOG FACT a=1"])
         assert guest.on_disk("facts.ps1").read_text() == "facts script"
         assert guest.on_disk("helper.ps1").read_text() == "helper"
+
+    @pytest.mark.parametrize("helper", ["../outside.ps1", "/etc/passwd", "selftest/../../x.ps1"])
+    def test_run_refuses_a_helper_outside_the_profile_folder(self, environment, guest, helper):
+        result = self.call(environment, "run", "tamper.ps1", "--with", helper)
+
+        assert result.returncode == guest_agent.AGENT_FAILED
+        assert "profile" in result.stderr
+        assert guest.requests() == []
 
     @pytest.mark.parametrize("script", ["../outside.ps1", "/etc/passwd", "selftest/../../x.ps1"])
     def test_run_refuses_a_script_outside_the_profile_folder(self, environment, guest, script):

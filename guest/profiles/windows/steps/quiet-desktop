@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Closes the apps Windows opened on the way up (Edge on the captive-portal page, the Networks
+# prompt), so the clean snapshot is taken of a quiet desktop. The profile runs it as
+# agent.pre_snapshot, after remove-ghost-drives. Idempotent.
+set -uo pipefail
+# shellcheck source=lib/windows.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/windows.sh"
+
+QUIET_DESKTOP_TIMEOUT_S=120
+
+step "Closing the apps left open on the desktop"
+progress 5
+output=$(guest_agent run quiet-desktop.ps1 --with desktop-apps.ps1 --timeout "$QUIET_DESKTOP_TIMEOUT_S")
+code=$?
+[[ -z $output ]] || printf '%s\n' "$output"
+case $code in
+    0) log "quiet-desktop.ps1: $(result_summary "$output")" ;;
+    70) fail "the guest agent could not be used to run quiet-desktop.ps1" ;;
+    71) fail "quiet-desktop.ps1 reported no exit code" ;;
+    *) fail "quiet-desktop.ps1 ended with exit code $code" ;;
+esac
+progress 100

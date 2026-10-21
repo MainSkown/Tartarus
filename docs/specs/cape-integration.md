@@ -596,6 +596,17 @@ snapshot is taken; the removal survived a snapshot and a revert in the real-gues
 is localised, so it is reported and never judged. These facts run in a new build's or clone's self-test, not in
 `[RUN CHECKS]`.
 
+**A quiet desktop in the clean snapshot.** Windows 10 probes for internet, INetSim answers with its page, Windows takes
+that for a captive portal and opens Edge on every boot, including the one the `snapshot` step does just before it
+snapshots; a "Networks: allow your PC to be discoverable?" prompt stays open too. The Windows profile's second
+`agent.pre_snapshot` step, `quiet-desktop`, asks every app window of the logged-in session to close, stops by force what
+is still there after a few seconds, and answers the Networks prompt with Escape. What stays is one list in
+`desktop-apps.ps1` (the shell and its hosts, and the agent's own python and the PowerShell running the script, so the
+guest stays usable). It also creates the key `HKLM\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff`, which
+only keeps the prompt away for new networks from the next boot on. The facts script reports `desktop.app_windows`, the
+apps still open outside that list, from the same file, and the verdict fails a guest whose clean snapshot has any
+("the clean snapshot has an open app: msedge").
+
 A failed self-test ends the guest `failed`, unregistered from CAPE (which keeps the others), with the reasons
 on its card; nothing else is disturbed. pafish, which the first design ran after the self-test as
 information only, is not built.

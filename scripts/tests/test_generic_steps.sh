@@ -655,7 +655,7 @@ snapshot_world() {
     define_world "$@"
     ctx_set profile.timeouts.shutdown_s 1
     ctx_set profile.timeouts.agent_s 1
-    ctx_set profile.agent.pre_snapshot null
+    ctx_set profile.agent.pre_snapshot '[]'
     run_step define
     touch "$WORLD/state/running"
     : >"$LOG"
@@ -740,7 +740,7 @@ test_snapshot_fails_when_the_agent_never_answers() {
 
 test_snapshot_runs_the_profiles_pre_snapshot_step_before_the_snapshot() {
     snapshot_world
-    ctx_set profile.agent.pre_snapshot '"flush"'
+    ctx_set profile.agent.pre_snapshot '["flush"]'
     mkdir -p "$WORLD/profile/steps"
     printf '#!/usr/bin/env bash\necho "pre-snapshot ran for $TT_STEP" >>"$STUB_LOG"\n' >"$WORLD/profile/steps/flush"
     chmod +x "$WORLD/profile/steps/flush"
@@ -751,7 +751,7 @@ test_snapshot_runs_the_profiles_pre_snapshot_step_before_the_snapshot() {
 
 test_snapshot_fails_when_the_pre_snapshot_step_fails() {
     snapshot_world
-    ctx_set profile.agent.pre_snapshot '"flush"'
+    ctx_set profile.agent.pre_snapshot '["flush"]'
     mkdir -p "$WORLD/profile/steps"
     printf '#!/usr/bin/env bash\nexit 4\n' >"$WORLD/profile/steps/flush"
     chmod +x "$WORLD/profile/steps/flush"
@@ -761,9 +761,47 @@ test_snapshot_fails_when_the_pre_snapshot_step_fails() {
 
 test_snapshot_fails_when_the_named_pre_snapshot_step_does_not_exist() {
     snapshot_world
-    ctx_set profile.agent.pre_snapshot '"nowhere"'
+    ctx_set profile.agent.pre_snapshot '["nowhere"]'
     run_step snapshot
     assert_status 1 && assert_contains "nowhere"
+}
+
+# pre_snapshot_steps <name>...: profile steps that log their name, in the order they ran.
+pre_snapshot_steps() {
+    local name
+    mkdir -p "$WORLD/profile/steps"
+    for name in "$@"; do
+        printf '#!/usr/bin/env bash\necho "pre-snapshot step %s ran" >>"$STUB_LOG"\n' "$name" >"$WORLD/profile/steps/$name"
+        chmod +x "$WORLD/profile/steps/$name"
+    done
+}
+
+test_snapshot_runs_every_pre_snapshot_step_in_the_order_listed_before_the_snapshot() {
+    snapshot_world
+    ctx_set profile.agent.pre_snapshot '["first", "second"]'
+    pre_snapshot_steps first second
+    run_step snapshot
+    assert_status 0 && assert_logged_before "http://192.168.150.10:8000/" "pre-snapshot step first ran" &&
+        assert_logged_before "pre-snapshot step first ran" "pre-snapshot step second ran" &&
+        assert_logged_before "pre-snapshot step second ran" "snapshot-create-as"
+}
+
+test_snapshot_fails_when_the_second_pre_snapshot_step_fails_and_takes_no_snapshot() {
+    snapshot_world
+    ctx_set profile.agent.pre_snapshot '["first", "second"]'
+    pre_snapshot_steps first
+    printf '#!/usr/bin/env bash\nexit 4\n' >"$WORLD/profile/steps/second"
+    chmod +x "$WORLD/profile/steps/second"
+    run_step snapshot
+    assert_status 1 && assert_logged "pre-snapshot step first ran" && assert_contains "second" &&
+        assert_not_logged "snapshot-create-as"
+}
+
+test_snapshot_runs_no_pre_snapshot_step_for_an_empty_list() {
+    snapshot_world
+    ctx_set profile.agent.pre_snapshot '[]'
+    run_step snapshot
+    assert_status 0 && assert_not_logged "pre-snapshot" && assert_logged "snapshot-create-as"
 }
 
 test_snapshot_names_no_operating_system() {

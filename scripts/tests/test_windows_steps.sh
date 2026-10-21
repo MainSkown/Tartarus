@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests the Windows profile's own build steps (guest/profiles/windows/steps/{install,provision,
-# tamper-off,defender-on,remove-ghost-drives,symbols}) the way the build sequencer runs them: as
+# tamper-off,defender-on,remove-ghost-drives,quiet-desktop,symbols}) the way the build sequencer runs them: as
 # executables with the TT_* environment, from a copy of guest/ laid out like the image. The guest
 # is a fake agent on loopback (scripts/tests/fake_guest_agent.py); virsh and xorriso are stubs on
 # PATH that record their calls.
@@ -815,6 +815,42 @@ test_remove_ghost_drives_fails_when_the_agent_is_unreachable() {
     stop_agent
     run_step remove-ghost-drives
     assert_status 1 && assert_contains "agent"
+}
+
+# --- quiet-desktop ----------------------------------------------------------------------------
+
+test_quiet_desktop_uploads_its_script_with_the_shared_helper_and_logs_what_it_closed() {
+    new_sandbox
+    script_replies quiet-desktop.ps1 'RESULT closed=msedge\r\nRESULT left=\r\nEXITCODE 0\r\n'
+    run_step quiet-desktop
+    assert_status 0 &&
+        assert_contains "LOG RESULT closed=msedge" &&
+        [[ -f $WORK_ON_DISK/quiet-desktop.ps1 && -f $WORK_ON_DISK/desktop-apps.ps1 ]] &&
+        requests_satisfy "
+(execute,) = [r for r in requests if r['path'] == '/execute']
+assert 'quiet-desktop.ps1' in execute['driver'], execute
+"
+}
+
+test_quiet_desktop_with_nothing_open_succeeds_again() {
+    new_sandbox
+    script_replies quiet-desktop.ps1 'RESULT closed=\r\nRESULT left=\r\nEXITCODE 0\r\n'
+    run_step quiet-desktop
+    assert_status 0 && assert_contains "LOG RESULT left="
+}
+
+test_quiet_desktop_fails_when_the_script_cannot_run() {
+    new_sandbox
+    script_replies quiet-desktop.ps1 'quiet-desktop.ps1 could not run: boom\r\nEXITCODE 1\r\n'
+    run_step quiet-desktop
+    assert_status 1 && assert_contains "quiet-desktop.ps1"
+}
+
+test_quiet_desktop_fails_when_the_script_reports_no_exit_code() {
+    new_sandbox
+    script_replies quiet-desktop.ps1 'RESULT a=b\r\n'
+    run_step quiet-desktop
+    assert_status 1 && assert_contains "no exit code"
 }
 
 # --- symbols ---------------------------------------------------------------------------------------

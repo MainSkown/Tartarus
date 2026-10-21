@@ -183,7 +183,7 @@
           "step": "snapshot",
           "timeout_s": 600,
           "weight": 5,
-          "description": "Shuts the guest down cleanly, starts it again, lets it settle and takes the clean snapshot that every analysis starts from. This takes a few minutes."
+          "description": "Shuts the guest down cleanly, starts it again, closes the apps Windows opened on the way up, lets it settle and takes the clean snapshot that every analysis starts from. This takes a few minutes."
         },
         {
           "step": "register",
@@ -247,7 +247,7 @@
         "step": "snapshot",
         "timeout_s": 600,
         "weight": 15,
-        "description": "Shuts the guest down cleanly, starts it again, lets it settle and takes the clean snapshot that every analysis starts from. This takes a few minutes."
+        "description": "Shuts the guest down cleanly, starts it again, closes the apps Windows opened on the way up, lets it settle and takes the clean snapshot that every analysis starts from. This takes a few minutes."
       },
       {
         "step": "register",
@@ -270,7 +270,7 @@
       "options": "interactive=1,nohuman=yes",
       "task_fields": {}
     },
-    "pre_snapshot": "remove-ghost-drives"
+    "pre_snapshot": ["remove-ghost-drives", "quiet-desktop"]
   },
   "selftest": {
     "sample": {

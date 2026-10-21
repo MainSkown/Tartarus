@@ -180,7 +180,7 @@
       "options": "",
       "task_fields": {}
     },
-    "pre_snapshot": null
+    "pre_snapshot": []
   },
   "selftest": {
     "sample": {

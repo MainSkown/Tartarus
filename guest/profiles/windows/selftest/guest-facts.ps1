@@ -17,6 +17,7 @@ param(
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
+. (Join-Path $PSScriptRoot 'desktop-apps.ps1')
 function Fact([string] $key, $value) { Write-Output ("FACT {0}={1}" -f $key, "$value".Trim()) }
 
 $system = Get-CimInstance Win32_ComputerSystem
@@ -60,6 +61,7 @@ Fact 'wuauserv.start_type' ((Get-Service wuauserv).StartType)
 Fact 'python.version_bits' (& 'C:\Python311\python.exe' -c 'import platform,struct; print(platform.python_version(), struct.calcsize(''P'')*8)')
 Fact 'python.pillow' (& 'C:\Python311\python.exe' -c 'import PIL; print(PIL.__version__)')
 Fact 'agent.task' ((Get-ScheduledTask -TaskName $TaskName).State)
+Fact 'desktop.app_windows' ((Select-AppProcessName @((Get-AppWindowProcess).ProcessName)) -join ',')
 
 # --- decision 16: nothing in the guest says what the machine is ----------------------------------
 

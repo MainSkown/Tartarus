@@ -210,7 +210,7 @@ class Agent:
     work_root: str
     shutdown: str
     interactive: Interactive
-    pre_snapshot: str | None
+    pre_snapshot: list[str]
 
     @property
     def path_separator(self) -> str:
@@ -359,8 +359,10 @@ class Profile:
     def step_references(self) -> list[tuple[str, str]]:
         """Every (field path, step name) the profile names, for the loader's existence check."""
         references = [(f"{path}.step", entry.step) for path, entry in self.pipeline_entries()]
-        if self.agent.pre_snapshot:
-            references.append(("agent.pre_snapshot", self.agent.pre_snapshot))
+        references += [
+            (f"agent.pre_snapshot[{index}]", name)
+            for index, name in enumerate(self.agent.pre_snapshot)
+        ]
         if self.selftest.check_step:
             references.append(("selftest.check_step", self.selftest.check_step))
         return references
@@ -761,7 +763,7 @@ def _agent(reader: _Reader) -> Agent:
         work_root=reader.string("work_root"),
         shutdown=reader.choice("shutdown", SHUTDOWN_MODES),
         interactive=_interactive(reader.object("interactive")),
-        pre_snapshot=reader.optional_string("pre_snapshot", rule=STEP_NAME),
+        pre_snapshot=reader.string_list("pre_snapshot", rule=STEP_NAME, default=[]),
     )
     reader.done()
     return agent

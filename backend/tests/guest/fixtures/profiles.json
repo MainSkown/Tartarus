@@ -277,7 +277,7 @@
         "options": "interactive=1,nohuman=yes",
         "task_fields": {}
       },
-      "pre_snapshot": null
+      "pre_snapshot": []
     },
     "selftest": {
       "sample": {

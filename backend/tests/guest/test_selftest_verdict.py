@@ -197,6 +197,37 @@ def test_a_display_adapter_of_a_hypervisor_vendor_fails_and_names_its_id() -> No
     assert pnp in verdict.details["message"]
 
 
+def checks_with_open_apps(names: str) -> SelfTestChecks:
+    base = clean_checks()
+    return base.model_copy(update={"facts": {**base.facts, "desktop.app_windows": names}})
+
+
+def test_a_quiet_desktop_passes() -> None:
+    verdict = judged(checks=checks_with_open_apps(""))
+
+    assert verdict.passed is True
+    assert verdict.details["message"] == "all checks passed"
+
+
+def test_a_guest_older_than_the_fact_is_not_failed_for_lacking_it() -> None:
+    assert "desktop.app_windows" not in clean_checks().facts
+    assert judged().passed is True
+
+
+def test_an_app_left_open_in_the_clean_snapshot_fails_and_names_it() -> None:
+    verdict = judged(checks=checks_with_open_apps("msedge"))
+
+    assert verdict.passed is False
+    assert "the clean snapshot has an open app: msedge" in verdict.details["message"]
+
+
+def test_several_open_apps_are_all_named() -> None:
+    verdict = judged(checks=checks_with_open_apps("msedge,notepad"))
+
+    assert verdict.passed is False
+    assert "the clean snapshot has open apps: msedge, notepad" in verdict.details["message"]
+
+
 def test_a_failing_proof_fails_with_its_message() -> None:
     checks = clean_checks().model_copy(
         update={"proofs": {"eicar": ProofResult(ok=False, message="Defender removed the file")}}

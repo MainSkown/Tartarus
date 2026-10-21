@@ -89,7 +89,7 @@ def test_the_linux_fixture_expresses_what_the_linux_paper_design_needs():
     assert profile.hardware.tpm is False
     assert profile.hardware.clock == "utc"
     assert profile.agent.path_style == "posix"
-    assert profile.agent.pre_snapshot == "sync-disk"
+    assert profile.agent.pre_snapshot == ["sync-disk"]
     assert [s.step for s in profile.build_pipeline("disk_image", {})][:3] == [
         "preflight",
         "fetch_payload",
@@ -467,7 +467,11 @@ CASES = [
     ),
     ("windows", "agent.interactive.extra", 1, None),
     ("windows", "agent.pre_snapshot", 5, None),
-    ("windows", "agent.pre_snapshot", "Bad Name", None),
+    ("windows", "agent.pre_snapshot", "remove-ghost-drives", None),
+    ("windows", "agent.pre_snapshot", ["Bad Name"], "agent.pre_snapshot[0]"),
+    ("windows", "agent.pre_snapshot", [5], "agent.pre_snapshot[0]"),
+    ("windows", "agent.pre_snapshot", [""], "agent.pre_snapshot[0]"),
+    ("windows", "agent.pre_snapshot", ["quiet-desktop", "quiet-desktop"], "agent.pre_snapshot[1]"),
     ("windows", "selftest.sample.source", "", None),
     ("windows", "selftest.sample.build", [], None),
     ("windows", "selftest.sample.build", "gcc", None),
@@ -729,6 +733,28 @@ def test_the_sample_build_names_where_the_source_and_the_output_go():
 
     assert sample.build.count("{source}") == sample.build.count("{output}") == 1
     assert sample.output == "benign.exe"
+
+
+@pytest.mark.parametrize("none", [None, []])
+def test_no_pre_snapshot_step_is_null_or_an_empty_list_and_means_none(none):
+    profile = parse_profile(with_value(profile_data("windows"), "agent.pre_snapshot", none))
+
+    assert profile.agent.pre_snapshot == []
+    assert not [ref for ref in profile.step_references() if ref[0].startswith("agent.pre_snapshot")]
+
+
+def test_every_pre_snapshot_step_is_a_step_the_profile_references_in_order():
+    data = with_value(profile_data("windows"), "agent.pre_snapshot", ["sync-disk", "flush-more"])
+
+    profile = parse_profile(data)
+
+    assert profile.agent.pre_snapshot == ["sync-disk", "flush-more"]
+    assert [
+        ref for ref in profile.step_references() if ref[0].startswith("agent.pre_snapshot")
+    ] == [
+        ("agent.pre_snapshot[0]", "sync-disk"),
+        ("agent.pre_snapshot[1]", "flush-more"),
+    ]
 
 
 def test_the_pre_snapshot_step_must_exist_too(profiles_dir, generic_steps):

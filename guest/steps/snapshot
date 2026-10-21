@@ -11,7 +11,7 @@ context_var AGENT_PORT profile.agent.port
 context_var AGENT_TIMEOUT_S profile.timeouts.agent_s
 context_var IDLE_S profile.timeouts.idle_s
 context_var SHUTDOWN_TIMEOUT_S profile.timeouts.shutdown_s
-context_var PRE_SNAPSHOT_STEP profile.agent.pre_snapshot ""
+context_var PRE_SNAPSHOT_STEPS profile.agent.pre_snapshot "[]"
 
 snapshot_exists() { vsh snapshot-list "$GUEST_NAME" --name 2>/dev/null | grep -qxF "$SNAPSHOT_NAME"; }
 
@@ -49,11 +49,12 @@ find_profile_step() {
     return 1
 }
 
-run_pre_snapshot_step() {
-    [[ -n $PRE_SNAPSHOT_STEP ]] || return 0
-    local path
-    path=$(find_profile_step "$PRE_SNAPSHOT_STEP") || fail "the profile's pre-snapshot step '$PRE_SNAPSHOT_STEP' was not found"
-    "$path" || fail "the pre-snapshot step '$PRE_SNAPSHOT_STEP' failed"
+run_pre_snapshot_steps() {
+    local name path
+    while IFS= read -r name <&3; do
+        path=$(find_profile_step "$name") || fail "the profile's pre-snapshot step '$name' was not found"
+        "$path" || fail "the pre-snapshot step '$name' failed"
+    done 3< <(python3 -I -c 'import json, sys; [print(name) for name in json.loads(sys.argv[1])]' "$PRE_SNAPSHOT_STEPS")
 }
 
 # External, not internal: libvirt 10.0 refuses internal snapshots of any UEFI (pflash) domain.
@@ -88,7 +89,7 @@ step "Waiting for the agent"
 progress 30
 wait_for "$AGENT_TIMEOUT_S" 5 agent_answers || fail "the agent did not answer within ${AGENT_TIMEOUT_S}s after the clean boot"
 progress 55
-run_pre_snapshot_step
+run_pre_snapshot_steps
 step "Letting the guest idle for ${IDLE_S}s"
 sleep "$IDLE_S"
 progress 85

@@ -101,6 +101,7 @@ restore_snapshot_and_reach_agent() {
 # Information only: what the guest reports about itself, and how each provisioning step ended,
 # read through CAPE's own agent (/store, /execute, /retrieve) on the restored guest.
 GUEST_FACTS=$REPO/guest/profiles/windows/selftest/guest-facts.ps1
+GUEST_DESKTOP_APPS=$REPO/guest/profiles/windows/desktop-apps.ps1
 
 agent_stdout() {
     python3 -I -c 'import json,sys
@@ -110,7 +111,9 @@ except ValueError: pass'
 
 report_guest_facts() {
     compose cp "$GUEST_FACTS" cape:/tmp/guest-facts.ps1 >/dev/null 2>&1 || return 0
+    compose cp "$GUEST_DESKTOP_APPS" cape:/tmp/desktop-apps.ps1 >/dev/null 2>&1 || return 0
     in_cape curl -s -m 20 -F filepath='C:\tartarus\guest-facts.ps1' -F file=@/tmp/guest-facts.ps1 "$AGENT/store" >/dev/null
+    in_cape curl -s -m 20 -F filepath='C:\tartarus\desktop-apps.ps1' -F file=@/tmp/desktop-apps.ps1 "$AGENT/store" >/dev/null
     # The agent shlex-splits the command POSIX-style, which would eat backslashes in the path.
     in_cape curl -s -m 120 -F 'command=powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/tartarus/guest-facts.ps1' \
         "$AGENT/execute" | agent_stdout | tr -d '\r' | sed -n 's/^FACT /guest: /p' | while read -r line; do info "$line"; done

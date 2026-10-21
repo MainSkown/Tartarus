@@ -295,7 +295,7 @@ class TestProfileFile:
         assert agent.finish_dir == "C:\\Windows\\Temp"
         assert agent.shutdown == "acpi"
         assert agent.interactive.options == "interactive=1,nohuman=yes"
-        assert agent.pre_snapshot == "remove-ghost-drives"
+        assert agent.pre_snapshot == ["remove-ghost-drives", "quiet-desktop"]
 
     def test_ready_marker_is_the_done_marker_of_the_names_table(self, profile, names):
         assert profile.agent.ready.marker == "{work_dir}\\" + names["done_marker"]
@@ -968,13 +968,13 @@ requires_pwsh = pytest.mark.skipif(
 )
 
 
-def run_security_ui(snippet: str) -> str:
-    """Run a snippet of PowerShell after security-ui.ps1's own text and return what it printed.
+def run_after_script(script_name: str, snippet: str) -> str:
+    """Run a snippet of PowerShell after a script's own text and return what it printed.
 
     The script text travels as an encoded command, so it works the same with a real pwsh and
     with one that lives in a container that cannot see the repository.
     """
-    script = "$ErrorActionPreference = 'Stop'\n" + script_text("security-ui.ps1") + "\n" + snippet
+    script = "$ErrorActionPreference = 'Stop'\n" + script_text(script_name) + "\n" + snippet
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     result = subprocess.run(  # noqa: S603 - fixed argv, script text from the repo
         ["pwsh", "-NoProfile", "-OutputFormat", "Text", "-EncodedCommand", encoded],  # noqa: S607
@@ -984,6 +984,10 @@ def run_security_ui(snippet: str) -> str:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout.strip()
+
+
+def run_security_ui(snippet: str) -> str:
+    return run_after_script("security-ui.ps1", snippet)
 
 
 def select_tamper_toggle(switch_names: list[str]) -> str | None:
@@ -1364,6 +1368,194 @@ class TestFactsScriptTells:
             assert "VEN_1234" not in line, line
             assert "Basic" not in line, line
         assert "VEN_1234" not in param_block(text)
+
+
+QUIET_DESKTOP_STEP = PROFILE_DIR / "steps" / "quiet-desktop"
+# The shell and what the guest itself needs to keep answering: closing any of these breaks the
+# desktop or cuts the agent off, so none may ever be asked to close.
+KEPT_SHELL_HOSTS = (
+    "explorer",
+    "ShellExperienceHost",
+    "StartMenuExperienceHost",
+    "SearchHost",
+    "TextInputHost",
+    "ApplicationFrameHost",
+    "RuntimeBroker",
+    "sihost",
+    "ctfmon",
+    "dwm",
+    "LockApp",
+    "SecurityHealthSystray",
+)
+KEPT_SCRIPT_HOSTS = ("powershell", "pwsh", "cmd", "conhost")
+
+
+def app_process_names(names: list[str]) -> list[str]:
+    """Run desktop-apps.ps1's Select-AppProcessName on plain process names."""
+    quoted = json.dumps(names).replace("'", "''")
+    output = run_after_script(
+        "desktop-apps.ps1",
+        f"$names = @(ConvertFrom-Json -InputObject '{quoted}')\n"
+        "(Select-AppProcessName $names) -join ','",
+    )
+    return [name for name in output.split(",") if name]
+
+
+def kept_process_names() -> list[str]:
+    text = script_text("desktop-apps.ps1")
+    block = re.search(r"\$KeptProcessNames\s*=\s*@\((.*?)\n\)", text, re.DOTALL)
+    assert block, "desktop-apps.ps1 has no $KeptProcessNames array"
+    return re.findall(r"'([^']+)'", re.sub(r"#.*", "", block.group(1)))
+
+
+class TestQuietDesktopStep:
+    def test_the_step_is_an_executable_bash_script_with_strict_mode(self):
+        assert os.access(QUIET_DESKTOP_STEP, os.X_OK)
+        assert QUIET_DESKTOP_STEP.read_text().splitlines()[0] == "#!/usr/bin/env bash"
+        assert "set -uo pipefail" in QUIET_DESKTOP_STEP.read_text()
+
+    def test_the_step_runs_its_script_through_the_agent_with_the_shared_helper(self):
+        text = script_text("steps/quiet-desktop")
+        assert "guest_agent run quiet-desktop.ps1 --with desktop-apps.ps1" in text
+        assert "lib/windows.sh" in text
+
+    def test_it_runs_after_the_ghost_drives_are_removed_and_before_the_snapshot(self, profile):
+        assert profile.agent.pre_snapshot == ["remove-ghost-drives", "quiet-desktop"]
+
+    def test_both_scripts_it_needs_exist_next_to_the_other_scripts(self):
+        assert (PROFILE_DIR / "quiet-desktop.ps1").is_file()
+        assert (PROFILE_DIR / "desktop-apps.ps1").is_file()
+
+    @pytest.mark.parametrize("pipeline", ["build", "clone"])
+    def test_the_snapshot_description_says_apps_are_closed_first(self, profile_data, pipeline):
+        pipelines = profile_data["pipelines"]
+        steps = (
+            [step for steps in pipelines["build"].values() for step in steps]
+            if pipeline == "build"
+            else pipelines["clone"]
+        )
+        descriptions = [step["description"] for step in steps if step["step"] == "snapshot"]
+        assert descriptions
+        for description in descriptions:
+            assert "closes the apps" in description, description
+
+
+class TestDesktopAppsHelper:
+    """One list of what stays open, read by the script that closes apps and the one that checks
+    that none is left, because two lists would drift and the check would then fail the closer."""
+
+    def test_the_exclusion_list_is_one_named_array_that_says_why(self):
+        text = script_text("desktop-apps.ps1")
+        assert text.count("$KeptProcessNames") >= 2
+        assert kept_process_names()
+        assert re.search(r"#.*\bwhy\b|#.*\bbecause\b", text, re.IGNORECASE)
+
+    def test_the_shell_and_the_script_hosts_are_kept(self):
+        kept = {name.lower() for name in kept_process_names()}
+        for name in (*KEPT_SHELL_HOSTS, *KEPT_SCRIPT_HOSTS):
+            assert name.lower() in kept, name
+
+    def test_the_agent_is_kept_under_every_process_name_provision_starts_it_with(self):
+        provision = script_text("provision.ps1")
+        started = re.findall(r"New-ScheduledTaskAction -Execute '[^']*\\(\w+)\.exe'", provision)
+        assert started, "provision.ps1 no longer registers the agent as a scheduled task"
+        kept = {name.lower() for name in kept_process_names()}
+        for name in (*started, "python"):
+            assert name.lower() in kept, name
+
+    def test_no_browser_or_ordinary_app_is_kept(self):
+        kept = {name.lower() for name in kept_process_names()}
+        for name in ("msedge", "chrome", "firefox", "iexplore", "notepad", "winword"):
+            assert name not in kept, name
+
+    def test_the_helper_changes_nothing_when_it_is_loaded(self):
+        text = script_text("desktop-apps.ps1")
+        for command in ("Stop-Process", "CloseMainWindow", "Remove-Item", "Set-ItemProperty"):
+            assert command not in text, command
+
+    @requires_pwsh
+    def test_an_edge_window_is_an_open_app(self):
+        assert app_process_names(["msedge"]) == ["msedge"]
+
+    @requires_pwsh
+    @pytest.mark.parametrize("name", [*KEPT_SHELL_HOSTS, *KEPT_SCRIPT_HOSTS, "python", "pythonw"])
+    def test_the_shell_the_scripts_and_the_agent_are_not_open_apps(self, name):
+        assert app_process_names([name]) == []
+
+    @requires_pwsh
+    def test_names_are_compared_without_regard_to_case(self):
+        assert app_process_names(["Explorer", "PowerShell", "PYTHONW", "MsEdge"]) == ["MsEdge"]
+
+    @requires_pwsh
+    def test_each_open_app_is_named_once_in_order(self):
+        names = ["notepad", "msedge", "explorer", "msedge", "powershell"]
+        assert app_process_names(names) == ["msedge", "notepad"]
+
+    @requires_pwsh
+    def test_nothing_open_is_nothing_named(self):
+        assert app_process_names([]) == []
+
+
+class TestQuietDesktopScript:
+    def test_it_asks_windows_to_close_then_waits_then_forces(self):
+        text = script_text("quiet-desktop.ps1")
+        assert "MainWindowHandle" in text or "Get-AppWindowProcess" in text
+        assert "CloseMainWindow()" in text
+        assert text.index("CloseMainWindow()") < text.index("Start-Sleep")
+        assert text.index("Start-Sleep") < text.index("Stop-Process")
+
+    def test_it_loads_the_shared_list_and_has_none_of_its_own(self):
+        text = script_text("quiet-desktop.ps1")
+        assert ". (Join-Path $PSScriptRoot 'desktop-apps.ps1')" in text
+        assert "$KeptProcessNames =" not in text
+        for name in ("explorer", "pythonw", "ApplicationFrameHost"):
+            assert name not in text, name
+
+    def test_it_never_stops_a_process_by_a_name_it_typed_itself(self):
+        text = script_text("quiet-desktop.ps1")
+        stops = [line for line in text.splitlines() if "Stop-Process" in line]
+        assert stops
+        for line in stops:
+            assert "-Name" not in line, line
+            assert "-Id" in line or "$_" in line or "| Stop-Process" in line, line
+
+    def test_it_reports_what_it_closed_and_what_is_left(self):
+        text = script_text("quiet-desktop.ps1")
+        assert "Result 'closed'" in text
+        assert "Result 'left'" in text
+        assert "'RESULT {0}={1}'" in text
+
+    def test_it_ends_with_exit_zero_and_is_non_zero_only_when_it_cannot_run(self):
+        text = script_text("quiet-desktop.ps1")
+        assert text.rstrip().endswith("exit 0")
+        assert len(re.findall(r"\bexit 1\b", text)) == 1
+        assert "catch" in text
+
+    def test_it_stops_the_networks_prompt_from_appearing_for_new_networks(self):
+        text = script_text("quiet-desktop.ps1")
+        assert "SYSTEM\\CurrentControlSet\\Control\\Network\\NewNetworkWindowOff" in text
+        assert "New-Item" in text
+
+    def test_it_dismisses_a_prompt_that_is_open_now_with_escape(self):
+        text = script_text("quiet-desktop.ps1")
+        assert "SendWait('{ESC}')" in text
+        assert "System.Windows.Forms" in text
+
+    def test_it_explains_that_the_registry_key_only_helps_from_the_next_boot(self):
+        assert "next boot" in script_text("quiet-desktop.ps1")
+
+
+class TestFactsScriptDesktop:
+    def test_it_reports_the_open_app_windows_as_a_fact_from_the_shared_helper(self):
+        text = script_text("selftest/guest-facts.ps1")
+        assert "Fact 'desktop.app_windows'" in text
+        assert "desktop-apps.ps1" in text
+        assert "Select-AppProcessName" in text
+        assert "$KeptProcessNames =" not in text
+
+    def test_the_self_test_uploads_the_helper_with_the_facts_script(self):
+        text = script_text("steps/selftest-checks")
+        assert "--with desktop-apps.ps1" in text
 
 
 class TestPowerShellSyntax:

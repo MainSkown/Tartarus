@@ -223,7 +223,7 @@
         "enforce_timeout": true
       }
     },
-    "pre_snapshot": "sync-disk"
+    "pre_snapshot": ["sync-disk"]
   },
   "selftest": {
     "sample": {

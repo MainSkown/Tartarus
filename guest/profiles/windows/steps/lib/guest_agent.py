@@ -11,7 +11,8 @@ scripts to upload):
     guest_agent.py run SCRIPT [--with FILE]... [--arg NAME=VALUE]... [--async]
 
 SCRIPT is a file name in the profile folder, or a path inside it (`selftest/guest-facts.ps1`): the
-guest always gets it by its plain name, and --with files are looked for next to it.
+guest always gets it by its plain name. --with files are paths inside the profile folder too, so a
+helper in the profile's root reaches a script in a subfolder, and are stored by their plain names.
 
 TT_AGENT_HOST, when set, is the address to talk to instead of the guest's recorded one: a copy that
 has just been cloned answers on the address DHCP gave it, not on the one it will be given.
@@ -202,8 +203,11 @@ class GuestAgent:
         self, local_dir: Path, script: str, with_files: Sequence[str], arguments: Mapping[str, str]
     ) -> str:
         """Store the script, its helpers and the driver; the command that runs the driver."""
-        uploaded = [script, *with_files]
-        contents = {name: self._read_local(local_dir, name) for name in uploaded}
+        read_from = [script, *with_files]
+        uploaded = [Path(name).name for name in read_from]
+        contents = {
+            stored: self._read_local(local_dir, name) for stored, name in zip(uploaded, read_from)
+        }
         driver = driver_text(
             self._slashed(script),
             arguments,
@@ -292,16 +296,26 @@ def _script_location(script: str) -> tuple[Path, str]:
     return Path(os.environ["TT_PROFILE_DIR"]) / path.parent, path.name
 
 
+def _helper_locations(helpers: Sequence[str], script_dir: Path) -> list[str]:
+    """Each helper, a path inside the profile folder, as the path to read it from `script_dir`."""
+    locations = []
+    for helper in helpers:
+        helper_dir, name = _script_location(helper)
+        locations.append(os.path.relpath(helper_dir / name, script_dir))
+    return locations
+
+
 def _run(agent: GuestAgent, options: argparse.Namespace) -> int:
     local_dir, script = _script_location(options.script)
+    with_files = _helper_locations(options.with_files, local_dir)
     arguments = _arguments_from(options.arg)
     if options.asynchronous:
-        agent.start_script(local_dir, script, with_files=options.with_files, arguments=arguments)
+        agent.start_script(local_dir, script, with_files=with_files, arguments=arguments)
         return 0
     result = agent.run_script(
         local_dir,
         script,
-        with_files=options.with_files,
+        with_files=with_files,
         arguments=arguments,
         timeout=options.timeout,
     )

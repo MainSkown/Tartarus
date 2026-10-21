@@ -17,6 +17,8 @@ SELFTEST_LOOKUP_NAME = "tartarus-selftest.example"
 # The sample and the process it starts: fewer means the child process was never seen.
 MIN_PROCESSES = 2
 PASSED_MESSAGE = "all checks passed"
+# Reported by the guest's facts script: the apps still open on the desktop of the clean snapshot.
+OPEN_APPS_FACT = "desktop.app_windows"
 # Facts the analyst sees on the guest's card; the rest stay in the control service's log.
 SUMMARISED_FACTS = (
     "os.hostname",
@@ -154,10 +156,20 @@ def _check_problems(checks: SelfTestChecks) -> list[str]:
     problems = []
     if checks.giveaways:
         problems.append(f"the guest gives itself away: {'; '.join(checks.giveaways)}")
+    problems += _open_apps_problem(checks)
     problems += [
         f"{name}: {proof.message}" for name, proof in checks.proofs.items() if not proof.ok
     ]
     return problems
+
+
+def _open_apps_problem(checks: SelfTestChecks) -> list[str]:
+    names = [name.strip() for name in checks.facts.get(OPEN_APPS_FACT, "").split(",")]
+    names = [name for name in names if name]
+    if not names:
+        return []
+    noun = "an open app" if len(names) == 1 else "open apps"
+    return [f"the clean snapshot has {noun}: {', '.join(names)}"]
 
 
 def _unfinished_message(outcome: AnalysisOutcome) -> str:
