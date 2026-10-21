@@ -149,6 +149,7 @@ proof is that every screenshot comes out pixel-identical and every English asser
   (S0b ran only one at a time).
 
 ### M10: Guest proofs
+**Status (2026-10-22): built and proven on the real stack** ([plan](m10-guest-proofs.md)): Windows 10 22H2 and the English ISO built, cloned, resumed, restarted and paused for real; nine problems the proofs found were all fixed.
 With the user's ISOs: the manual Defender pause (force the toggle-not-found case on a throwaway clone and walk
 the pause, the desktop and CONTINUE), a failing install step with RESUME and RESTART from the real build page,
 a Windows 10 22H2 build and a clone with its self-test, and an English-language Windows build proving the

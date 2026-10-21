@@ -6,10 +6,17 @@ RESTART. M10 adds no feature; what it finds becomes a fix (test-first, rule 2), 
 
 ## Status
 
-**Proofs Q0 to Q6 ran on 2026-10-21; Q0 to Q5 pass, Q6 passes with a finding.** The user supplied
+**Built and proven on the real stack, 2026-10-21 and 22.** The user supplied
 `data/iso/Win10_22H2_EnglishInternational_x64v1.iso` (one ISO for both ISO proofs), next to the verified
-`Win11_25H2_Polish_x64_v2.iso`. Windows 10 needed four fixes before a build finished (F2, F3, F4, F6, all committed
-test-first); F1, F5, F7, F8, F9 and tasks 10.5b, 10.6 to 10.11 are open, see [Proof](#proof) and the findings.
+`Win11_25H2_Polish_x64_v2.iso`. The proofs Q0 to Q6 ran first and found nine problems; the user then decided that every
+one of them belongs in M10, and each was fixed test-first and proven on a real guest (see [Findings](#findings-so-far-from-watching-a-real-build),
+[Proof](#proof) and [Open items](#open-items-all-in-m10-decided-with-the-user-2026-10-21), now closed). The three screens
+that changed (guest card, analysis warnings, build page) went through the screenshot Artifact review and the user approved all three.
+
+**Left for M11:** 50 screenshot specs fail on a clean checkout of `HEAD` too (the Search and IOC work of M9 left other specs'
+API mocks behind: unmocked `/api/iocs/*/analyses`, a "not implemented yet" text, export and report toasts in `artifacts`,
+`export-menu`, `report-dialog`, `filter-on`, `submit-memory`, `timeline`, `events`, `shell`, `placeholders`); the CI task
+that runs the screenshot harness has to fix them first.
 
 ### What the scan said (through `GET /api/guests/media`, the wizard's own inspector)
 
@@ -218,3 +225,20 @@ planner runs every real-guest proof itself after reading the diff.
 Order: 10.5b/F1a, 10.6, 10.11 and 10.12 start together, with the F8 spike beside them; 10.9 starts once F1a has
 fixed the `phase` and `last_activity` fields. Real-guest proofs after each: a clean Windows 10 build for F1a, an
 analysis for F9, a failed self-test retried for F5.
+
+## Closing the open items (2026-10-22)
+
+| Item | Result on the real stack |
+|---|---|
+| F1a, 10.5b: live install progress, early failure | PASS. A fresh build `w10c`: the install step relayed 31 of the guest's own log lines, the percentage moved 12, 58, 95 from steps done, the build message named the guest's step ("Windows is provisioning itself: disable telemetry"). Windows Setup itself (about 4 minutes) has only the elapsed time. The failure when provisioning never starts is covered by tests, not run against a guest that fails to start it |
+| F1b, F7, 10.9: build page | Approved by the user on the screenshot Artifact; the unit suites and 88 build-page screenshot tests pass |
+| F5, 10.12: re-run self-test | PASS. A clone failed its self-test on an injected giveaway with every build step passed; ready guest 409, unknown guest 404; a retry with the injection still present ended `failed` again; a retry without it ended `ready`, "all checks passed", no rebuild. Screens approved |
+| F8, 10.10: the PowerShell stall | PASS. Cause: the monitor left in the DCOM launcher, also in plain analyses on Windows 10 (3 of 5 stalled). Fix: `MONITORED_DCOM` for every analysis. 7 of 7 plain runs since exported Sysmon and Defender, with no `DcomLaunch` in the events, about 90 s each instead of 232 s |
+| F9, 10.11: silent export failure | PASS. Re-ingesting analyses 436 and 438 shows "Sysmon events were not exported: the guest did not answer within 120 s" and the Defender one. Screens approved |
+| F10: the Defender export decoding error | Not reproduced in 7 runs after the F8 fix (it appeared 3 times in 6 runs while the launcher was hooked). The module now records what the agent actually answered, so a return explains itself |
+| 10.6: media-derived name and tag | PASS. `w10`, `w10b`, `w10c` and the clones registered `windows,win10`; `lab1` still `windows,win11`; the profile is called "Windows" |
+| Quiet desktop (the user's report) | PASS. Edge opened on every boot for INetSim's captive-portal page and was in every snapshot. The new `quiet-desktop` pre-snapshot step reported `closed=msedge; left=`, the desktop of the live guest and the first screenshot of the self-test analysis show no window and no Networks prompt, `FACT desktop.app_windows=` is empty and the self-test fails a guest that has one open |
+
+Not done on purpose: F5 asked for a retry of the self-test only; a retry that rebuilds is still delete and build again.
+Left in place: `lab1` (Windows 11) and `w10-q` (Windows 10 Pro, Defender off, a clone of the last build, with the quiet snapshot);
+the earlier test guests `w10`, `w10b`, `w10c` were deleted because their snapshots hold an open Edge.
