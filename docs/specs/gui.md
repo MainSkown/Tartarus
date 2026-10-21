@@ -32,7 +32,6 @@
   thresholds.
 - The `+ SUBMIT` button is outlined in `--blue-primary`.
 - `● LIVE n` counts the running analyses and opens a list linking to each one; the queue count sits beside it.
-  Planned as wave 3 task 3.5b: the header still has the deferred placeholder.
 
 **Global**
 - `/` focuses the query bar on pages that have one. `Esc` closes drawers and dialogs.
@@ -140,7 +139,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 - **Import** tab: a PCAP or a memory image, dropped or browsed, goes to `POST /analyses/import` or
   `/import/memory-image`, whichever its first bytes say. There is no guest and no option; the analysis is
   `imported` and queues apart from runs.
-- Planned with task 3.5b: a guest that is running an analysis carries a `BUSY` marker in the Guest picker. It
+- A guest that is running an analysis carries a `BUSY` marker in the Guest picker. It
   can still be chosen; its analysis queues behind the one running.
 - After submitting, the app navigates to `/analyses/:id`. If the guest is busy it shows "Queued, position N",
   where N counts only the analyses waiting for that guest.
