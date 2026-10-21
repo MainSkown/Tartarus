@@ -520,14 +520,37 @@ cleanup_replies() { # stdout of the script
     behave "{\"scripts\": {\"cleanup.ps1\": {\"stdout\": \"$1\"}}}"
 }
 
-test_provision_fetches_the_guest_log_into_the_build_dir_and_the_build_log() {
+test_provision_fetches_the_guest_log_into_the_build_dir_and_points_at_it_in_the_build_log() {
     new_sandbox
     with_guest_log
     cleanup_replies 'RESULT removed=python-3.11.9.exe\r\nEXITCODE 0\r\n'
     run_step provision
     assert_status 0 &&
-        assert_contains "LOG guest: 2026-10-15 10:00:01    ok" &&
+        assert_contains 'C:\ProgramData\abcdefgh\setup.log' &&
+        assert_missing "LOG guest: 2026-10-15 10:00:01    ok" &&
         [[ $(tr -d '\r' <"$SB/build/provision.log") == *"STEP one"* ]]
+}
+
+test_provision_with_no_failed_step_prints_only_the_pointer_to_the_guest_log() {
+    new_sandbox
+    with_guest_log
+    cleanup_replies 'EXITCODE 0\r\n'
+    run_step provision
+    assert_status 0 && assert_contains 'C:\ProgramData\abcdefgh\setup.log' && assert_missing "LOG guest:"
+}
+
+test_provision_prints_only_the_failed_step_lines_of_the_guest_log() {
+    new_sandbox
+    mkdir -p "$WORK_ON_DISK"
+    printf '%s\r\n' '2026-10-15 10:00:00  STEP one' '2026-10-15 10:00:01    ok' \
+        '2026-10-15 10:00:02  STEP retry after FAILED attempt' '2026-10-15 10:00:03    FAILED: no service' \
+        '2026-10-15 10:00:04    ok' >"$WORK_ON_DISK/$LOG_FILE"
+    provisioned
+    cleanup_replies 'EXITCODE 0\r\n'
+    run_step provision
+    assert_status 0 || return 1
+    [[ $(guest_lines_relayed) == '2026-10-15 10:00:03    FAILED: no service' ]] ||
+        { echo "  relayed guest lines: $(guest_lines_relayed)"; return 1; }
 }
 
 test_provision_fetches_the_log_before_it_runs_the_cleanup() {
@@ -593,14 +616,14 @@ test_provision_fails_when_the_agent_never_answers() {
     assert_status 1 && assert_contains "agent" && assert_missing "cleanup.ps1"
 }
 
-test_provision_warns_about_provisioning_steps_that_failed_in_the_guest() {
+test_provision_relays_a_failed_step_line_of_the_guest_log_without_the_steps_around_it() {
     new_sandbox
     mkdir -p "$WORK_ON_DISK"
     printf '2026-10-15 10:00:00  STEP sysmon\r\n2026-10-15 10:00:01    FAILED: no service\r\n' >"$WORK_ON_DISK/$LOG_FILE"
     provisioned
     cleanup_replies 'EXITCODE 0\r\n'
     run_step provision
-    assert_status 0 && assert_contains "1 provisioning step(s) failed"
+    assert_status 0 && assert_contains "LOG guest: 2026-10-15 10:00:01    FAILED: no service" && assert_missing "STEP sysmon"
 }
 
 test_provision_cannot_be_injected_through_the_guest_log() {

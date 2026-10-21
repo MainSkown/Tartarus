@@ -31,15 +31,14 @@ save_guest_log() {
     rm -f "$fetched"
 }
 
-# Every line is a LOG line: a line of the guest's file must never be taken for a protocol line.
+# Only the failed steps' lines are repeated: the install step relays the whole log live while the
+# guest writes it, and repeating it here would show every line twice.
 show_guest_log() {
-    local line
-    while IFS= read -r line || [[ -n $line ]]; do
+    log "the guest's provisioning log is at ${WORK_DIR}\\${LOG_NAME}; a copy is in the build folder as provision.log"
+    read_guest_log_lines "$LOG_COPY"
+    guest_log_failed_lines | while IFS= read -r line; do
         log "guest: $line"
-    done <"$LOG_COPY"
-    local failed
-    failed=$(grep -c 'FAILED' "$LOG_COPY")
-    ((failed == 0)) || log "$failed provisioning step(s) failed in the guest; the lines above say which"
+    done
 }
 
 clean_up_guest() {

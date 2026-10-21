@@ -3,7 +3,7 @@ import { mockGuests } from './guest-data'
 
 test('the health dots share one baseline, the Guest trigger button included', async ({ page }) => {
   await mockShell(page, GUEST_READY_SYSTEM)
-  await mockSettings(page, {})
+  await mockSettings(page, { getBody: {} })
   await mockAnalyses(page, { items: [] })
   await mockGuests(page, {})
   await page.goto('/')

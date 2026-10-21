@@ -45,7 +45,7 @@ async function mockIocAnalyses(page: Page, answers: Answers): Promise<void> {
     const value = decodeURIComponent(rest.slice(0, -1).join('/'))
     const answer = answers[`${kind} ${value}`]
     if (!answer) return route.fallback()
-    if (answer.status === 200) return route.fulfill({ json: answer.hits })
+    if ('hits' in answer) return route.fulfill({ json: answer.hits })
     return route.fulfill({ status: answer.status, json: answer.body })
   })
 }

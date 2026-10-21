@@ -42,17 +42,23 @@ GUEST_LOG_TIMESTAMP='[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8} +'
 # fetch_guest_log_lines <log name>: status 1, quietly, when the guest's file cannot be read right now
 # (not written yet, or held open by the writer): the caller asks again next round.
 fetch_guest_log_lines() {
-    local fetched line
+    local fetched
     fetched=$(mktemp "$TT_BUILD_DIR/guest-log.XXXXXX")
     if ! guest_agent retrieve "$1" "$fetched" 2>/dev/null; then
         rm -f "$fetched"
         return 1
     fi
+    read_guest_log_lines "$fetched"
+    rm -f "$fetched"
+}
+
+# read_guest_log_lines <file>: the complete lines of a copy of the guest's log, into GUEST_LOG_LINES.
+read_guest_log_lines() {
+    local line
     GUEST_LOG_LINES=()
     while IFS= read -r line; do
         GUEST_LOG_LINES+=("$line")
-    done < <(tr -d '\r\0' <"$fetched")
-    rm -f "$fetched"
+    done < <(tr -d '\r\0' <"$1")
 }
 
 # show_new_guest_log_lines: the lines of GUEST_LOG_LINES not shown before, as LOG lines.
@@ -84,6 +90,14 @@ guest_log_steps_done() {
         [[ $line =~ ^${GUEST_LOG_TIMESTAMP}(ok|FAILED)([^A-Za-z]|$) ]] && ((ended++))
     done
     echo "$ended"
+}
+
+# guest_log_failed_lines: the lines of the steps that ended FAILED, as the guest wrote them.
+guest_log_failed_lines() {
+    local line
+    for line in "${GUEST_LOG_LINES[@]}"; do
+        [[ $line =~ ^${GUEST_LOG_TIMESTAMP}FAILED([^A-Za-z]|$) ]] && printf '%s\n' "$line"
+    done
 }
 
 # guest_log_current_step: the name of the newest step the log says started, empty before the first.
