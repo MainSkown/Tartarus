@@ -81,6 +81,8 @@ services:
       - cape-storage:/cape-storage:ro
       - sample-store:/data/samples
       - exports:/data/exports
+      # Uploaded PCAPs and memory images, written here and handed to CAPE by path.
+      - imports:/imports
       # Read-only: the shipped rules (default/, tartarus/) and the analyst's own in custom/ are edited on the host.
       - ./rules/sigma:/rules/sigma:ro
     depends_on:
@@ -154,6 +156,8 @@ services:
     volumes:
       - cape-storage:/opt/CAPEv2/storage
       - guest-images:/var/lib/libvirt
+      # Read-only: CAPE reads an import's file, it never writes to the upload folder.
+      - imports:/imports:ro
       # The user's Windows ISOs, read-only: Windows Setup reads one as the guest's CD-ROM.
       - ./data/iso:/data/iso:ro
     depends_on:
@@ -187,3 +191,4 @@ volumes:
   guest-images:
   sample-store:
   exports:
+  imports:
