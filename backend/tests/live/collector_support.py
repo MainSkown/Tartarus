@@ -23,11 +23,13 @@ def fixture_logs() -> dict[str, bytes]:
     return {f"{pid}.bson": (FIXTURES / f"{pid}.bson").read_bytes() for pid in sorted(PIDS)}
 
 
-def reference_events() -> list[Event]:
+def reference_events(
+    logs: dict[str, bytes] | None = None, analysis_id: int = ANALYSIS_ID
+) -> list[Event]:
     """What feeding each whole file once through the parser and `LiveCapemon` gives."""
-    live = LiveCapemon(IngestContext(ANALYSIS_ID, STARTED_AT))
+    live = LiveCapemon(IngestContext(analysis_id, STARTED_AT))
     events: list[Event] = []
-    for name, data in fixture_logs().items():
+    for name, data in (fixture_logs() if logs is None else logs).items():
         events += live.update(name, BsonLogParser().feed(data))
     return events + live.flush()
 
