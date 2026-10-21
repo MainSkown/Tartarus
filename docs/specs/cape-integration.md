@@ -37,7 +37,7 @@ the entrypoint exports.
 | File | Settings |
 |---|---|
 | `cuckoo.conf` | `machinery = kvm`; ResultServer on `192.168.150.1:2042`; timeouts; database connection to the `cape` database. |
-| `kvm.conf` | Holds **no machine**. The control service writes `/var/lib/libvirt/tartarus/kvm.conf.d/guests.conf` (a `[kvm] machines = a,b,c` section plus a `[<label>]` section per `testing` or `ready` guest with `platform`, `ip`, `snapshot`, `arch`, `interface = tt-guest`, `tags`) and restarts `cape`; it is the only file in that directory (see [Several guests](#several-guests)). The `cape` program waits until a registered machine is defined, because `cuckoo.py` exits with "No machines available". |
+| `kvm.conf` | Holds **no machine**. The control service writes `/var/lib/libvirt/tartarus/kvm.conf.d/guests.conf` (a `[kvm] machines = a,b,c` section plus a `[<label>]` section per `testing` or `ready` guest with `platform`, `ip`, `snapshot`, `arch`, `interface = tt-guest`, `tags`: the profile's, plus the one its `cape.tag_rules` pick for the guest's media build) and restarts `cape`; it is the only file in that directory (see [Several guests](#several-guests)). The `cape` program waits until a registered machine is defined, because `cuckoo.py` exits with "No machines available". |
 | `routing.conf` | `route = inetsim`; `no_local_routing = no` (`yes` needs a VRF and the host's `vrf` module); `internet = eth0`; RFC1918 and Docker `reject_segments`. Only the inetsim route is verified; `internet` is configured but unexercised. |
 | `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `[taskdelete] enabled = yes`, because `tasks/delete` answers "Task Deletion API is Disabled" by default; `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
 | `web.conf` | `[guacamole] enabled = yes` so CAPE records each guest's VNC port. `guacd` binds the internal address only. The backend uses `cape:4822` itself; CAPE's own Guacamole view is unused. |
@@ -66,7 +66,7 @@ a channel is added with one line. Sysmon is optional: a guest without it (an ado
   detection, which Defender writes before the analyzer starts. `start()` first waits up to 90 s for the agent's
   `/status`, because a slow guest after its revert would otherwise lose the export silently. A channel whose
   baseline still cannot be read (agent unreachable, channel missing, code page unreadable) is skipped, never
-  exported whole, and is named in `aux/event_logs.json`, which the ingest turns into `summary.missing_exports`.
+  exported whole, and is named in `aux/event_logs.json`, which the ingest turns into `summary.missing_exports` and the plain-words `summary.warnings`.
 - **Sysmon config.** At `start()` the module pushes `guest/profiles/windows/sysmon-config.xml` (the image keeps it
   at `/usr/local/lib/tartarus/profiles/windows/`) to the guest through the agent and applies it with
   `Sysmon64.exe -accepteula -c`, then removes the file, before reading the baseline, so Sysmon's own
@@ -216,7 +216,8 @@ off and the Docker socket is never mounted.**
   (`.env`, 32 characters at least, compared in constant time); without it the answer is `401`, and the
   service will not start with a short or missing token. The request log never holds a header or a body.
 - **Narrow, validated operations only.** Routes: `GET /profiles`, `GET /media`, `GET /guests`, `GET` and
-  `DELETE /guests/{name}`, `POST /guests/{name}/check`, `POST /guests/{name}/clone`, `GET
+  `DELETE /guests/{name}`, `POST /guests/{name}/check`, `POST /guests/{name}/clone`, `POST /guests/{name}/selftest` (run a failed guest's self-test again: it answers the
+  id of the guest's finished build), `GET
   /guests/{name}/display`, `GET /guests/{name}/selftest/sample`, `POST /guests/{name}/selftest/checks`,
   `POST /builds`, `GET /builds/{id}` and `/log?tail=`, `POST /builds/{id}/resume|restart|continue|complete|cancel`,
   `POST /tasks/{id}/finish`, the memory routes `POST /memory/{id}/analyse` and `DELETE /memory/{id}/dump`, and
@@ -323,7 +324,11 @@ leaves nothing behind and an existing valid file means no fetch at all. About 30
   the libvirt domain name and CAPE machine label and exists nowhere inside the guest.
 - **States.** `building` while a build or clone runs, `testing` once it has finished (registered with CAPE,
   but not offered for analyses) until the backend's self-test gives its verdict, then `ready`, or `failed`
-  (unregistered, files kept so a step can be retried). Only `ready` guests run analyses. A record that cannot be
+  (unregistered, files kept so a step can be retried). A guest that failed its self-test after every build step passed
+  can have the self-test run again (`POST /guests/{name}/selftest`): the control service registers it with CAPE again,
+  the same way the build's `register` step does, and sets it `testing`; the backend runs the same self-test and the
+  verdict makes it `ready` or `failed` again. A guest that failed during a step has no snapshot and is refused: its
+  build is restarted or resumed instead. Only `ready` guests run analyses. A record that cannot be
   read is listed as `broken` so it can be deleted.
 - **At most five guests** that are building, testing or ready. A `failed` guest does not count: it keeps its name and
   its address until it is deleted, but it never blocks a new build or clone. Each is a full, independent disk of about 22 GB (17 to 18 GB
@@ -363,7 +368,7 @@ is failed too, and the sniffer's `tcpdump` can leak across the restart (the cont
 after it). So:
 
 - while a guest is `building` or `testing`, `POST /analyses` is `409` ("A guest is being built");
-- a build, clone, resume, restart, continue, delete and `[RUN CHECKS]` (which reverts a snapshot) are `409`
+- a build, clone, resume, restart, continue, delete, `[RE-RUN SELF-TEST]` and `[RUN CHECKS]` (which reverts a snapshot) are `409`
   while an analysis is queued, starting or running on any guest; the `409` names those analyses and their guests;
 - the engine runs one thing at a time: one build or clone (a paused one included), and no check or self-test
   check beside it.
@@ -389,8 +394,9 @@ beyond the edition name the media gave. What differs on Windows 10, found by bui
   fake page, an Edge window (a captive-portal check). Nothing answers them and neither blocks provisioning.
 - Windows' own English service names contain "Antivirus", which the giveaway scan allows (see Names and giveaways).
 - Not verified: a PowerShell sample on Windows 10 stalls the guest agent after the analyzer ends and the run loses
-  its Sysmon and Defender events (see [M10 findings](../plans/m10-guest-proofs.md)); the CAPE tag of every Windows
-  guest is still `win11`.
+  its Sysmon and Defender events (see [M10 findings](../plans/m10-guest-proofs.md)). The CAPE tag follows the
+  media: the profile's `cape.tag_rules` map the media's build to `win10` (from 10240) or `win11` (from 22000)
+  next to the always-on `windows`, so a Windows 10 guest registers as `windows,win10`.
 
 ### Inputs (the Windows profile)
 

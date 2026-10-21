@@ -60,7 +60,7 @@ describe('loading the media', () => {
   it('offers an image a profile recognised and disables the ones it cannot build from, with the reason', async () => {
     const wizard = await loadedWizard()
     expect(wizard.mediaChoices.value.map((choice) => [choice.entry.file, choice.profileName, choice.unavailable])).toEqual([
-      [WIN11.file, 'Windows 11', undefined],
+      [WIN11.file, 'Windows', undefined],
       ['notes.iso', undefined, BROKEN_MEDIA.error],
       ['ubuntu.iso', undefined, 'No installed profile reads this image (ubuntu)'],
     ])

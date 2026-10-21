@@ -606,6 +606,112 @@ def test_a_passed_verdict_registers_a_guest_that_the_pipeline_left_unregistered(
     assert lab.engine.guest("alpha")["state"] == "ready"
 
 
+# --- running the self-test again --------------------------------------------------------
+
+
+def failed_its_self_test(lab, name="alpha"):
+    build_id = lab.build(name)["id"]
+    lab.engine.complete_build(build_id, False, {"message": "no DNS answer"})
+    return build_id
+
+
+def test_a_guest_that_failed_its_self_test_is_registered_again_and_testing(lab):
+    build_id = failed_its_self_test(lab)
+    assert lab.host.machines() == []
+
+    answered = lab.engine.retry_selftest("alpha")
+
+    assert answered == build_id
+    assert lab.engine.guest("alpha")["state"] == "testing"
+    assert lab.host.machines() == ["alpha"]
+    assert lab.host.cape_restarts == 3
+
+
+def test_the_verdict_of_the_second_self_test_makes_the_guest_ready_with_the_new_result(lab):
+    failed_its_self_test(lab)
+    build_id = lab.engine.retry_selftest("alpha")
+
+    lab.engine.complete_build(build_id, True, {"analysis": "a-2"})
+
+    guest = lab.engine.guest("alpha")
+    assert (guest["state"], guest["selftest"]) == ("ready", {"analysis": "a-2"})
+    assert lab.host.machines() == ["alpha"]
+
+
+def test_a_second_failing_verdict_leaves_the_guest_failed_and_unregistered_again(lab):
+    failed_its_self_test(lab)
+    build_id = lab.engine.retry_selftest("alpha")
+
+    lab.engine.complete_build(build_id, False, {"message": "still no DNS answer"})
+
+    guest = lab.engine.guest("alpha")
+    assert (guest["state"], guest["selftest"]) == ("failed", {"message": "still no DNS answer"})
+    assert lab.host.machines() == []
+
+
+def test_a_ready_guest_is_not_tested_again(lab):
+    lab.engine.complete_build(lab.build()["id"], True, {})
+
+    with pytest.raises(Conflict, match="alpha is ready; only a failed guest"):
+        lab.engine.retry_selftest("alpha")
+
+    assert lab.host.cape_restarts == 1
+
+
+def test_a_guest_that_is_already_testing_is_not_tested_again(lab):
+    lab.build()
+
+    with pytest.raises(Conflict, match="alpha is testing; only a failed guest"):
+        lab.engine.retry_selftest("alpha")
+
+
+def test_a_guest_that_failed_during_a_build_step_is_sent_back_to_its_build(lab):
+    fail_the_disk_check(lab)
+    lab.build()
+
+    with pytest.raises(Conflict, match="never finished building: restart or resume its build"):
+        lab.engine.retry_selftest("alpha")
+
+    assert lab.engine.guest("alpha")["state"] == "failed"
+    assert lab.host.machines() == []
+
+
+def test_running_the_self_test_again_for_an_unknown_guest_is_not_found(lab):
+    with pytest.raises(GuestNotFound):
+        lab.engine.retry_selftest("ghost")
+
+
+def test_a_build_that_is_active_blocks_the_retry(lab):
+    failed_its_self_test(lab, "alpha")
+    lab.build("bravo", options={"pause": True})
+
+    with pytest.raises(Conflict, match="bravo"):
+        lab.engine.retry_selftest("alpha")
+
+    assert lab.engine.guest("alpha")["state"] == "failed"
+
+
+def test_a_full_house_blocks_the_retry_like_it_blocks_a_new_build(lab):
+    failed_its_self_test(lab, "alpha")
+    for name in ("bravo", "charlie", "delta", "echo", "foxtrot"):
+        lab.build(name)
+
+    with pytest.raises(Conflict, match="delete one first"):
+        lab.engine.retry_selftest("alpha")
+
+    assert lab.engine.guest("alpha")["state"] == "failed"
+
+
+def test_cape_that_will_not_list_the_guest_leaves_it_failed_and_says_why(lab):
+    failed_its_self_test(lab)
+    lab.host.cape_fails = True
+
+    with pytest.raises(Conflict, match="spawn error"):
+        lab.engine.retry_selftest("alpha")
+
+    assert lab.engine.guest("alpha")["state"] == "failed"
+
+
 # --- reading guests ---------------------------------------------------------------------
 
 

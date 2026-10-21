@@ -34,7 +34,7 @@ describe('GuestCard fields', () => {
     const text = wrapper.text()
     expect(wrapper.find('.guest-card__name').text()).toBe('lab1')
     expect(text).toContain('READY')
-    expect(text).toContain('Windows 11 Pro')
+    expect(text).toContain('Windows Pro')
     expect(text).toContain('DEFENDER ON')
     expect(text).toContain('BUILD')
     expect(text).toContain('4 vCPUs · 8 GB RAM · 80 GB disk')
@@ -234,5 +234,48 @@ describe('GuestCard checks', () => {
   it('shows the reason the checks were refused', async () => {
     const { wrapper } = await mountCard({ check: { busy: false, error: 'An analysis is running' } })
     expect(wrapper.find('.guest-checks').text()).toContain('An analysis is running')
+  })
+})
+
+describe('GuestCard re-run self-test', () => {
+  const failedAfterBuild = guestFixture({ state: 'failed', selftest: { message: 'no DNS answer', analysis_id: 41 }, build_id: 'b2' })
+  const label = 'RE-RUN SELF-TEST'
+
+  it('offers the button on a failed guest that has a self-test verdict', async () => {
+    const { wrapper } = await mountCard({ guest: failedAfterBuild })
+    expect(button(wrapper, label)).toBeDefined()
+  })
+
+  it.each([
+    ['a ready guest', guestFixture()],
+    ['a failed guest the self-test never reached', guestFixture({ state: 'failed', selftest: null, build_id: 'b2' })],
+    ['a testing guest', guestFixture({ state: 'testing', selftest: null, build_id: 'b2' })],
+  ])('does not offer it on %s', async (_what, guest) => {
+    const { wrapper } = await mountCard({ guest })
+    expect(button(wrapper, label)).toBeUndefined()
+  })
+
+  it('asks for the self-test to be run again when pressed', async () => {
+    const { wrapper } = await mountCard({ guest: failedAfterBuild })
+    await button(wrapper, label)!.trigger('click')
+    expect(wrapper.emitted('retestSelfTest')).toHaveLength(1)
+  })
+
+  it('shows it busy and does not take a second press while the request runs', async () => {
+    const { wrapper } = await mountCard({ guest: failedAfterBuild, retesting: true })
+    const pressed = button(wrapper, label)!
+    expect(pressed.attributes('disabled')).toBeDefined()
+    expect(pressed.find('.q-spinner').exists()).toBe(true)
+  })
+
+  it('shows the refusal the control service gave, as an alert on the card', async () => {
+    const { wrapper } = await mountCard({ guest: failedAfterBuild, retestError: 'lab1 never finished building' })
+    expect(wrapper.find('.guest-card__refusal[role="alert"]').text()).toContain('lab1 never finished building')
+  })
+
+  it('shows a delete refusal and a retest refusal together', async () => {
+    const { wrapper } = await mountCard({ guest: failedAfterBuild, deleteError: 'being cloned', retestError: 'an analysis runs' })
+    const refusals = wrapper.findAll('.guest-card__refusal').map((refusal) => refusal.text())
+    expect(refusals).toEqual([expect.stringContaining('being cloned'), expect.stringContaining('an analysis runs')])
   })
 })

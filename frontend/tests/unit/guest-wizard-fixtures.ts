@@ -44,7 +44,7 @@ export const HOSTNAME_OPTION: ProfileOption = {
 export function windowsProfile(overrides: Partial<GuestProfile> = {}): GuestProfile {
   return {
     id: 'windows',
-    display_name: 'Windows 11',
+    display_name: 'Windows',
     family: 'windows',
     arch: 'x64',
     resources: { vcpus: 2, ram_mb: 4096, disk_gb: 80, min_disk_gb: 64 },

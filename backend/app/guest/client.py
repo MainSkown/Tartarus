@@ -89,6 +89,11 @@ class GuestControl(Protocol):
 
     async def start_clone(self, source: str, params: Mapping[str, Any]) -> str: ...
 
+    async def retry_selftest(self, name: str) -> str:
+        """Registers a failed guest again and answers the id of the build whose self-test is
+        run again; `complete` then takes the verdict."""
+        ...
+
     async def build(self, build_id: str) -> BuildStatus: ...
 
     async def build_log(self, build_id: str, tail: int) -> list[str]: ...
@@ -190,6 +195,10 @@ class HttpGuestControl:
     async def start_clone(self, source: str, params: Mapping[str, Any]) -> str:
         body = await self._send("start_clone", "POST", f"/guests/{source}/clone", params)
         return _started_id("start_clone", body)
+
+    async def retry_selftest(self, name: str) -> str:
+        body = await self._send("retry_selftest", "POST", f"/guests/{name}/selftest")
+        return _started_id("retry_selftest", body)
 
     async def build(self, build_id: str) -> BuildStatus:
         body = await self._send("build", "GET", f"/builds/{build_id}")

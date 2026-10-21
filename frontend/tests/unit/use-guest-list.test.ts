@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   guestsActiveBuild: vi.fn(),
   guestsCheck: vi.fn(),
   guestsDelete: vi.fn(),
+  guestsRetrySelftest: vi.fn(),
   settingsRead: vi.fn(),
   systemHealth: vi.fn(),
 }))
@@ -66,11 +67,12 @@ beforeEach(() => {
   api.systemHealth.mockResolvedValue({ data: undefined })
   api.guestsList.mockReset().mockResolvedValue(succeeded(READY))
   api.guestsMedia.mockReset().mockResolvedValue(succeeded([]))
-  api.guestsProfiles.mockReset().mockResolvedValue(succeeded([{ id: 'windows', display_name: 'Windows 11' }]))
+  api.guestsProfiles.mockReset().mockResolvedValue(succeeded([{ id: 'windows', display_name: 'Windows' }]))
   api.guestsReadBuild.mockReset().mockResolvedValue(succeeded(build()))
   api.guestsActiveBuild.mockReset().mockResolvedValue(failed('no build', 404))
   api.guestsCheck.mockReset()
   api.guestsDelete.mockReset().mockResolvedValue({ data: undefined, error: undefined })
+  api.guestsRetrySelftest.mockReset().mockResolvedValue(succeeded({ job_id: 3, build_id: 'b1', guest: 'lab1' }))
   api.settingsRead.mockReset().mockResolvedValue(succeeded({ default_guest: null }))
   confirmDestructive.mockReset().mockResolvedValue(true)
 })
@@ -93,7 +95,7 @@ describe('useGuestList loading', () => {
   it('also loads the profiles the cards name the OS from', async () => {
     const list = start()
     await flushPromises()
-    expect(list.profileOf(guest('win', { profile: 'windows' }))?.display_name).toBe('Windows 11')
+    expect(list.profileOf(guest('win', { profile: 'windows' }))?.display_name).toBe('Windows')
   })
 
   it('keeps the error of a failed load and loads again on reload', async () => {
@@ -374,5 +376,58 @@ describe('useGuestList delete', () => {
     await list.remove('lab1')
     await list.remove('lab1')
     expect(list.deleteErrorOf('lab1')).toBeUndefined()
+  })
+})
+
+describe('useGuestList self-test retry', () => {
+  it('asks the backend to run the guest\'s self-test again and reloads so the card shows it testing', async () => {
+    const list = start()
+    await flushPromises()
+    api.guestsList.mockResolvedValue(succeeded([guest('win'), guest('lab1', { state: 'testing', build_id: 'b1' })]))
+    await list.retestSelfTest('lab1')
+    expect(api.guestsRetrySelftest.mock.calls[0]![0].path).toEqual({ name: 'lab1' })
+    expect(list.guests.value.find((g) => g.name === 'lab1')?.state).toBe('testing')
+    expect(list.retestErrorOf('lab1')).toBeUndefined()
+  })
+
+  it('is busy while the request runs', async () => {
+    let answer: (value: unknown) => void = () => undefined
+    api.guestsRetrySelftest.mockReturnValue(new Promise((resolve) => (answer = resolve)))
+    const list = start()
+    await flushPromises()
+    const retesting = list.retestSelfTest('lab1')
+    expect(list.isRetesting('lab1')).toBe(true)
+    expect(list.isRetesting('win')).toBe(false)
+    answer(succeeded({ job_id: 3, build_id: 'b1', guest: 'lab1' }))
+    await retesting
+    expect(list.isRetesting('lab1')).toBe(false)
+  })
+
+  it('does not send the request twice while it runs', async () => {
+    api.guestsRetrySelftest.mockReturnValue(new Promise(() => undefined))
+    const list = start()
+    await flushPromises()
+    void list.retestSelfTest('lab1')
+    void list.retestSelfTest('lab1')
+    expect(api.guestsRetrySelftest).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a refusal on the guest, asks the client not to toast it, and is no longer busy', async () => {
+    api.guestsRetrySelftest.mockResolvedValue(failed('lab1 never finished building: restart or resume its build instead', 409))
+    const list = start()
+    await flushPromises()
+    await list.retestSelfTest('lab1')
+    expect(list.retestErrorOf('lab1')).toBe('lab1 never finished building: restart or resume its build instead')
+    expect(list.isRetesting('lab1')).toBe(false)
+    expect(api.guestsRetrySelftest.mock.calls[0]![0].meta).toEqual({ quietStatuses: expect.arrayContaining([409]) })
+  })
+
+  it('clears the earlier refusal when it is tried again', async () => {
+    api.guestsRetrySelftest.mockResolvedValueOnce(failed('An analysis is running', 409))
+    const list = start()
+    await flushPromises()
+    await list.retestSelfTest('lab1')
+    await list.retestSelfTest('lab1')
+    expect(list.retestErrorOf('lab1')).toBeUndefined()
   })
 })

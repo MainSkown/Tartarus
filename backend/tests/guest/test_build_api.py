@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.db.models import Job
 from app.db.models.analysis import AnalysisStatus
 from app.db.models.job import JobStatus, JobType
+from app.guest.build_job import SELFTEST_KIND, TrackedBuild
 from app.guest.errors import GuestControlRejected, GuestControlUnreachable
 from tests.guest.fakes import BUILD_ID, FakeGuestControl, Poll, a_build
 from tests.guest.harness import Harness
@@ -160,6 +161,84 @@ async def test_a_clone_the_control_service_refuses_passes_its_answer_on_and_star
 
     assert (response.status_code, error_of(response)["code"]) == (status, code)
     assert error_of(response)["message"] == message
+    assert await jobs_of(harness) == []
+
+
+# --- POST /guests/{name}/selftest -----------------------------------------------------------------
+
+
+async def test_running_the_self_test_again_asks_the_control_service_and_tracks_the_guest(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    control = harness.control
+    tracked_with: list[tuple[str, str, str]] = []
+    track = harness.tracking.track
+
+    async def recording_track(guest: str, build_id: str, kind: str) -> TrackedBuild:
+        tracked_with.append((guest, build_id, kind))
+        return await track(guest, build_id, kind)
+
+    monkeypatch.setattr(harness.tracking, "track", recording_track)
+
+    response = await harness.client.post("/api/guests/lab1/selftest")
+
+    [job] = await jobs_of(harness)
+    assert response.status_code == 202
+    assert response.json() == {"job_id": job.id, "build_id": BUILD_ID, "guest": "lab1"}
+    assert control.calls_named("retry_selftest") == ["lab1"]
+    assert (job.type, job.status, job.analysis_id) == (JobType.GUEST_BUILD, JobStatus.PENDING, None)
+    assert tracked_with == [("lab1", BUILD_ID, SELFTEST_KIND)]
+    assert harness.tracking.active() == TrackedBuild("lab1", BUILD_ID, job.id)
+
+
+@pytest.mark.parametrize("status", ACTIVE_ANALYSIS_STATUSES)
+async def test_a_retest_is_refused_with_409_while_an_analysis_needs_a_guest(
+    harness: Harness, status: AnalysisStatus
+) -> None:
+    await harness.set_analysis_status(status)
+
+    response = await harness.client.post("/api/guests/lab1/selftest")
+
+    assert response.status_code == 409
+    assert "queued, starting or running" in str(error_of(response)["message"])
+    assert "tested" in str(error_of(response)["message"])
+    assert harness.control.calls == []
+    assert await jobs_of(harness) == []
+
+
+@pytest.mark.parametrize(
+    ("status", "code", "message"),
+    [
+        (404, "not_found", "no guest called nope"),
+        (409, "conflict", "lab1 is ready; only a failed guest has its self-test run again"),
+        (
+            409,
+            "conflict",
+            "lab1 never finished building: restart or resume its build instead",
+        ),
+        (409, "conflict", "the build of lab2 is running; only one build or clone can be active"),
+    ],
+)
+async def test_a_retest_the_control_service_refuses_passes_its_answer_on_and_starts_no_job(
+    harness: Harness, status: int, code: str, message: str
+) -> None:
+    harness.control.error_by_call["retry_selftest"] = GuestControlRejected(
+        "retry_selftest", status, message
+    )
+
+    response = await harness.client.post("/api/guests/lab1/selftest")
+
+    assert (response.status_code, error_of(response)["code"]) == (status, code)
+    assert error_of(response)["message"] == message
+    assert await jobs_of(harness) == []
+
+
+async def test_a_retest_while_the_control_service_is_down_is_a_502(harness: Harness) -> None:
+    harness.use(FakeGuestControl(error=GuestControlUnreachable("retry_selftest", "ConnectError")))
+
+    response = await harness.client.post("/api/guests/lab1/selftest")
+
+    assert response.status_code == 502
     assert await jobs_of(harness) == []
 
 

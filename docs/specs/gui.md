@@ -362,7 +362,12 @@ reloads itself on every build job message and polls every 5 s while a guest is b
   SNAPSHOT, CREATED and SELF-TEST (the verdict's message, with a link to the self-test analysis).
 - **Building or testing:** a progress bar with the percent and the current step, and `[VIEW BUILD]`. Nothing
   else can be done to the guest meanwhile.
-- **Failed:** the error and `[VIEW BUILD]`, `[DELETE]`. **Broken** (a record that cannot be read): the reason and
+- **Failed:** the error and `[VIEW BUILD]`, `[DELETE]`; a failed guest that carries a self-test verdict (every build
+  step passed and the self-test failed, so its disks and snapshot are kept) also has `[RE-RUN SELF-TEST]`, which
+  starts the same job a build starts after its last step: the card goes to `TESTING` with its progress and then to
+  `READY` or `FAILED` again, with the new verdict in SELF-TEST. The button is busy while the request is sent and a
+  refusal (an analysis is running, another build is active, the build never finished) is shown on the card like a
+  delete's. A guest that failed during a build step has no verdict and no button: restart or resume its build. **Broken** (a record that cannot be read): the reason and
   `[DELETE]`.
 - **Adopted guest with giveaways:** a warning block, `A SAMPLE CAN TELL THIS IS A SANDBOX`, lists what in
   the guest says so (the account `Analyst`, a working folder, a firewall rule, ...) with "Rebuild or clone for a

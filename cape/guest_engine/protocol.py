@@ -62,6 +62,13 @@ class GuestEngine(Protocol):
         and is unregistered; the verdict is stored in the guest's record."""
         ...
 
+    def retry_selftest(self, name: str) -> str:
+        """Register a `failed` guest whose build finished, mark it `testing` and return its build
+        id, so that the backend runs the self-test again and completes that build with the verdict.
+        Refused (`Conflict`) for a guest in another state, one whose build never finished, or while
+        anything else runs."""
+        ...
+
     def check(self, name: str) -> Json:
         """Run the guest's health checks now: `{name, checks: [{id, ok, message}]}`."""
         ...

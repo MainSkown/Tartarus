@@ -11,6 +11,7 @@ from app.db.models.job import JobStatus, JobType
 from app.guest.build_job import (
     BUILD_SHARE_PERCENT,
     LOG_WINDOW,
+    SELFTEST_KIND,
     BuildTracking,
     GuestBuildError,
     guest_build_handler,
@@ -30,14 +31,14 @@ FAST = {"poll_interval_s": 0.0, "unreachable_grace_s": 5.0}
 class Rig:
     """A handler under test with a job context that records what the handler reports."""
 
-    def __init__(self, control: FakeGuestControl, runner: JobRunner) -> None:
+    def __init__(self, control: FakeGuestControl, runner: JobRunner, kind: str = "build") -> None:
         self.control = control
         self.tracking = BuildTracking(runner)
         self.events: list[Event] = []
         self.context = JobContext(
             job_id=JOB_ID,
             analysis_id=None,
-            params={"guest": "lab1", "build_id": BUILD_ID, "kind": "build"},
+            params={"guest": "lab1", "build_id": BUILD_ID, "kind": kind},
             exports_dir=Path("unused"),
             report_progress=lambda step, percent: self.events.append(("progress", step, percent)),
             append_log=lambda text: self.events.append(("log", text)),
@@ -77,6 +78,11 @@ class VerdictRunner:
         for percent in self.progress:
             report_progress("Running the sample", percent)
         return self.verdict
+
+
+@pytest.fixture
+def retest_rig(harness: Harness, tmp_path: Path) -> Rig:
+    return Rig(FakeGuestControl(), JobRunner(harness.factory, tmp_path), kind=SELFTEST_KIND)
 
 
 # --- following a running build ---------------------------------------------------------------
@@ -231,6 +237,61 @@ async def test_a_failing_verdict_is_recorded_and_fails_the_job_with_its_message(
     assert rig.control.calls_named("complete") == [
         (BUILD_ID, False, {"message": "no registry event was seen"})
     ]
+
+
+# --- running the self-test again for a failed guest -----------------------------------------------
+
+
+async def test_a_retest_runs_the_same_self_test_and_hands_its_verdict_to_the_control_service(
+    retest_rig: Rig,
+) -> None:
+    runner = VerdictRunner(SelfTestVerdict(True, {"signals": ["process"]}))
+
+    result = await retest_rig.run(runner)
+
+    assert runner.calls == [("lab1", BUILD_ID)]
+    assert retest_rig.control.calls_named("complete") == [
+        (BUILD_ID, True, {"signals": ["process"]})
+    ]
+    assert result == {"guest": "lab1", "state": "ready", "selftest": {"signals": ["process"]}}
+
+
+async def test_a_retest_that_fails_again_fails_the_job_with_the_same_message_as_a_build(
+    retest_rig: Rig,
+) -> None:
+    runner = VerdictRunner(SelfTestVerdict(False, {"message": "no registry event was seen"}))
+
+    with pytest.raises(GuestBuildError, match="self-test of lab1 failed: no registry event"):
+        await retest_rig.run(runner)
+
+    assert retest_rig.control.calls_named("complete") == [
+        (BUILD_ID, False, {"message": "no registry event was seen"})
+    ]
+
+
+async def test_a_retest_does_not_replay_the_finished_builds_log_or_poll_it(
+    retest_rig: Rig,
+) -> None:
+    retest_rig.control.polls = [Poll(a_build("succeeded"), log=["== step one", "STEP a"])]
+
+    await retest_rig.run(VerdictRunner(SelfTestVerdict(True)))
+
+    assert retest_rig.of_kind("log") == []
+    assert retest_rig.control.calls_named("build") == []
+    assert retest_rig.control.calls_named("build_log") == []
+
+
+async def test_a_retests_progress_is_the_self_tests_share_of_the_bar(retest_rig: Rig) -> None:
+    await retest_rig.run(VerdictRunner(SelfTestVerdict(True), progress=[0, 100]))
+
+    assert [event[2] for event in retest_rig.of_kind("progress")] == [BUILD_SHARE_PERCENT, 99]
+
+
+async def test_a_retest_without_a_self_test_leaves_the_guest_testing(retest_rig: Rig) -> None:
+    result = await retest_rig.run()
+
+    assert result["state"] == "testing"
+    assert retest_rig.control.calls_named("complete") == []
 
 
 async def test_a_failing_verdict_without_a_message_describes_its_details(rig: Rig) -> None:

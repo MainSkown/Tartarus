@@ -21,7 +21,7 @@ function profile(id: string, displayName: string, family: string, packages: stri
 }
 
 export const PROFILES: GuestProfile[] = [
-  profile('windows', 'Windows 11', 'windows', ['exe', 'dll', 'doc', 'xls', 'ps1', 'js', 'msi', 'hta']),
+  profile('windows', 'Windows', 'windows', ['exe', 'dll', 'doc', 'xls', 'ps1', 'js', 'msi', 'hta']),
   profile('ubuntu', 'Ubuntu 24.04', 'linux', ['bash', 'elf']),
 ]
 

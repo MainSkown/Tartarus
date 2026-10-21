@@ -22,7 +22,7 @@ export function guestFixture(overrides: Partial<Guest> = {}): Guest {
   }
 }
 
-export const WINDOWS_PROFILE = { id: 'windows', display_name: 'Windows 11' } as GuestProfile
+export const WINDOWS_PROFILE = { id: 'windows', display_name: 'Windows' } as GuestProfile
 
 export function buildFixture(overrides: Partial<BuildView> = {}): BuildView {
   return {

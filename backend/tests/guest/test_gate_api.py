@@ -15,6 +15,7 @@ GUEST_ROUTES: list[tuple[str, str, object]] = [
     ("POST", "/api/guests/lab1/clone", CLONE_BODY),
     ("DELETE", "/api/guests/lab1", None),
     ("POST", "/api/guests/lab1/check", None),
+    ("POST", "/api/guests/lab1/selftest", None),
 ]
 
 

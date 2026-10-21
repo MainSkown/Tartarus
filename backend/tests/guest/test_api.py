@@ -358,6 +358,7 @@ def test_the_routes_have_the_operation_ids_the_generated_client_is_named_after(
         ("/api/guests/{name}", "delete"): "guests_delete",
         ("/api/guests/{name}/check", "post"): "guests_check",
         ("/api/guests/{name}/clone", "post"): "guests_clone",
+        ("/api/guests/{name}/selftest", "post"): "guests_retry_selftest",
         ("/api/guests/build", "post"): "guests_start_build",
         ("/api/guests/builds/active", "get"): "guests_active_build",
         ("/api/guests/builds/{build_id}", "get"): "guests_read_build",

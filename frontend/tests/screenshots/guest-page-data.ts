@@ -20,7 +20,7 @@ const WINDOWS_MEDIA = {
 
 export const WINDOWS_PROFILE = {
   id: 'windows',
-  display_name: 'Windows 11',
+  display_name: 'Windows',
   family: 'windows',
   arch: 'x64',
   packages: ['exe', 'dll'],

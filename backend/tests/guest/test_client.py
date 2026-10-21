@@ -163,6 +163,15 @@ async def test_start_clone_posts_the_parameters_to_the_sources_clone_route() -> 
     assert json.loads(control.only_request.content) == {"name": "lab4"}
 
 
+async def test_retry_selftest_posts_to_the_guests_selftest_route_and_answers_the_build_id() -> None:
+    control = serving("POST", "/guests/lab1/selftest", json_response({"id": "b9"}, status_code=202))
+
+    build_id = await control_with(control).retry_selftest("lab1")
+
+    assert build_id == "b9"
+    assert control.only_request.method == "POST"
+
+
 @pytest.mark.parametrize("action", ["resume", "restart", "continue_"])
 async def test_resume_restart_and_continue_post_to_the_builds_routes(action: str) -> None:
     route = "continue" if action == "continue_" else action

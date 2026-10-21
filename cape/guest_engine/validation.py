@@ -8,7 +8,7 @@ spec is fully resolved.
 
 import random
 import re
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -97,8 +97,8 @@ def _request(params: object) -> Mapping[str, Any]:
     return params
 
 
-def _refuse_when_full(context: ValidationContext) -> None:
-    live = [guest for guest in context.guests if guest.state in LIVE_STATES]
+def refuse_when_full(guests: Iterable[Guest]) -> None:
+    live = [guest for guest in guests if guest.state in LIVE_STATES]
     if len(live) >= MAX_GUESTS:
         raise Conflict(
             f"there are already {MAX_GUESTS} guests that are building, testing or ready, "
@@ -320,7 +320,7 @@ def validate_build(
 ) -> ValidatedBuild:
     """Resolve a build request into a spec, or raise with every problem found."""
     request = _request(params)
-    _refuse_when_full(context)
+    refuse_when_full(context.guests)
     problems: Problems = {}
     _reject_unknown(request, BUILD_FIELDS, problems)
     name = _check_name(request, context, problems)
@@ -368,7 +368,7 @@ def validate_clone(
     profile = context.profiles.get(source.profile)
     if profile is None:
         raise Conflict(f"the profile {source.profile} of {source_name} is not installed")
-    _refuse_when_full(context)
+    refuse_when_full(context.guests)
     problems: Problems = {}
     _reject_unknown(request, CLONE_FIELDS, problems)
     name = _check_name(request, context, problems)

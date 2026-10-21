@@ -55,7 +55,12 @@ from guest_engine.selftest import (
 )
 from guest_engine.sequencer import BuildFailed, BuildJob, Sequencer
 from guest_engine.steps import Redactor, StepPaths, step_environment
-from guest_engine.validation import ValidationContext, validate_build, validate_clone
+from guest_engine.validation import (
+    ValidationContext,
+    refuse_when_full,
+    validate_build,
+    validate_clone,
+)
 
 log = logging.getLogger(__name__)
 
@@ -209,6 +214,25 @@ class Engine:
         """Stop the running step and fail its build so a restarted service can resume it."""
         self._sequencer.shutdown()
 
+    def retry_selftest(self, name: str) -> str:
+        with self._lock:
+            self._sequencer.require_free_slot()
+            guest = self._registry.get(name)
+            if guest.state != "failed":
+                raise Conflict(
+                    f"{name} is {guest.state}; only a failed guest has its self-test run again"
+                )
+            build = self._finished_build_of(guest)
+            refuse_when_full(self._registry.list())
+            self._registry.update_state(name, "testing")
+            try:
+                self._registrar.sync()
+            except RegistrationFailed as error:
+                self._registry.update_state(name, "failed")
+                self._unregister_quietly()
+                raise Conflict(f"CAPE could not be updated for {name}: {error}") from None
+            return build.id
+
     # --- health and deletion -------------------------------------------------------------
 
     def check(self, name: str) -> Json:
@@ -287,6 +311,15 @@ class Engine:
 
     def _context(self, media: list[Json]) -> ValidationContext:
         return ValidationContext(self._profiles, self._registry.list(), media)
+
+    def _finished_build_of(self, guest: Guest) -> BuildRecord:
+        """The build whose steps all passed, which is what a snapshot to test needs."""
+        builds = self._builds.of_guest(guest.name)
+        if not builds or builds[-1].status != "succeeded":
+            raise Conflict(
+                f"{guest.name} never finished building: restart or resume its build instead"
+            )
+        return builds[-1]
 
     def _profile_of(self, guest: Guest) -> Profile:
         profile = self._profiles.get(guest.profile)

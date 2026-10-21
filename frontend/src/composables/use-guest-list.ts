@@ -1,6 +1,6 @@
 import { computed, onScopeDispose, ref, watch, type ComputedRef } from 'vue'
 import { Notify } from 'quasar'
-import { guestsActiveBuild, guestsCheck, guestsDelete, guestsReadBuild, settingsRead } from '@/api'
+import { guestsActiveBuild, guestsCheck, guestsDelete, guestsReadBuild, guestsRetrySelftest, settingsRead } from '@/api'
 import type { BuildView, Guest, GuestProfile, HealthCheckResult } from '@/api'
 import { t } from '@/i18n'
 import { errorMessage } from '@/services/api-error'
@@ -35,12 +35,15 @@ export interface GuestList {
   checkOf: (name: string) => CheckState | undefined
   isDeleting: (name: string) => boolean
   deleteErrorOf: (name: string) => string | undefined
+  isRetesting: (name: string) => boolean
+  retestErrorOf: (name: string) => string | undefined
   reload: () => Promise<void>
   runChecks: (name: string) => Promise<void>
   remove: (name: string) => Promise<void>
+  retestSelfTest: (name: string) => Promise<void>
 }
 
-/** What the Guest page shows and does: the guests kept fresh, with each one's build progress, checks and delete. */
+/** What the Guest page shows and does: the guests kept fresh, with each one's build progress, checks, delete and self-test retry. */
 export function useGuestList(): GuestList {
   const store = useGuestsStore()
   const system = useSystemStore()
@@ -51,6 +54,8 @@ export function useGuestList(): GuestList {
   const checks = ref<Record<string, CheckState>>({})
   const deleting = ref<Record<string, boolean>>({})
   const deleteErrors = ref<Record<string, string>>({})
+  const retesting = ref<Record<string, boolean>>({})
+  const retestErrors = ref<Record<string, string>>({})
 
   const anyInProgress = computed(() => store.guests.some((guest) => isInProgress(guest.state)))
   const defaultName = computed(() => store.defaultGuestName(defaultSetting.value))
@@ -128,6 +133,19 @@ export function useGuestList(): GuestList {
     await reload()
   }
 
+  async function retestSelfTest(name: string): Promise<void> {
+    if (retesting.value[name]) return
+    delete retestErrors.value[name]
+    retesting.value[name] = true
+    const { error } = await guestsRetrySelftest({ path: { name }, meta: REFUSAL_STATUSES })
+    retesting.value[name] = false
+    if (error) {
+      retestErrors.value[name] = errorMessage(error)
+      return
+    }
+    await reload()
+  }
+
   watch(
     anyInProgress,
     (building) => {
@@ -160,8 +178,11 @@ export function useGuestList(): GuestList {
     checkOf: (name) => checks.value[name],
     isDeleting: (name) => deleting.value[name] === true,
     deleteErrorOf: (name) => deleteErrors.value[name],
+    isRetesting: (name) => retesting.value[name] === true,
+    retestErrorOf: (name) => retestErrors.value[name],
     reload,
     runChecks,
     remove,
+    retestSelfTest,
   }
 }

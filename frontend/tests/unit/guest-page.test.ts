@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   guestsActiveBuild: vi.fn(),
   guestsCheck: vi.fn(),
   guestsDelete: vi.fn(),
+  guestsRetrySelftest: vi.fn(),
   settingsRead: vi.fn(),
   systemHealth: vi.fn(),
 }))
@@ -62,11 +63,12 @@ beforeEach(() => {
   api.systemHealth.mockResolvedValue({ data: undefined })
   api.guestsList.mockReset().mockResolvedValue(succeeded([lab1, lab2, lab4]))
   api.guestsMedia.mockReset().mockResolvedValue(succeeded([]))
-  api.guestsProfiles.mockReset().mockResolvedValue(succeeded([{ id: 'windows', display_name: 'Windows 11' }]))
+  api.guestsProfiles.mockReset().mockResolvedValue(succeeded([{ id: 'windows', display_name: 'Windows' }]))
   api.guestsReadBuild.mockReset().mockResolvedValue(succeeded(buildFixture()))
   api.guestsActiveBuild.mockReset().mockResolvedValue(failed('none', 404))
   api.guestsCheck.mockReset()
   api.guestsDelete.mockReset().mockResolvedValue({ data: undefined, error: undefined })
+  api.guestsRetrySelftest.mockReset().mockResolvedValue(succeeded({ job_id: 3, build_id: 'b-lab5', guest: 'lab5' }))
   api.settingsRead.mockReset().mockResolvedValue(succeeded({ default_guest: null }))
   confirmDestructive.mockReset().mockResolvedValue(true)
 })
@@ -93,7 +95,7 @@ describe('GuestPage', () => {
 
   it('names the OS from the profile', async () => {
     const { wrapper } = await mountPage()
-    expect(cards(wrapper)[0]!.text()).toContain('Windows 11 Pro')
+    expect(cards(wrapper)[0]!.text()).toContain('Windows Pro')
   })
 
   it('marks the guest of the Settings default instead of the first', async () => {
@@ -176,5 +178,32 @@ describe('GuestPage', () => {
     await flushPromises()
     expect(cards(wrapper)[1]!.find('.guest-card__refusal').text()).toContain('while an analysis runs')
     expect(cards(wrapper)).toHaveLength(3)
+  })
+
+  describe('a failed guest that failed its self-test', () => {
+    const lab5 = guestFixture({ name: 'lab5', state: 'failed', build_id: 'b-lab5', selftest: { message: 'no DNS answer', analysis_id: 9 } })
+
+    beforeEach(() => {
+      api.guestsList.mockResolvedValue(succeeded([lab1, lab5]))
+    })
+
+    it('runs the self-test again from the card and shows the guest testing', async () => {
+      const { wrapper } = await mountPage()
+      api.guestsList.mockResolvedValue(succeeded([lab1, { ...lab5, state: 'testing', selftest: null }]))
+      await buttonIn(cards(wrapper)[1]!, 'RE-RUN SELF-TEST').trigger('click')
+      await flushPromises()
+      expect(api.guestsRetrySelftest.mock.calls[0]![0].path).toEqual({ name: 'lab5' })
+      expect(cards(wrapper)[1]!.text()).toContain('TESTING')
+      expect(cards(wrapper)[1]!.text()).not.toContain('RE-RUN SELF-TEST')
+    })
+
+    it('shows the 409 of a refused retest on that card only', async () => {
+      api.guestsRetrySelftest.mockResolvedValue(failed('An analysis is queued or running', 409))
+      const { wrapper } = await mountPage()
+      await buttonIn(cards(wrapper)[1]!, 'RE-RUN SELF-TEST').trigger('click')
+      await flushPromises()
+      expect(cards(wrapper)[1]!.find('.guest-card__refusal').text()).toContain('An analysis is queued or running')
+      expect(cards(wrapper)[0]!.find('.guest-card__refusal').exists()).toBe(false)
+    })
   })
 })

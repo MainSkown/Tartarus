@@ -54,7 +54,10 @@ const list = useGuestList()
             :check="list.checkOf(guest.name)"
             :deleting="list.isDeleting(guest.name)"
             :delete-error="list.deleteErrorOf(guest.name)"
+            :retesting="list.isRetesting(guest.name)"
+            :retest-error="list.retestErrorOf(guest.name)"
             @run-checks="list.runChecks(guest.name)"
+            @retest-self-test="list.retestSelfTest(guest.name)"
             @remove="list.remove(guest.name)"
           />
         </li>

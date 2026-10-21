@@ -35,6 +35,8 @@ BUILD_SHARE_PERCENT = 90
 SELFTEST_END_PERCENT = 99
 DETAILS_LIMIT = 500
 NOT_FOUND = 404
+# The job kind of a self-test run again for a guest whose build had already succeeded.
+SELFTEST_KIND = "selftest"
 BUILD_REMOVED_MESSAGE = "the build was removed before it finished"
 
 
@@ -108,8 +110,10 @@ def guest_build_handler(
         timing = _Timing(poll_interval_s, unreachable_grace_s)
         follower = _BuildFollower(control, context, params, runner, timing)
         try:
+            if params.kind == SELFTEST_KIND:
+                return await follower.hand_to_self_test(params.build_id)
             built = await follower.follow()
-            return await follower.hand_to_self_test(built)
+            return await follower.hand_to_self_test(built.id)
         finally:
             tracking.release(params.build_id, context.job_id)
 
@@ -147,8 +151,8 @@ class _BuildFollower:
                 return status
             await asyncio.sleep(self._timing.poll_interval_s)
 
-    async def hand_to_self_test(self, built: BuildStatus) -> JobResult:
-        guest, build_id = self._params.guest, built.id
+    async def hand_to_self_test(self, build_id: str) -> JobResult:
+        guest = self._params.guest
         verdict = await self._selftest.run(guest, build_id, self._report_self_test_progress)
         if verdict is None:
             return {"guest": guest, "state": "testing", "selftest": "not run"}

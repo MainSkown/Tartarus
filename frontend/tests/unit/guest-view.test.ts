@@ -6,7 +6,7 @@ function guest(overrides: Partial<Guest> = {}): Guest {
   return { name: 'lab1', state: 'ready', ...overrides }
 }
 
-const WINDOWS = { id: 'windows', display_name: 'Windows 11' } as GuestProfile
+const WINDOWS = { id: 'windows', display_name: 'Windows' } as GuestProfile
 
 describe('kindLabel', () => {
   it('says BUILD for a guest built from media', () => {
@@ -33,7 +33,7 @@ describe('kindLabel', () => {
 describe('systemLabel', () => {
   it('joins the profile name and the media variant', () => {
     const media = { file: 'w.iso', arch: 'x64', variant: 'Pro' }
-    expect(systemLabel(guest({ media }), WINDOWS)).toBe('Windows 11 Pro')
+    expect(systemLabel(guest({ media }), WINDOWS)).toBe('Windows Pro')
   })
 
   it('uses the edition name when the media could name it', () => {
@@ -43,7 +43,7 @@ describe('systemLabel', () => {
 
   it('never shows a bare edition index', () => {
     const media = { file: 'w.iso', arch: 'x64', variant: '5' }
-    expect(systemLabel(guest({ media }), WINDOWS)).toBe('Windows 11')
+    expect(systemLabel(guest({ media }), WINDOWS)).toBe('Windows')
   })
 
   it('falls back to the profile id when the profiles are not loaded', () => {
@@ -104,11 +104,11 @@ describe('guestDeleteConfirmation', () => {
 
 describe('guestActions', () => {
   it('offers a ready guest its checks, a clone and a delete', () => {
-    expect(guestActions(guest({ state: 'ready', build_id: 'b1' }))).toEqual({ runChecks: true, clone: true, remove: true, viewBuild: false })
+    expect(guestActions(guest({ state: 'ready', build_id: 'b1' }))).toEqual({ runChecks: true, clone: true, remove: true, viewBuild: false, retestSelfTest: false })
   })
 
   it.each(['building', 'testing'] as const)('offers a %s guest only its build', (state) => {
-    expect(guestActions(guest({ state, build_id: 'b1' }))).toEqual({ runChecks: false, clone: false, remove: false, viewBuild: true })
+    expect(guestActions(guest({ state, build_id: 'b1' }))).toEqual({ runChecks: false, clone: false, remove: false, viewBuild: true, retestSelfTest: false })
   })
 
   it('has nothing to show for a build whose id is unknown', () => {
@@ -116,10 +116,24 @@ describe('guestActions', () => {
   })
 
   it('lets a failed guest be deleted and its build be seen, but not checked or cloned', () => {
-    expect(guestActions(guest({ state: 'failed', build_id: 'b2' }))).toEqual({ runChecks: false, clone: false, remove: true, viewBuild: true })
+    expect(guestActions(guest({ state: 'failed', build_id: 'b2' }))).toEqual({ runChecks: false, clone: false, remove: true, viewBuild: true, retestSelfTest: false })
+  })
+
+  it('lets a failed guest that has a self-test verdict run the self-test again', () => {
+    const verdict = { message: 'no DNS answer', analysis_id: 7 }
+    expect(guestActions(guest({ state: 'failed', build_id: 'b2', selftest: verdict })).retestSelfTest).toBe(true)
+  })
+
+  it('offers no retest to a failed guest the self-test never reached, which needs its build restarted', () => {
+    expect(guestActions(guest({ state: 'failed', build_id: 'b2', selftest: null })).retestSelfTest).toBe(false)
+    expect(guestActions(guest({ state: 'failed', build_id: 'b2' })).retestSelfTest).toBe(false)
+  })
+
+  it.each(['ready', 'building', 'testing', 'broken'] as const)('offers no retest to a %s guest even with a verdict', (state) => {
+    expect(guestActions(guest({ state, build_id: 'b2', selftest: { message: 'ok' } })).retestSelfTest).toBe(false)
   })
 
   it('lets a broken guest only be deleted', () => {
-    expect(guestActions(guest({ state: 'broken' }))).toEqual({ runChecks: false, clone: false, remove: true, viewBuild: false })
+    expect(guestActions(guest({ state: 'broken' }))).toEqual({ runChecks: false, clone: false, remove: true, viewBuild: false, retestSelfTest: false })
   })
 })

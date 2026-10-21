@@ -54,6 +54,7 @@ export default {
       runChecks: '[RUN CHECKS]',
       clone: '[CLONE]',
       viewBuild: '[VIEW BUILD]',
+      retestSelfTest: '[RE-RUN SELF-TEST]',
       delete: '[DELETE]',
     },
   },

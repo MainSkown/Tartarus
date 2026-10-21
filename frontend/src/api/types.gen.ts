@@ -3821,6 +3821,36 @@ export type GuestsCloneResponses = {
 
 export type GuestsCloneResponse = GuestsCloneResponses[keyof GuestsCloneResponses];
 
+export type GuestsRetrySelftestData = {
+    body?: never;
+    path: {
+        /**
+         * Name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/guests/{name}/selftest';
+};
+
+export type GuestsRetrySelftestErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsRetrySelftestError = GuestsRetrySelftestErrors[keyof GuestsRetrySelftestErrors];
+
+export type GuestsRetrySelftestResponses = {
+    /**
+     * Successful Response
+     */
+    202: BuildStarted;
+};
+
+export type GuestsRetrySelftestResponse = GuestsRetrySelftestResponses[keyof GuestsRetrySelftestResponses];
+
 export type AnalysesListData = {
     body?: never;
     path?: never;

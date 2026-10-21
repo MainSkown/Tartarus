@@ -43,10 +43,11 @@ Unknown fields are rejected; every field below is required unless a default is g
 |---|---|
 | `schema_version` | Must be `1`. A schema change bumps it, so an old profile is refused rather than misread |
 | `id` | Slug `[a-z][a-z0-9-]{1,31}`, equal to the directory name. Stored in each guest as `profile` |
-| `display_name` | What the GUI calls the OS, for example "Windows 11" |
+| `display_name` | What the GUI calls the product line, for example "Windows". It names no release: the edition a guest was built from comes from its media |
 | `family` | A label (`windows`, `linux`). Nothing may branch on it |
 | `cape.platform` | CAPE's `platform` for the machine section: `windows`, `linux` or `darwin` |
-| `cape.tags` | CAPE machine `tags` (each `[A-Za-z0-9][A-Za-z0-9_.-]{0,31}`) |
+| `cape.tags` | CAPE machine `tags` every guest of the profile has (each `[A-Za-z0-9][A-Za-z0-9_.-]{0,31}`) |
+| `cape.tag_rules` | Optional list of `{build_min, tag}`: the first rule whose `build_min` is at most the build of the guest's media (the last number of its `major.minor.build` version) adds its `tag` to the machine's tags. List the highest `build_min` first; a rule an earlier one always beats is refused. A guest whose media version is missing or unreadable keeps `cape.tags` alone. The release names (and the build numbers that tell them apart) live only here, never in engine code |
 | `arch` | `x64` or `x86`, CAPE's `arch` |
 | `hardware.machine` | libvirt machine type. The domain is rendered from fragments, so it must have a `machine.<value>.xml` fragment (only `q35` exists) |
 | `hardware.boot` | `uefi` or `bios` |

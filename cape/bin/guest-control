@@ -80,7 +80,7 @@ class NotReadyEngine:
     profiles = media = guests = guest = guest_address = delete_guest = _refuse
     start_build = start_clone = build = build_log = resume = restart = _refuse
     continue_after_pause = cancel = complete_build = check = display = _refuse
-    selftest_sample = selftest_checks = _refuse
+    selftest_sample = selftest_checks = retry_selftest = _refuse
 
     def shutdown(self) -> None:
         """Nothing runs in a stand-in, so there is nothing to stop."""
@@ -181,6 +181,7 @@ class Routes:
             self._route("POST", f"{guest}/check", self.check),
             self._route("POST", f"{guest}/clone", self.clone),
             self._route("GET", f"{guest}/display", self.display),
+            self._route("POST", f"{guest}/selftest", self.retry_selftest),
             self._route("GET", f"{guest}/selftest/sample", self.selftest_sample),
             self._route("POST", f"{guest}/selftest/checks", self.selftest_checks),
             self._route("POST", "/builds", self.start_build),
@@ -230,6 +231,11 @@ class Routes:
         if display is None:
             raise HttpError(404, {"error": "the guest has no display (it is not running)"})
         return 200, display
+
+    def retry_selftest(self, request: Request) -> control_http.Answer:
+        """Register a failed guest again so that its self-test can be run again; answers the id of
+        the build whose verdict the backend then posts."""
+        return 202, {"id": self.engine.retry_selftest(guest_name(request))}
 
     def selftest_sample(self, request: Request) -> control_http.Answer:
         """The profile's benign test sample for this guest, as the file's bytes."""

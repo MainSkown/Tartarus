@@ -95,6 +95,10 @@ class FakeGuestControl:
         self._record("start_clone", (source, dict(params)))
         return self.started_build_id
 
+    async def retry_selftest(self, name: str) -> str:
+        self._record("retry_selftest", name)
+        return self.started_build_id
+
     async def build(self, build_id: str) -> BuildStatus:
         self._record("build", build_id)
         poll = self.polls[min(self.polled, len(self.polls) - 1)]

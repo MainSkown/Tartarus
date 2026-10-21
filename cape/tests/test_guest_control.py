@@ -110,6 +110,10 @@ class FakeEngine:
     def complete_build(self, build_id, passed, selftest):
         self._called("complete_build", build_id, passed, selftest)
 
+    def retry_selftest(self, name):
+        self._called("retry_selftest", name)
+        return "build-3"
+
     def check(self, name):
         self._called("check", name)
         return {"name": name, "checks": []}
@@ -274,6 +278,21 @@ def test_a_verdict_that_is_not_a_bool_and_an_object_is_422_naming_the_field(
     assert engine.calls == []
 
 
+def test_a_failed_guest_has_its_self_test_run_again_and_the_build_id_comes_back(client, engine):
+    reply = client.request("POST", "/guests/win/selftest", headers=AUTH)
+
+    assert (reply.status, reply.json) == (202, {"id": "build-3"})
+    assert engine.calls == [("retry_selftest", "win")]
+
+
+def test_running_the_self_test_again_for_an_unknown_guest_is_404(client, engine):
+    engine.failures["retry_selftest"] = GuestNotFound("no guest called win")
+
+    reply = client.request("POST", "/guests/win/selftest", headers=AUTH)
+
+    assert (reply.status, reply.json) == (404, {"error": "no guest called win"})
+
+
 def test_a_display_that_the_engine_does_not_have_is_404(client, engine):
     engine.display_answer = None
 
@@ -415,6 +434,7 @@ def test_the_engines_exceptions_become_status_codes(client, engine, failure, sta
         ("GET", "/guests/win/display", "display"),
         ("GET", "/guests/win/selftest/sample", "selftest_sample"),
         ("POST", "/guests/win/selftest/checks", "selftest_checks"),
+        ("POST", "/guests/win/selftest", "retry_selftest"),
     ],
 )
 def test_every_route_maps_an_engine_conflict_to_409(client, engine, method, path, failing_call):

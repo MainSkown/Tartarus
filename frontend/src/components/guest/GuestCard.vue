@@ -23,13 +23,16 @@ const props = defineProps<{
   check?: CheckState
   deleting?: boolean
   deleteError?: string
+  retesting?: boolean
+  retestError?: string
 }>()
-defineEmits<{ runChecks: []; remove: [] }>()
+defineEmits<{ runChecks: []; remove: []; retestSelfTest: [] }>()
 
 const passwordRevealed = ref(false)
 
 const actions = computed(() => guestActions(props.guest))
 const selfTest = computed(() => selfTestOf(props.guest))
+const refusals = computed(() => [props.deleteError, props.retestError].filter((message) => message !== undefined))
 const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveaways ?? []).length > 0)
 </script>
 
@@ -207,7 +210,8 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
     />
 
     <p
-      v-if="deleteError"
+      v-for="refusal in refusals"
+      :key="refusal"
       class="guest-card__refusal text-mono"
       role="alert"
     >
@@ -216,7 +220,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
         size="16px"
         aria-hidden="true"
       />
-      <span>{{ deleteError }}</span>
+      <span>{{ refusal }}</span>
     </p>
 
     <div class="guest-card__actions">
@@ -245,6 +249,16 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
         :label="t('guests.card.action.viewBuild')"
         class="guest-card__action text-mono"
         :to="`/guest/builds/${guest.build_id}`"
+      />
+      <q-btn
+        v-if="actions.retestSelfTest"
+        outline
+        square
+        :label="t('guests.card.action.retestSelfTest')"
+        class="guest-card__action text-mono"
+        :loading="retesting"
+        :disable="retesting"
+        @click="$emit('retestSelfTest')"
       />
       <q-btn
         v-if="actions.remove"

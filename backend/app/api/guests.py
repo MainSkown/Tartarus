@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_guest_control, require_no_analysis_needing_a_guest
 from app.db.session import get_session
-from app.guest.build_job import BuildTracking
+from app.guest.build_job import SELFTEST_KIND, BuildTracking
 from app.guest.client import GuestControl
 from app.guest.schemas import (
     ActiveBuild,
@@ -223,3 +223,22 @@ async def clone(
     """
     await require_no_analysis_needing_a_guest(session, "cloned")
     return await _follow(control, tracking, await control.start_clone(name, params))
+
+
+@router.post("/{name}/selftest", status_code=202)
+async def retry_selftest(
+    name: str,
+    control: GuestControlDependency,
+    session: SessionDependency,
+    tracking: BuildTrackingDependency,
+) -> BuildStarted:
+    """Runs the self-test again for a failed guest that finished building, and follows it with a
+    job: the guest is registered with CAPE again and `testing`, and the verdict makes it `ready` or
+    `failed` again. `409` while an analysis is queued, starting or running, while a build, clone,
+    check or self-test is active, when the guest is not `failed`, or when it never finished
+    building (restart or resume its build instead); `404` when no guest has that name.
+    """
+    await require_no_analysis_needing_a_guest(session, "tested")
+    build_id = await control.retry_selftest(name)
+    tracked = await tracking.track(name, build_id, SELFTEST_KIND)
+    return BuildStarted(job_id=tracked.job_id, build_id=build_id, guest=name)

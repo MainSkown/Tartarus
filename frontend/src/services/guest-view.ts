@@ -64,9 +64,14 @@ export interface GuestActions {
   clone: boolean
   remove: boolean
   viewBuild: boolean
+  retestSelfTest: boolean
 }
 
-/** What the analyst may do with a guest in its state: only a ready one is checked or cloned, and nothing but its build is open while it builds. */
+/**
+ * What the analyst may do with a guest in its state: only a ready one is checked or cloned, and nothing but its build is open while it builds.
+ * A failed guest carries a self-test verdict only when its build finished, which is what makes running the self-test again possible; the
+ * control service still refuses a guest whose build did not.
+ */
 export function guestActions(guest: Guest): GuestActions {
   const ready = guest.state === 'ready'
   const settled = !isInProgress(guest.state)
@@ -75,5 +80,6 @@ export function guestActions(guest: Guest): GuestActions {
     clone: ready,
     remove: settled,
     viewBuild: guest.build_id != null && guest.state !== 'ready' && guest.state !== 'broken',
+    retestSelfTest: guest.state === 'failed' && guest.selftest != null,
   }
 }
