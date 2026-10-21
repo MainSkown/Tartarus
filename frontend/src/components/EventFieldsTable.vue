@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import FieldActions from '@/components/FieldActions.vue'
+import IocAnalysesLink from '@/components/IocAnalysesLink.vue'
 import { t } from '@/i18n'
 import type { SourceField } from '@/services/event-source'
+import { iocKindOfField } from '@/services/events-filters'
 import { useFieldCatalogStore } from '@/stores/field-catalog'
 
 defineProps<{ fields: SourceField[] }>()
@@ -38,12 +40,18 @@ onMounted(() => void catalog.load())
         class="field-row__value text-mono"
         role="cell"
       >{{ field.value }}</span>
-      <FieldActions
-        class="field-row__actions"
-        :field="field.name"
-        :value="field.value"
-        :filterable="isFilterable(field.name)"
-      />
+      <span class="field-row__actions">
+        <IocAnalysesLink
+          v-if="iocKindOfField(field.name)"
+          :kind="iocKindOfField(field.name)!"
+          :value="field.value"
+        />
+        <FieldActions
+          :field="field.name"
+          :value="field.value"
+          :filterable="isFilterable(field.name)"
+        />
+      </span>
     </div>
   </div>
 </template>
@@ -86,5 +94,7 @@ onMounted(() => void catalog.load())
 
 .field-row__actions {
   grid-area: actions;
+  display: inline-flex;
+  align-items: center;
 }
 </style>

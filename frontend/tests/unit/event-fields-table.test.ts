@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FieldRead } from '@/api'
 
 const queryFieldsMock = vi.fn()
-vi.mock('@/api', () => ({ queryFields: (...args: unknown[]) => queryFieldsMock(...args) }))
+const iocsAnalyses = vi.hoisted(() => vi.fn())
+vi.mock('@/api', () => ({ queryFields: (...args: unknown[]) => queryFieldsMock(...args), iocsAnalyses }))
 
 const { default: EventFieldsTable } = await import('@/components/EventFieldsTable.vue')
 const { useQueryStateStore } = await import('@/stores/query-state')
@@ -26,6 +27,20 @@ async function mountTable(fields: { name: string; value: string }[]) {
   await flushPromises()
   return wrapper
 }
+
+it('gives an indicator field a link to the analyses holding its value', async () => {
+  iocsAnalyses.mockResolvedValue({ data: [{ analysis_id: 45, count: 3 }], response: { status: 200 } })
+  const wrapper = await mountTable([
+    { name: 'destination.ip', value: '198.51.100.23' },
+    { name: 'process.name', value: 'cmd.exe' },
+  ])
+  await flushPromises()
+  expect(iocsAnalyses).toHaveBeenCalledTimes(1)
+  expect(iocsAnalyses).toHaveBeenCalledWith(expect.objectContaining({ path: { kind: 'ip', value: '198.51.100.23' } }))
+  const [ip, process] = wrapper.findAll('.field-row')
+  expect(ip!.find('.ioc-analyses__chip').text()).toBe('Seen in 1 analysis')
+  expect(process!.find('.ioc-analyses__chip').exists()).toBe(false)
+})
 
 beforeEach(() => {
   queryFieldsMock.mockReset()

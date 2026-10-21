@@ -6,6 +6,7 @@ import {
   flowDestinationFilters,
   hostEntryFilters,
   iocFilters,
+  iocKindOfField,
   memoryFindingFilters,
   registryChangeFilters,
 } from '@/services/events-filters'
@@ -71,6 +72,23 @@ describe('iocFilters', () => {
 
   it('has no filter for a type it does not know', () => {
     expect(iocFilters('certificate' as IocType, 'x')).toEqual([])
+  })
+})
+
+describe('iocKindOfField', () => {
+  it.each([
+    ['dns.question.name', 'domain'],
+    ['destination.ip', 'ip'],
+    ['url.full', 'url'],
+    ['file.hash.sha256', 'hash'],
+    ['file.path', 'file'],
+    ['registry.path', 'registry'],
+  ])('reads the %s event field as an %s indicator', (field, type) => {
+    expect(iocKindOfField(field)).toBe(type)
+  })
+
+  it('is undefined for a field that holds no indicator', () => {
+    expect(iocKindOfField('process.name')).toBeUndefined()
   })
 })
 

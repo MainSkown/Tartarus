@@ -8,8 +8,8 @@ import { filterEventsPlugins } from './filter-events-plugins'
 
 const { plugins, router, query } = await filterEventsPlugins()
 
-const viewsIocs = vi.hoisted(() => vi.fn())
-vi.mock('@/api', () => ({ viewsIocs }))
+const { viewsIocs, iocsAnalyses } = vi.hoisted(() => ({ viewsIocs: vi.fn(), iocsAnalyses: vi.fn() }))
+vi.mock('@/api', () => ({ viewsIocs, iocsAnalyses }))
 
 async function mountIocs() {
   const wrapper = mount(ArtifactIocs, { global: { plugins }, props: { analysisId: 45 } })
@@ -22,9 +22,15 @@ const chips = (wrapper: Awaited<ReturnType<typeof mountIocs>>) => wrapper.findAl
 
 beforeEach(() => {
   viewsIocs.mockResolvedValue({ data: iocsViewFixture() })
+  iocsAnalyses.mockResolvedValue({ data: [{ analysis_id: 45, count: 2 }], response: { status: 200 } })
 })
 
 describe('ArtifactIocs', () => {
+  it('shows beside each indicator value how many analyses hold it', async () => {
+    const wrapper = await mountIocs()
+    expect(rows(wrapper)[1]!.find('.ioc-analyses__chip').text()).toBe('Seen in 1 analysis')
+  })
+
   it('asks for the indicators of the analysis', async () => {
     await mountIocs()
     expect(viewsIocs).toHaveBeenCalledWith({ path: { analysis_id: 45 } })

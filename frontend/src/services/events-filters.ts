@@ -42,6 +42,21 @@ export function iocFilters(type: IocType, value: string): EventsFilter[] {
   return field === undefined ? [] : filterOn(field, value)
 }
 
+/** The event fields each indicator type is read from, as the IOC view's extraction reads them. */
+const IOC_SOURCE_FIELDS: Partial<Record<IocType, string[]>> = {
+  domain: ['dns.question.name'],
+  ip: ['destination.ip'],
+  url: ['url.full'],
+  hash: ['file.hash.sha256'],
+  file: ['file.path'],
+  registry: ['registry.path'],
+}
+
+/** The indicator type an event field holds, so a field row can offer the analyses holding its value. */
+export function iocKindOfField(field: string): IocType | undefined {
+  return (Object.keys(IOC_SOURCE_FIELDS) as IocType[]).find((type) => IOC_SOURCE_FIELDS[type]?.includes(field))
+}
+
 /**
  * The hive, key and value the registry view grouped the change by. `registry.path` is not used:
  * it is the raw path as captured, which names the hive differently and ends in the value name.

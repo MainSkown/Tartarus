@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { viewsIocs, type IocType } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
 import FilterEventsButton from '@/components/FilterEventsButton.vue'
+import IocAnalysesLink from '@/components/IocAnalysesLink.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
@@ -107,6 +108,10 @@ watch(() => props.analysisId, () => {
                   :what="t('artifacts.iocs.indicatorNoun')"
                 />
                 <FilterEventsButton :target="{ chips: iocFilters(ioc.type, ioc.value) }" />
+                <IocAnalysesLink
+                  :kind="ioc.type"
+                  :value="ioc.value"
+                />
               </td>
               <td class="num cell-count">
                 {{ ioc.count }}

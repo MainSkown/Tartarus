@@ -5,6 +5,7 @@ import dashboard from './dashboard'
 import detections from './detections'
 import events from './events'
 import guests from './guests'
+import iocs from './iocs'
 import live from './live'
 import network from './network'
 import notes from './notes'
@@ -18,4 +19,4 @@ import timeline from './timeline'
 import widgets from './widgets'
 
 export { datetimeFormats, numberFormats } from './formats'
-export default { analysis, artifacts, common, dashboard, detections, events, guests, live, network, notes, reports, rules, settings, shell, submit, tags, timeline, widgets }
+export default { analysis, artifacts, common, dashboard, detections, events, guests, iocs, live, network, notes, reports, rules, settings, shell, submit, tags, timeline, widgets }
