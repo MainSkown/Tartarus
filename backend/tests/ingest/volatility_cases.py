@@ -9,6 +9,7 @@ from app.ingest.protocol import IngestContext
 from tests.ingest.reports import call, process, report_of
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "volatility"
+P9_FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "plans" / "m9-spikes" / "fixtures"
 ANALYSIS_ID = 41
 STARTED = datetime(2026, 10, 18, 22, 15, 0, tzinfo=UTC)
 ENDED = "2026-10-18 22:16:10"
@@ -127,3 +128,19 @@ def malfind_row(pid: int, start: int, hexdump: str, **columns: Any) -> dict[str,
 
 def hexdump_of(first: bytes) -> str:
     return " ".join(f"{byte:02x}" for byte in first.ljust(64, b"\x00"))
+
+
+P9_IMAGE_PLUGINS = {
+    PSLIST: "vol3-2.28.2-windows.pslist.p9.json",
+    MALFIND: "vol3-2.28.2-windows.malware.malfind.all-pids.json",
+}
+P9_INJECTED_PID = 3888
+
+
+def write_p9_image_memory(analysis_dir: Path) -> Path:
+    """What the control service leaves for the P2 image, scanned whole (no pids)."""
+    outputs = {
+        plugin: json.loads((P9_FIXTURES / name).read_text())
+        for plugin, name in P9_IMAGE_PLUGINS.items()
+    }
+    return write_memory(analysis_dir, outputs)

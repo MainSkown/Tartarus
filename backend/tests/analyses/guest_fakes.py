@@ -1,3 +1,5 @@
+import asyncio
+
 from app.guest.errors import GuestControlRejected
 from app.guest.schemas import (
     Guest,
@@ -6,6 +8,7 @@ from app.guest.schemas import (
     GuestState,
     InteractiveOptions,
     MemoryAnalysis,
+    MissingSymbols,
 )
 from tests.guest.conftest import captured
 from tests.guest.fakes import FakeGuestControl
@@ -55,6 +58,11 @@ class ScriptedGuestControl(FakeGuestControl):
             plugins={"windows.pslist": 144}, seconds=1.0, pids=[1234]
         )
         self.memory_deletion: Exception | None = None
+        self.memory_script: list[MemoryAnalysis | Exception] = []
+        self.memory_gate: asyncio.Event | None = None
+        self.images_asked: list[str | None] = []
+        self.symbols_made: list[MissingSymbols] = []
+        self.symbols_error: Exception | None = None
 
     async def guest(self, name: str) -> Guest:
         self._record("guest", name)
@@ -73,11 +81,21 @@ class ScriptedGuestControl(FakeGuestControl):
             raise self.finish_error
         self.finished.append((task_id, guest))
 
-    async def analyse_memory(self, task_id: int) -> MemoryAnalysis:
+    async def analyse_memory(self, task_id: int, image: str | None = None) -> MemoryAnalysis:
         self._record("analyse_memory", task_id)
-        if isinstance(self.memory_analysis, Exception):
-            raise self.memory_analysis
-        return self.memory_analysis
+        self.images_asked.append(image)
+        if self.memory_gate is not None:
+            await self.memory_gate.wait()
+        answer = self.memory_script.pop(0) if self.memory_script else self.memory_analysis
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    async def make_symbols(self, missing: MissingSymbols) -> None:
+        self._record("make_symbols", missing)
+        if self.symbols_error is not None:
+            raise self.symbols_error
+        self.symbols_made.append(missing)
 
     async def delete_memory_dump(self, task_id: int) -> None:
         self._record("delete_memory_dump", task_id)

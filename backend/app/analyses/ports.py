@@ -13,7 +13,7 @@ from typing import Any, Protocol
 
 from app.analyses.defender import DefenderVerdict
 from app.db.models.analysis import Severity
-from app.guest.schemas import Guest, GuestProfile, MemoryAnalysis
+from app.guest.schemas import Guest, GuestProfile, MemoryAnalysis, MissingSymbols
 
 
 class SampleSource(Protocol):
@@ -71,12 +71,24 @@ class EventIngester(Protocol):
         taken.
         """
 
+    async def ingest_memory_image(
+        self, analysis_id: int, analysis_dir: Path, *, started_at: datetime
+    ) -> IngestResult:
+        """Indexes the findings the control service left in `analysis_dir/memory/` for an imported
+        memory image, which has no CAPE report; same failure as `ingest`.
+        """
+
 
 class MemoryControl(Protocol):
     """The memory routes of the guest control service."""
 
-    async def analyse_memory(self, task_id: int) -> MemoryAnalysis:
-        """Raises `GuestControlRejected` with status 404 when the task has no dump on disk."""
+    async def analyse_memory(self, task_id: int, image: str | None = None) -> MemoryAnalysis:
+        """Raises `GuestControlRejected` with status 404 when the task has no dump on disk, or
+        `image` (a name under the imports folder) is not a file there.
+        """
+
+    async def make_symbols(self, missing: MissingSymbols) -> None:
+        """Makes a Windows build's symbol file; `GuestControlRejected` when it cannot."""
 
     async def delete_memory_dump(self, task_id: int) -> None:
         """Raises `GuestControlRejected` with status 404 when the task has no dump on disk."""

@@ -6,11 +6,11 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from app.db.models import Analysis
 from app.imports.packet_capture import UnreadableCaptureError, first_packet_time
-from app.imports.upload import import_file
+from app.imports.upload import import_file, recorded_import_kind
 
 PCAP_KIND = "pcap"
 
@@ -35,7 +35,7 @@ async def submit_import(cape: PcapTaskApi, analysis: Analysis, imports_dir: Path
     """Raises `ImportRefusedError` for a file or a kind that cannot be imported, and `CapeError`
     when CAPE refuses the task.
     """
-    kind = _import_kind(analysis.options)
+    kind = recorded_import_kind(analysis.options)
     if kind != PCAP_KIND:
         raise ImportRefusedError(f"Importing a {kind} is not supported")
     return await _submit_pcap(cape, analysis, import_file(imports_dir, analysis.id))
@@ -54,8 +54,3 @@ async def _submit_pcap(cape: PcapTaskApi, analysis: Analysis, stored: Path) -> S
         raise ImportRefusedError(str(unreadable)) from None
     task_id = await cape.create_pcap_task(stored, analysis.filename)
     return Submitted(task_id, started_at)
-
-
-def _import_kind(options: dict[str, Any]) -> object:
-    recorded = options.get("import")
-    return recorded.get("kind") if isinstance(recorded, dict) else None

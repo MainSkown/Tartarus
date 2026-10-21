@@ -2,8 +2,9 @@ import asyncio
 import contextlib
 import logging
 from collections import Counter
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from datetime import datetime
+from functools import partial
 from itertools import chain
 from pathlib import Path
 from typing import Any, Protocol
@@ -32,6 +33,8 @@ from app.search.index import IndexingError
 logger = logging.getLogger(__name__)
 
 SETTLED_REFRESH_INTERVAL = "30s"
+
+type Reading = Callable[[], tuple[IngestContext, dict[str, Any]]]
 
 
 class EventStore(Protocol):
@@ -90,19 +93,30 @@ class ReportIngester:
     async def ingest(
         self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
     ) -> IngestResult:
+        return await self._ingest(analysis_id, partial(_read, analysis_id, report_path, started_at))
+
+    async def ingest_memory_image(
+        self, analysis_id: int, analysis_dir: Path, *, started_at: datetime
+    ) -> IngestResult:
+        """Indexes the findings in `analysis_dir/memory/` of an imported image, which has no
+        report: the memory normaliser is the only source with anything to say.
+        """
+        return await self._ingest(
+            analysis_id, partial(_image_without_report, analysis_id, analysis_dir, started_at)
+        )
+
+    async def _ingest(self, analysis_id: int, read: Reading) -> IngestResult:
         try:
-            return await self._rebuild(analysis_id, report_path, started_at)
+            return await self._rebuild(analysis_id, read)
         except IngestFailedError:
             raise
         except Exception as error:
             raise IngestFailedError(_reason(error)) from error
 
-    async def _rebuild(
-        self, analysis_id: int, report_path: Path, started_at: datetime | None
-    ) -> IngestResult:
+    async def _rebuild(self, analysis_id: int, read: Reading) -> IngestResult:
         await self._index.ensure_template()
         await self._index.drop(analysis_id)
-        context, report = await asyncio.to_thread(_read, analysis_id, report_path, started_at)
+        context, report = await asyncio.to_thread(read)
         try:
             await self._index.create(analysis_id)
             return await self._fill(analysis_id, report, context)
@@ -209,6 +223,12 @@ def _read(
         analysis_dir=analysis_dir_of(report_path),
     )
     return context, report
+
+
+def _image_without_report(
+    analysis_id: int, analysis_dir: Path, started_at: datetime
+) -> tuple[IngestContext, dict[str, Any]]:
+    return IngestContext(analysis_id, started_at, analysis_dir=analysis_dir), {"info": {}}
 
 
 def _reason(error: Exception) -> str:

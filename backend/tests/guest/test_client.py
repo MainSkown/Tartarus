@@ -11,6 +11,7 @@ from app.guest.client import (
     MEMORY_ANALYSIS_TIMEOUT_S,
     SAMPLE_CAP,
     SELFTEST_CHECKS_TIMEOUT_S,
+    SYMBOLS_TIMEOUT_S,
     HttpGuestControl,
 )
 from app.guest.errors import (
@@ -20,6 +21,7 @@ from app.guest.errors import (
     GuestControlRejected,
     GuestControlUnreachable,
 )
+from app.guest.schemas import MissingSymbols
 from tests.guest.conftest import captured
 
 CONTROL_URL = "http://control-internal.example:8002"
@@ -267,6 +269,64 @@ async def test_analyse_memory_answering_something_else_is_a_bad_response() -> No
 
     with pytest.raises(GuestControlBadResponse):
         await control_with(control).analyse_memory(7)
+
+
+async def test_analyse_memory_of_an_image_names_it_in_the_body() -> None:
+    control = serving("POST", "/memory/900000012/analyse", json_response(ANALYSED_MEMORY))
+
+    await control_with(control).analyse_memory(900000012, image="12/upload")
+
+    assert json.loads(control.only_request.content) == {"image": "12/upload"}
+
+
+async def test_analyse_memory_of_a_task_sends_no_image() -> None:
+    control = serving("POST", "/memory/7/analyse", json_response(ANALYSED_MEMORY))
+
+    await control_with(control).analyse_memory(7)
+
+    assert control.only_request.content in (b"", b"null")
+
+
+async def test_analyse_memory_reads_the_symbols_the_image_needs() -> None:
+    missing = {"guid": "24DE61DB3A27C5B383DFF181CB51F7E1", "age": 1}
+    answer = {**ANALYSED_MEMORY, "missing_symbols": missing}
+    control = serving("POST", "/memory/9/analyse", json_response(answer))
+
+    analysed = await control_with(control).analyse_memory(9, image="9/upload")
+
+    assert analysed.missing_symbols is not None
+    assert (analysed.missing_symbols.guid, analysed.missing_symbols.age) == (missing["guid"], 1)
+
+
+async def test_analyse_memory_without_missing_symbols_in_the_answer_has_none() -> None:
+    control = serving("POST", "/memory/7/analyse", json_response(ANALYSED_MEMORY))
+
+    assert (await control_with(control).analyse_memory(7)).missing_symbols is None
+
+
+async def test_make_symbols_posts_the_kernel_id_and_waits_for_the_download() -> None:
+    answer = json_response({"file": "ntkrnlmp.pdb/24DE-1.json.xz", "created": True})
+    control = serving("POST", "/symbols", answer)
+    missing = MissingSymbols(guid="24DE61DB3A27C5B383DFF181CB51F7E1", age=1)
+
+    await control_with(control).make_symbols(missing)
+
+    request = control.only_request
+    assert json.loads(request.content) == {"guid": missing.guid, "age": 1}
+    assert request.extensions["timeout"]["read"] == SYMBOLS_TIMEOUT_S
+
+
+async def test_make_symbols_keeps_the_reason_the_symbol_server_could_not_be_reached() -> None:
+    refusal = json_response({"error": "the symbol server could not be reached"}, status_code=502)
+    control = serving("POST", "/symbols", refusal)
+
+    with pytest.raises(GuestControlRejected) as error:
+        await control_with(control).make_symbols(MissingSymbols(guid="A" * 32, age=1))
+
+    assert (error.value.status, error.value.message) == (
+        502,
+        "the symbol server could not be reached",
+    )
 
 
 async def test_delete_memory_dump_sends_a_delete_and_accepts_no_content() -> None:

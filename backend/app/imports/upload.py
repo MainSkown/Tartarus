@@ -5,7 +5,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -151,6 +151,12 @@ def _accepted_kind(head: bytes, accept_memory_image: bool) -> ImportKind:
             f"A memory image goes to {MEMORY_IMAGE_PATH}, not to this path"
         )
     return kind
+
+
+def recorded_import_kind(options: dict[str, Any]) -> object:
+    """The kind an import's options record (`pcap` or `memory_image`); None for a run's."""
+    recorded = options.get("import")
+    return recorded.get("kind") if isinstance(recorded, dict) else None
 
 
 def _recorded_kind(kind: ImportKind) -> str:

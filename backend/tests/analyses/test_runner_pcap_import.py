@@ -230,7 +230,7 @@ async def test_an_import_of_a_kind_without_a_runner_path_fails_naming_the_kind(
             session,
             sample_sha256=SHA_B,
             filename="mem.raw",
-            options={"import": {"kind": "memory_image", "filename": "mem.raw", "size": 1}},
+            options={"import": {"kind": "disk_image", "filename": "mem.raw", "size": 1}},
             kind=AnalysisKind.IMPORTED,
         )
 
@@ -239,4 +239,4 @@ async def test_an_import_of_a_kind_without_a_runner_path_fails_naming_the_kind(
     assert cape.pcap_tasks == []
     failed = await load(session_factory, image.id)
     assert failed.status is AnalysisStatus.FAILED
-    assert failed.error == "Importing a memory_image is not supported"
+    assert failed.error == "Importing a disk_image is not supported"

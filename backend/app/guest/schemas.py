@@ -18,14 +18,25 @@ class ControlModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class MissingSymbols(ControlModel):
+    """The kernel PDB id an image needs a symbol file for; `POST /symbols` makes it."""
+
+    guid: str
+    age: int
+
+
 class MemoryAnalysis(ControlModel):
     """What `POST /memory/{task}/analyse` answers: rows per plugin, the plugins that failed, and
-    the pids the per-process plugins were limited to."""
+    the pids the per-process plugins were limited to (none for an imported image, which is
+    scanned whole). `missing_symbols` is set when only the symbol file for the image's Windows
+    build is missing.
+    """
 
     plugins: dict[str, int]
     seconds: float
     pids: list[int]
     errors: dict[str, str] = Field(default_factory=dict)
+    missing_symbols: MissingSymbols | None = None
 
 
 class GuestMedia(ControlModel):

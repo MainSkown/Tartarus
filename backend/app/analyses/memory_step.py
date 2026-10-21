@@ -54,7 +54,7 @@ class MemoryStep:
         except Exception as error:  # noqa: BLE001 - nothing here may fail the analysis
             logger.warning("Reading the memory dump of task %s failed: %s", task_id, error)
             return _failed(dump_bytes, str(error) or type(error).__name__)
-        return _read_from(analysed, dump_bytes)
+        return summarise_analysis(analysed, dump_bytes)
 
     async def release(
         self, analysis: Analysis, task_id: int, memory: MemorySummary | None
@@ -106,7 +106,7 @@ def _failed(dump_bytes: int | None, error: str) -> MemorySummary:
     )
 
 
-def _read_from(analysed: MemoryAnalysis, dump_bytes: int | None) -> MemorySummary:
+def summarise_analysis(analysed: MemoryAnalysis, dump_bytes: int | None) -> MemorySummary:
     every_plugin_failed = bool(analysed.plugins) and set(analysed.errors) >= set(analysed.plugins)
     return MemorySummary(
         dump_taken=True,

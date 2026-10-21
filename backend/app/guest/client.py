@@ -22,6 +22,7 @@ from app.guest.schemas import (
     HealthCheckResult,
     MediaEntry,
     MemoryAnalysis,
+    MissingSymbols,
     SelfTestChecks,
     SelfTestSample,
 )
@@ -33,6 +34,8 @@ DEFAULT_TIMEOUT = httpx.Timeout(150.0, connect=CONNECT_TIMEOUT_S)
 SELFTEST_CHECKS_TIMEOUT_S = 240.0
 # Volatility3 over a 4 GiB dump takes seconds, but the service gives itself five minutes.
 MEMORY_ANALYSIS_TIMEOUT_S = 300.0
+# The service gives the symbol server's download two minutes and the conversion five.
+SYMBOLS_TIMEOUT_S = 420.0
 SAMPLE_CAP = 16 * 1024 * 1024
 NO_MESSAGE = "the guest control service refused the request without saying why"
 AUTH_REFUSED_STATUSES = frozenset({httpx.codes.UNAUTHORIZED, httpx.codes.FORBIDDEN})
@@ -110,9 +113,11 @@ class GuestControl(Protocol):
 
     async def selftest_checks(self, name: str) -> SelfTestChecks: ...
 
-    async def analyse_memory(self, task_id: int) -> MemoryAnalysis: ...
+    async def analyse_memory(self, task_id: int, image: str | None = None) -> MemoryAnalysis: ...
 
     async def delete_memory_dump(self, task_id: int) -> None: ...
+
+    async def make_symbols(self, missing: MissingSymbols) -> None: ...
 
 
 class HttpGuestControl:
@@ -237,12 +242,13 @@ class HttpGuestControl:
         )
         return _parsed("selftest_checks", _SELFTEST_CHECKS, body)
 
-    async def analyse_memory(self, task_id: int) -> MemoryAnalysis:
+    async def analyse_memory(self, task_id: int, image: str | None = None) -> MemoryAnalysis:
         call = "analyse_memory"
         body = await self._send(
             call,
             "POST",
             f"/memory/{task_id}/analyse",
+            None if image is None else {"image": image},
             patience=httpx.Timeout(MEMORY_ANALYSIS_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
             explained_server_errors=EXPLAINED_SERVER_ERRORS_WITH_500,
         )
@@ -254,6 +260,15 @@ class HttpGuestControl:
             "DELETE",
             f"/memory/{task_id}/dump",
             explained_server_errors=EXPLAINED_SERVER_ERRORS_WITH_500,
+        )
+
+    async def make_symbols(self, missing: MissingSymbols) -> None:
+        await self._send(
+            "make_symbols",
+            "POST",
+            "/symbols",
+            {"guid": missing.guid, "age": missing.age},
+            patience=httpx.Timeout(SYMBOLS_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
         )
 
     async def _send(  # noqa: PLR0913 - the request's parts

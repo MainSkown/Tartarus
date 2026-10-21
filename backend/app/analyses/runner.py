@@ -15,6 +15,7 @@ from app.analyses.deadline import MAX_RUN_S, initial_deadline
 from app.analyses.defender import DefenderVerdict
 from app.analyses.guest_choice import recorded_guest
 from app.analyses.memory import MemorySummary
+from app.analyses.memory_import import MemoryImport, MemoryImportFailedError
 from app.analyses.memory_step import MemoryStep
 from app.analyses.monitor import first_monitor_log_time
 from app.analyses.pcap_import import ImportRefusedError, Submitted, submit_import
@@ -30,6 +31,7 @@ from app.analyses.ports import (
     ReportUnreadableError,
     SampleSource,
 )
+from app.analyses.summary import ReportSummary
 from app.cape.errors import (
     CapeAuthError,
     CapeError,
@@ -58,11 +60,20 @@ from app.guest.errors import (
     GuestControlUnreachable,
 )
 from app.guest.schemas import Guest, InteractiveOptions
+from app.imports.sniff import ImportKind
+from app.imports.upload import recorded_import_kind
 from app.live.utc import as_utc
 
 logger = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_ERRORS = 3
+# A memory image has no CAPE report, so nothing scores it or names a family.
+IMAGE_OUTCOME = ReportOutcome(
+    score=None,
+    max_severity=None,
+    detected_families=[],
+    summary=ReportSummary().model_dump(mode="json"),
+)
 NOT_INTERACTIVE = InteractiveOptions(options="")
 
 
@@ -139,6 +150,8 @@ class Runner:
         self._ingester = ingester
         self._guests = guests
         self._memory = MemoryStep(guests, config.cape_storage_path)
+        self._images = MemoryImport(guests, ingester, config.cape_storage_path, config.imports_dir)
+        self._memory_imports: dict[int, asyncio.Task[None]] = {}
         self._config = config
         self._clock = clock
         self._now = now
@@ -158,7 +171,16 @@ class Runner:
         self._loop_task = asyncio.create_task(self._loop(), name="analysis-runner")
 
     async def stop(self) -> None:
-        """Lets the tick in progress finish, so a submission keeps its task id."""
+        """Lets the tick in progress finish, so a submission keeps its task id. A memory image
+        being scanned is dropped; the next runner scans it again.
+        """
+        await self._stop_loop()
+        await self._cancel_memory_imports()
+
+    async def wait_for_memory_imports(self) -> None:
+        await asyncio.gather(*self._memory_imports.values())
+
+    async def _stop_loop(self) -> None:
         if self._loop_task is None:
             return
         self._stopping = True
@@ -171,6 +193,12 @@ class Runner:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._loop_task
         self._loop_task = None
+
+    async def _cancel_memory_imports(self) -> None:
+        scans = list(self._memory_imports.values())
+        for scan in scans:
+            scan.cancel()
+        await asyncio.gather(*scans, return_exceptions=True)
 
     def nudge(self) -> None:
         """Check for work now instead of at the next poll. Never blocks and never raises."""
@@ -227,6 +255,9 @@ class Runner:
                 )
 
     async def _submit(self, session: AsyncSession, claimed: Analysis) -> None:
+        if _is_memory_image_import(claimed):
+            await self._follow_memory_image(session, claimed)
+            return
         try:
             submitted = await self._upload(claimed)
         except (CapeUnreachable, GuestControlUnreachable) as unreachable:
@@ -332,6 +363,9 @@ class Runner:
             )
 
     async def _track(self, session: AsyncSession, analysis: Analysis) -> None:
+        if _is_memory_image_import(analysis):
+            await self._follow_memory_image(session, analysis)
+            return
         task_id = analysis.cape_task_id
         if task_id is None:
             await self._finish(
@@ -537,6 +571,52 @@ class Runner:
             event_count=indexed.event_count,
         )
 
+    async def _follow_memory_image(self, session: AsyncSession, analysis: Analysis) -> None:
+        """Starts the scan of an image's upload unless this runner is already on it.
+
+        The scan takes about a minute and has no CAPE task to poll, so it runs beside the ticks,
+        which would otherwise hold up the runs' queue. A scan the previous runner left behind
+        (`running` in the database, nothing in `_memory_imports`) is started again.
+        """
+        if analysis.id in self._memory_imports:
+            return
+        started_at = utc_now() if analysis.started_at is None else as_utc(analysis.started_at)
+        if analysis.started_at is None or analysis.status is not AnalysisStatus.RUNNING:
+            await update_analysis(
+                session, analysis.id, status=AnalysisStatus.RUNNING, started_at=started_at
+            )
+        self._memory_imports[analysis.id] = asyncio.create_task(
+            self._import_memory_image(analysis.id, started_at), name=f"memory-image-{analysis.id}"
+        )
+
+    async def _import_memory_image(self, analysis_id: int, started_at: datetime) -> None:
+        try:
+            await self._finish_memory_image(analysis_id, started_at)
+        except Exception:
+            logger.exception("Analysing the memory image of analysis %s failed", analysis_id)
+        finally:
+            self._memory_imports.pop(analysis_id, None)
+
+    async def _finish_memory_image(self, analysis_id: int, started_at: datetime) -> None:
+        try:
+            imported = await self._images.run(analysis_id, started_at)
+        except MemoryImportFailedError as failed:
+            ending: AnalysisChanges = {"status": AnalysisStatus.FAILED, "error": str(failed)}
+        except IngestFailedError as failure:
+            ending = {
+                "status": AnalysisStatus.REPORT_FAILED,
+                "error": str(failure),
+                "event_count": 0,
+            }
+        else:
+            async with self._session_factory() as session:
+                await self._finish_done(
+                    session, analysis_id, IMAGE_OUTCOME, imported.indexed, imported.memory
+                )
+            return
+        async with self._session_factory() as session:
+            await self._finish(session, analysis_id, **ending)
+
     def _start_live_if_running(self, analysis: Analysis, task_id: int) -> None:
         if (
             analysis.kind is not AnalysisKind.RUN
@@ -591,6 +671,13 @@ def _capture_start(analysis: Analysis) -> datetime | None:
     if analysis.kind is not AnalysisKind.IMPORTED or analysis.started_at is None:
         return None
     return as_utc(analysis.started_at)
+
+
+def _is_memory_image_import(analysis: Analysis) -> bool:
+    return (
+        analysis.kind is AnalysisKind.IMPORTED
+        and recorded_import_kind(analysis.options) == ImportKind.MEMORY_IMAGE
+    )
 
 
 def _is_interactive_run(analysis: Analysis) -> bool:
