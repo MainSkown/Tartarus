@@ -142,24 +142,6 @@ independent subtasks together, in one message, rather than one at a time.
   (rule 3): a subtask that needs five unrelated spec sections to make sense is probably not cut
   along the right lines.
 
-## 6. Usage limit — stop at 80% of the 5-hour session limit
-
-Work in this repo spawns many agents, and a rate-limit cut-off mid-run stalls the session (it has
-happened: the M0a agent, and the second M8 proof pass).
-
-- **When the 5-hour session usage reaches 80%, stop everything:** stop every running agent and
-  background task (`TaskStop`), start no new agent, and tell the user what was stopped and where each
-  piece of work stands (the agents' notes files hold the details). Then wait for the user, or for the
-  limit to reset, before resuming; resume interrupted agents with `SendMessage` so they continue
-  instead of restarting.
-- **Check the usage whenever the harness shows it** (status line, a usage or rate-limit notice) and
-  before launching a batch of agents. If the percentage is not visible, say so to the user once and
-  ask them to watch it; never assume there is room.
-- **Every agent brief says it too:** an agent that sees a usage or rate-limit notice at or above 80%
-  stops, writes its notes file (done / running / next) and reports, rather than starting another step.
-- **Leave nothing half-done:** before stopping, make sure no guest, throwaway clone or multi-GB file
-  an agent created is left behind without a note saying so (see the cleanup rules in the briefs).
-
 ## Enforcement
 
 - **Backend:** `ruff` (lint + format), `mypy` on `app/`, `pytest --cov=app` in CI. Ruff's
