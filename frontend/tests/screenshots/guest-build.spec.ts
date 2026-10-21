@@ -1,14 +1,19 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { DESKTOP_PATH, click, expectNothingOverflows, mockDesktopSocketAt, openBuild, reachDesktop, snapshot, type DesktopState } from './guest-build-harness'
+import { DESKTOP_PATH, click, expectNothingOverflows, expectPanelHeadersAligned, mockDesktopSocketAt, openBuild, reachDesktop, snapshot, type DesktopState } from './guest-build-harness'
 import {
   CLONE_RUNNING,
   FAILED,
+  FAILED_INSTALL_OUTPUT,
+  INSTALL_ESTIMATED,
   GUESTS_SELFTEST_FAILED,
   JOB_READY,
   JOB_SELFTEST_FAILED,
   LONG,
+  LONG_MESSAGE,
   PAUSED,
+  PROVISIONING_LIVE,
+  QUIET_THREE_MINUTES,
   RUNNING_DESKTOP,
   RUNNING_EARLY,
   SELFTEST_JOB,
@@ -17,7 +22,7 @@ import {
 } from './guest-build-data'
 import { gate } from './guest-page-data'
 
-const WIDTHS = [1280, 700, 600]
+const WIDTHS = [1280, 900, 700, 600]
 
 interface Scenario {
   name: string
@@ -31,6 +36,40 @@ const held = gate()
 
 const SCENARIOS: Scenario[] = [
   { name: 'running-early', api: { reads: [RUNNING_EARLY] }, expectVisible: (page) => expect(page.locator('.build-step--running')).toContainText('DEFINE') },
+  {
+    name: 'install-estimated',
+    api: { reads: [INSTALL_ESTIMATED] },
+    desktop: 'connected',
+    expectVisible: async (page) => {
+      await expect(page.locator('[data-build="message"]')).toContainText('(estimated)')
+      await expect(page.locator('[data-build="description"]')).toContainText('The desktop may look idle for minutes')
+      await expect(page.locator('[data-build="activity"]')).toHaveText('last activity 20s ago')
+      await expect(page.locator('[data-build="log-progress"]').first()).toBeVisible()
+    },
+  },
+  {
+    name: 'provisioning-live',
+    api: { reads: [PROVISIONING_LIVE] },
+    desktop: 'connected',
+    expectVisible: async (page) => {
+      await expect(page.locator('[data-build="message"]')).toContainText('install 32-bit Python 3.11')
+      await expect(page.locator('[data-build="activity"]')).toHaveText('last activity 6s ago')
+      await expect(page.locator('[data-build="log-body"]')).toContainText('guest: 2026-10-17 10:02:24  STEP install 32-bit Python 3.11')
+      await expect(page.locator('[data-build="log-body"]')).not.toContainText('PROGRESS')
+    },
+  },
+  {
+    name: 'quiet-three-minutes',
+    api: { reads: [QUIET_THREE_MINUTES] },
+    desktop: 'connected',
+    expectVisible: (page) => expect(page.locator('[data-build="activity"]')).toContainText('no news for 3 min: the step may be waiting or stuck'),
+  },
+  {
+    name: 'long-step-message',
+    api: { reads: [LONG_MESSAGE] },
+    desktop: 'connected',
+    expectVisible: (page) => expect(page.locator('[data-build="message"]')).toContainText('and wait'),
+  },
   { name: 'running-desktop-connected', api: { reads: [RUNNING_DESKTOP] }, desktop: 'connected' },
   { name: 'running-desktop-connecting', api: { reads: [RUNNING_DESKTOP] }, desktop: 'connecting', expectVisible: (page) => expect(page.locator('[data-desktop="message"]')).toContainText('connecting to the desktop') },
   { name: 'running-desktop-not-available-yet', api: { reads: [RUNNING_DESKTOP] }, desktop: 'timeout' },
@@ -43,6 +82,11 @@ const SCENARIOS: Scenario[] = [
     expectVisible: (page) => expect(page.locator('.build-notice--amber button')).toBeDisabled(),
   },
   { name: 'failed', api: { reads: [FAILED] }, expectVisible: (page) => expect(page.locator('.build-notice--red')).toContainText('provision exited with code 1') },
+  {
+    name: 'failed-install-output',
+    api: { reads: [FAILED_INSTALL_OUTPUT] },
+    expectVisible: (page) => expect(page.locator('.build-notice--red')).toContainText('Setup has not written to the disk for 20 min'),
+  },
   {
     name: 'failed-restart-confirm',
     api: { reads: [FAILED] },
@@ -85,6 +129,7 @@ for (const scenario of SCENARIOS) {
       await scenario.expectVisible?.(page)
       if (scenario.name !== 'loading') await expect(page.locator('.loader[role="status"]')).toHaveCount(scenario.name === 'running-desktop-connecting' ? 1 : 0)
       await expectNothingOverflows(page)
+      await expectPanelHeadersAligned(page, width)
       await snapshot(page, name)
       if (scenario.name === 'paused-continue-busy') held.open()
     })

@@ -60,7 +60,7 @@ describe('LiveDesktopSlot', () => {
   it('is the desktop of the live tab, headed DESKTOP', async () => {
     const wrapper = await mountSlot()
     expect(wrapper.attributes('data-live')).toBe('desktop')
-    expect(wrapper.find('.pane-heading').text()).toBe('DESKTOP')
+    expect(wrapper.find('.pane-heading__title').text()).toBe('DESKTOP')
   })
 
   it('opens the desktop socket of its analysis', async () => {

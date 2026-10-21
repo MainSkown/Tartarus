@@ -268,3 +268,47 @@ def test_a_record_written_before_the_step_process_was_kept_still_loads(store):
     loaded = store.load(build.id)
 
     assert (loaded.step_pid, loaded.step_path) == (None, None)
+
+
+# --- what the page shows of the running step ------------------------------------------------
+
+
+def test_a_new_build_has_had_no_activity_yet(store):
+    assert new_build(store).last_activity is None
+
+
+def test_the_last_activity_round_trips_through_the_disk(store):
+    build = new_build(store)
+    build.last_activity = "2026-10-15T12:00:07Z"
+    store.save(build, now=NOW)
+
+    assert store.load(build.id).last_activity == "2026-10-15T12:00:07Z"
+    data = json.loads((store.directory(build) / "build.json").read_text())
+    assert data["last_activity"] == "2026-10-15T12:00:07Z"
+
+
+def test_a_step_keeps_the_description_its_profile_entry_gave(store):
+    described = PipelineStep(
+        step="one", desktop=False, timeout_s=60, weight=1, description="Does the first thing."
+    )
+    build = new_build(store, pipeline=[described, entry("two")])
+
+    assert [step.description for step in build.steps] == ["Does the first thing.", None]
+    data = json.loads((store.directory(build) / "build.json").read_text())
+    assert data["steps"][0]["description"] == "Does the first thing."
+    assert store.load(build.id).steps[0].description == "Does the first thing."
+
+
+def test_a_record_written_before_activity_and_descriptions_still_loads(store):
+    build = new_build(store)
+    file = store.directory(build) / "build.json"
+    data = json.loads(file.read_text())
+    del data["last_activity"]
+    for step in data["steps"]:
+        del step["description"]
+    file.write_text(json.dumps(data))
+
+    loaded = store.load(build.id)
+
+    assert loaded.last_activity is None
+    assert [step.description for step in loaded.steps] == [None, None]

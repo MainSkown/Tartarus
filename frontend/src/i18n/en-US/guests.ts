@@ -92,6 +92,8 @@ export default {
     noun: 'build log',
     copy: '[COPY LOG]',
     empty: '> no output yet',
+    progress: '{step} {percent}%',
+    progressUnnamed: '{percent}%',
   },
   buildSteps: {
     desktop: "This step shows the guest's desktop",
@@ -241,6 +243,10 @@ export default {
       cancelled: 'BUILD CANCELLED',
       step: '{step} FAILED',
       build: 'BUILD FAILED',
+    },
+    activity: {
+      ago: 'last activity {age} ago',
+      stale: 'no news for {minutes} min: the step may be waiting or stuck',
     },
     progress: {
       selfTestStarting: 'Self-test starting',

@@ -173,6 +173,8 @@ class PipelineStep:
     timeout_s: int
     weight: int
     when: Condition | None = None
+    # What the build page tells the person watching while this step runs.
+    description: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -695,6 +697,7 @@ def _pipeline_step(reader: _Reader) -> PipelineStep:
         timeout_s=reader.integer("timeout_s", minimum=1, default=DEFAULT_STEP_TIMEOUT_S),
         weight=reader.integer("weight", minimum=1, default=1),
         when=_condition(reader.optional_object("when")),
+        description=reader.optional_string("description"),
     )
     reader.done()
     return entry

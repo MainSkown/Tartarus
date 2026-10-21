@@ -437,12 +437,17 @@ Opened after a build or clone starts, from a card's `[VIEW BUILD]`, and reloadab
 through the control service and the build job.
 
 - **Header:** the guest, `BUILD` or `CLONE`, a phase badge (`RUNNING`, `PAUSED`, `FAILED`, `SELF-TEST`,
-  `READY`, `SELF-TEST FAILED`), the percent and the step message.
+  `READY`, `SELF-TEST FAILED`), the percent and the step message. While a step runs, under the bar: its
+  description from the profile, and beside the message "last activity N s ago", counted on each second and
+  turned into a warning ("no news for N min: the step may be waiting or stuck") after two minutes of silence.
 - **Steps:** one row per step (names as the profile gives them, `tamper-off` reads `TAMPER OFF`) with its
   status (`PENDING`, `RUNNING`, `DONE`, `FAILED`, `PAUSED`), its duration and a progress bar for the running
   one, then a last row for the self-test.
 - **BUILD LOG:** the tail of the log in a code block, following the end unless scrolled away, with a follow
-  toggle and a copy button; lines the guest itself printed are marked.
+  toggle and a copy button; lines the guest itself printed are marked. The step protocol's words are not
+  shown: a `PROGRESS` line is a thin bar labelled with its step ("INSTALL 36%"), never a bare number.
+- **Panel headers:** STEPS, DESKTOP and BUILD LOG share one header (`PaneHeading`): title on the left, the
+  panel's buttons (`[FULLSCREEN]`, `[CTRL+ALT+DEL]`, `[PAUSE FOLLOW]`, `[COPY LOG]`) on the right, one height.
 - **Live desktop:** the guest's screen (the same desktop panel as an analysis's) while the current step is
   marked `desktop` in the profile, install, provision, tamper-off and reconfigure for Windows. It is not
   shown otherwise.

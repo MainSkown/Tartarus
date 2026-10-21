@@ -571,6 +571,10 @@ export type BuildStep = {
      * Progress
      */
     progress: number;
+    /**
+     * Description
+     */
+    description?: string | null;
 };
 
 /**
@@ -621,6 +625,10 @@ export type BuildView = {
      * Updated
      */
     updated?: string | null;
+    /**
+     * Last Activity
+     */
+    last_activity?: string | null;
     /**
      * Log
      */

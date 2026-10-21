@@ -6,6 +6,19 @@ export const NOW = new Date('2026-10-17T10:10:00Z')
 export const BUILD_ID = 'build-lab4'
 
 const minutesAgo = (minutes: number): string => new Date(NOW.getTime() - minutes * 60_000).toISOString()
+const secondsAgo = (seconds: number): string => new Date(NOW.getTime() - seconds * 1_000).toISOString()
+
+// The sentences are the ones profile.json gives these steps.
+const DESCRIPTIONS: Record<string, string> = {
+  preflight: 'Checks that this computer can build the guest: hardware virtualization is on, there is enough disk space and nothing else is in the way. It takes a few seconds.',
+  define: "Creates the guest's empty disk and registers its virtual machine with this computer. It takes a few seconds.",
+  install: 'Windows installs itself, then its first-logon script sets the guest up. The desktop may look idle for minutes; that is normal. Nothing is needed from you unless the build pauses.',
+  provision: "Collects the guest's own setup log, removes the installers it left behind and lets the guest settle. Nothing is needed from you.",
+  'tamper-off':
+    "Switches Windows Security's Tamper Protection off, so the Defender settings made earlier take effect, and proves it with a harmless test file. If the switch cannot be found, the build pauses and asks you to switch it off on the desktop.",
+  snapshot: 'Shuts the guest down cleanly, starts it again, lets it settle and takes the clean snapshot that every analysis starts from. This takes a few minutes.',
+  register: 'Hands the finished guest over to the analysis system, so that it can run analyses.',
+}
 
 interface StepSpec {
   name: string
@@ -49,6 +62,7 @@ export function stepsAt(pipeline: StepSpec[], at: number, status: StepProgress, 
       timeout_s: 1800,
       desktop: spec.desktop ?? false,
       progress: state === 'succeeded' ? 100 : 0,
+      description: DESCRIPTIONS[spec.name] ?? null,
     }
   })
 }
@@ -84,6 +98,7 @@ export function buildView(overrides: Partial<BuildView> = {}): BuildView {
     pause: null,
     created: minutesAgo(3),
     updated: minutesAgo(0),
+    last_activity: secondsAgo(4),
     log: LOG.slice(0, 3),
     ...overrides,
   }
@@ -99,6 +114,65 @@ export const RUNNING_DESKTOP = buildView({
   desktop: true,
   log: LOG.slice(0, 6),
 })
+
+// What the control service logs for the `install` step: its own lines, the step's raw protocol lines and the guest's relayed log.
+const INSTALL_STEP = (percent: number, message: string, lastActivity: string, log: string[]): BuildView =>
+  buildView({
+    step: 2,
+    steps: stepsAt(BUILD_PIPELINE, 2, 'running').map((step) => (step.name === 'install' ? { ...step, progress: percent } : step)),
+    percent: 8 + Math.round(percent * 0.5),
+    message,
+    desktop: true,
+    last_activity: lastActivity,
+    log,
+  })
+
+const INSTALL_ESTIMATED_LOG = [
+  'control: build build-lab4 started (kind build)',
+  '== step preflight',
+  'STEP Checking the host',
+  'PROGRESS 100',
+  '== step define',
+  'STEP Defining the guest',
+  'PROGRESS 100',
+  '== step install',
+  'STEP Installing Windows',
+  'PROGRESS 10',
+  'LOG Windows Setup is copying files',
+  'LOG Windows is installing, about 1 min so far (estimated)',
+  'PROGRESS 12',
+  'LOG Windows is installing, about 2 min so far (estimated)',
+  'PROGRESS 14',
+  'LOG Windows is installing, about 3 min so far (estimated)',
+]
+
+const GUEST_PROVISIONING_LOG = [
+  'LOG guest: 2026-10-17 10:02:11  provisioning started from D:\\ into C:\\tartarus',
+  'LOG guest: 2026-10-17 10:02:11  PLAN 11',
+  'LOG guest: 2026-10-17 10:02:12  STEP copy payload to the work folder',
+  'LOG guest: 2026-10-17 10:02:19    ok (copied the agent, python and pillow)',
+  'LOG guest: 2026-10-17 10:02:19  STEP static IP 192.168.150.13/24, gateway and DNS 192.168.150.1',
+  'LOG guest: 2026-10-17 10:02:23    ok (adapter Ethernet set to 192.168.150.13)',
+  'LOG guest: 2026-10-17 10:02:23  STEP disable the firewall and open port 8000',
+  'LOG guest: 2026-10-17 10:02:24    ok',
+  'LOG guest: 2026-10-17 10:02:24  STEP install 32-bit Python 3.11',
+]
+
+export const INSTALL_ESTIMATED = INSTALL_STEP(14, 'Windows is installing, about 3 min so far (estimated)', secondsAgo(20), INSTALL_ESTIMATED_LOG)
+
+const PROVISIONING_MESSAGE = 'Windows is provisioning itself: install 32-bit Python 3.11'
+const PROVISIONING_LOG = [...INSTALL_ESTIMATED_LOG, 'PROGRESS 17', 'STEP Windows is provisioning itself: copy payload to the work folder', ...GUEST_PROVISIONING_LOG, 'PROGRESS 36']
+
+export const PROVISIONING_LIVE = INSTALL_STEP(36, PROVISIONING_MESSAGE, secondsAgo(6), PROVISIONING_LOG)
+
+export const QUIET_THREE_MINUTES = INSTALL_STEP(36, PROVISIONING_MESSAGE, secondsAgo(187), PROVISIONING_LOG)
+
+export const LONG_MESSAGE = INSTALL_STEP(
+  36,
+  `Windows is provisioning itself: ${'install the optional language packs and the update for the Windows Defender platform, then restart the guest '.repeat(2)}and wait`,
+  secondsAgo(12),
+  PROVISIONING_LOG,
+)
 
 export const PAUSED = buildView({
   status: 'paused',
@@ -121,6 +195,17 @@ export const FAILED = buildView({
   percent: 52,
   message: 'provision exited with code 1: the agent did not answer within 600 s',
   log: [...LOG, 'provision: waiting for the agent (attempt 58 of 60)', 'provision: the agent did not answer within 600 s', 'control: step provision failed with exit code 1'],
+})
+
+export const FAILED_INSTALL_OUTPUT = buildView({
+  status: 'failed',
+  step: 2,
+  steps: stepsAt(BUILD_PIPELINE, 2, 'failed', 1),
+  percent: 31,
+  message:
+    'install exited with code 1: the guest never started provisioning; look at the guest\'s screen. Last output: Windows is installing, about 55 min so far (estimated) / Setup has not written to the disk for 20 min',
+  desktop: false,
+  log: [...INSTALL_ESTIMATED_LOG, 'LOG Windows is installing, about 55 min so far (estimated)', 'PROGRESS 19', 'LOG Setup has not written to the disk for 20 min', 'control: step install failed with exit code 1'],
 })
 
 export const CANCELLED = buildView({

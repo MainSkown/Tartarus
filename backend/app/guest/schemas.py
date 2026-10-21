@@ -229,6 +229,8 @@ class BuildStep(ControlModel):
     timeout_s: int
     desktop: bool
     progress: int
+    # The profile's sentence for what this step does, shown while it runs.
+    description: str | None = None
 
 
 class BuildPause(ControlModel):
@@ -249,6 +251,8 @@ class BuildStatus(ControlModel):
     desktop: bool = False
     created: str | None = None
     updated: str | None = None
+    # When the running step last logged a line or moved its progress (ISO, UTC).
+    last_activity: str | None = None
 
 
 class BuildView(BuildStatus):

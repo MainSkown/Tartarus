@@ -253,6 +253,28 @@ class TestProfileFile:
         desktop = {entry.step for entry in every_entry if entry.desktop}
         assert desktop == {"install", "provision", "tamper-off", "defender-on", "reconfigure"}
 
+    def test_every_step_says_in_a_sentence_what_it_is_doing(self, profile):
+        for _, entry in profile.pipeline_entries():
+            assert entry.description, f"{entry.step} has no description"
+            assert entry.description.endswith("."), entry.step
+            assert len(entry.description) <= 400, entry.step
+
+    def test_the_same_step_reads_the_same_in_a_build_and_a_clone(self, profile):
+        by_step: dict[str, set[str | None]] = {}
+        for _, entry in profile.pipeline_entries():
+            by_step.setdefault(entry.step, set()).add(entry.description)
+        shared = [step for step, texts in by_step.items() if len(texts) > 1 and step != "install"]
+        assert shared == []
+
+    def test_the_install_step_does_not_call_the_desktop_read_only_and_says_it_looks_idle(
+        self, profile
+    ):
+        install = next(e for e in profile.build_pipeline("installer", {}) if e.step == "install")
+        text = (install.description or "").lower()
+        assert "read-only" not in text
+        assert "idle" in text
+        assert "normal" in text
+
     def test_the_sample_is_linked_against_winsock_after_its_source(self, profile):
         build = profile.selftest.sample.build
         assert build.index("{source}") < build.index("-lws2_32")

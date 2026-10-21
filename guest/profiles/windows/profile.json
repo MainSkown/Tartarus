@@ -135,27 +135,32 @@
     "build": {
       "installer": [
         {
-          "step": "preflight"
+          "step": "preflight",
+          "description": "Checks that this computer can build the guest: hardware virtualization is on, there is enough disk space and nothing else is in the way. It takes a few seconds."
         },
         {
           "step": "fetch",
           "timeout_s": 900,
-          "weight": 3
+          "weight": 3,
+          "description": "Downloads the programs the guest needs, such as Python, and checks each one against its recorded fingerprint. Nothing is needed from you."
         },
         {
-          "step": "define"
+          "step": "define",
+          "description": "Creates the guest's empty disk and registers its virtual machine with this computer. It takes a few seconds."
         },
         {
           "step": "install",
           "desktop": true,
           "timeout_s": 5400,
-          "weight": 60
+          "weight": 60,
+          "description": "Windows installs itself, then its first-logon script sets the guest up. The desktop may look idle for minutes; that is normal. Nothing is needed from you unless the build pauses."
         },
         {
           "step": "provision",
           "desktop": true,
           "timeout_s": 900,
-          "weight": 20
+          "weight": 20,
+          "description": "Collects the guest's own setup log, removes the installers it left behind and lets the guest settle. Nothing is needed from you."
         },
         {
           "step": "tamper-off",
@@ -165,42 +170,50 @@
           "when": {
             "option": "defender",
             "value": false
-          }
+          },
+          "description": "Switches Windows Security's Tamper Protection off, so the Defender settings made earlier take effect, and proves it with a harmless test file. If the switch cannot be found, the build pauses and asks you to switch it off on the desktop."
         },
         {
           "step": "symbols",
           "timeout_s": 900,
-          "weight": 2
+          "weight": 2,
+          "description": "Reads which Windows kernel the guest runs and downloads its symbol file, so that memory dumps of this guest can be analysed later. If the download fails, the build goes on without it."
         },
         {
           "step": "snapshot",
           "timeout_s": 600,
-          "weight": 5
+          "weight": 5,
+          "description": "Shuts the guest down cleanly, starts it again, lets it settle and takes the clean snapshot that every analysis starts from. This takes a few minutes."
         },
         {
           "step": "register",
           "timeout_s": 300,
-          "weight": 2
+          "weight": 2,
+          "description": "Hands the finished guest over to the analysis system, so that it can run analyses."
         }
       ]
     },
     "clone": [
       {
-        "step": "preflight"
+        "step": "preflight",
+        "description": "Checks that this computer can build the guest: hardware virtualization is on, there is enough disk space and nothing else is in the way. It takes a few seconds."
       },
       {
         "step": "copy",
         "timeout_s": 900,
-        "weight": 25
+        "weight": 25,
+        "description": "Copies the source guest's disk to this clone. The source is not changed. This takes a few minutes, depending on the disk."
       },
       {
-        "step": "define"
+        "step": "define",
+        "description": "Creates the guest's empty disk and registers its virtual machine with this computer. It takes a few seconds."
       },
       {
         "step": "reconfigure",
         "desktop": true,
         "timeout_s": 600,
-        "weight": 30
+        "weight": 30,
+        "description": "Starts the copy and gives it its own identity: a network address, a computer name and a fresh machine ID. Then it restarts the copy. Nothing is needed from you."
       },
       {
         "step": "tamper-off",
@@ -210,7 +223,8 @@
         "when": {
           "option": "defender",
           "value": false
-        }
+        },
+        "description": "Switches Windows Security's Tamper Protection off, so the Defender settings made earlier take effect, and proves it with a harmless test file. If the switch cannot be found, the build pauses and asks you to switch it off on the desktop."
       },
       {
         "step": "defender-on",
@@ -220,22 +234,26 @@
         "when": {
           "option": "defender",
           "value": true
-        }
+        },
+        "description": "Switches Windows Security's Tamper Protection back on and proves real-time protection works with a harmless test file. If the switch cannot be found, the build pauses and asks you to switch it on on the desktop."
       },
       {
         "step": "symbols",
         "timeout_s": 900,
-        "weight": 2
+        "weight": 2,
+        "description": "Reads which Windows kernel the guest runs and downloads its symbol file, so that memory dumps of this guest can be analysed later. If the download fails, the build goes on without it."
       },
       {
         "step": "snapshot",
         "timeout_s": 600,
-        "weight": 15
+        "weight": 15,
+        "description": "Shuts the guest down cleanly, starts it again, lets it settle and takes the clean snapshot that every analysis starts from. This takes a few minutes."
       },
       {
         "step": "register",
         "timeout_s": 300,
-        "weight": 2
+        "weight": 2,
+        "description": "Hands the finished guest over to the analysis system, so that it can run analyses."
       }
     ]
   },

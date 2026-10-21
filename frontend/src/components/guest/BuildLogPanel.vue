@@ -3,17 +3,16 @@ import { computed, onMounted, ref, watch } from 'vue'
 import CopyButton from '@/components/CopyButton.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
 import { t } from '@/i18n'
+import { logRows } from '@/services/build-log'
 
 const props = defineProps<{ lines: readonly string[] }>()
 
-// What the guest itself printed, as opposed to the control service's own progress lines.
-const GUEST_PREFIX = 'guest: '
 const AT_END_SLACK_PX = 24
 
 const body = ref<HTMLElement>()
 const following = ref(true)
 
-const rows = computed(() => props.lines.map((text, index) => ({ text, index, fromGuest: text.startsWith(GUEST_PREFIX) })))
+const rows = computed(() => logRows(props.lines))
 
 function scrollToEnd(): void {
   if (body.value) body.value.scrollTop = body.value.scrollHeight
@@ -43,11 +42,7 @@ watch(() => props.lines, followIfWanted, { flush: 'post' })
     class="build-log"
     data-build="log"
   >
-    <div class="build-log__bar">
-      <PaneHeading
-        :label="t('guests.buildLog.heading')"
-        class="build-log__heading"
-      />
+    <PaneHeading :label="t('guests.buildLog.heading')">
       <q-btn
         flat
         dense
@@ -64,19 +59,30 @@ watch(() => props.lines, followIfWanted, { flush: 'post' })
         :what="t('guests.buildLog.noun')"
         :label="t('guests.buildLog.copy')"
       />
-    </div>
+    </PaneHeading>
     <pre
       ref="body"
       class="build-log__body"
       data-build="log-body"
       @scroll.passive="followAgainAtTheEnd"
-    ><span
+    ><template
       v-for="row in rows"
       :key="row.index"
+    ><span
+      v-if="row.kind === 'progress'"
+      class="build-log__progress"
+      data-build="log-progress"
+    ><span class="build-log__progress-label">{{ row.label }}</span><progress
+      class="build-log__bar"
+      :value="row.percent"
+      max="100"
+      :aria-label="row.label"
+    /></span><span
+      v-else
       class="build-log__line"
       :class="{ 'build-log__line--guest': row.fromGuest }"
     >{{ row.text }}
-</span><span
+</span></template><span
       v-if="rows.length === 0"
       class="build-log__empty text-gray"
     >{{ t('guests.buildLog.empty') }}</span></pre>
@@ -91,25 +97,8 @@ watch(() => props.lines, followIfWanted, { flush: 'post' })
   min-height: 0;
 }
 
-.build-log__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-xs) var(--spacing-sm);
-  margin-bottom: var(--spacing-xs);
-  border-bottom: 2px solid var(--border-primary);
-}
-
-/* The bar carries the underline, so the buttons sit on it instead of beside a shorter one. */
-.build-log__bar :deep(.pane-heading) {
-  flex: 1 1 auto;
-  margin: 0;
-  border-bottom: none;
-}
-
 .build-log__follow {
   color: var(--blue-primary);
-  font-size: 0.75rem;
 }
 
 .build-log__body {
@@ -128,5 +117,28 @@ watch(() => props.lines, followIfWanted, { flush: 'post' })
 
 .build-log__line--guest {
   color: var(--text-gray);
+}
+
+/* A thin bar on its own row: the figure keeps its place in the story, without a bare number to puzzle over. */
+.build-log__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-gray-dark);
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+}
+
+.build-log__progress-label {
+  flex: none;
+  min-width: 9rem;
+}
+
+.build-log__bar {
+  flex: 0 1 12rem;
+  min-width: 3rem;
+  height: 6px;
+  border-width: 1px;
+  box-shadow: none;
 }
 </style>

@@ -22,6 +22,8 @@ const phase = computed(() => state.phase.value)
 const steps = computed(() => stepsWithSelfTest(build.value?.steps ?? [], phase.value))
 const verdictShown = computed(() => phase.value === 'ready' || phase.value === 'selftest-failed')
 const busy = computed(() => state.busy.value !== undefined)
+const running = computed(() => phase.value === 'running')
+const runningStep = computed(() => (running.value ? build.value?.steps.find((step) => step.status === 'running') : undefined))
 </script>
 
 <template>
@@ -35,6 +37,8 @@ const busy = computed(() => state.busy.value !== undefined)
           :percent="state.progress.value.percent"
           :message="state.progress.value.message"
           :back-link="!verdictShown"
+          :description="runningStep?.description"
+          :last-activity="running ? build.last_activity : undefined"
         >
           <template
             v-if="state.cancellable.value"
@@ -140,6 +144,7 @@ const busy = computed(() => state.busy.value !== undefined)
               <DesktopPanel
                 :path="guestDesktopPath(build.guest)"
                 :wanted="true"
+                bare
                 subject="build"
               />
             </div>

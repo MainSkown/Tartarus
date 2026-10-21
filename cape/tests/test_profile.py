@@ -291,6 +291,21 @@ def test_a_condition_on_a_build_step_is_checked_against_the_options_too():
     assert "pipelines.build.installer[4].when.option" in problems_of(data)
 
 
+def test_a_pipeline_entry_may_carry_a_sentence_for_the_person_watching_the_build():
+    data = with_value(
+        profile_data("windows"), "pipelines.build.installer.2.description", "Does the thing."
+    )
+
+    profile = parse_profile(data)
+
+    described = profile.pipelines.build["installer"][2]
+    assert described.description == "Does the thing."
+    assert profile.pipelines.build["installer"][0].description is None
+    exported = profile.to_dict()["pipelines"]["build"]["installer"][2]
+    assert exported["description"] == "Does the thing."
+    assert parse_profile(profile.to_dict()) == profile
+
+
 def test_the_linux_fixture_has_no_windows_terms():
     text = (PROFILE_FIXTURES / "ubuntu.json").read_text().lower()
 
@@ -395,6 +410,9 @@ CASES = [
     ("windows", "pipelines.build.installer.2.timeout_s", 0, None),
     ("windows", "pipelines.build.installer.2.weight", 0, None),
     ("windows", "pipelines.build.installer.2.desktop", "yes", None),
+    ("windows", "pipelines.build.installer.2.description", 5, None),
+    ("windows", "pipelines.build.installer.2.description", "", None),
+    ("windows", "pipelines.clone.1.description", ["Copies."], None),
     ("windows", "pipelines.build.disk_image", [{"step": "define"}], None),
     ("ubuntu", "pipelines.build.disk_image", GONE, None),
     ("windows", "agent.port", 0, None),

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import StatusBadge from '@/components/StatusBadge.vue'
+import { useActivityAge } from '@/composables/use-activity-age'
 import { t } from '@/i18n'
 import { buildKindLabel, type BuildPhase } from '@/services/guest-build'
 
-defineProps<{
+const props = defineProps<{
   guest: string
   kind: string
   phase: BuildPhase
@@ -11,7 +12,13 @@ defineProps<{
   message: string
   /** The quiet way back, left out where the verdict offers [OPEN GUEST VM]. */
   backLink: boolean
+  /** What the running step is, in the profile's own words. */
+  description?: string | null
+  /** When the running step last logged or moved its progress (ISO). */
+  lastActivity?: string | null
 }>()
+
+const activity = useActivityAge(() => props.lastActivity)
 </script>
 
 <template>
@@ -55,6 +62,26 @@ defineProps<{
     <p class="build-header__message text-mono text-gray">
       <span data-build="percent">{{ percent }}%</span>
       <span data-build="message">{{ message }}</span>
+      <span
+        v-if="activity"
+        class="build-header__activity"
+        :class="{ 'build-header__activity--stale': activity.stale }"
+        :data-stale="String(activity.stale)"
+        data-build="activity"
+      >
+        <q-icon
+          v-if="activity.stale"
+          name="warning"
+          size="14px"
+          aria-hidden="true"
+        />{{ activity.text }}</span>
+    </p>
+    <p
+      v-if="description"
+      class="build-header__description text-mono"
+      data-build="description"
+    >
+      {{ description }}
     </p>
   </header>
 </template>
@@ -120,7 +147,9 @@ defineProps<{
 
 .build-header__message {
   display: flex;
-  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-xs) var(--spacing-sm);
   margin: 0;
   font-size: 0.8rem;
   overflow-wrap: anywhere;
@@ -128,5 +157,32 @@ defineProps<{
 
 .build-header__message [data-build='percent'] {
   flex: none;
+}
+
+.build-header__message [data-build='message'] {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.build-header__activity {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.build-header__activity--stale {
+  color: var(--status-medium);
+  white-space: normal;
+}
+
+.build-header__description {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--text-gray);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 </style>

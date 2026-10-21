@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from guest_engine.builds import BuildRecord, BuildStore, timestamp
+from guest_engine.builds import BuildRecord, BuildStore, StepState, timestamp
 from guest_engine.errors import Conflict
 from guest_engine.profile import PipelineStep
 from guest_engine.registry import GUEST_FILE
@@ -342,6 +342,7 @@ class Sequencer:
             self._conclude(build, job, "failed", self._reason_for_not_starting())
             return False
         step.status, step.started, step.progress = "running", timestamp(), 0
+        build.last_activity = step.started
         build.message = step.name
         build.step_path = str(path)
         self._store.save(build)
@@ -353,17 +354,8 @@ class Sequencer:
             line = redact(raw)
             self._store.append_log(build, line)
             recent.append(line)
-            match parse_line(line):
-                case StepTitle(text):
-                    build.message = text or step.name
-                    self._store.save(build)
-                case Progress(percent):
-                    step.progress = percent
-                    self._store.save(build)
-                case PauseRequest(text):
-                    instructions.append(text)
-                case Log():
-                    pass
+            if self._apply_line(build, step, line, instructions):
+                self._store.save(build)
 
         outcome = run_step(
             [str(path)],
@@ -398,6 +390,29 @@ class Sequencer:
         )
         self._conclude(build, job, "failed", reason)
         return False
+
+    @staticmethod
+    def _apply_line(
+        build: BuildRecord, step: StepState, line: str, instructions: list[str]
+    ) -> bool:
+        """Record what a step's output line says; True when the build record needs saving.
+
+        Every line counts as activity, but a plain one saves the record only when the second moved
+        (the stamp has one-second grain), so a chatty step does not rewrite it per line.
+        """
+        stamp = timestamp()
+        moved = stamp != build.last_activity
+        build.last_activity = stamp
+        match parse_line(line):
+            case StepTitle(text):
+                build.message, moved = text or step.name, True
+            case Progress(percent):
+                step.progress, moved = percent, True
+            case PauseRequest(text):
+                instructions.append(text)
+            case Log():
+                pass
+        return moved
 
     def _new_control(self, build: BuildRecord) -> StepControl | None:
         """The handle on the next step of `build`, or None when it was cancelled or shut down."""

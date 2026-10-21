@@ -270,6 +270,20 @@ async def test_a_build_is_read_with_its_status_and_the_last_lines_of_its_log(
     assert len(body["steps"]) == 7
 
 
+async def test_the_last_activity_and_the_running_steps_description_reach_the_page(
+    harness: Harness,
+) -> None:
+    record = a_build("running")
+    harness.control.polls = [
+        Poll(record.model_copy(update={"last_activity": "2026-10-15T19:12:31Z"}))
+    ]
+
+    body = (await harness.client.get(f"/api/guests/builds/{BUILD_ID}")).json()
+
+    assert body["last_activity"] == "2026-10-15T19:12:31Z"
+    assert all(step["description"] is None for step in body["steps"])
+
+
 async def test_the_log_tail_defaults_to_200_lines_and_follows_the_tail_parameter(
     harness: Harness,
 ) -> None:

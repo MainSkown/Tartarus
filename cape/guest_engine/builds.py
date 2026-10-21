@@ -45,6 +45,7 @@ class StepState:
     timeout_s: int = 600
     desktop: bool = False
     progress: int = 0
+    description: str | None = None
 
 
 @dataclass
@@ -59,6 +60,8 @@ class BuildRecord:
     updated: str
     message: str = ""
     pause: dict[str, str] | None = field(default=None)
+    # When the running step last logged a line or moved its progress; None before a step starts.
+    last_activity: str | None = None
     # Where a step runs outside this service's memory: if the service dies, the next one reads
     # these to find the orphan (its group leader's pid and the file it executes).
     step_pid: int | None = None
@@ -101,7 +104,11 @@ def _new_build_id() -> str:
 
 def _step_state(entry: PipelineStep) -> StepState:
     return StepState(
-        name=entry.step, weight=entry.weight, timeout_s=entry.timeout_s, desktop=entry.desktop
+        name=entry.step,
+        weight=entry.weight,
+        timeout_s=entry.timeout_s,
+        desktop=entry.desktop,
+        description=entry.description,
     )
 
 

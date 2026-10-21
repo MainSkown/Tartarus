@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed } from 'vue'
 import type { BuildStep } from '@/api'
+import { useNow } from '@/composables/use-now'
 import { t } from '@/i18n'
 import { humanStepName, stepDurationLabel, stepMeta } from '@/services/guest-build'
 
 const props = defineProps<{ steps: readonly BuildStep[] }>()
 
 const TICK_MS = 1_000
-const now = ref(Date.now())
-const ticker = setInterval(() => (now.value = Date.now()), TICK_MS)
-onBeforeUnmount(() => clearInterval(ticker))
+const now = useNow(TICK_MS)
 
 const rows = computed(() =>
   props.steps.map((step) => ({

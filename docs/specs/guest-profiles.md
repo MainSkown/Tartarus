@@ -87,7 +87,7 @@ Unknown fields are rejected; every field below is required unless a default is g
 
 ### Pipeline entries
 
-An entry is `{step, desktop?, timeout_s?, weight?, when?}`.
+An entry is `{step, desktop?, timeout_s?, weight?, when?, description?}`.
 
 - `step`: a step name, `[a-z][a-z0-9_-]{0,63}`, used once per pipeline.
 - `desktop` (default `false`): the guest's screen is worth showing during this step. The build page
@@ -96,6 +96,10 @@ An entry is `{step, desktop?, timeout_s?, weight?, when?}`.
 - `weight` (default 1): the step's share of the build's progress bar.
 - `when`: `{option, value}` or `{option, not}`. The step runs only if the guest's option has that value
   (or, with `not`, any other value). The Windows `tamper-off` step runs when `defender` is `false`.
+- `description`: a plain sentence on what the step is doing, shown on the build page under the progress bar
+  while the step runs. It says whether anything is needed from the person watching, and that a quiet
+  desktop is normal where it is. A non-empty string when given; the profile is scanned for giveaway words
+  like every shipped file, so it names no analysis product.
 
 A build uses `pipelines.build.<media kind>` of the medium chosen; a medium whose kind the profile has no
 pipeline for is refused.

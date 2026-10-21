@@ -115,4 +115,19 @@ describe('DesktopPanel for the desktop of a guest build', () => {
     expect(labels.join(' ')).not.toMatch(/clipboard|paste|copy/i)
     expect(labels).toHaveLength(2)
   })
+
+  it('has its title and its two buttons in the one shared panel header, the hint under the screen', async () => {
+    const wrapper = await mountPanel()
+    const header = wrapper.find('.pane-heading')
+    expect(header.find('.pane-heading__title').text()).toBe('DESKTOP')
+    expect(header.find('.pane-heading__actions').findAll('button').map((button) => button.text())).toEqual([expect.stringContaining('[FULLSCREEN]'), expect.stringContaining('[CTRL+ALT+DEL]')])
+    expect(wrapper.find('[data-desktop="screen"] button').exists()).toBe(false)
+    expect(wrapper.find('[data-desktop="toolbar-note"]').exists()).toBe(true)
+    expect(header.find('[data-desktop="toolbar-note"]').exists()).toBe(false)
+  })
+
+  it('is boxed like the live tab’s other panels unless its owner says it sits among plain sections', async () => {
+    expect((await mountPanel()).classes()).toContain('live-desktop--framed')
+    expect((await mountPanel({ bare: true })).classes()).not.toContain('live-desktop--framed')
+  })
 })

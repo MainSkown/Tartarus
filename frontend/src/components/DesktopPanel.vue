@@ -18,6 +18,8 @@ const props = defineProps<{
   adjustPhase?: (phase: DesktopPhase) => DesktopPhase
   /** The last picture of the guest, shown dimmed behind a message once the desktop is gone. */
   screenshot?: string
+  /** Without the box the live tab's other panels have, for a page whose neighbours are plain headed sections. */
+  bare?: boolean
 }>()
 
 const root = ref<HTMLElement>()
@@ -29,6 +31,12 @@ const fullscreen = useFullscreen(root)
 
 const shownPhase = computed(() => props.adjustPhase?.(desktop.phase.value) ?? desktop.phase.value)
 const connected = computed(() => desktop.phase.value === 'connected')
+
+const note = computed(() => {
+  if (fullscreen.error.value) return fullscreen.error.value
+  if (desktop.capturing.value) return t('live.desktop.toolbar.escToRelease')
+  return connected.value ? t('live.desktop.toolbar.clickToType') : ''
+})
 
 function focusScreen(): void {
   screen.value?.focus({ preventScroll: true })
@@ -43,8 +51,16 @@ function keepKeysFromTheApp(event: KeyboardEvent): void {
   <section
     ref="root"
     class="live-desktop"
+    :class="{ 'live-desktop--framed': !bare }"
   >
-    <PaneHeading :label="t('live.desktop.heading')" />
+    <PaneHeading :label="t('live.desktop.heading')">
+      <DesktopToolbar
+        :live="connected"
+        :fullscreen="fullscreen.active.value"
+        @fullscreen="fullscreen.toggle"
+        @ctrl-alt-del="desktop.sendCtrlAltDel"
+      />
+    </PaneHeading>
     <div
       ref="screen"
       class="live-desktop__screen"
@@ -73,14 +89,13 @@ function keepKeysFromTheApp(event: KeyboardEvent): void {
         @retry="desktop.connect"
       />
     </div>
-    <DesktopToolbar
-      :live="connected"
-      :fullscreen="fullscreen.active.value"
-      :capturing="desktop.capturing.value"
-      :note="fullscreen.error.value"
-      @fullscreen="fullscreen.toggle"
-      @ctrl-alt-del="desktop.sendCtrlAltDel"
-    />
+    <p
+      class="live-desktop__note text-mono"
+      :class="{ 'live-desktop__note--active': desktop.capturing.value && !fullscreen.error.value, 'live-desktop__note--wrap': fullscreen.error.value }"
+      data-desktop="toolbar-note"
+    >
+      {{ note }}
+    </p>
   </section>
 </template>
 
@@ -90,8 +105,16 @@ function keepKeysFromTheApp(event: KeyboardEvent): void {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+.live-desktop--framed {
   padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-sm);
   border: 2px solid var(--border-primary);
+  background: var(--dark-bg);
+}
+
+.live-desktop:fullscreen {
+  padding: var(--spacing-sm);
   background: var(--dark-bg);
 }
 
@@ -109,6 +132,29 @@ function keepKeysFromTheApp(event: KeyboardEvent): void {
 .live-desktop__screen--captured {
   border-color: var(--blue-primary);
   box-shadow: var(--shadow-blue-medium);
+}
+
+/* One line, so that taking or losing the keyboard never changes the height of the screen above. */
+.live-desktop__note {
+  flex: none;
+  min-height: 1.2em;
+  margin: var(--spacing-xs) 0 0;
+  overflow: hidden;
+  color: var(--text-gray-dark);
+  font-size: 0.7rem;
+  line-height: 1.2;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-desktop__note--wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.live-desktop__note--active {
+  color: var(--blue-primary);
 }
 
 /* Stacked under the other panels there is no height to fill, so the screen takes the guest's own proportions. */

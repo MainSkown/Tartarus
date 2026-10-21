@@ -40,8 +40,9 @@ class GuestEngine(Protocol):
     def start_clone(self, source: str, params: Json) -> str: ...
 
     def build(self, build_id: str) -> Json:
-        """`{id, guest, kind, status, step, steps, percent, message, pause}`; `status` is one of
-        `running`, `paused`, `failed`, `succeeded`; `pause` is `{instructions}` or None."""
+        """`{id, guest, kind, status, step, steps, percent, message, pause, last_activity}`;
+        `status` is one of `running`, `paused`, `failed`, `succeeded`; `pause` is `{instructions}`
+        or None; `last_activity` is when the running step last logged or moved its progress."""
         ...
 
     def build_log(self, build_id: str, tail: int) -> list[str]: ...

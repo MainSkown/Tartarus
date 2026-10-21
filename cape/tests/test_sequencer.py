@@ -154,6 +154,78 @@ def test_progress_and_step_lines_update_the_record_while_the_step_runs(shop):
     assert shop.finish(started.id).status == "succeeded"
 
 
+def read_when(shop, build_id, condition, what):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        seen = shop.store.load(build_id)
+        if condition(seen):
+            return seen
+        time.sleep(0.05)
+    raise AssertionError(f"never saw: {what}")
+
+
+def test_a_step_that_starts_is_active_from_its_start(shop):
+    gate = shop.root / "gate"
+    shop.step("quiet", f"while [ ! -e {gate} ]; do sleep 0.05; done")
+    started = shop.new("quiet")
+
+    seen = read_when(shop, started.id, lambda build: build.steps[0].started, "the step started")
+
+    assert seen.last_activity == seen.steps[0].started
+    gate.write_text("go")
+    shop.finish(started.id)
+
+
+def test_last_activity_moves_when_a_log_line_arrives(shop, monkeypatch):
+    ticks = iter(f"2026-10-15T12:00:{second:02d}Z" for second in range(60))
+    monkeypatch.setattr("guest_engine.sequencer.timestamp", lambda: next(ticks))
+    gate, line = shop.root / "gate", shop.root / "line"
+    shop.step(
+        "talks",
+        f"while [ ! -e {line} ]; do sleep 0.05; done\necho 'LOG still working'\n"
+        f"while [ ! -e {gate} ]; do sleep 0.05; done",
+    )
+    started = shop.new("talks")
+    before = read_when(shop, started.id, lambda build: build.last_activity, "the step started")
+
+    line.write_text("go")
+    after = read_when(
+        shop,
+        started.id,
+        lambda build: build.last_activity and build.last_activity > before.last_activity,
+        "a newer last_activity after the log line",
+    )
+
+    assert after.status == "running"
+    gate.write_text("go")
+    shop.finish(started.id)
+
+
+def test_a_progress_change_counts_as_activity(shop, monkeypatch):
+    ticks = iter(f"2026-10-15T12:00:{second:02d}Z" for second in range(60))
+    monkeypatch.setattr("guest_engine.sequencer.timestamp", lambda: next(ticks))
+    gate, line = shop.root / "gate", shop.root / "line"
+    shop.step(
+        "counts",
+        f"while [ ! -e {line} ]; do sleep 0.05; done\necho 'PROGRESS 30'\n"
+        f"while [ ! -e {gate} ]; do sleep 0.05; done",
+    )
+    started = shop.new("counts")
+    before = read_when(shop, started.id, lambda build: build.last_activity, "the step started")
+
+    line.write_text("go")
+    after = read_when(
+        shop,
+        started.id,
+        lambda build: build.steps[0].progress == 30 and build.last_activity > before.last_activity,
+        "progress 30 with a newer last_activity",
+    )
+
+    assert after.steps[0].progress == 30
+    gate.write_text("go")
+    shop.finish(started.id)
+
+
 def test_percent_follows_the_weights_of_the_entries(shop):
     shop.step("quick", "true")
     shop.step("stuck", "exit 1")

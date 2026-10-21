@@ -135,6 +135,48 @@ describe('GuestBuildPage', () => {
       expect(header.text()).toContain('Reconfiguring the copy')
     })
 
+    it('says what the running step is, what it is doing now and when it last did anything', async () => {
+      const description = 'Windows installs itself; its first-logon script sets the guest up.'
+      const wrapper = await show(
+        succeeded(
+          running({
+            message: 'Windows is provisioning itself: install Python',
+            last_activity: new Date(Date.now() - 8_000).toISOString(),
+            steps: [step('preflight', 'succeeded', { description: 'Checks the host.' }), step('install', 'running', { description }), step('snapshot', 'pending', { description: 'Takes the snapshot.' })],
+          }),
+        ),
+      )
+      const header = wrapper.find('[data-build="header"]')
+      expect(header.find('[data-build="description"]').text()).toBe(description)
+      expect(header.find('[data-build="message"]').text()).toBe('Windows is provisioning itself: install Python')
+      expect(header.find('[data-build="activity"]').text()).toBe('last activity 8s ago')
+    })
+
+    it('warns when the step has been quiet for two minutes, and keeps counting without a new answer', async () => {
+      const wrapper = await show(succeeded(running({ last_activity: new Date(Date.now() - 100_000).toISOString() })))
+      expect(wrapper.find('[data-build="activity"]').attributes('data-stale')).toBe('false')
+      api.guestsReadBuild.mockImplementation(() => new Promise(() => undefined))
+      await vi.advanceTimersByTimeAsync(21_000)
+      expect(wrapper.find('[data-build="activity"]').text()).toContain('no news for 2 min: the step may be waiting or stuck')
+      expect(wrapper.find('[data-build="activity"]').attributes('data-stale')).toBe('true')
+    })
+
+    it('has no description line for a step the profile gave no sentence', async () => {
+      const wrapper = await show(succeeded(running()))
+      expect(wrapper.find('[data-build="description"]').exists()).toBe(false)
+    })
+
+    it('has the three panel headers of the page in one shared form, buttons on the right', async () => {
+      const wrapper = await show(succeeded(running({ desktop: true })))
+      const headers = wrapper.findAll('.pane-heading')
+      expect(headers.map((header) => header.find('.pane-heading__title').text())).toEqual(['STEPS', 'DESKTOP', 'BUILD LOG'])
+      expect(headers.map((header) => header.findAll('.pane-heading__actions button').map((button) => button.text()))).toEqual([
+        [],
+        [expect.stringContaining('[FULLSCREEN]'), expect.stringContaining('[CTRL+ALT+DEL]')],
+        [expect.stringContaining('[PAUSE FOLLOW]'), expect.stringContaining('[COPY LOG]')],
+      ])
+    })
+
     it('lists the steps with the profile’s names humanised, and the self-test last', async () => {
       const wrapper = await show(succeeded(running()))
       expect(wrapper.findAll('.build-step__name').map((name) => name.text())).toEqual(['PREFLIGHT', 'TAMPER OFF', 'SNAPSHOT', 'SELF TEST'])
@@ -174,6 +216,24 @@ describe('GuestBuildPage', () => {
       api.guestsReadBuild.mockResolvedValue(succeeded(running({ desktop: false })))
       await vi.advanceTimersByTimeAsync(2_000)
       expect(wrapper.find('[data-desktop="screen"]').exists()).toBe(false)
+    })
+  })
+
+  describe('when the step is not running', () => {
+    it('shows no description or activity for a paused build, where the notice speaks instead', async () => {
+      const wrapper = await show(
+        succeeded(running({ status: 'paused', pause: { instructions: 'Do it.' }, last_activity: new Date().toISOString(), steps: [step('tamper-off', 'paused', { description: 'Turns it off.' })] })),
+      )
+      expect(wrapper.find('[data-build="description"]').exists()).toBe(false)
+      expect(wrapper.find('[data-build="activity"]').exists()).toBe(false)
+    })
+
+    it('shows none for a failed build either', async () => {
+      const wrapper = await show(
+        succeeded(running({ status: 'failed', message: 'it broke', last_activity: new Date().toISOString(), steps: [step('install', 'failed', { description: 'Installs.' })] })),
+      )
+      expect(wrapper.find('[data-build="description"]').exists()).toBe(false)
+      expect(wrapper.find('[data-build="activity"]').exists()).toBe(false)
     })
   })
 

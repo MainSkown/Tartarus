@@ -163,6 +163,27 @@ def test_a_paused_build_carries_its_instructions() -> None:
     assert build.pause.instructions == "Turn Tamper Protection off, then continue."
 
 
+def test_the_last_activity_and_the_step_descriptions_pass_through_unchanged() -> None:
+    record = captured("build_status.json")
+    record["last_activity"] = "2026-10-15T19:12:31Z"
+    record["steps"][3]["description"] = "Windows installs itself."
+
+    build = BuildStatus.model_validate(record)
+
+    assert build.last_activity == "2026-10-15T19:12:31Z"
+    assert build.steps[3].description == "Windows installs itself."
+    dumped = build.model_dump(mode="json")
+    assert dumped["last_activity"] == "2026-10-15T19:12:31Z"
+    assert dumped["steps"][3]["description"] == "Windows installs itself."
+
+
+def test_a_build_record_without_them_reads_them_as_null() -> None:
+    build = BuildStatus.model_validate(captured("build_status.json"))
+
+    assert build.last_activity is None
+    assert [step.description for step in build.steps] == [None] * len(build.steps)
+
+
 def test_a_build_with_an_unknown_status_is_refused() -> None:
     with pytest.raises(ValidationError):
         BuildStatus.model_validate({**captured("build_status.json"), "status": "exploded"})
