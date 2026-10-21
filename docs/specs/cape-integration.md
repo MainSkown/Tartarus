@@ -486,6 +486,10 @@ nothing Tartarus puts in a guest carries the product's name.
   `sandbox`, `malware`, `virus` and `cuckoo` anywhere in the text; `cape`, `test`, `admin` and words starting
   `analy` only as a whole word or path component (`cape` is inside `landscape`). One list
   (`cape/guest_engine/giveaways.py`) serves the build, the clone, the generators and the guest-side scan.
+  Words that are ordinary on a real machine but contain one of the first list (`antivirus`, which English
+  Windows uses in its own Defender service names, "Microsoft Defender Antivirus Service") are listed as
+  legitimate in the same file and removed from the text before it is searched, so `antivirus` passes while
+  `myvirus` and `antivirus virus` do not.
 - **Neutral names inside the guest.** The per-guest working folder is `C:\ProgramData\<8 random letters>`; the
   firewall rule, scheduled task, install-disc label and marker file, the first-logon description, the done marker
   and the log file take neutral names from one table (`names.json`: "Windows Remote Assistance Service" and
@@ -517,8 +521,10 @@ settled the old question of choosing per submission.
 - **The `tamper-off` step**, after provisioning and before the snapshot, so the state is in it, runs in the
   64-bit PowerShell through the agent: (1) write the Defender policy keys; (2) open
   `windowsdefender://threatsettings` (it opens only outside a monitored analysis, which a build is); (3) find
-  the Tamper Protection toggle by its known localized names (Polish, English), else as the fifth of the page's
-  five toggles, which all share one `AutomationId`; (4) switch it off and **verify with `IsTamperProtected = False`**,
+  the page's switches by toggle behaviour (every element with the UI Automation `TogglePattern`, because
+  Windows 10 exposes them without an `AutomationId` and Windows 11 gives all five the same one), then the
+  Tamper Protection switch among them by its known localized names (Polish, English), else the last switch,
+  which Tamper Protection is on both versions; (4) switch it off and **verify with `IsTamperProtected = False`**,
   which is language-independent, rereading once; (5) make sure real-time protection is off; (6) **prove it by
   file, not by flag**: write the EICAR test string (two halves, joined at run time so no scanner on a dev machine
   quarantines the repo), require the file to survive, then run a quick scan over its folder and require it to

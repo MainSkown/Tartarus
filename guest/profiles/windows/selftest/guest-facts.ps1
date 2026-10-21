@@ -10,6 +10,8 @@ param(
   [string[]] $SubstringWords = @('tartarus', 'sandbox', 'malware', 'virus', 'cuckoo'),
   [string[]] $TokenWords = @('cape', 'test', 'admin'),
   [string[]] $PrefixWords = @('analy'),
+  # English Windows names its own Defender services "Microsoft Defender Antivirus ...".
+  [string[]] $LegitimateWords = @('antivirus'),
   # Display vendors that name the hypervisor in their PNP id (virtio, QXL, VMware, VirtualBox, Cirrus).
   [string[]] $WorseDisplayVendors = @('PCI\VEN_1AF4', 'PCI\VEN_1B36', 'PCI\VEN_15AD', 'PCI\VEN_80EE', 'PCI\VEN_1013')
 )
@@ -81,9 +83,12 @@ function Split-Tokens([string] $text) {
 
 function Find-Giveaway([string] $text) {
   if ([string]::IsNullOrWhiteSpace($text)) { return $null }
-  $lowered = $text.ToLower()
+  $searchable = $text.ToLower()
+  foreach ($word in $LegitimateWords) {
+    $searchable = $searchable.Replace($word, ' ')
+  }
   foreach ($word in $SubstringWords) {
-    if ($lowered.Contains($word)) { return $word }
+    if ($searchable.Contains($word)) { return $word }
   }
   $tokens = Split-Tokens $text
   foreach ($token in $tokens) {

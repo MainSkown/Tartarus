@@ -66,7 +66,7 @@ remote access. Everything binds to `127.0.0.1`.
 | M7b | **Frontend i18n** | Built ([plan](plans/m7b-frontend-i18n.md)): every user-facing string of the frontend lives in a locale catalogue, English only; a lint rule fails the build on raw template text. |
 | M8 | **More event sources** | Built and proven on a real guest ([plan](plans/m8-event-sources.md)): Sysmon events, Defender's verdict, the full memory dump with Volatility3 findings and its symbols. ETW was dropped from v1. A few small follow-ups are listed in the plan. |
 | M9 | **Beyond one run** | **Built** ([plan](plans/m9-beyond-one-run.md)): PCAP and memory-image import, a cross-analysis Search page with IOC pivot, parallel analyses on several guests. Proven on the real stack, screens approved. |
-| M10 | **Guest proofs** | Planned: the manual Defender pause, a failing install step, a Windows 10 ISO and an English-language Windows ISO, run for real. |
+| M10 | **Guest proofs** | Started 2026-10-21, [plan](plans/m10-guest-proofs.md): the manual Defender pause, a failing install step, a Windows 10 ISO and an English-language Windows ISO, run for real. |
 | M11 | **Hardening and release** | Planned: security review, CI on GitHub Actions, docs cleanup, GPL-3.0 and release files, a clean-host install test, `v1.0.0`. |
 
 ### Next up

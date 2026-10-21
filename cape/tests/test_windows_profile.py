@@ -1,5 +1,6 @@
 """The Windows guest profile under guest/profiles/windows/: its schema, names and scripts."""
 
+import base64
 import json
 import os
 import re
@@ -363,10 +364,8 @@ SCHEMA_KEY = re.compile(r'^\s*"cape": \{$')
 # The sample is submitted for analysis, not provisioned; the Sigma rule, the end-to-end checks
 # and the report fixtures all key on the strings it writes.
 WHOLE_FILE_ALLOWED = {"selftest/benign.c"}
-# Defender's own property name, reported as a FACT that verify-guest.sh prints.
 LINE_ALLOWED = {
     "selftest/guest-facts.ps1": (
-        "Fact 'defender.antivirus_enabled'",
         # The scanner's own vocabulary (decision 16's word list, duplicated here because
         # PowerShell cannot import guest_engine.giveaways): the words must appear as data.
         "$SubstringWords = @(",
@@ -394,7 +393,8 @@ def giveaway_findings(path: Path) -> list[str]:
         if any(allowed in line for allowed in LINE_ALLOWED.get(name, ())):
             continue
         lowered = line.lower()
-        words = [word for word in giveaways.SUBSTRING_GIVEAWAYS if word in lowered]
+        searchable = giveaways.lowered_without_legitimate_words(line)
+        words = [word for word in giveaways.SUBSTRING_GIVEAWAYS if word in searchable]
         names_the_agent_file = "agent.py" in lowered
         is_schema_key = name == "profile.json" and SCHEMA_KEY.match(line)
         if "cape" in giveaways.tokens(line) and not (names_the_agent_file or is_schema_key):
@@ -427,6 +427,16 @@ class TestNothingSaysWhatTheMachineIs:
             sample = tmp_path / f"sample{index}.ps1"
             sample.write_text(f"Write-Host 'a {word} here'\n")
             assert len(giveaway_findings(sample)) == 1, word
+
+    def test_the_scan_does_not_flag_a_legitimate_word_but_flags_a_giveaway_beside_it(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(f"{__name__}.PROFILE_DIR", tmp_path)
+        sample = tmp_path / "sample.ps1"
+        sample.write_text("# Microsoft Defender Antivirus, ANTIVIRUS\n")
+        assert giveaway_findings(sample) == []
+        sample.write_text("# Antivirus virus\n")
+        assert len(giveaway_findings(sample)) == 1
 
     def test_the_scan_does_not_flag_words_that_merely_contain_cape(self, tmp_path, monkeypatch):
         monkeypatch.setattr(f"{__name__}.PROFILE_DIR", tmp_path)
@@ -835,6 +845,52 @@ class TestDefenderSettingsScript:
         assert "-Force" in text
 
 
+WINDOWS_10_SWITCHES = [
+    "Real-time protection",
+    "Cloud-delivered protection",
+    "Automatic sample submission",
+    "Tamper Protection",
+]
+WINDOWS_11_SWITCHES = [
+    "Ochrona w czasie rzeczywistym",
+    "Ochrona dostarczana z chmury",
+    "Automatyczne przesyłanie próbek",
+    "Ochrona przed naruszeniami",
+    "Ochrona przed manipulacją inna",
+]
+requires_pwsh = pytest.mark.skipif(
+    shutil.which("pwsh") is None,
+    reason="pwsh is not installed here; the switch selection runs in PowerShell (run it in "
+    "mcr.microsoft.com/powershell or on the live guest)",
+)
+
+
+def select_tamper_toggle(switch_names: list[str]) -> str | None:
+    """Run security-ui.ps1's Select-TamperToggle over switches that have only a Name.
+
+    The script text travels as an encoded command, so it works the same with a real pwsh and
+    with one that lives in a container that cannot see the repository.
+    """
+    switches = json.dumps([{"Name": name} for name in switch_names]).replace("'", "''")
+    script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        + script_text("security-ui.ps1")
+        + f"\n$switches = @(ConvertFrom-Json -InputObject '{switches}')\n"
+        + "$picked = Select-TamperToggle $switches\n"
+        + "if ($null -eq $picked) { 'NONE' } else { 'PICKED:' + $picked.Name }\n"
+    )
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    result = subprocess.run(  # noqa: S603 - fixed argv, script text from the repo
+        ["pwsh", "-NoProfile", "-OutputFormat", "Text", "-EncodedCommand", encoded],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = result.stdout.strip()
+    return None if output == "NONE" else output.removeprefix("PICKED:")
+
+
 class TestSecurityWindowLookup:
     """One helper finds the Windows Security window and its Tamper Protection switch, because a
     copy in each script is how a bug fixed in tamper-off.ps1 survived in defender-on.ps1."""
@@ -846,7 +902,7 @@ class TestSecurityWindowLookup:
         assert "Zabezpieczenia Windows" in text
         assert "Windows Security" in text
 
-    def test_the_helper_knows_the_localized_switch_names_and_the_fifth_toggle_fallback(self):
+    def test_the_helper_knows_the_localized_switch_names(self):
         text = script_text("security-ui.ps1")
         for name in (
             "Ochrona przed naruszeniami",
@@ -854,13 +910,47 @@ class TestSecurityWindowLookup:
             "Tamper Protection",
         ):
             assert name in text
-        assert "settingToggle" in text
-        assert "TogglePattern" in text
+
+    def test_the_switches_are_found_by_toggle_behaviour_not_by_an_automation_id(self):
+        text = script_text("security-ui.ps1")
+        assert "IsTogglePatternAvailableProperty" in text
+        assert "settingToggle" not in text
+        assert "TamperToggleFallbackIndex" not in text
 
     def test_the_helper_loads_ui_automation(self):
         assert "Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes" in script_text(
             "security-ui.ps1"
         )
+
+    @requires_pwsh
+    def test_windows_10_english_four_switches_pick_tamper_protection_by_name(self):
+        assert select_tamper_toggle(WINDOWS_10_SWITCHES) == "Tamper Protection"
+
+    @requires_pwsh
+    def test_windows_10_with_unknown_names_picks_the_last_of_four(self):
+        names = ["Echtzeitschutz", "Cloudbasierter Schutz", "Automatische Übermittlung", "Zzz"]
+        assert select_tamper_toggle(names) == "Zzz"
+
+    @requires_pwsh
+    def test_windows_11_polish_five_switches_pick_tamper_protection_by_name(self):
+        assert select_tamper_toggle(WINDOWS_11_SWITCHES) == "Ochrona przed naruszeniami"
+
+    @requires_pwsh
+    def test_windows_11_with_unknown_names_picks_the_last_of_five(self):
+        assert select_tamper_toggle(["a", "b", "c", "d", "e"]) == "e"
+
+    @requires_pwsh
+    def test_no_switches_is_no_toggle(self):
+        assert select_tamper_toggle([]) is None
+
+    @requires_pwsh
+    def test_a_name_match_wins_over_the_last_switch(self):
+        names = ["Real-time protection", "Tamper Protection", "Something added later"]
+        assert select_tamper_toggle(names) == "Tamper Protection"
+
+    @requires_pwsh
+    def test_a_single_unknown_switch_is_the_last(self):
+        assert select_tamper_toggle(["only"]) == "only"
 
     @pytest.mark.parametrize("script", ["tamper-off.ps1", "defender-on.ps1"])
     def test_both_scripts_load_the_helper_and_carry_no_lookup_of_their_own(self, script):
@@ -1061,7 +1151,7 @@ class TestFactsScript:
     def test_the_word_list_is_a_parameter_not_a_literal(self):
         text = script_text("selftest/guest-facts.ps1")
         block = param_block(text)
-        for name in ("SubstringWords", "TokenWords", "PrefixWords"):
+        for name in ("SubstringWords", "TokenWords", "PrefixWords", "LegitimateWords"):
             assert f"${name}" in block, name
 
 
@@ -1124,11 +1214,13 @@ class TestPowerShellSyntax:
     def test_every_script_parses(self):
         parse_call = "[System.Management.Automation.Language.Parser]::ParseFile"
         report = "Write-Output ('{0}:{1}: {2}' -f $file, $e.Extent.StartLineNumber, $e.Message)"
+        # -Command joins trailing arguments onto the command text, so the files only reach $args
+        # when the script is a called script block.
         script = (
-            "$failed = $false; foreach ($file in $args) { $errors = $null; "
+            "& { $failed = $false; foreach ($file in $args) { $errors = $null; "
             f"{parse_call}($file, [ref]$null, [ref]$errors) | Out-Null; "
             f"foreach ($e in $errors) {{ {report}; $failed = $true }} }}; "
-            "if ($failed) { exit 1 }"
+            "if ($failed) { exit 1 } }"
         )
         result = subprocess.run(  # noqa: S603 - fixed argv, files from the repo
             ["pwsh", "-NoProfile", "-Command", script, *map(str, powershell_files())],  # noqa: S607
