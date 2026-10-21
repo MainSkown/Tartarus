@@ -1,13 +1,19 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 import EventTable from '@/components/EventTable.vue'
 import FilterChips from '@/components/FilterChips.vue'
 import PaneHeading from '@/components/PaneHeading.vue'
 import QueryBar from '@/components/QueryBar.vue'
 import { useCrossSearch } from '@/composables/use-cross-search'
+import { useViewportFill } from '@/composables/use-viewport-fill'
 import { t } from '@/i18n'
 import { useQueryStateStore } from '@/stores/query-state'
 
+// The page's own top and bottom padding (2 x spacing-sm), so the page itself never scrolls.
+const BOTTOM_GAP = 16
+
+const root = ref<HTMLElement>()
+const { height: fillHeight } = useViewportFill(root, BOTTOM_GAP)
 const query = useQueryStateStore()
 const { rows, total, sort, loading, loadingMore, hasMore, error, loadMoreError, searched, run, retry, loadMore, toggleSort, clear } =
   useCrossSearch()
@@ -22,7 +28,11 @@ watch(
 </script>
 
 <template>
-  <section class="search-page">
+  <section
+    ref="root"
+    class="search-page"
+    :style="{ '--tab-fill-height': `${fillHeight}px` }"
+  >
     <PaneHeading :label="t('search.title')" />
     <div class="search-page__query">
       <QueryBar />
@@ -74,7 +84,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  height: 100%;
+  height: max(240px, var(--tab-fill-height));
   min-width: 0;
   min-height: 0;
   padding: var(--spacing-sm) var(--spacing-lg);
