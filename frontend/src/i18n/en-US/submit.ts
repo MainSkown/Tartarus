@@ -1,5 +1,9 @@
 export default {
   title: 'SUBMIT SAMPLE',
+  tabs: {
+    sample: 'Sample',
+    import: 'Import',
+  },
   file: {
     dropHint: 'drop file here · or click to browse',
     label: 'Sample file',
@@ -52,5 +56,33 @@ export default {
   },
   actions: {
     detonate: '▶ DETONATE',
+  },
+  import: {
+    title: 'IMPORT CAPTURE OR MEMORY IMAGE',
+    file: {
+      dropHint: 'drop a PCAP, PCAPNG or memory image here · or click to browse',
+      label: 'Capture or memory image file',
+      dropOneAtATime: 'Drop one file at a time',
+    },
+    kind: {
+      capture: 'PCAP capture',
+      memoryImage: 'Memory image',
+      unsupported: 'Not a PCAP capture or a memory image',
+    },
+    limits: 'Limits: PCAP capture up to {capture}, memory image up to {memoryImage}.',
+    memoryNote:
+      'Windows 10 and 11 images only. When the build is unknown, symbols are fetched from Microsoft, which needs the cape container to reach the internet.',
+    tooLarge: 'This file is larger than the {limit} limit for its kind.',
+    uploading: 'Uploading {percent}%',
+    blocked: {
+      choose: 'Choose a capture or memory image to import',
+    },
+    error: {
+      tooLarge: 'The backend refused the file: it is over the size limit.',
+      unsupported: 'The backend does not accept this file type.',
+    },
+    actions: {
+      import: '▶ IMPORT',
+    },
   },
 }

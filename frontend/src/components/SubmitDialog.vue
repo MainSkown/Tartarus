@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { settingsRead } from '@/api'
 import type { Route } from '@/api'
 import GuestOptionRow from '@/components/GuestOptionRow.vue'
+import ImportPane from '@/components/ImportPane.vue'
 import { useGuestChoice } from '@/composables/use-guest-choice'
 import { t } from '@/i18n'
 import { sha256Hex } from '@/services/file-hash'
@@ -14,6 +15,7 @@ import { useGuestBlockReason } from '@/services/guest-gate'
 import { BUILT_ROUTES } from '@/services/routes'
 import type { ValidationIssue } from '@/services/validation-errors'
 import { SubmissionRejected, useAnalysesStore, type SubmitOptions } from '@/stores/analyses'
+import type { AnalysisCreated } from '@/api'
 
 defineEmits([...useDialogPluginComponent.emits])
 const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginComponent()
@@ -44,6 +46,10 @@ const keepMemoryDump = ref(false)
 watch(memoryDump, (on) => {
   if (!on) keepMemoryDump.value = false
 })
+
+type DialogTab = 'sample' | 'import'
+const tab = ref<DialogTab>('sample')
+const importBusy = ref(false)
 
 const dragOver = ref(false)
 const dropError = ref<string>()
@@ -149,6 +155,12 @@ function showRejection(rejection: SubmissionRejected): void {
   else if (noFieldNamed) errorBanner.value = rejection.message
 }
 
+function openAnalysis(analysis: AnalysisCreated): void {
+  for (const warning of analysis.warnings) Notify.create({ type: 'tt-warning', message: warning })
+  onDialogOK(analysis)
+  void router.push({ name: 'analysis-workspace', params: { id: analysis.id } })
+}
+
 async function submit(): Promise<void> {
   if (!canSubmit.value || !file.value) return
   submitting.value = true
@@ -156,10 +168,7 @@ async function submit(): Promise<void> {
   errorBanner.value = undefined
   memoryError.value = undefined
   try {
-    const analysis = await analyses.submit(file.value, submitOptions.value)
-    for (const warning of analysis.warnings) Notify.create({ type: 'tt-warning', message: warning })
-    onDialogOK(analysis)
-    void router.push({ name: 'analysis-workspace', params: { id: analysis.id } })
+    openAnalysis(await analyses.submit(file.value, submitOptions.value))
   } catch (error) {
     if (error instanceof SubmissionRejected) showRejection(error)
     else errorBanner.value = t('submit.error.unreachable')
@@ -177,289 +186,328 @@ onMounted(() => {
 <template>
   <q-dialog
     ref="dialogRef"
-    :persistent="submitting"
+    :persistent="submitting || importBusy"
     @hide="onDialogHide"
   >
     <q-card class="submit-dialog">
-      <form
-        class="submit-form"
-        @submit.prevent="submit"
+      <q-tabs
+        v-model="tab"
+        dense
+        align="left"
+        active-color="blue-primary"
+        indicator-color="blue-primary"
+        class="dialog-tabs text-mono"
       >
-        <h2 class="dialog-title text-mono">
-          {{ t('submit.title') }}
-        </h2>
-
-        <div class="form-field">
-          <div
-            class="drop-zone"
-            :class="{ 'drop-zone--over': dragOver }"
-            role="button"
-            tabindex="0"
-            @click="fileInput?.click()"
-            @keydown.enter.prevent="fileInput?.click()"
-            @keydown.space.prevent="fileInput?.click()"
-            @dragover.prevent="dragOver = true"
-            @dragleave="dragOver = false"
-            @drop.prevent="onDrop"
-          >
-            <template v-if="file">
-              <span
-                class="file-name text-mono"
-                :title="file.name"
-              >{{ file.name }}</span>
-              <span class="file-details text-mono text-gray">
-                <span class="file-size">{{ formatFileSize(file.size) }}</span>
-                <span
-                  class="file-hash"
-                  :title="hash"
-                >{{ t('submit.file.hash', { hash: hash ?? t('submit.file.hashing') }) }}</span>
-              </span>
-            </template>
-            <span
-              v-else
-              class="drop-hint text-mono text-gray"
-            >{{ t('submit.file.dropHint') }}</span>
-          </div>
-          <input
-            ref="fileInput"
-            type="file"
-            class="file-input"
-            tabindex="-1"
-            :aria-label="t('submit.file.label')"
-            @change="onFileInput"
-          >
-          <p
-            v-if="dropError"
-            class="field-error drop-error"
-            role="alert"
-          >
-            {{ dropError }}
-          </p>
-          <p
-            v-if="fieldErrors.file"
-            class="field-error file-error"
-            role="alert"
-          >
-            {{ fieldErrors.file }}
-          </p>
-        </div>
-
-        <div class="form-field">
-          <q-select
-            v-if="!guestChoice.listUnavailable.value"
-            v-model="guestChoice.guestName.value"
-            :options="guestChoice.guestOptions.value"
-            option-value="name"
-            option-label="name"
-            option-disable="disabled"
-            outlined
-            dense
-            hide-bottom-space
-            emit-value
-            map-options
-            :label="t('submit.guest.label')"
-            stack-label
-            :disable="submitting"
-            :error="Boolean(fieldErrors.guest)"
-            :error-message="fieldErrors.guest"
-            popup-content-class="guest-select-menu"
-            class="guest-select text-mono"
-          >
-            <template #selected>
-              <GuestOptionRow
-                v-if="guestChoice.chosenOption.value"
-                :option="guestChoice.chosenOption.value"
-              />
-              <span
-                v-else
-                class="guest-select__empty"
-              >{{ emptyGuestText }}</span>
-            </template>
-            <template #option="{ opt, itemProps }">
-              <q-item v-bind="itemProps">
-                <q-item-section>
-                  <GuestOptionRow :option="opt" />
-                </q-item-section>
-              </q-item>
-            </template>
-          </q-select>
-          <p
-            v-else
-            class="guest-unavailable text-gray"
-            role="status"
-          >
-            {{ t('submit.guest.unavailable') }}
-          </p>
-        </div>
-
-        <div class="form-field">
-          <span class="field-title text-mono">{{ t('submit.route.title') }}</span>
-          <div
-            class="radio-group"
-            role="radiogroup"
-            :aria-label="t('submit.route.group')"
-          >
-            <template
-              v-for="option in BUILT_ROUTES"
-              :key="option"
-            >
-              <input
-                :id="`route-${option}`"
-                v-model="route"
-                type="radio"
-                name="route"
-                class="radio-input"
-                :value="option"
-                :disabled="submitting"
-              >
-              <label
-                :for="`route-${option}`"
-                class="radio-label text-mono"
-              >{{ option }}</label>
-            </template>
-          </div>
-          <p
-            v-if="route === 'internet'"
-            class="internet-warning"
-            role="alert"
-          >
-            {{ t('submit.route.internetWarning') }}
-          </p>
-          <p
-            v-if="fieldErrors.route"
-            class="field-error"
-            role="alert"
-          >
-            {{ fieldErrors.route }}
-          </p>
-        </div>
-
-        <div class="option-row">
-          <q-input
-            v-model="timeoutText"
-            outlined
-            dense
-            hide-bottom-space
-            type="number"
-            :label="t('submit.timeout.label')"
-            :suffix="t('submit.timeout.unit')"
-            :disable="submitting"
-            :error="Boolean(timeoutError ?? fieldErrors.timeout)"
-            :error-message="timeoutError ?? fieldErrors.timeout"
-            class="timeout-input"
-          />
-          <q-select
-            v-model="guestChoice.packageName.value"
-            :options="guestChoice.packageOptions.value"
-            outlined
-            dense
-            hide-bottom-space
-            :label="t('submit.package.label')"
-            :disable="submitting"
-            :error="Boolean(fieldErrors.package)"
-            :error-message="fieldErrors.package"
-            class="package-input text-mono"
-          />
-        </div>
-
-        <div class="form-field">
-          <q-toggle
-            v-model="interactive"
-            dense
-            :label="t('submit.interactive.label')"
-            :disable="submitting"
-            class="interactive-toggle text-mono"
-          />
-          <p class="interactive-note text-gray">
-            {{ interactiveNote }}
-          </p>
-          <p
-            v-if="fieldErrors.interactive"
-            class="field-error interactive-error"
-            role="alert"
-          >
-            {{ fieldErrors.interactive }}
-          </p>
-        </div>
-
-        <div class="form-field">
-          <q-toggle
-            v-model="memoryDump"
-            dense
-            :label="t('submit.memory.label')"
-            :disable="submitting"
-            class="memory-toggle text-mono"
-          />
-          <p
-            v-if="memoryDump"
-            class="memory-note text-gray"
-          >
-            {{ memoryNote }}
-          </p>
-          <div
-            v-if="memoryDump"
-            class="memory-nested"
-          >
-            <q-toggle
-              v-model="keepMemoryDump"
-              dense
-              :label="t('submit.memory.keep.label')"
-              :disable="submitting"
-              class="keep-toggle text-mono"
-            />
-            <p class="keep-helper text-gray">
-              {{ t('submit.memory.keep.helper') }}
-            </p>
-          </div>
-          <p
-            v-if="memoryError"
-            class="field-error memory-error"
-            role="alert"
-          >
-            {{ memoryError }}
-          </p>
-        </div>
-
-        <p
-          v-if="errorBanner"
-          class="error-banner text-mono"
-          role="alert"
+        <q-tab
+          name="sample"
+          :label="t('submit.tabs.sample')"
+          :disable="importBusy"
+        />
+        <q-tab
+          name="import"
+          :label="t('submit.tabs.import')"
+          :disable="submitting"
+        />
+      </q-tabs>
+      <q-tab-panels
+        v-model="tab"
+        keep-alive
+        :animated="false"
+      >
+        <q-tab-panel
+          name="sample"
+          class="q-pa-none"
         >
-          {{ errorBanner }}
-        </p>
-
-        <div class="form-actions">
-          <span
-            v-if="blockReason"
-            class="submit-reason text-mono text-gray"
+          <form
+            class="submit-form"
+            @submit.prevent="submit"
           >
-            {{ blockReason }}
-            <router-link
-              v-if="guestChoice.noGuestReason.value"
-              to="/guest"
-              class="guest-link"
-            >{{ t('submit.guest.openGuestVm') }}</router-link>
-          </span>
-          <q-space />
-          <q-btn
-            flat
-            square
-            :label="t('common.cancel')"
-            class="cancel-btn text-mono"
-            :disable="submitting"
-            @click="onDialogCancel"
+            <h2 class="dialog-title text-mono">
+              {{ t('submit.title') }}
+            </h2>
+
+            <div class="form-field">
+              <div
+                class="drop-zone"
+                :class="{ 'drop-zone--over': dragOver }"
+                role="button"
+                tabindex="0"
+                @click="fileInput?.click()"
+                @keydown.enter.prevent="fileInput?.click()"
+                @keydown.space.prevent="fileInput?.click()"
+                @dragover.prevent="dragOver = true"
+                @dragleave="dragOver = false"
+                @drop.prevent="onDrop"
+              >
+                <template v-if="file">
+                  <span
+                    class="file-name text-mono"
+                    :title="file.name"
+                  >{{ file.name }}</span>
+                  <span class="file-details text-mono text-gray">
+                    <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                    <span
+                      class="file-hash"
+                      :title="hash"
+                    >{{ t('submit.file.hash', { hash: hash ?? t('submit.file.hashing') }) }}</span>
+                  </span>
+                </template>
+                <span
+                  v-else
+                  class="drop-hint text-mono text-gray"
+                >{{ t('submit.file.dropHint') }}</span>
+              </div>
+              <input
+                ref="fileInput"
+                type="file"
+                class="file-input"
+                tabindex="-1"
+                :aria-label="t('submit.file.label')"
+                @change="onFileInput"
+              >
+              <p
+                v-if="dropError"
+                class="field-error drop-error"
+                role="alert"
+              >
+                {{ dropError }}
+              </p>
+              <p
+                v-if="fieldErrors.file"
+                class="field-error file-error"
+                role="alert"
+              >
+                {{ fieldErrors.file }}
+              </p>
+            </div>
+
+            <div class="form-field">
+              <q-select
+                v-if="!guestChoice.listUnavailable.value"
+                v-model="guestChoice.guestName.value"
+                :options="guestChoice.guestOptions.value"
+                option-value="name"
+                option-label="name"
+                option-disable="disabled"
+                outlined
+                dense
+                hide-bottom-space
+                emit-value
+                map-options
+                :label="t('submit.guest.label')"
+                stack-label
+                :disable="submitting"
+                :error="Boolean(fieldErrors.guest)"
+                :error-message="fieldErrors.guest"
+                popup-content-class="guest-select-menu"
+                class="guest-select text-mono"
+              >
+                <template #selected>
+                  <GuestOptionRow
+                    v-if="guestChoice.chosenOption.value"
+                    :option="guestChoice.chosenOption.value"
+                  />
+                  <span
+                    v-else
+                    class="guest-select__empty"
+                  >{{ emptyGuestText }}</span>
+                </template>
+                <template #option="{ opt, itemProps }">
+                  <q-item v-bind="itemProps">
+                    <q-item-section>
+                      <GuestOptionRow :option="opt" />
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+              <p
+                v-else
+                class="guest-unavailable text-gray"
+                role="status"
+              >
+                {{ t('submit.guest.unavailable') }}
+              </p>
+            </div>
+
+            <div class="form-field">
+              <span class="field-title text-mono">{{ t('submit.route.title') }}</span>
+              <div
+                class="radio-group"
+                role="radiogroup"
+                :aria-label="t('submit.route.group')"
+              >
+                <template
+                  v-for="option in BUILT_ROUTES"
+                  :key="option"
+                >
+                  <input
+                    :id="`route-${option}`"
+                    v-model="route"
+                    type="radio"
+                    name="route"
+                    class="radio-input"
+                    :value="option"
+                    :disabled="submitting"
+                  >
+                  <label
+                    :for="`route-${option}`"
+                    class="radio-label text-mono"
+                  >{{ option }}</label>
+                </template>
+              </div>
+              <p
+                v-if="route === 'internet'"
+                class="internet-warning"
+                role="alert"
+              >
+                {{ t('submit.route.internetWarning') }}
+              </p>
+              <p
+                v-if="fieldErrors.route"
+                class="field-error"
+                role="alert"
+              >
+                {{ fieldErrors.route }}
+              </p>
+            </div>
+
+            <div class="option-row">
+              <q-input
+                v-model="timeoutText"
+                outlined
+                dense
+                hide-bottom-space
+                type="number"
+                :label="t('submit.timeout.label')"
+                :suffix="t('submit.timeout.unit')"
+                :disable="submitting"
+                :error="Boolean(timeoutError ?? fieldErrors.timeout)"
+                :error-message="timeoutError ?? fieldErrors.timeout"
+                class="timeout-input"
+              />
+              <q-select
+                v-model="guestChoice.packageName.value"
+                :options="guestChoice.packageOptions.value"
+                outlined
+                dense
+                hide-bottom-space
+                :label="t('submit.package.label')"
+                :disable="submitting"
+                :error="Boolean(fieldErrors.package)"
+                :error-message="fieldErrors.package"
+                class="package-input text-mono"
+              />
+            </div>
+
+            <div class="form-field">
+              <q-toggle
+                v-model="interactive"
+                dense
+                :label="t('submit.interactive.label')"
+                :disable="submitting"
+                class="interactive-toggle text-mono"
+              />
+              <p class="interactive-note text-gray">
+                {{ interactiveNote }}
+              </p>
+              <p
+                v-if="fieldErrors.interactive"
+                class="field-error interactive-error"
+                role="alert"
+              >
+                {{ fieldErrors.interactive }}
+              </p>
+            </div>
+
+            <div class="form-field">
+              <q-toggle
+                v-model="memoryDump"
+                dense
+                :label="t('submit.memory.label')"
+                :disable="submitting"
+                class="memory-toggle text-mono"
+              />
+              <p
+                v-if="memoryDump"
+                class="memory-note text-gray"
+              >
+                {{ memoryNote }}
+              </p>
+              <div
+                v-if="memoryDump"
+                class="memory-nested"
+              >
+                <q-toggle
+                  v-model="keepMemoryDump"
+                  dense
+                  :label="t('submit.memory.keep.label')"
+                  :disable="submitting"
+                  class="keep-toggle text-mono"
+                />
+                <p class="keep-helper text-gray">
+                  {{ t('submit.memory.keep.helper') }}
+                </p>
+              </div>
+              <p
+                v-if="memoryError"
+                class="field-error memory-error"
+                role="alert"
+              >
+                {{ memoryError }}
+              </p>
+            </div>
+
+            <p
+              v-if="errorBanner"
+              class="error-banner text-mono"
+              role="alert"
+            >
+              {{ errorBanner }}
+            </p>
+
+            <div class="form-actions">
+              <span
+                v-if="blockReason"
+                class="submit-reason text-mono text-gray"
+              >
+                {{ blockReason }}
+                <router-link
+                  v-if="guestChoice.noGuestReason.value"
+                  to="/guest"
+                  class="guest-link"
+                >{{ t('submit.guest.openGuestVm') }}</router-link>
+              </span>
+              <q-space />
+              <q-btn
+                flat
+                square
+                :label="t('common.cancel')"
+                class="cancel-btn text-mono"
+                :disable="submitting"
+                @click="onDialogCancel"
+              />
+              <q-btn
+                outline
+                square
+                type="submit"
+                :label="t('submit.actions.detonate')"
+                class="submit-btn text-mono"
+                :disable="!canSubmit"
+                :loading="submitting"
+              />
+            </div>
+          </form>
+        </q-tab-panel>
+        <q-tab-panel
+          name="import"
+          class="q-pa-none"
+        >
+          <ImportPane
+            @busy="importBusy = $event"
+            @imported="openAnalysis"
           />
-          <q-btn
-            outline
-            square
-            type="submit"
-            :label="t('submit.actions.detonate')"
-            class="submit-btn text-mono"
-            :disable="!canSubmit"
-            :loading="submitting"
-          />
-        </div>
-      </form>
+        </q-tab-panel>
+      </q-tab-panels>
     </q-card>
   </q-dialog>
 </template>
