@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import shutil
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,8 @@ from app.api.dependencies import (
     get_exports_path,
     get_free_space_probe,
     get_guest_control,
+    get_import_submitter,
+    get_imports_dir,
     get_runner,
     get_sample_store,
     require_analysis,
@@ -58,6 +61,12 @@ from app.db.models.analysis import ACTIVE_STATUSES, AnalysisStatus
 from app.db.session import get_session
 from app.guest.client import GuestControl
 from app.guest.errors import GuestControlError
+from app.imports.upload import (
+    ImportSubmitter,
+    ImportTooLargeError,
+    UnsupportedImportError,
+    import_directory,
+)
 from app.jobs.exports import remove_analysis_exports
 from app.samples.store import (
     EmptySampleError,
@@ -141,6 +150,37 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
         raise HTTPException(413, f"The file is larger than {too_large.max_bytes} bytes") from None
     read_back = await _read_one(session, guests, submitted.analysis)
     return AnalysisCreated(**read_back.model_dump(), warnings=submitted.warnings)
+
+
+@router.post("/import", status_code=201)
+async def import_capture(
+    file: Annotated[UploadFile, File(description="A PCAP or PCAPNG capture.")],
+    importer: Annotated[ImportSubmitter, Depends(get_import_submitter)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
+) -> AnalysisRead:
+    """Queues an `imported` analysis of a PCAP or PCAPNG capture (up to 512 MiB), run in no guest.
+
+    `415` when the file is not a capture, and for a memory image, which goes to
+    `POST /analyses/import/memory-image`; `413` over the size limit; `422` for an empty file.
+    """
+    return await _import(importer, session, guests, file, accept_memory_image=False)
+
+
+@router.post("/import/memory-image", status_code=201)
+async def import_memory_image(
+    file: Annotated[UploadFile, File(description="A memory image, or a PCAP or PCAPNG capture.")],
+    importer: Annotated[ImportSubmitter, Depends(get_import_submitter)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    guests: Annotated[GuestControl, Depends(get_guest_control)],
+) -> AnalysisRead:
+    """Queues an `imported` analysis of a memory image (up to 5 GiB), which runs no guest.
+
+    The path exists apart from `POST /analyses/import` because the reverse proxy streams uploads
+    to it unbuffered, to a larger limit. A capture is accepted here too, with the capture limit.
+    `415` when the file is neither; `413` over the size limit of its kind; `422` for an empty file.
+    """
+    return await _import(importer, session, guests, file, accept_memory_image=True)
 
 
 @router.get("", name="list")
@@ -274,6 +314,7 @@ async def delete(  # noqa: PLR0913 - one argument per resource the analysis owns
     index: Annotated[EventIndex, Depends(get_event_index)],
     store: Annotated[SampleStore, Depends(get_sample_store)],
     exports: Annotated[Path, Depends(get_exports_path)],
+    imports: Annotated[Path, Depends(get_imports_dir)],
 ) -> Response:
     """Removes the analysis, its CAPE task, its event index, its exported files, and its sample
     once unused. `409` while the analysis is active or has a job (an export) in progress.
@@ -287,6 +328,7 @@ async def delete(  # noqa: PLR0913 - one argument per resource the analysis owns
         await _delete_cape_task(cape, analysis.cape_task_id)
     await _drop_event_index(index, analysis_id)
     await _remove_exports(exports, analysis_id)
+    await _remove_import(imports, analysis_id)
     await delete_analysis(session, analysis_id)
     await discard_unreferenced_sample(session, store, analysis.sample_sha256)
     return Response(status_code=204)
@@ -379,6 +421,35 @@ async def _drop_event_index(index: EventIndex, analysis_id: int) -> None:
         await index.drop(analysis_id)
     except OpenSearchException as error:
         logger.warning("The event index of analysis %s was left behind: %s", analysis_id, error)
+
+
+async def _import(
+    importer: ImportSubmitter,
+    session: AsyncSession,
+    guests: GuestControl,
+    file: UploadFile,
+    *,
+    accept_memory_image: bool,
+) -> AnalysisRead:
+    try:
+        analysis = await importer.submit(
+            session, file, file.filename or "", accept_memory_image=accept_memory_image
+        )
+    except UnsupportedImportError as unsupported:
+        raise HTTPException(415, str(unsupported)) from None
+    except ImportTooLargeError as too_large:
+        raise HTTPException(413, f"The file is larger than {too_large.max_bytes} bytes") from None
+    except EmptySampleError:
+        raise _rejected_file("The uploaded file is empty", "value_error.empty") from None
+    return await _read_one(session, guests, analysis)
+
+
+async def _remove_import(imports: Path, analysis_id: int) -> None:
+    # An uploaded file that cannot be removed must not make the analysis undeletable.
+    try:
+        await asyncio.to_thread(shutil.rmtree, import_directory(imports, analysis_id), True)
+    except OSError as error:
+        logger.warning("The upload of analysis %s was left behind: %s", analysis_id, error)
 
 
 async def _remove_exports(exports: Path, analysis_id: int) -> None:

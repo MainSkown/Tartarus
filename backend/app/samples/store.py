@@ -60,7 +60,7 @@ class StoredSample:
     path: Path
 
 
-class _Digests:
+class Digests:
     def __init__(self) -> None:
         self._sha256 = hashlib.sha256()
         self._sha1 = hashlib.sha1(usedforsecurity=False)
@@ -74,13 +74,15 @@ class _Digests:
         self.size += len(chunk)
 
     def stored_in(self, root: Path) -> StoredSample:
-        sha256 = self._sha256.hexdigest()
+        return self.kept_at(root / _zip_name(self._sha256.hexdigest()))
+
+    def kept_at(self, path: Path) -> StoredSample:
         return StoredSample(
-            sha256=sha256,
+            sha256=self._sha256.hexdigest(),
             sha1=self._sha1.hexdigest(),
             md5=self._md5.hexdigest(),
             size=self.size,
-            path=root / _zip_name(sha256),
+            path=path,
         )
 
 
@@ -127,8 +129,8 @@ class SampleStore:
         self.root.mkdir(mode=PRIVATE_DIRECTORY, parents=True, exist_ok=True)
         return Path(tempfile.mkdtemp(prefix=f"{_INCOMING}-", dir=self.root))
 
-    async def _receive(self, stream: ByteSource, destination: Path) -> _Digests:
-        digests = _Digests()
+    async def _receive(self, stream: ByteSource, destination: Path) -> Digests:
+        digests = Digests()
         with destination.open("xb") as plain:
             while chunk := await stream.read(CHUNK_SIZE):
                 if digests.size + len(chunk) > self._max_bytes:
@@ -139,7 +141,7 @@ class SampleStore:
         return digests
 
     @staticmethod
-    def _absorb(chunk: bytes, digests: _Digests, plain: BinaryIO) -> None:
+    def _absorb(chunk: bytes, digests: Digests, plain: BinaryIO) -> None:
         digests.update(chunk)
         plain.write(chunk)
 

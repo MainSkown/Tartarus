@@ -18,6 +18,9 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CAPE_STORAGE_PATH",
         "SAMPLE_STORE_PATH",
         "EXPORTS_PATH",
+        "IMPORTS_DIR",
+        "IMPORT_PCAP_MAX_BYTES",
+        "IMPORT_MEMORY_IMAGE_MAX_BYTES",
         "RULES_PATH",
         "GUEST_CONTROL_URL",
         "GUEST_CONTROL_TOKEN",
@@ -111,6 +114,20 @@ def test_cape_settings_are_read_from_the_environment(monkeypatch: pytest.MonkeyP
     assert settings.cape_storage_path == Path("/mnt/cape")
     assert settings.sample_store_path == Path("/mnt/samples")
     assert settings.rules_path == Path("/mnt/rules")
+
+
+@pytest.mark.usefixtures("required_urls")
+def test_imports_default_to_the_shared_volume_with_a_limit_per_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings()
+    assert settings.imports_dir == Path("/imports")
+    assert settings.import_pcap_max_bytes == 512 * 1024**2
+    assert settings.import_memory_image_max_bytes == 5 * 1024**3
+
+    monkeypatch.setenv("IMPORTS_DIR", "/mnt/imports")
+
+    assert Settings().imports_dir == Path("/mnt/imports")
 
 
 @pytest.mark.usefixtures("required_urls")

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     cape_storage_path: Path = Path("/cape-storage")
     sample_store_path: Path = Path("/data/samples")
     exports_path: Path = Path("/data/exports")
+    imports_dir: Path = Path("/imports")
+    import_pcap_max_bytes: int = 512 * 1024**2
+    import_memory_image_max_bytes: int = 5 * 1024**3
     rules_path: Path = Path("/rules/sigma")
     guest_control_url: str = "http://cape-control:8002"
     guest_control_token: SecretStr | None = None

@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,7 @@ from app.db.analysis_repository import (
 )
 from app.db.annotation_repository import add_tag
 from app.db.models import Analysis, Sample
+from app.db.models.analysis import AnalysisKind
 from app.db.models.annotation import TargetType
 from app.db.settings_repository import read_settings
 from app.guest.schemas import Guest, GuestProfile
@@ -113,7 +114,7 @@ class AnalysisSubmitter:
         name = safe_file_name(filename)
         stored = await self._store.save(stream, name)
         try:
-            analysis = await _queue_analysis(session, stored, name, resolved.options)
+            analysis = await queue_analysis(session, stored, name, resolved.options.model_dump())
             for tag in tag_names:
                 await add_tag(session, analysis.id, Target(TargetType.ANALYSIS), tag)
         except Exception:
@@ -167,9 +168,14 @@ async def discard_unreferenced_sample(
         await store.delete(sha256)
 
 
-async def _queue_analysis(
-    session: AsyncSession, stored: StoredSample, filename: str, options: AnalysisOptions
+async def queue_analysis(
+    session: AsyncSession,
+    stored: StoredSample,
+    filename: str,
+    options: dict[str, Any],
+    kind: AnalysisKind = AnalysisKind.RUN,
 ) -> Analysis:
+    """Records the sample (once per hash) and a queued analysis of it."""
     sample = Sample(
         sha256=stored.sha256,
         sha1=stored.sha1,
@@ -184,8 +190,5 @@ async def _queue_analysis(
         # `add_sample_if_new` is get-then-insert: another upload of the same file won the insert.
         await session.rollback()
     return await create_analysis(
-        session,
-        sample_sha256=stored.sha256,
-        filename=filename,
-        options=options.model_dump(),
+        session, sample_sha256=stored.sha256, filename=filename, options=options, kind=kind
     )

@@ -478,6 +478,30 @@ export type BodyAnalysesCreate = {
 };
 
 /**
+ * Body_analyses_import_capture
+ */
+export type BodyAnalysesImportCapture = {
+    /**
+     * File
+     *
+     * A PCAP or PCAPNG capture.
+     */
+    file: Blob | File;
+};
+
+/**
+ * Body_analyses_import_memory_image
+ */
+export type BodyAnalysesImportMemoryImage = {
+    /**
+     * File
+     *
+     * A memory image, or a PCAP or PCAPNG capture.
+     */
+    file: Blob | File;
+};
+
+/**
  * BuildPause
  */
 export type BuildPause = {
@@ -3735,6 +3759,56 @@ export type AnalysesCreateResponses = {
 };
 
 export type AnalysesCreateResponse = AnalysesCreateResponses[keyof AnalysesCreateResponses];
+
+export type AnalysesImportCaptureData = {
+    body: BodyAnalysesImportCapture;
+    path?: never;
+    query?: never;
+    url: '/api/analyses/import';
+};
+
+export type AnalysesImportCaptureErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesImportCaptureError = AnalysesImportCaptureErrors[keyof AnalysesImportCaptureErrors];
+
+export type AnalysesImportCaptureResponses = {
+    /**
+     * Successful Response
+     */
+    201: AnalysisRead;
+};
+
+export type AnalysesImportCaptureResponse = AnalysesImportCaptureResponses[keyof AnalysesImportCaptureResponses];
+
+export type AnalysesImportMemoryImageData = {
+    body: BodyAnalysesImportMemoryImage;
+    path?: never;
+    query?: never;
+    url: '/api/analyses/import/memory-image';
+};
+
+export type AnalysesImportMemoryImageErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesImportMemoryImageError = AnalysesImportMemoryImageErrors[keyof AnalysesImportMemoryImageErrors];
+
+export type AnalysesImportMemoryImageResponses = {
+    /**
+     * Successful Response
+     */
+    201: AnalysisRead;
+};
+
+export type AnalysesImportMemoryImageResponse = AnalysesImportMemoryImageResponses[keyof AnalysesImportMemoryImageResponses];
 
 export type AnalysesDeleteData = {
     body?: never;

@@ -20,6 +20,7 @@ from app.api.dependencies import (
     get_cape_storage_path,
     get_event_index,
     get_exports_path,
+    get_imports_dir,
     get_job_runner,
     get_sample_store,
 )
@@ -115,6 +116,7 @@ async def harness(
         app.include_router(router, prefix="/api")
     app.dependency_overrides[get_job_runner] = lambda: runner
     app.dependency_overrides[get_exports_path] = lambda: exports
+    app.dependency_overrides[get_imports_dir] = lambda: tmp_path / "imports"
     app.dependency_overrides[get_cape] = UnusedCape
     app.dependency_overrides[get_event_index] = FakeIndex
     app.dependency_overrides[get_cape_storage_path] = lambda: tmp_path / "cape"

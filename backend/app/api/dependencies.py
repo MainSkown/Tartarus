@@ -11,6 +11,7 @@ from app.config import Settings, get_settings
 from app.db.analysis_repository import get_analysis, has_analysis_needing_a_guest
 from app.db.models import Analysis
 from app.guest.client import GuestControl
+from app.imports.upload import ImportSubmitter
 from app.jobs.runner import JobRunner
 from app.rules.registry import RuleRegistry
 from app.samples.store import SampleStore
@@ -78,3 +79,14 @@ def get_free_space_probe(
 
 def get_exports_path(settings: Annotated[Settings, Depends(get_settings)]) -> Path:
     return settings.exports_path
+
+
+def get_imports_dir(settings: Annotated[Settings, Depends(get_settings)]) -> Path:
+    return settings.imports_dir
+
+
+def get_import_submitter(
+    settings: Annotated[Settings, Depends(get_settings)],
+    runner: Annotated[RunnerControl, Depends(get_runner)],
+) -> ImportSubmitter:
+    return ImportSubmitter.from_settings(settings, runner)

@@ -25,6 +25,7 @@ from app.api.dependencies import (
     get_exports_path,
     get_free_space_probe,
     get_guest_control,
+    get_imports_dir,
     get_runner,
     get_sample_store,
 )
@@ -185,6 +186,7 @@ async def harness(
     app.dependency_overrides[get_guest_control] = lambda: guests
     app.dependency_overrides[get_cape_storage_path] = lambda: tmp_path / "cape-storage"
     app.dependency_overrides[get_exports_path] = lambda: tmp_path / "exports"
+    app.dependency_overrides[get_imports_dir] = lambda: tmp_path / "imports"
     app.dependency_overrides[get_free_space_probe] = lambda: free_space
 
     async with make_client(app) as client:
@@ -1510,6 +1512,8 @@ def test_the_operation_ids_are_tag_and_function_name_and_unique() -> None:
 
     assert operations == {
         ("post", "/api/analyses"): "analyses_create",
+        ("post", "/api/analyses/import"): "analyses_import_capture",
+        ("post", "/api/analyses/import/memory-image"): "analyses_import_memory_image",
         ("get", "/api/analyses"): "analyses_list",
         ("get", "/api/analyses/{analysis_id}"): "analyses_read",
         ("post", "/api/analyses/{analysis_id}/cancel"): "analyses_cancel",

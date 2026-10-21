@@ -19,6 +19,7 @@ from app.api.dependencies import (
     get_event_index,
     get_exports_path,
     get_guest_control,
+    get_imports_dir,
     get_runner,
     get_sample_store,
 )
@@ -150,6 +151,7 @@ async def stack(
     app.dependency_overrides[get_guest_control] = lambda: guests
     app.dependency_overrides[get_runner] = IdleRunner
     app.dependency_overrides[get_exports_path] = lambda: tmp_path / "exports"
+    app.dependency_overrides[get_imports_dir] = lambda: tmp_path / "imports"
     app.dependency_overrides[get_sample_store] = lambda: SampleStore(tmp_path / "samples")
     async with make_client(app) as client:
         yield Stack(runner, client, session_factory, opensearch, index, created.id)
