@@ -196,6 +196,32 @@ async def get_active_analyses(
     return list((await session.scalars(statement)).all())
 
 
+async def get_options_of_waiting_and_active_runs(session: AsyncSession) -> list[dict[str, Any]]:
+    """The options of every run queued or being followed, oldest first: which guests are taken
+    and which memory dumps are still to be written.
+    """
+    statement = (
+        select(Analysis.options)
+        .where(
+            Analysis.status.in_((AnalysisStatus.QUEUED, *ACTIVE_STATUSES)),
+            Analysis.kind == AnalysisKind.RUN,
+        )
+        .order_by(*_QUEUE_ORDER)
+    )
+    return list((await session.scalars(statement)).all())
+
+
+async def get_queued_analyses(
+    session: AsyncSession, kind: AnalysisKind = AnalysisKind.RUN
+) -> list[Analysis]:
+    statement = (
+        select(Analysis)
+        .where(Analysis.status == AnalysisStatus.QUEUED, Analysis.kind == kind)
+        .order_by(*_QUEUE_ORDER)
+    )
+    return list((await session.scalars(statement)).all())
+
+
 async def has_analysis_needing_a_guest(session: AsyncSession) -> bool:
     statement = (
         select(Analysis.id)

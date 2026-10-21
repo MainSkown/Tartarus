@@ -11,15 +11,22 @@ from app.analyses.guest_choice import (
     AUTO_PACKAGE,
     GuestRefusedError,
     choose_guest,
+    recorded_guest,
     require_package_accepted,
 )
-from app.analyses.memory_disk import FreeSpaceProbe, MemoryDumpRefusedError, check_room_for_dump
+from app.analyses.memory_disk import (
+    FreeSpaceProbe,
+    MemoryDumpRefusedError,
+    check_room_for_dump,
+    pending_dump_mb,
+)
 from app.analyses.ports import RunnerControl
 from app.annotations.validation import Target, normalise_tag_name
 from app.db.analysis_repository import (
     add_sample_if_new,
     create_analysis,
     delete_sample_if_unreferenced,
+    get_options_of_waiting_and_active_runs,
     get_sample,
 )
 from app.db.annotation_repository import add_tag
@@ -52,6 +59,7 @@ class _Resolved:
     options: AnalysisOptions
     guest: Guest
     settings: SettingsBody
+    dump_mb_ahead: int
 
 
 class AnalysisSubmitter:
@@ -129,10 +137,18 @@ class AnalysisSubmitter:
     ) -> _Resolved:
         guests = await self._guests.guests()
         settings = await read_settings(session)
-        guest = choose_guest(guests, options.guest, settings.default_guest, gate=gate)
+        ahead = await get_options_of_waiting_and_active_runs(session)
+        busy = {name for name in map(recorded_guest, ahead) if name}
+        guest = choose_guest(guests, options.guest, settings.default_guest, gate=gate, busy=busy)
         if options.package != AUTO_PACKAGE:
             require_package_accepted(guest, await self._profile_of(guest), options.package)
-        return _Resolved(options.model_copy(update={"guest": guest.name}), guest, settings)
+        dumping = [recorded_guest(each) or "" for each in ahead if each.get("memory_dump")]
+        return _Resolved(
+            options.model_copy(update={"guest": guest.name}),
+            guest,
+            settings,
+            pending_dump_mb(guests, dumping),
+        )
 
     def _room_for_memory_dump(self, resolved: _Resolved) -> list[str]:
         if not resolved.options.memory_dump:
@@ -148,6 +164,7 @@ class AnalysisSubmitter:
             ram_mb=guest.resources.ram_mb,
             disk_block_gb=resolved.settings.disk_block_gb,
             disk_warn_gb=resolved.settings.disk_warn_gb,
+            pending_dump_mb=resolved.dump_mb_ahead,
         )
 
     async def _profile_of(self, guest: Guest) -> GuestProfile:

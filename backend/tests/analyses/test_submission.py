@@ -105,6 +105,20 @@ async def test_a_default_guest_setting_that_names_no_guest_is_ignored(
     assert (await submission.submit()).options["guest"] == "win"
 
 
+async def test_a_busy_default_guest_gives_way_to_an_idle_one(submission: Submission) -> None:
+    submission.session.add(Setting(key="default_guest", value="lab1"))
+    await submission.session.commit()
+    assert (await submission.submit()).options["guest"] == "lab1"
+
+    assert (await submission.submit()).options["guest"] == "win"
+
+
+async def test_a_requested_guest_is_kept_though_it_is_busy(submission: Submission) -> None:
+    await submission.submit(AnalysisOptions(guest="lab1"))
+
+    assert (await submission.submit(AnalysisOptions(guest="lab1"))).options["guest"] == "lab1"
+
+
 async def test_a_refused_guest_stores_nothing_and_wakes_nobody(submission: Submission) -> None:
     with pytest.raises(GuestRefusedError):
         await submission.submit(AnalysisOptions(guest="nope"))
@@ -230,3 +244,25 @@ async def test_a_submission_with_little_room_left_carries_the_warning(
 
     assert len(submitted.warnings) == 1
     assert submitted.analysis.options["memory_dump"] is True
+
+
+async def test_two_memory_dumps_that_fit_alone_but_not_together_refuse_the_second(
+    submission: Submission,
+) -> None:
+    submission.free_space.free = 52 * 1024
+    await submission.submit(AnalysisOptions(guest="win", memory_dump=True))
+
+    with pytest.raises(MemoryDumpRefusedError) as refused:
+        await submission.submit(AnalysisOptions(guest="lab1", memory_dump=True))
+
+    assert "needs 52.8 GB free and 52.0 GB is available" in str(refused.value)
+    assert len(await submission.rows(Analysis)) == 1
+
+
+async def test_an_analysis_without_a_dump_does_not_count_against_the_room(
+    submission: Submission,
+) -> None:
+    submission.free_space.free = 52 * 1024
+    await submission.submit(AnalysisOptions(guest="win"))
+
+    await submission.submit(AnalysisOptions(guest="lab1", memory_dump=True))

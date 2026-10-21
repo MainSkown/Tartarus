@@ -348,6 +348,28 @@ async def test_every_active_analysis_is_returned_oldest_first(session: AsyncSess
     assert [analysis.id for analysis in found] == [first.id, second.id]
 
 
+async def test_the_options_of_every_queued_and_active_run_are_listed(
+    session: AsyncSession,
+) -> None:
+    await seeded_for_guest(session, "lab1", "queued.exe")
+    running = await seeded_for_guest(session, "lab3", "running.exe")
+    ingesting = await seeded_for_guest(session, "lab5", "ingesting.exe")
+    finished = await seeded_for_guest(session, "win", "finished.exe")
+    await repository.update_analysis(session, running.id, status=AnalysisStatus.RUNNING)
+    await repository.update_analysis(session, ingesting.id, status=AnalysisStatus.INGESTING)
+    await repository.update_analysis(session, finished.id, status=AnalysisStatus.DONE)
+
+    options = await repository.get_options_of_waiting_and_active_runs(session)
+
+    assert [option["guest"] for option in options] == ["lab1", "lab3", "lab5"]
+
+
+async def test_an_import_is_not_among_the_runs_waiting_for_a_guest(session: AsyncSession) -> None:
+    await queued_import(session)
+
+    assert await repository.get_options_of_waiting_and_active_runs(session) == []
+
+
 async def test_the_oldest_queued_analysis_is_returned_first(session: AsyncSession) -> None:
     first = await seeded_analysis(session, "first.exe")
     await seeded_analysis(session, "second.exe")

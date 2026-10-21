@@ -8,15 +8,21 @@ from app.analyses.memory_disk import (
     MemoryDumpRefusedError,
     StorageFreeSpace,
     check_room_for_dump,
+    pending_dump_mb,
 )
+from tests.analyses.guest_fakes import guest_named
 
 GB = 1024
 GUEST_RAM_MB = 4096
 
 
-def check(free_mb: int, *, block_gb: int = 20, warn_gb: int = 50) -> list[str]:
+def check(free_mb: int, *, block_gb: int = 20, warn_gb: int = 50, pending_mb: int = 0) -> list[str]:
     return check_room_for_dump(
-        free_mb, ram_mb=GUEST_RAM_MB, disk_block_gb=block_gb, disk_warn_gb=warn_gb
+        free_mb,
+        ram_mb=GUEST_RAM_MB,
+        disk_block_gb=block_gb,
+        disk_warn_gb=warn_gb,
+        pending_dump_mb=pending_mb,
     )
 
 
@@ -68,3 +74,35 @@ def test_the_real_probe_reads_the_free_space_of_the_storage_volume(tmp_path: Pat
 def test_a_storage_that_cannot_be_read_is_a_refusal_not_a_crash(tmp_path: Path) -> None:
     with pytest.raises(MemoryDumpRefusedError, match="free space of the CAPE storage"):
         StorageFreeSpace(tmp_path / "not-mounted").free_mb()
+
+
+def test_dumps_already_asked_for_raise_the_room_a_new_one_needs() -> None:
+    with pytest.raises(MemoryDumpRefusedError) as refused:
+        check(52 * GB, pending_mb=2 * GUEST_RAM_MB)
+
+    assert str(refused.value) == (
+        "A memory dump needs 56.8 GB free and 52.0 GB is available, "
+        "counting 8.0 GB for the dumps already asked for"
+    )
+
+
+def test_a_dump_that_fits_alone_is_accepted_when_nothing_is_pending() -> None:
+    check(52 * GB)
+
+
+def test_dumps_already_asked_for_move_the_warning_line_too() -> None:
+    warnings = check(57 * GB, pending_mb=GUEST_RAM_MB)
+
+    assert len(warnings) == 1
+
+
+def test_the_ram_of_pending_dumps_is_summed_per_analysis_from_the_guests() -> None:
+    guests = [guest_named("lab1", ram_mb=4096), guest_named("lab2", ram_mb=8192)]
+
+    assert pending_dump_mb(guests, ["lab1", "lab2", "lab1"]) == 4096 + 8192 + 4096
+
+
+def test_a_pending_dump_of_a_guest_with_unknown_ram_or_gone_counts_nothing() -> None:
+    guests = [guest_named("lab1", ram_mb=None)]
+
+    assert pending_dump_mb(guests, ["lab1", "gone"]) == 0

@@ -50,6 +50,7 @@ from tests.test_analysis_repository import SHA_A, make_sample
 
 CONTENT = b"MZ\x90\x00 a pretend executable"
 OTHER_CONTENT = b"MZ\x90\x00 another pretend executable"
+SAME_GUEST = {"guest": "win"}
 OPTIONS: dict[str, Any] = {
     "route": "inetsim",
     "timeout": 180,
@@ -805,8 +806,8 @@ async def test_the_memory_summary_is_served_on_read_and_list(harness: Harness) -
 
 
 async def test_a_submission_reports_its_place_in_the_queue(harness: Harness) -> None:
-    first = (await harness.upload(name="a.exe")).json()
-    second = (await harness.upload(content=OTHER_CONTENT, name="b.exe")).json()
+    first = (await harness.upload(name="a.exe", options=SAME_GUEST)).json()
+    second = (await harness.upload(content=OTHER_CONTENT, name="b.exe", options=SAME_GUEST)).json()
 
     assert (first["queue_position"], second["queue_position"]) == (1, 2)
 
@@ -814,8 +815,8 @@ async def test_a_submission_reports_its_place_in_the_queue(harness: Harness) -> 
 async def test_a_read_analysis_reports_its_queue_position_only_while_queued(
     harness: Harness,
 ) -> None:
-    first = (await harness.upload(name="a.exe")).json()
-    second = (await harness.upload(content=OTHER_CONTENT, name="b.exe")).json()
+    first = (await harness.upload(name="a.exe", options=SAME_GUEST)).json()
+    second = (await harness.upload(content=OTHER_CONTENT, name="b.exe", options=SAME_GUEST)).json()
     await harness.set_state(first["id"], status=AnalysisStatus.RUNNING)
 
     running = (await harness.client.get(f"/api/analyses/{first['id']}")).json()
@@ -828,7 +829,9 @@ async def test_a_read_analysis_reports_its_queue_position_only_while_queued(
 async def test_the_listing_reports_a_queue_position_on_every_queued_item(
     harness: Harness,
 ) -> None:
-    ids = [(await harness.upload(name=f"{n}.exe")).json()["id"] for n in range(4)]
+    ids = [
+        (await harness.upload(name=f"{n}.exe", options=SAME_GUEST)).json()["id"] for n in range(4)
+    ]
     await harness.set_state(ids[0], status=AnalysisStatus.DONE)
 
     items = (await harness.client.get("/api/analyses", params={"limit": 2})).json()["items"]

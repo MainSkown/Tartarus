@@ -1,3 +1,5 @@
+from collections.abc import Collection
+
 import pytest
 
 from app.analyses.guest_choice import (
@@ -32,8 +34,9 @@ def chosen(
     preferred: str | None = None,
     *,
     gate: bool = True,
+    busy: Collection[str] = (),
 ) -> str:
-    return choose_guest(guests, requested, preferred, gate=gate).name
+    return choose_guest(guests, requested, preferred, gate=gate, busy=busy).name
 
 
 def test_the_requested_ready_guest_is_the_one_chosen() -> None:
@@ -42,6 +45,34 @@ def test_the_requested_ready_guest_is_the_one_chosen() -> None:
 
 def test_without_a_request_the_preferred_default_is_chosen_when_it_is_ready() -> None:
     assert chosen([guest("lab1"), guest("lab2")], preferred="lab2") == "lab2"
+
+
+def test_a_busy_default_gives_way_to_a_ready_guest_with_nothing_queued_or_active() -> None:
+    guests = [guest("lab1"), guest("lab2"), guest("lab3")]
+
+    assert chosen(guests, preferred="lab2", busy={"lab1", "lab2"}) == "lab3"
+
+
+def test_an_idle_default_stays_the_default_while_other_guests_are_busy() -> None:
+    assert chosen([guest("lab1"), guest("lab2")], preferred="lab2", busy={"lab1"}) == "lab2"
+
+
+def test_with_every_guest_busy_the_default_is_chosen_and_queues() -> None:
+    guests = [guest("lab1"), guest("lab2")]
+
+    assert chosen(guests, preferred="lab2", busy={"lab1", "lab2"}) == "lab2"
+
+
+def test_an_idle_guest_is_never_a_guest_that_is_not_ready() -> None:
+    guests = [guest("lab1"), guest("lab2", "failed"), guest("lab3")]
+
+    assert chosen(guests, preferred="lab1", busy={"lab1", "lab3"}) == "lab1"
+
+
+def test_a_requested_busy_guest_is_never_overridden() -> None:
+    guests = [guest("lab1"), guest("lab2")]
+
+    assert chosen(guests, requested="lab1", preferred="lab2", busy={"lab1"}) == "lab1"
 
 
 def test_a_preferred_default_that_is_not_ready_is_ignored_for_the_first_ready_guest() -> None:
