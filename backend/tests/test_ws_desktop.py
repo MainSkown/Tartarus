@@ -252,6 +252,16 @@ def test_an_analysis_submitted_without_interactive_closes_with_4409(desk: Desk) 
     assert desk.guacd.received == []
 
 
+def test_a_task_that_ran_on_another_guest_closes_with_4409_and_opens_no_tunnel(desk: Desk) -> None:
+    desk.viewer.machines[TASK_ID] = "lab3"
+
+    with desk.connect() as websocket:
+        closed = closed_with(websocket)
+
+    assert (closed.code, closed.reason) == (CLOSE_CONFLICT, "desktop_machine_mismatch")
+    assert desk.guacd.received == []
+
+
 def test_a_refused_connection_gets_no_internal_instruction(desk: Desk) -> None:
     desk.lookup.snapshots.clear()
 

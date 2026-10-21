@@ -8,6 +8,7 @@ from app.guest.errors import GuestControlError, GuestControlRejected, GuestContr
 from app.guest.schemas import BuildProgress, BuildStatus, Guest, GuestDisplay, GuestState
 
 TASK_ID = 41
+ANALYSIS_GUEST = "lab1"
 
 
 def interactive_snapshot(
@@ -15,8 +16,11 @@ def interactive_snapshot(
     *,
     cape_task_id: int | None = TASK_ID,
     interactive: bool = True,
+    guest: str | None = ANALYSIS_GUEST,
 ) -> AnalysisSnapshot:
-    return AnalysisSnapshot(status=status, interactive=interactive, cape_task_id=cape_task_id)
+    return AnalysisSnapshot(
+        status=status, interactive=interactive, cape_task_id=cape_task_id, guest=guest
+    )
 
 
 @dataclass
@@ -31,9 +35,10 @@ class StubLookup:
 
 @dataclass
 class StubViewer:
-    """CAPE's task view: `options` per task, and errors to raise for the next calls."""
+    """CAPE's task view: `options` and `machine` per task, and errors to raise next."""
 
     options: dict[int, str | None] = field(default_factory=dict)
+    machines: dict[int, str] = field(default_factory=dict)
     errors: list[CapeError] = field(default_factory=list)
     viewed: list[int] = field(default_factory=list)
     options_once_viewed: tuple[int, str] | None = None
@@ -44,7 +49,12 @@ class StubViewer:
             self.options[task_id] = self.options_once_viewed[1]
         if self.errors:
             raise self.errors.pop(0)
-        return TaskView(id=task_id, status="running", options=self.options.get(task_id))
+        return TaskView(
+            id=task_id,
+            status="running",
+            machine=self.machines.get(task_id, ANALYSIS_GUEST),
+            options=self.options.get(task_id),
+        )
 
 
 def cape_unreachable() -> CapeError:

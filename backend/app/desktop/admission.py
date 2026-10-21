@@ -7,6 +7,7 @@ from typing import NamedTuple, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.analyses.guest_choice import recorded_guest
 from app.cape.errors import CapeError
 from app.cape.models import TaskView
 from app.db.analysis_repository import get_analysis
@@ -19,6 +20,7 @@ CLOSE_SERVER_ERROR = 1011
 CLOSE_NOT_FOUND = 4404
 CLOSE_NOT_AVAILABLE_YET = 4408
 CLOSE_CONFLICT = 4409
+REASON_MACHINE_MISMATCH = "desktop_machine_mismatch"
 
 DESKTOP_STATUSES = frozenset({AnalysisStatus.STARTING, AnalysisStatus.RUNNING})
 
@@ -33,6 +35,7 @@ class AnalysisSnapshot:
     status: AnalysisStatus
     interactive: bool
     cape_task_id: int | None
+    guest: str | None
 
 
 class AnalysisLookup(Protocol):
@@ -58,6 +61,7 @@ class DbAnalysisLookup:
             status=analysis.status,
             interactive=analysis.options.get("interactive") is True,
             cape_task_id=analysis.cape_task_id,
+            guest=recorded_guest(analysis.options),
         )
 
 
@@ -88,18 +92,24 @@ async def wait_for_vnc_port(
         if (refusal := check_admission(snapshot)) is not None:
             return refusal
         if snapshot is not None and snapshot.cape_task_id is not None:
-            port = await _recorded_port(viewer, snapshot.cape_task_id)
-            if port is not None:
-                return port
+            found = await _recorded_port(viewer, snapshot.cape_task_id, snapshot)
+            if found is not None:
+                return found
         if asyncio.get_running_loop().time() >= deadline:
             return CloseRequest(CLOSE_NOT_AVAILABLE_YET, "desktop not available yet")
         await asyncio.sleep(poll_interval_s)
 
 
-async def _recorded_port(viewer: TaskViewer, task_id: int) -> int | None:
+async def _recorded_port(
+    viewer: TaskViewer, task_id: int, snapshot: AnalysisSnapshot
+) -> int | CloseRequest | None:
+    """The VNC port of the analysis' task, or a refusal when CAPE ran that task on another guest:
+    its port then shows that guest's screen. None while the task or its port is not known yet."""
     try:
         view = await viewer.task_view(task_id)
     except CapeError as error:
         logger.debug("could not read the options of CAPE task %s: %s", task_id, error)
         return None
+    if view.machine != snapshot.guest:
+        return CloseRequest(CLOSE_CONFLICT, REASON_MACHINE_MISMATCH)
     return vnc_port(view.options)

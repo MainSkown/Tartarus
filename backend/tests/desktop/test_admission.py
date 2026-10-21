@@ -14,6 +14,7 @@ from app.desktop.admission import (
 )
 from tests.analyses.helpers import enqueue
 from tests.desktop.stubs import (
+    ANALYSIS_GUEST,
     TASK_ID,
     StubLookup,
     StubViewer,
@@ -85,6 +86,27 @@ async def test_it_waits_until_cape_has_recorded_the_port() -> None:
     assert len(viewer.viewed) == 3
 
 
+async def test_a_task_that_ran_on_another_guest_is_refused_even_with_a_port() -> None:
+    lookup = StubLookup({ANALYSIS_ID: interactive_snapshot()})
+    viewer = StubViewer({TASK_ID: "vnc_port=5900"}, machines={TASK_ID: "lab3"})
+
+    assert await wait(lookup, viewer) == CloseRequest(CLOSE_CONFLICT, "desktop_machine_mismatch")
+
+
+async def test_a_task_with_no_machine_is_refused_as_a_mismatch() -> None:
+    lookup = StubLookup({ANALYSIS_ID: interactive_snapshot()})
+    viewer = StubViewer({TASK_ID: "vnc_port=5900"}, machines={TASK_ID: ""})
+
+    assert await wait(lookup, viewer) == CloseRequest(CLOSE_CONFLICT, "desktop_machine_mismatch")
+
+
+async def test_an_analysis_that_records_no_guest_is_refused_as_a_mismatch() -> None:
+    lookup = StubLookup({ANALYSIS_ID: interactive_snapshot(guest=None)})
+    viewer = StubViewer({TASK_ID: "vnc_port=5900"})
+
+    assert await wait(lookup, viewer) == CloseRequest(CLOSE_CONFLICT, "desktop_machine_mismatch")
+
+
 async def test_it_waits_for_the_task_to_be_submitted_without_asking_cape() -> None:
     lookup = StubLookup(
         {ANALYSIS_ID: interactive_snapshot(AnalysisStatus.STARTING, cape_task_id=None)}
@@ -152,7 +174,7 @@ async def test_the_database_lookup_reads_status_task_and_the_interactive_option(
 
     snapshot = await DbAnalysisLookup(session_factory).snapshot(analysis_id)
 
-    assert snapshot == interactive_snapshot(AnalysisStatus.RUNNING)
+    assert snapshot == interactive_snapshot(AnalysisStatus.RUNNING, guest="win")
 
 
 async def test_the_database_lookup_treats_a_missing_option_as_not_interactive(
@@ -164,6 +186,19 @@ async def test_the_database_lookup_treats_a_missing_option_as_not_interactive(
 
     assert snapshot is not None
     assert snapshot.interactive is False
+
+
+async def test_the_database_lookup_reads_the_guest_the_analysis_was_queued_for(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    analysis_id = await enqueue(
+        session_factory, options={"route": "none", "timeout": 60, "guest": ANALYSIS_GUEST}
+    )
+
+    snapshot = await DbAnalysisLookup(session_factory).snapshot(analysis_id)
+
+    assert snapshot is not None
+    assert snapshot.guest == ANALYSIS_GUEST
 
 
 async def test_the_database_lookup_returns_none_for_an_unknown_analysis(
