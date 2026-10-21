@@ -63,6 +63,9 @@ function Set-Reg([string] $path, [string] $key, $value, [string] $type = 'DWord'
 }
 
 Log "provisioning started from $Media into $WorkDir"
+# The build reads this line to turn the steps done into a percentage; counting the blocks keeps it from going stale.
+$planned = ([regex]::Matches((Get-Content -LiteralPath $PSCommandPath -Raw), '(?m)^Step ')).Count
+Log "PLAN $planned"
 
 Step 'copy payload to the work folder' {
   Copy-Item -Path (Join-Path $Media 'payload\*') -Destination $WorkDir -Recurse -Force
@@ -79,46 +82,10 @@ Step "static IP $GuestIp/$Prefix, gateway and DNS $Gateway" {
   "adapter '$($adapter.Name)' set to $GuestIp"
 }
 
-Step 'disable Windows Update' {
-  Set-Reg 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' 'NoAutoUpdate' 1
-  Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
-  Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
-}
-
-Step 'disable UAC prompts' {
-  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'EnableLUA' 0
-  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'ConsentPromptBehaviorAdmin' 0
-  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'PromptOnSecureDesktop' 0
-}
-
 Step 'disable the firewall and open port 8000' {
   Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False -ErrorAction SilentlyContinue
   New-NetFirewallRule -DisplayName $FirewallRuleName -Direction Inbound -Action Allow `
     -Protocol TCP -LocalPort 8000 -ErrorAction SilentlyContinue | Out-Null
-}
-
-Step 'disable telemetry' {
-  Set-Reg 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' 'AllowTelemetry' 0
-  Set-Service -Name DiagTrack -StartupType Disabled -ErrorAction SilentlyContinue
-  Stop-Service -Name DiagTrack -Force -ErrorAction SilentlyContinue
-}
-
-Step 'disable sleep and hibernate' {
-  powercfg /change standby-timeout-ac 0
-  powercfg /change standby-timeout-dc 0
-  powercfg /change monitor-timeout-ac 0
-  powercfg /hibernate off
-}
-
-Step 'disable SmartScreen' {
-  Set-Reg 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' 'EnableSmartScreen' 0
-  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' 'SmartScreenEnabled' 'Off' 'String'
-}
-
-Step 'apply the Defender option (see decision 11; only when Defender is off)' {
-  if ($Defender) { return 'Defender stays on, nothing to apply' }
-  & (Join-Path $PSScriptRoot 'defender-settings.ps1') -Mode Off
-  'settings applied'
 }
 
 Step 'install 32-bit Python 3.11' {
@@ -142,6 +109,56 @@ Step 'install Pillow from the offline wheel' {
   if ($LASTEXITCODE -ne 0) { throw "pip exit code $LASTEXITCODE" }
 }
 
+Step 'register agent.py as a logon scheduled task (highest privileges)' {
+  $agent = Join-Path $WorkDir 'agent.py'
+  if (-not (Test-Path $agent)) { throw 'agent.py not in payload' }
+  $action    = New-ScheduledTaskAction -Execute 'C:\Python311\pythonw.exe' -Argument "`"$agent`""
+  $trigger   = New-ScheduledTaskTrigger -AtLogOn
+  $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest
+  $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+    -Principal $principal -Settings $settings -Force | Out-Null
+  Start-ScheduledTask -TaskName $TaskName
+  'scheduled and started'
+}
+
+Step 'disable Windows Update' {
+  Set-Reg 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' 'NoAutoUpdate' 1
+  Set-Service -Name wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
+  Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+}
+
+Step 'disable UAC prompts' {
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'EnableLUA' 0
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'ConsentPromptBehaviorAdmin' 0
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'PromptOnSecureDesktop' 0
+}
+
+Step 'disable telemetry' {
+  Set-Reg 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' 'AllowTelemetry' 0
+  Set-Service -Name DiagTrack -StartupType Disabled -ErrorAction SilentlyContinue
+  Stop-Service -Name DiagTrack -Force -ErrorAction SilentlyContinue
+}
+
+Step 'disable sleep and hibernate' {
+  powercfg /change standby-timeout-ac 0
+  powercfg /change standby-timeout-dc 0
+  powercfg /change monitor-timeout-ac 0
+  powercfg /hibernate off
+}
+
+Step 'disable SmartScreen' {
+  Set-Reg 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' 'EnableSmartScreen' 0
+  Set-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer' 'SmartScreenEnabled' 'Off' 'String'
+}
+
+Step 'apply the Defender option (only when Defender is off)' {
+  if ($Defender) { return 'Defender stays on, nothing to apply' }
+  & (Join-Path $PSScriptRoot 'defender-settings.ps1') -Mode Off
+  'settings applied'
+}
+
 Step 'apply decoys (only when asked)' {
   if (-not $Decoys) { return 'not requested' }
   & (Join-Path $PSScriptRoot 'decoys.ps1')
@@ -158,20 +175,6 @@ Step 'install Sysmon (only when asked)' {
   $entries = @(Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -MaxEvents 5 -ErrorAction Stop)
   if ($entries.Count -eq 0) { throw 'the Sysmon log has no entries' }
   "service $($service.Name) running, $($entries.Count) recent log entries"
-}
-
-Step 'register agent.py as a logon scheduled task (highest privileges)' {
-  $agent = Join-Path $WorkDir 'agent.py'
-  if (-not (Test-Path $agent)) { throw 'agent.py not in payload' }
-  $action    = New-ScheduledTaskAction -Execute 'C:\Python311\pythonw.exe' -Argument "`"$agent`""
-  $trigger   = New-ScheduledTaskTrigger -AtLogOn
-  $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest
-  $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-    -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-    -Principal $principal -Settings $settings -Force | Out-Null
-  Start-ScheduledTask -TaskName $TaskName
-  'scheduled and started'
 }
 
 Log 'provisioning finished'

@@ -33,6 +33,70 @@ log_guest_file() {
     done < <(tr -d '\r\0' <"$1")
 }
 
+# The guest's provisioning log, read while the guest is still writing it. Only complete lines are
+# kept: Add-Content may be mid-write when the file is read, and the half line is whole next round.
+GUEST_LOG_LINES=()
+GUEST_LOG_LINES_SHOWN=0
+GUEST_LOG_TIMESTAMP='[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8} +'
+
+# fetch_guest_log_lines <log name>: status 1, quietly, when the guest's file cannot be read right now
+# (not written yet, or held open by the writer): the caller asks again next round.
+fetch_guest_log_lines() {
+    local fetched line
+    fetched=$(mktemp "$TT_BUILD_DIR/guest-log.XXXXXX")
+    if ! guest_agent retrieve "$1" "$fetched" 2>/dev/null; then
+        rm -f "$fetched"
+        return 1
+    fi
+    GUEST_LOG_LINES=()
+    while IFS= read -r line; do
+        GUEST_LOG_LINES+=("$line")
+    done < <(tr -d '\r\0' <"$fetched")
+    rm -f "$fetched"
+}
+
+# show_new_guest_log_lines: the lines of GUEST_LOG_LINES not shown before, as LOG lines.
+show_new_guest_log_lines() {
+    local index line
+    for ((index = GUEST_LOG_LINES_SHOWN; index < ${#GUEST_LOG_LINES[@]}; index++)); do
+        line=${GUEST_LOG_LINES[index]}
+        [[ -z $line ]] || log "guest: $line"
+    done
+    ((${#GUEST_LOG_LINES[@]} <= GUEST_LOG_LINES_SHOWN)) || GUEST_LOG_LINES_SHOWN=${#GUEST_LOG_LINES[@]}
+}
+
+# guest_log_plan: how many steps provision.ps1 announced in its "PLAN <n>" line, 0 before that.
+guest_log_plan() {
+    local line
+    for line in "${GUEST_LOG_LINES[@]}"; do
+        if [[ $line =~ ^${GUEST_LOG_TIMESTAMP}PLAN\ ([0-9]+)$ ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return
+        fi
+    done
+    echo 0
+}
+
+# guest_log_steps_done: the steps that ended, ok or FAILED (a failed step is recorded, not retried).
+guest_log_steps_done() {
+    local line ended=0
+    for line in "${GUEST_LOG_LINES[@]}"; do
+        [[ $line =~ ^${GUEST_LOG_TIMESTAMP}(ok|FAILED)([^A-Za-z]|$) ]] && ((ended++))
+    done
+    echo "$ended"
+}
+
+# guest_log_current_step: the name of the newest step the log says started, empty before the first.
+guest_log_current_step() {
+    local index
+    for ((index = ${#GUEST_LOG_LINES[@]} - 1; index >= 0; index--)); do
+        if [[ ${GUEST_LOG_LINES[index]} =~ ^${GUEST_LOG_TIMESTAMP}STEP\ (.+)$ ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return
+        fi
+    done
+}
+
 pause_for_analyst() {
     printf 'PAUSE %s\n' "${*//$'\n'/ }"
     exit "$PAUSED_EXIT_CODE"

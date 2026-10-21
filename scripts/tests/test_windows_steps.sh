@@ -338,6 +338,176 @@ test_install_gives_up_after_its_own_generous_guard() {
     assert_status 1 && assert_contains "did not finish"
 }
 
+# What the guest's provisioning script writes to its own log (see provision.ps1's Log), as CR LF lines.
+PLAN4='2026-10-21 10:00:01  PLAN 4'
+STEP_A='2026-10-21 10:00:02  STEP copy payload to the work folder'
+OK_A='2026-10-21 10:00:03    ok (copied the agent, python and pillow)'
+STEP_B='2026-10-21 10:00:04  STEP disable Windows Update'
+OK_B='2026-10-21 10:00:05    ok'
+STEP_C='2026-10-21 10:00:06  STEP install 32-bit Python 3.11'
+FAILED_C='2026-10-21 10:00:07    FAILED: installer exit code 1603'
+STEP_D='2026-10-21 10:00:08  STEP install Sysmon (only when asked)'
+OK_D='2026-10-21 10:00:09    ok (not requested)'
+
+# guest_writes <item>...: in the background, one item every 0.2 s. An item is a log line (written
+# with CR LF), or @marker (the done marker), @locked / @unlocked (the agent cannot read the log, as
+# while the guest holds it open), @partial:<text> (text without its line end yet).
+guest_writes() {
+    local file=$WORK_ON_DISK/$LOG_FILE
+    mkdir -p "$WORK_ON_DISK"
+    (
+        for item in "$@"; do
+            sleep 0.2
+            case $item in
+                @marker) echo done >"$WORK_ON_DISK/$DONE_MARKER" ;;
+                @locked) behave '{"retrieve_fails": true}' ;;
+                @unlocked) behave '{}' ;;
+                @partial:*) printf '%s' "${item#@partial:}" >>"$file" ;;
+                *) printf '%s\r\n' "$item" >>"$file" ;;
+            esac
+        done
+    ) &
+    GUEST_WRITER=$!
+}
+
+guest_lines_relayed() { grep '^LOG guest: ' <<<"$OUTPUT" | sed 's/^LOG guest: //'; }
+
+# Fails unless the relayed guest lines are exactly the arguments, in that order.
+assert_relayed() {
+    local expected actual
+    expected=$(printf '%s\n' "$@")
+    actual=$(guest_lines_relayed)
+    [[ $actual == "$expected" ]] || { echo "  relayed guest lines differ:"; echo "--- expected"; indent <<<"$expected"; echo "--- actual"; indent <<<"$actual"; return 1; }
+}
+
+test_install_relays_every_new_guest_log_line_once_and_in_order() {
+    new_sandbox
+    guest_writes "$PLAN4" "$STEP_A" "$OK_A" "$STEP_B" "$OK_B" @marker
+    run_step install
+    wait "$GUEST_WRITER"
+    assert_status 0 && assert_relayed "$PLAN4" "$STEP_A" "$OK_A" "$STEP_B" "$OK_B"
+}
+
+test_install_takes_the_percentage_from_the_provisioning_steps_done_over_the_plan() {
+    new_sandbox
+    guest_writes "$PLAN4" "$STEP_A" "$OK_A" "$STEP_B" "$OK_B" @marker
+    run_step install INSTALL_TYPICAL_SECONDS=1000000
+    wait "$GUEST_WRITER"
+    # 2 of 4 steps done, mapped into the step's own 10..95 band: 10 + 85 * 2 / 4
+    assert_status 0 && assert_contains "PROGRESS 52" && assert_missing "PROGRESS 73"
+}
+
+test_install_counts_a_failed_provisioning_step_as_done() {
+    new_sandbox
+    guest_writes "$PLAN4" "$STEP_A" "$OK_A" "$STEP_B" "$OK_B" "$STEP_C" "$FAILED_C" @marker
+    run_step install INSTALL_TYPICAL_SECONDS=1000000
+    wait "$GUEST_WRITER"
+    assert_status 0 && assert_contains "PROGRESS 73"
+}
+
+test_install_progress_never_goes_back_when_the_log_is_read_again() {
+    new_sandbox
+    guest_writes "$PLAN4" "$STEP_A" "$OK_A" @locked @unlocked "$STEP_B" "$OK_B" @marker
+    run_step install INSTALL_TYPICAL_SECONDS=1000000
+    wait "$GUEST_WRITER"
+    assert_status 0 || return 1
+    local previous=-1 value
+    for value in $(grep '^PROGRESS ' <<<"$OUTPUT" | cut -d' ' -f2); do
+        ((value >= previous)) || { echo "  progress went back: $previous -> $value"; return 1; }
+        previous=$value
+    done
+}
+
+test_install_names_the_newest_guest_step_in_a_step_line_once() {
+    new_sandbox
+    guest_writes "$PLAN4" "$STEP_A" "$OK_A" "$STEP_B" "$OK_B" @marker
+    run_step install
+    wait "$GUEST_WRITER"
+    assert_status 0 || return 1
+    assert_contains "STEP Windows is provisioning itself: disable Windows Update" || return 1
+    [[ $(grep -c '^STEP Windows is provisioning itself: disable Windows Update' <<<"$OUTPUT") -eq 1 ]] ||
+        { echo "  the step line was repeated"; return 1; }
+}
+
+test_install_retries_a_round_in_which_the_guest_log_cannot_be_read() {
+    new_sandbox
+    guest_writes "$PLAN4" "$STEP_A" "$OK_A" @locked "$STEP_B" @unlocked "$OK_B" @marker
+    run_step install
+    wait "$GUEST_WRITER"
+    assert_status 0 &&
+        assert_relayed "$PLAN4" "$STEP_A" "$OK_A" "$STEP_B" "$OK_B" &&
+        assert_missing "guest agent:"
+}
+
+test_install_waits_for_a_guest_log_that_does_not_exist_yet() {
+    new_sandbox
+    appears_after 4
+    run_step install
+    assert_status 0 && assert_missing "guest agent:"
+}
+
+test_install_relays_a_line_only_once_the_guest_has_finished_writing_it() {
+    new_sandbox
+    guest_writes "$PLAN4" '@partial:2026-10-21 10:00:02  STEP half-wri' $'@partial:tten\r\n' @marker
+    run_step install
+    wait "$GUEST_WRITER"
+    assert_status 0 &&
+        assert_relayed "$PLAN4" '2026-10-21 10:00:02  STEP half-written'
+}
+
+test_install_never_takes_a_guest_log_line_for_a_protocol_line() {
+    new_sandbox
+    guest_writes 'PROGRESS 99' 'PAUSE now' 'STEP evil' @marker
+    run_step install
+    wait "$GUEST_WRITER"
+    assert_status 0 || return 1
+    if grep -qE '^(PAUSE|STEP evil|PROGRESS 99)' <<<"$OUTPUT"; then
+        echo "  a guest line was taken for a protocol line:"
+        indent <<<"$OUTPUT"
+        return 1
+    fi
+}
+
+test_install_relays_the_last_lines_the_guest_wrote_before_its_done_marker() {
+    new_sandbox
+    guest_writes "$PLAN4" "$STEP_D" "$OK_D" @marker
+    run_step install
+    wait "$GUEST_WRITER"
+    assert_status 0 && assert_relayed "$PLAN4" "$STEP_D" "$OK_D"
+}
+
+test_install_before_the_agent_answers_says_the_time_is_an_estimate() {
+    new_sandbox
+    behave '{"answers": false}'
+    run_step install INSTALL_MINUTE_SECONDS=1 INSTALL_GUARD_SECONDS=3
+    assert_contains "LOG Windows is installing, about 1 min so far (estimated)" &&
+        assert_contains "LOG Windows is installing, about 2 min so far (estimated)"
+}
+
+test_install_with_no_agent_after_the_grace_period_says_the_first_logon_command_did_not_run() {
+    new_sandbox
+    behave '{"answers": false}'
+    run_step install INSTALL_SETUP_ALLOWANCE_SECONDS=0 INSTALL_AGENT_GRACE_SECONDS=1
+    assert_status 1 &&
+        assert_contains "Windows is installed but the guest never started its provisioning; the first-logon command did not run" &&
+        assert_missing "provisioning did not finish"
+}
+
+test_install_waits_through_the_setup_allowance_before_blaming_the_first_logon_command() {
+    new_sandbox
+    behave '{"answers": false}'
+    run_step install INSTALL_SETUP_ALLOWANCE_SECONDS=2 INSTALL_AGENT_GRACE_SECONDS=0 INSTALL_GUARD_SECONDS=1
+    assert_status 1 && assert_contains "provisioning did not finish" && assert_missing "first-logon command"
+}
+
+test_install_a_slow_but_live_provision_is_not_cut_short_by_the_grace_period() {
+    new_sandbox
+    guest_writes "$PLAN4" "$STEP_A" "$OK_A" "$STEP_B" "$OK_B" "$STEP_C" "$FAILED_C" "$STEP_D" "$OK_D" @marker
+    run_step install INSTALL_SETUP_ALLOWANCE_SECONDS=0 INSTALL_AGENT_GRACE_SECONDS=1
+    wait "$GUEST_WRITER"
+    assert_status 0 && assert_missing "first-logon command"
+}
+
 # --- provision -------------------------------------------------------------------------------------
 
 with_guest_log() {

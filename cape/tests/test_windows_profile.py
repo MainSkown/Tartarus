@@ -88,7 +88,25 @@ class TestProfileFile:
     def test_identifies_the_guest_family_and_cape_platform(self, profile):
         assert (profile.id, profile.family, profile.arch) == ("windows", "windows", "x64")
         assert profile.cape.platform == "windows"
-        assert profile.cape.tags == ["windows", "win11"]
+        assert profile.cape.tags == ["windows"]
+
+    def test_names_no_product_of_the_line_so_the_media_decides_it(self, profile):
+        assert profile.display_name == "Windows"
+        assert [(rule.build_min, rule.tag) for rule in profile.cape.tag_rules] == [
+            (22000, "win11"),
+            (10240, "win10"),
+        ]
+
+    @pytest.mark.parametrize(
+        ("version", "tags"),
+        [
+            ("10.0.19041", ["windows", "win10"]),
+            ("10.0.26200", ["windows", "win11"]),
+            (None, ["windows"]),
+        ],
+    )
+    def test_tags_a_guest_by_the_build_of_its_media(self, profile, version, tags):
+        assert profile.cape.tags_for(version) == tags
 
     def test_hardware_block_matches_the_m0b_guest(self, profile):
         hardware = profile.hardware
@@ -669,6 +687,69 @@ class TestProvisionScript:
     def test_the_done_marker_is_written_last(self):
         lines = [line for line in script_text("provision.ps1").splitlines() if line.strip()]
         assert "$DoneMarker" in lines[-1]
+
+    STEP_BLOCK = re.compile(r"^Step (?:'([^']*)'|\"([^\"]*)\") \{", re.MULTILINE)
+
+    @classmethod
+    def step_titles(cls, text: str) -> list[str]:
+        return [single or double for single, double in cls.STEP_BLOCK.findall(text)]
+
+    def index_of_step(self, text: str, fragment: str) -> int:
+        titles = self.step_titles(text)
+        matching = [index for index, title in enumerate(titles) if fragment in title]
+        assert len(matching) == 1, f"{fragment!r} matches steps {matching} of {titles}"
+        return matching[0]
+
+    def test_the_agent_is_registered_before_the_slow_provisioning_steps(self):
+        text = script_text("provision.ps1")
+        agent = self.index_of_step(text, "register agent.py")
+        for later in ("disable Windows Update", "Defender option", "Sysmon", "decoys", "telemetry"):
+            assert agent < self.index_of_step(text, later), later
+
+    def test_the_agent_is_registered_only_after_what_it_needs_to_answer(self):
+        text = script_text("provision.ps1")
+        agent = self.index_of_step(text, "register agent.py")
+        for needed in ("copy payload", "static IP", "firewall", "install 32-bit Python", "Pillow"):
+            assert self.index_of_step(text, needed) < agent, needed
+
+    def test_it_announces_how_many_steps_there_are_counting_its_own_step_blocks(self):
+        text = script_text("provision.ps1")
+        plan = re.search(r"^\$planned = .*\^Step.*$", text, re.MULTILINE)
+        assert plan, "the plan must be counted from the script's own Step blocks"
+        assert "$PSCommandPath" in plan.group(0)
+        announce = re.search(r"^Log \"PLAN \$planned\"$", text, re.MULTILINE)
+        assert announce
+        assert announce.start() < text.index("Step 'copy payload")
+
+    @pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is not installed here")
+    def test_the_plan_expression_counts_step_blocks_when_powershell_runs_it(self, tmp_path):
+        expression = re.search(r"^\$planned = .*$", script_text("provision.ps1"), re.MULTILINE)
+        assert expression
+        probe = tmp_path / "probe.ps1"
+        probe.write_text(
+            expression.group(0)
+            + "\nWrite-Output $planned\n"
+            + "Step 'one' {\n}\nStep 'two' {\n}\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(  # noqa: S603 - fixed argv, a file this test wrote
+            ["pwsh", "-NoProfile", "-File", probe.name],  # noqa: S607
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.stdout.strip() == "2", result.stdout + result.stderr
+
+    def test_no_comment_or_text_line_other_than_a_step_block_starts_with_step(self):
+        starts = [
+            line for line in script_text("provision.ps1").splitlines() if re.match(r"Step\b", line)
+        ]
+        assert all(re.match(r"Step (['\"]).*\{$", line) for line in starts), starts
+
+    def test_the_step_titles_are_phrases_a_reader_of_the_build_log_understands(self):
+        for title in self.step_titles(script_text("provision.ps1")):
+            assert "decision" not in title, title
 
     def test_the_log_is_left_for_the_cleanup_script(self):
         text = script_text("provision.ps1")

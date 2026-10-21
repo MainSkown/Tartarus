@@ -14,14 +14,24 @@ SETUP_STARTED_BYTES=${INSTALL_START_BYTES:-524288000}
 SETUP_START_CHECK_S=${INSTALL_START_CHECK:-180}
 SETUP_START_ATTEMPTS=${INSTALL_START_ATTEMPTS:-3}
 TYPICAL_INSTALL_S=${INSTALL_TYPICAL_SECONDS:-900}
+# Setup copies the image, reboots a few times and runs OOBE before the first logon starts
+# provision.ps1; there is no cheap signal for "the desktop is up", so the agent gets that long, plus
+# the grace period, before its silence is blamed on the first-logon command (F2).
+SETUP_ALLOWANCE_S=${INSTALL_SETUP_ALLOWANCE_SECONDS:-1800}
+AGENT_GRACE_S=${INSTALL_AGENT_GRACE_SECONDS:-900}
+MINUTE_S=${INSTALL_MINUTE_SECONDS:-60}
 AGENT_SCRIPT=${TT_AGENT_SCRIPT:-/opt/CAPEv2/agent/agent.py}
 STAGING=$TT_BUILD_DIR/answer-files
 ANSWER_ISO=$TT_BUILD_DIR/answer.iso
 PROVISION_FILES=(provision.ps1 defender-settings.ps1 decoys.ps1 sysmon-config.xml)
 WAIT_PROGRESS_FROM=10
 WAIT_PROGRESS_TO=95
+# Before the guest's own log can be read the percentage is a guess; it stays in the lower part of
+# the band so the real one, steps done over steps planned, can still move it.
+ESTIMATE_PROGRESS_TO=20
 
 DONE_MARKER=$(profile_name done_marker)
+LOG_NAME=$(profile_name log_file)
 marker_present() { guest_agent exists "$DONE_MARKER"; }
 provisioned() { agent_answers && marker_present; }
 
@@ -102,27 +112,62 @@ boot_until_setup_is_writing() {
 WAIT_STARTED=$SECONDS
 WAIT_MINUTES_LOGGED=0
 WAIT_PERCENT_SHOWN=0
+GUEST_STEP_SHOWN=""
 
-report_wait() {
-    local elapsed=$((SECONDS - WAIT_STARTED)) percent
-    percent=$((WAIT_PROGRESS_FROM + (WAIT_PROGRESS_TO - WAIT_PROGRESS_FROM) * elapsed / TYPICAL_INSTALL_S))
-    percent=$((percent < WAIT_PROGRESS_TO ? percent : WAIT_PROGRESS_TO))
-    if ((percent > WAIT_PERCENT_SHOWN)); then
-        WAIT_PERCENT_SHOWN=$percent
-        progress "$percent"
-    fi
-    if ((elapsed / 60 > WAIT_MINUTES_LOGGED)); then
-        WAIT_MINUTES_LOGGED=$((elapsed / 60))
-        log "Windows is installing and provisioning itself ($WAIT_MINUTES_LOGGED min so far)"
+show_percent() {
+    if (($1 > WAIT_PERCENT_SHOWN)); then
+        WAIT_PERCENT_SHOWN=$1
+        progress "$1"
     fi
 }
 
-# provision.ps1 starts the agent before it writes its last log lines and the done marker, so the
-# agent alone does not mean provisioning finished.
+report_estimate() {
+    local elapsed=$((SECONDS - WAIT_STARTED)) minutes
+    show_percent $((WAIT_PROGRESS_FROM + (ESTIMATE_PROGRESS_TO - WAIT_PROGRESS_FROM) * elapsed / TYPICAL_INSTALL_S))
+    minutes=$((elapsed / MINUTE_S))
+    if ((minutes > WAIT_MINUTES_LOGGED)); then
+        WAIT_MINUTES_LOGGED=$minutes
+        log "Windows is installing, about $minutes min so far (estimated)"
+    fi
+}
+
+report_guest_progress() {
+    local plan steps_done current
+    plan=$(guest_log_plan)
+    current=$(guest_log_current_step)
+    if [[ -n $current && $current != "$GUEST_STEP_SHOWN" ]]; then
+        GUEST_STEP_SHOWN=$current
+        step "Windows is provisioning itself: $current"
+    fi
+    ((plan > 0)) || return 0
+    steps_done=$(guest_log_steps_done)
+    ((steps_done <= plan)) || steps_done=$plan
+    show_percent $((WAIT_PROGRESS_FROM + (WAIT_PROGRESS_TO - WAIT_PROGRESS_FROM) * steps_done / plan))
+}
+
+# The marker is checked before the log is read: it is written after the final log line, so a marker
+# seen first and a log read second cannot miss a line.
+relay_guest_log() {
+    fetch_guest_log_lines "$LOG_NAME" || return 0
+    show_new_guest_log_lines
+    report_guest_progress
+}
+
+agent_has_been_silent_too_long() { ((SECONDS - WAIT_STARTED > SETUP_ALLOWANCE_S + AGENT_GRACE_S)); }
+
+# provision.ps1 starts the agent early, so the agent answering means provisioning is under way; only
+# the done marker, its last act, means it finished.
 provisioning_poll() {
     domain_running || fail "the guest stopped (it is $(domain_state)) before provisioning finished; look at its console"
-    provisioned && return 0
-    report_wait
+    if agent_answers; then
+        local finished=1
+        marker_present || finished=0
+        relay_guest_log
+        ((finished)) && return 0
+        return 1
+    fi
+    agent_has_been_silent_too_long && fail "Windows is installed but the guest never started its provisioning; the first-logon command did not run"
+    report_estimate
     return 1
 }
 

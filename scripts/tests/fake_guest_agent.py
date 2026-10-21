@@ -11,6 +11,7 @@ again on every request so a test can change it while the agent runs:
     {"answers": true,
      "appears_after_polls": {"path": "C:\\\\ProgramData\\\\x\\\\done", "polls": 3},
      "silent_after_execute": false,
+     "retrieve_fails": false,
      "scripts": {"tamper-off.ps1": {"stdout": "RESULT a=b\\r\\nEXITCODE 10\\r\\n"}}}
 
 An /execute names a driver script it was told to run; the driver was uploaded with /store and
@@ -111,6 +112,9 @@ class Agent(BaseHTTPRequestHandler):
         self.reply(200, {"message": "Successfully stored file", "status_code": 200})
 
     def retrieve(self, form: dict[str, str], _files: dict[str, bytes]) -> None:
+        if self.behaviour().get("retrieve_fails"):
+            self.reply(500, {"message": "The file is being used by another process", "error_code": 500})
+            return
         target = guest_path(self.root, form.get("filepath", ""))
         if target.is_file():
             self.reply(200, target.read_bytes())
