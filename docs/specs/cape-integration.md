@@ -531,10 +531,13 @@ settled the old question of choosing per submission.
   survive again. One shared helper, `security-ui.ps1`, finds the window and the toggle; each script used to
   carry its own copy, and the first real run of `defender-on` found the lookup bug that `tamper-off` had
   already fixed.
-- **The pause is only the fallback.** If the window or toggle cannot be found (exit 10), the step prints
-  instructions and exits 75: the build is `paused`, the page shows them with the guest's desktop, and
-  `[CONTINUE]` runs the step again. A failed verification or proof (exit 20, 30) fails the build with the
-  evidence. This path was not exercised for real.
+- **The pause is only the fallback.** If the window or toggle cannot be found, the step first reads
+  `IsTamperProtected`, the language-independent state it trusts anyway. Only when that is not already the
+  wanted state (exit 10) does it print instructions and exit 75: the build is `paused`, the page shows them
+  with the guest's desktop, and `[CONTINUE]` runs the step again. Because the step reads the state first when
+  it cannot operate the window, a switch the analyst made by hand is accepted (`RESULT toggle_skipped=...`)
+  and still verified by flag and by file: real-time protection is checked and the test file is written (or
+  removed) as usual. A failed verification or proof (exit 20, 30) fails the build with the evidence. This path was not exercised for real.
 - **Defender on in a clone** of a Defender-off guest is the reverse step, `defender-on`: remove the policy
   keys, switch Tamper Protection on, require real-time protection and that the test file is removed. It
   passed on a real clone (`lab5` from the Defender-off `lab3`, 5.5 minutes, the toggle found by its Polish

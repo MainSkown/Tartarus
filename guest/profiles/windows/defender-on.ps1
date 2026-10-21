@@ -3,7 +3,8 @@
   The reverse of tamper-off.ps1 (decision 15): turns Tamper Protection and real-time protection
   back on for a clone of a Defender-off guest. Idempotent: if both are already on, it does
   nothing and exits 0. Exit codes match tamper-off.ps1: 0 done and verified, 10 the toggle
-  control could not be found, 20 verification failed, 30 the removal proof failed. NOT tested on
+  control could not be found and Tamper Protection is not already on, 20 verification failed,
+  30 the removal proof failed. NOT tested on
   a real guest (see decision 15 / S0c "could not verify"); write it exactly to the brief and flag
   that in the notes.
 #>
@@ -31,20 +32,23 @@ if ($status.IsTamperProtected -and $status.RealTimeProtectionEnabled) {
 $securityWindow = Open-SecurityWindow
 if (-not $securityWindow) {
   Result 'window' 'not-found'
-  exit 10
 }
-
-$tamperToggle = Find-TamperToggle $securityWindow
-if (-not $tamperToggle) {
+$tamperToggle = if ($securityWindow) { Find-TamperToggle $securityWindow }
+if ($securityWindow -and -not $tamperToggle) {
   Result 'toggle' 'not-found'
-  exit 10
 }
-Result 'toggle_name' $tamperToggle.Current.Name
 
-Set-ToggleState $tamperToggle $true
-Start-Sleep -Seconds $VerifyWaitSeconds
-
-function Get-TamperProtected { (Get-MpComputerStatus).IsTamperProtected }
+if (-not $tamperToggle) {
+  $action = Resolve-TamperAction -ToggleFound $false -TamperProtected (Get-TamperProtected) -Wanted $true
+  if ($action -eq 'pause') {
+    exit 10
+  }
+  Result 'toggle_skipped' 'tamper-protection-already-on'
+} else {
+  Result 'toggle_name' $tamperToggle.Current.Name
+  Set-ToggleState $tamperToggle $true
+  Start-Sleep -Seconds $VerifyWaitSeconds
+}
 
 $tamperProtected = Get-TamperProtected
 if (-not $tamperProtected) {

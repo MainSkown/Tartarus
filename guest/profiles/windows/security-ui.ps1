@@ -9,6 +9,9 @@
   English on Windows 10 (four switches, no AutomationId at all). The switches are therefore found by
   what they are, anything that supports the TogglePattern, and the Tamper Protection one by its known
   names first and as the last switch second: it is the last on both versions.
+
+  When the window or switch cannot be found, Resolve-TamperAction decides from IsTamperProtected
+  whether a switch made by hand already did the job (CONTINUE re-runs the step from the top).
 #>
 # The pure Select-TamperToggle is tested on hosts that have no UI Automation.
 if ($PSVersionTable.PSEdition -eq 'Desktop' -or $IsWindows) {
@@ -60,6 +63,18 @@ function Set-ToggleState($Toggle, [bool] $On) {
   if ($isOn -ne $On) { $pattern.Toggle() }
 }
 
+function Get-TamperProtected { [bool] (Get-MpComputerStatus).IsTamperProtected }
+
+# The state is language-independent, so it decides what the window and switch lookup cannot:
+# 'switch' when the switch was found, 'already-there' when the analyst (or an earlier run) has
+# already put Tamper Protection where it is wanted, 'pause' for the manual fallback otherwise.
+function Resolve-TamperAction([bool] $ToggleFound, [bool] $TamperProtected, [bool] $Wanted) {
+  if ($ToggleFound) { return 'switch' }
+  if ($TamperProtected -eq $Wanted) { return 'already-there' }
+  return 'pause'
+}
+
 function Close-SecurityWindow($Window) {
+  if (-not $Window) { return }
   try { $Window.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close() } catch {}
 }

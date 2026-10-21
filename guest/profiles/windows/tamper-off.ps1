@@ -1,9 +1,9 @@
 #requires -version 5
 <#
   Implements decision 11's step list, in order, through the 64-bit PowerShell. Exit codes:
-  0 done and verified, 10 the toggle control could not be found (host step pauses for the manual
-  fallback), 20 verification failed, 30 a proof step failed. Each check prints one
-  "RESULT key=value" line so the host step can log it.
+  0 done and verified, 10 the toggle control could not be found and Tamper Protection is not
+  already off (host step pauses for the manual fallback), 20 verification failed, 30 a proof step
+  failed. Each check prints one "RESULT key=value" line so the host step can log it.
 #>
 [CmdletBinding()]
 param(
@@ -25,20 +25,23 @@ function Result([string] $key, $value) {
 $securityWindow = Open-SecurityWindow
 if (-not $securityWindow) {
   Result 'window' 'not-found'
-  exit 10
 }
-
-$tamperToggle = Find-TamperToggle $securityWindow
-if (-not $tamperToggle) {
+$tamperToggle = if ($securityWindow) { Find-TamperToggle $securityWindow }
+if ($securityWindow -and -not $tamperToggle) {
   Result 'toggle' 'not-found'
-  exit 10
 }
-Result 'toggle_name' $tamperToggle.Current.Name
 
-Set-ToggleState $tamperToggle $false
-Start-Sleep -Seconds $VerifyWaitSeconds
-
-function Get-TamperProtected { (Get-MpComputerStatus).IsTamperProtected }
+if (-not $tamperToggle) {
+  $action = Resolve-TamperAction -ToggleFound $false -TamperProtected (Get-TamperProtected) -Wanted $false
+  if ($action -eq 'pause') {
+    exit 10
+  }
+  Result 'toggle_skipped' 'tamper-protection-already-off'
+} else {
+  Result 'toggle_name' $tamperToggle.Current.Name
+  Set-ToggleState $tamperToggle $false
+  Start-Sleep -Seconds $VerifyWaitSeconds
+}
 
 $tamperProtected = Get-TamperProtected
 if ($tamperProtected) {

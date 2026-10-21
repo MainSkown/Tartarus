@@ -865,20 +865,13 @@ requires_pwsh = pytest.mark.skipif(
 )
 
 
-def select_tamper_toggle(switch_names: list[str]) -> str | None:
-    """Run security-ui.ps1's Select-TamperToggle over switches that have only a Name.
+def run_security_ui(snippet: str) -> str:
+    """Run a snippet of PowerShell after security-ui.ps1's own text and return what it printed.
 
     The script text travels as an encoded command, so it works the same with a real pwsh and
     with one that lives in a container that cannot see the repository.
     """
-    switches = json.dumps([{"Name": name} for name in switch_names]).replace("'", "''")
-    script = (
-        "$ErrorActionPreference = 'Stop'\n"
-        + script_text("security-ui.ps1")
-        + f"\n$switches = @(ConvertFrom-Json -InputObject '{switches}')\n"
-        + "$picked = Select-TamperToggle $switches\n"
-        + "if ($null -eq $picked) { 'NONE' } else { 'PICKED:' + $picked.Name }\n"
-    )
+    script = "$ErrorActionPreference = 'Stop'\n" + script_text("security-ui.ps1") + "\n" + snippet
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     result = subprocess.run(  # noqa: S603 - fixed argv, script text from the repo
         ["pwsh", "-NoProfile", "-OutputFormat", "Text", "-EncodedCommand", encoded],  # noqa: S607
@@ -887,8 +880,29 @@ def select_tamper_toggle(switch_names: list[str]) -> str | None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    output = result.stdout.strip()
+    return result.stdout.strip()
+
+
+def select_tamper_toggle(switch_names: list[str]) -> str | None:
+    """Run security-ui.ps1's Select-TamperToggle over switches that have only a Name."""
+    switches = json.dumps([{"Name": name} for name in switch_names]).replace("'", "''")
+    output = run_security_ui(
+        f"$switches = @(ConvertFrom-Json -InputObject '{switches}')\n"
+        "$picked = Select-TamperToggle $switches\n"
+        "if ($null -eq $picked) { 'NONE' } else { 'PICKED:' + $picked.Name }"
+    )
     return None if output == "NONE" else output.removeprefix("PICKED:")
+
+
+def resolve_tamper_action(*, toggle_found: bool, tamper_protected: bool, wanted: bool) -> str:
+    """Run security-ui.ps1's Resolve-TamperAction on plain booleans."""
+    flags = {
+        "ToggleFound": toggle_found,
+        "TamperProtected": tamper_protected,
+        "Wanted": wanted,
+    }
+    arguments = " ".join(f"-{name} ${str(value).lower()}" for name, value in flags.items())
+    return run_security_ui(f"Resolve-TamperAction {arguments}")
 
 
 class TestSecurityWindowLookup:
@@ -965,11 +979,55 @@ class TestSecurityWindowLookup:
         ):
             assert own_copy not in text, own_copy
 
-    @pytest.mark.parametrize("script", ["tamper-off.ps1", "defender-on.ps1"])
-    def test_a_missing_window_or_switch_is_exit_10_so_the_build_pauses(self, script):
+    @requires_pwsh
+    @pytest.mark.parametrize("tamper_protected", [True, False])
+    @pytest.mark.parametrize("wanted", [True, False])
+    def test_a_found_switch_is_always_operated(self, wanted, tamper_protected):
+        action = resolve_tamper_action(
+            toggle_found=True, tamper_protected=tamper_protected, wanted=wanted
+        )
+        assert action == "switch"
+
+    @requires_pwsh
+    @pytest.mark.parametrize("wanted", [True, False])
+    def test_no_switch_but_the_state_is_already_the_wanted_one_carries_on(self, wanted):
+        action = resolve_tamper_action(toggle_found=False, tamper_protected=wanted, wanted=wanted)
+        assert action == "already-there"
+
+    @requires_pwsh
+    @pytest.mark.parametrize("wanted", [True, False])
+    def test_no_switch_and_the_state_differs_pauses_for_the_manual_fallback(self, wanted):
+        action = resolve_tamper_action(
+            toggle_found=False, tamper_protected=not wanted, wanted=wanted
+        )
+        assert action == "pause"
+
+    @requires_pwsh
+    def test_closing_a_window_that_was_never_found_does_nothing(self):
+        assert run_security_ui("Close-SecurityWindow $null; 'CLOSED'") == "CLOSED"
+
+    @pytest.mark.parametrize(
+        ("script", "wanted"), [("tamper-off.ps1", "$false"), ("defender-on.ps1", "$true")]
+    )
+    def test_both_scripts_decide_through_the_shared_function_and_pause_only_on_its_say(
+        self, script, wanted
+    ):
         text = script_text(script)
-        assert re.search(r"RESULT|Result 'window'", text)
-        assert len(re.findall(r"\bexit 10\b", text)) >= 2
+        decision = "Resolve-TamperAction -ToggleFound $false -TamperProtected (Get-TamperProtected)"
+        assert f"{decision} -Wanted {wanted}" in text
+        assert "toggle_skipped" in text
+        exit_10_lines = [
+            index for index, line in enumerate(text.splitlines()) if re.search(r"\bexit 10\b", line)
+        ]
+        assert len(exit_10_lines) == 1
+        guard = text.splitlines()[exit_10_lines[0] - 1]
+        assert guard.strip() == "if ($action -eq 'pause') {"
+        assert "function Get-TamperProtected" not in text
+
+    def test_the_tamper_state_is_read_by_one_shared_function(self):
+        text = script_text("security-ui.ps1")
+        assert "function Get-TamperProtected" in text
+        assert "function Resolve-TamperAction" in text
 
     def test_the_steps_upload_the_helper_with_the_script(self):
         assert (
