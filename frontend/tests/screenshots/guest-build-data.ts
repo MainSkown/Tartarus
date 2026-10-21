@@ -139,11 +139,11 @@ const INSTALL_ESTIMATED_LOG = [
   'STEP Installing Windows',
   'PROGRESS 10',
   'LOG Windows Setup is copying files',
-  'LOG Windows is installing, about 1 min so far (estimated)',
+  'LOG Windows is installing, 1 min elapsed; the bar is an estimate until the guest reports its own steps',
   'PROGRESS 12',
-  'LOG Windows is installing, about 2 min so far (estimated)',
+  'LOG Windows is installing, 2 min elapsed; the bar is an estimate until the guest reports its own steps',
   'PROGRESS 14',
-  'LOG Windows is installing, about 3 min so far (estimated)',
+  'LOG Windows is installing, 3 min elapsed; the bar is an estimate until the guest reports its own steps',
 ]
 
 const GUEST_PROVISIONING_LOG = [
@@ -158,7 +158,7 @@ const GUEST_PROVISIONING_LOG = [
   'LOG guest: 2026-10-17 10:02:24  STEP install 32-bit Python 3.11',
 ]
 
-export const INSTALL_ESTIMATED = INSTALL_STEP(14, 'Windows is installing, about 3 min so far (estimated)', secondsAgo(20), INSTALL_ESTIMATED_LOG)
+export const INSTALL_ESTIMATED = INSTALL_STEP(14, 'Windows is installing, 3 min elapsed; the bar is an estimate until the guest reports its own steps', secondsAgo(20), INSTALL_ESTIMATED_LOG)
 
 const PROVISIONING_MESSAGE = 'Windows is provisioning itself: install 32-bit Python 3.11'
 const PROVISIONING_LOG = [...INSTALL_ESTIMATED_LOG, 'PROGRESS 17', 'STEP Windows is provisioning itself: copy payload to the work folder', ...GUEST_PROVISIONING_LOG, 'PROGRESS 36']
@@ -203,9 +203,9 @@ export const FAILED_INSTALL_OUTPUT = buildView({
   steps: stepsAt(BUILD_PIPELINE, 2, 'failed', 1),
   percent: 31,
   message:
-    'install exited with code 1: the guest never started provisioning; look at the guest\'s screen. Last output: Windows is installing, about 55 min so far (estimated) / Setup has not written to the disk for 20 min',
+    'install exited with code 1: the guest never started provisioning; look at the guest\'s screen. Last output: Windows is installing, 55 min elapsed; the bar is an estimate until the guest reports its own steps / Setup has not written to the disk for 20 min',
   desktop: false,
-  log: [...INSTALL_ESTIMATED_LOG, 'LOG Windows is installing, about 55 min so far (estimated)', 'PROGRESS 19', 'LOG Setup has not written to the disk for 20 min', 'control: step install failed with exit code 1'],
+  log: [...INSTALL_ESTIMATED_LOG, 'LOG Windows is installing, 55 min elapsed; the bar is an estimate until the guest reports its own steps', 'PROGRESS 19', 'LOG Setup has not written to the disk for 20 min', 'control: step install failed with exit code 1'],
 })
 
 export const CANCELLED = buildView({

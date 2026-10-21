@@ -127,7 +127,7 @@ report_estimate() {
     minutes=$((elapsed / MINUTE_S))
     if ((minutes > WAIT_MINUTES_LOGGED)); then
         WAIT_MINUTES_LOGGED=$minutes
-        log "Windows is installing, about $minutes min so far (estimated)"
+        log "Windows is installing, $minutes min elapsed; the bar is an estimate until the guest reports its own steps"
     fi
 }
 

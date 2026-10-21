@@ -41,7 +41,7 @@ const SCENARIOS: Scenario[] = [
     api: { reads: [INSTALL_ESTIMATED] },
     desktop: 'connected',
     expectVisible: async (page) => {
-      await expect(page.locator('[data-build="message"]')).toContainText('(estimated)')
+      await expect(page.locator('[data-build="message"]')).toContainText('the bar is an estimate')
       await expect(page.locator('[data-build="description"]')).toContainText('The desktop may look idle for minutes')
       await expect(page.locator('[data-build="activity"]')).toHaveText('last activity 20s ago')
       await expect(page.locator('[data-build="log-progress"]').first()).toBeVisible()

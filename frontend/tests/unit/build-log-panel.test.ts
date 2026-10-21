@@ -108,7 +108,7 @@ describe('BuildLogPanel', () => {
       'STEP Windows is provisioning itself: install 32-bit Python 3.11',
       'LOG guest: 2026-10-21 12:01:02  STEP install 32-bit Python 3.11',
       'PROGRESS 22',
-      'LOG Windows is installing, about 3 min so far (estimated)',
+      'LOG Windows is installing, 3 min elapsed; the bar is an estimate until the guest reports its own steps',
       '== step provision',
       'PROGRESS 40',
     ]
@@ -118,8 +118,8 @@ describe('BuildLogPanel', () => {
       const line = (fragment: string) => wrapper.findAll('.build-log__line').find((row) => row.text().includes(fragment))!
       expect(line('STEP install 32-bit').text()).toBe('guest: 2026-10-21 12:01:02  STEP install 32-bit Python 3.11')
       expect(line('STEP install 32-bit').classes()).toContain('build-log__line--guest')
-      expect(line('about 3 min').text()).toBe('Windows is installing, about 3 min so far (estimated)')
-      expect(line('about 3 min').classes()).not.toContain('build-log__line--guest')
+      expect(line('3 min elapsed').text()).toBe('Windows is installing, 3 min elapsed; the bar is an estimate until the guest reports its own steps')
+      expect(line('3 min elapsed').classes()).not.toContain('build-log__line--guest')
     })
 
     it('never prints a bare PROGRESS figure: each is a thin bar labelled with the step it belongs to', () => {

@@ -476,12 +476,12 @@ test_install_relays_the_last_lines_the_guest_wrote_before_its_done_marker() {
     assert_status 0 && assert_relayed "$PLAN4" "$STEP_D" "$OK_D"
 }
 
-test_install_before_the_agent_answers_says_the_time_is_an_estimate() {
+test_install_before_the_agent_answers_says_the_bar_is_an_estimate() {
     new_sandbox
     behave '{"answers": false}'
     run_step install INSTALL_MINUTE_SECONDS=1 INSTALL_GUARD_SECONDS=3
-    assert_contains "LOG Windows is installing, about 1 min so far (estimated)" &&
-        assert_contains "LOG Windows is installing, about 2 min so far (estimated)"
+    assert_contains "LOG Windows is installing, 1 min elapsed; the bar is an estimate until the guest reports its own steps" &&
+        assert_contains "LOG Windows is installing, 2 min elapsed; the bar is an estimate until the guest reports its own steps"
 }
 
 test_install_with_no_agent_after_the_grace_period_says_the_first_logon_command_did_not_run() {
