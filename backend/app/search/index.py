@@ -20,6 +20,14 @@ def index_name(analysis_id: int) -> str:
     return f"{INDEX_PREFIX}{analysis_id}"
 
 
+def analysis_id_of_index(name: str) -> int:
+    """The inverse of `index_name`; a hit's `_index` says which analysis it belongs to."""
+    suffix = name.removeprefix(INDEX_PREFIX)
+    if suffix == name or not suffix.isascii() or not suffix.isdigit():
+        raise ValueError(f"{name!r} is not an event index")
+    return int(suffix)
+
+
 def _event_id(event: dict[str, Any]) -> str:
     try:
         return str(event["event"]["id"])
@@ -84,10 +92,15 @@ class EventIndex:
             return {"hits": {"total": {"value": 0}, "hits": []}, "aggregations": {}}
         return response
 
-    async def search_all(self, body: dict[str, Any]) -> dict[str, Any]:
+    async def search_all(
+        self, body: dict[str, Any], request_timeout: float | None = None
+    ) -> dict[str, Any]:
         """Runs a search over the indices of every analysis; no analysis yet is no events."""
         response: dict[str, Any] = await self._client.search(
-            index=f"{INDEX_PREFIX}*", body=body, ignore_unavailable=True
+            index=f"{INDEX_PREFIX}*",
+            body=body,
+            ignore_unavailable=True,
+            request_timeout=request_timeout,
         )
         return response
 

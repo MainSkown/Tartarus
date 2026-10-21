@@ -23,12 +23,14 @@ def encode_cursor(sort: SortOrder, sort_values: Sequence[SortValue]) -> str:
     return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
 
 
-def decode_cursor(cursor: str, sort: SortOrder) -> list[SortValue]:
+def decode_cursor(
+    cursor: str, sort: SortOrder, shape: Sequence[type] = SORT_VALUE_SHAPE
+) -> list[SortValue]:
     payload = _payload(cursor)
     if payload.get("sort") != sort:
         raise _invalid("The cursor was issued for the other sort order")
     after = payload.get("after")
-    if not _has_sort_value_shape(after):
+    if not _has_sort_value_shape(after, shape):
         raise _invalid("The cursor is malformed")
     return after
 
@@ -44,12 +46,12 @@ def _payload(cursor: str) -> dict[str, object]:
     return payload
 
 
-def _has_sort_value_shape(after: object) -> TypeGuard[list[SortValue]]:
+def _has_sort_value_shape(after: object, shape: Sequence[type]) -> TypeGuard[list[SortValue]]:
     return (
         isinstance(after, list)
-        and len(after) == len(SORT_VALUE_SHAPE)
+        and len(after) == len(shape)
         and all(
             isinstance(value, kind) and not isinstance(value, bool)
-            for value, kind in zip(after, SORT_VALUE_SHAPE, strict=True)
+            for value, kind in zip(after, shape, strict=True)
         )
     )
