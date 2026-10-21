@@ -2114,6 +2114,20 @@ export type MemorySummary = {
 };
 
 /**
+ * MissingExport
+ */
+export type MissingExport = {
+    /**
+     * Channel
+     */
+    channel: string;
+    /**
+     * Reason
+     */
+    reason: string;
+};
+
+/**
  * NetworkAlertRow
  */
 export type NetworkAlertRow = {
@@ -2789,6 +2803,10 @@ export type ReportSummary = {
     hidden_events?: {
         [key: string]: number;
     };
+    /**
+     * Missing Exports
+     */
+    missing_exports?: Array<MissingExport>;
     memory?: MemorySummary | null;
 };
 

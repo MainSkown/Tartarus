@@ -191,3 +191,58 @@ def test_the_process_count_is_the_number_of_processes_the_report_lists() -> None
     assert process_count_of({"behavior": {"processes": [{}, {}, {}]}}) == 3
     assert process_count_of({"behavior": {}}) == 0
     assert process_count_of({}) == 0
+
+
+def report_in_analysis_folder(tmp_path: Path) -> Path:
+    reports = tmp_path / "analysis" / "reports"
+    reports.mkdir(parents=True)
+    return write_report(reports, {"info": {}})
+
+
+def write_missing_exports(analysis_dir: Path, content: str) -> None:
+    (analysis_dir / "aux").mkdir()
+    (analysis_dir / "aux" / "event_logs.json").write_text(content)
+
+
+def test_a_run_whose_event_log_export_the_guest_could_not_baseline_says_which_channel_and_why(
+    tmp_path: Path,
+) -> None:
+    report = report_in_analysis_folder(tmp_path)
+    write_missing_exports(
+        report.parent.parent,
+        json.dumps(
+            {
+                "missing": [
+                    {"channel": "Microsoft-Windows-Sysmon/Operational", "reason": "agent hung up"}
+                ]
+            }
+        ),
+    )
+
+    summary = ReportSummary.model_validate(read_report(report).summary)
+
+    assert [(gap.channel, gap.reason) for gap in summary.missing_exports] == [
+        ("Microsoft-Windows-Sysmon/Operational", "agent hung up")
+    ]
+
+
+def test_a_run_without_the_marker_misses_no_export(tmp_path: Path) -> None:
+    summary = ReportSummary.model_validate(read_report(report_in_analysis_folder(tmp_path)).summary)
+
+    assert summary.missing_exports == []
+
+
+@pytest.mark.parametrize("content", ["not json", "[]", '{"missing": "x"}', '{"missing": [1]}'])
+def test_a_marker_that_is_not_the_expected_shape_is_ignored_rather_than_failing_the_ingest(
+    tmp_path: Path, content: str
+) -> None:
+    report = report_in_analysis_folder(tmp_path)
+    write_missing_exports(report.parent.parent, content)
+
+    summary = ReportSummary.model_validate(read_report(report).summary)
+
+    assert summary.missing_exports == []
+
+
+def test_a_summary_stored_before_the_marker_existed_still_validates() -> None:
+    assert ReportSummary.model_validate({"process_count": 2}).missing_exports == []

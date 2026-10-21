@@ -3,6 +3,7 @@
 import base64
 import configparser
 import dataclasses
+import json
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -500,7 +501,8 @@ class TestNeverRaises:
         guest.store_failure = ConnectionError("no route")
         with caplog.at_level(logging.WARNING):
             run(collector, folder)
-        assert not folder.exists()
+        assert not (folder / "sysmon").exists()
+        assert not (folder / "aux/defender.xml").exists()
         assert "no route" in caplog.text
         assert export_commands(guest) == []
 
@@ -525,6 +527,125 @@ class TestNeverRaises:
         collector.export_to(folder)
         assert guest.commands == []
         assert not folder.exists()
+
+
+def missing_exports(folder: Path) -> dict[str, str]:
+    marker = json.loads((folder / "aux/event_logs.json").read_text())
+    return {entry["channel"]: entry["reason"] for entry in marker["missing"]}
+
+
+class TestWaitsForTheAgent:
+    def test_a_guest_that_refuses_the_first_connections_still_exports(
+        self, guest, collector, folder
+    ):
+        guest.refused_status_calls = 3
+        collector.start()
+        guest.add_event(SYSMON)
+        guest.add_event(DEFENDER, event_id=5007)
+        collector.export_to(folder)
+        assert (folder / "sysmon/sysmon.xml").exists()
+        assert (folder / "aux/defender.xml").exists()
+        assert not (folder / "aux/event_logs.json").exists()
+        assert len(guest.status_timeouts) == 4
+
+    def test_nothing_else_is_sent_before_the_agent_has_answered(self, guest, collector):
+        guest.refused_status_calls = 3
+        original = guest.status
+        seen = []
+
+        def status_then_note_commands(timeout):
+            seen.append(len(guest.commands))
+            original(timeout)
+
+        guest.status = status_then_note_commands
+        collector.start()
+        assert seen == [0, 0, 0, 0]
+
+    def test_each_poll_is_bounded_like_any_other_call_while_starting(self, guest, collector):
+        guest.refused_status_calls = 2
+        collector.start()
+        assert max(guest.status_timeouts) <= event_logs.CONNECT_TIMEOUT_S
+
+    def test_an_agent_that_never_answers_sends_no_command_and_leaves_the_marker(
+        self, guest, collector, clock, folder
+    ):
+        guest.refused_status_calls = 10**6
+        before = clock.now()
+        run(collector, folder)
+        assert clock.now() - before <= event_logs.START_BUDGET_S
+        assert guest.commands == []
+        assert not (folder / "sysmon").exists()
+        assert not (folder / "aux/defender.xml").exists()
+        reasons = missing_exports(folder)
+        assert set(reasons) == {SYSMON, DEFENDER}
+        assert all("did not answer" in reason for reason in reasons.values())
+
+    def test_the_wait_leaves_room_in_the_budget_for_the_baselines(self):
+        assert event_logs.AGENT_WAIT_S < event_logs.START_BUDGET_S
+
+
+class TestMissingExportMarker:
+    def test_a_clean_run_leaves_no_marker(self, guest, collector, folder):
+        run(collector, folder)
+        assert not (folder / "aux/event_logs.json").exists()
+
+    def test_a_guest_without_sysmon_is_not_a_missing_export(self, guest, collector, folder):
+        del guest.logs[SYSMON]
+        run(collector, folder)
+        assert not (folder / "aux/event_logs.json").exists()
+
+    def test_a_baseline_that_cannot_be_read_names_that_channel_and_the_reason(
+        self, guest, collector, folder
+    ):
+        guest.add_event(SYSMON)
+        guest.broken_commands['query-events "Microsoft-Windows-Sysmon/Operational" /c:1'] = (
+            ConnectionError("agent hung up")
+        )
+        run(collector, folder)
+        reasons = missing_exports(folder)
+        assert set(reasons) == {SYSMON}
+        assert "agent hung up" in reasons[SYSMON]
+
+    def test_a_newest_record_that_cannot_be_parsed_is_named(self, guest, collector, folder):
+        guest.add_event(SYSMON)
+        original = guest._answer
+        guest._answer = lambda command: b"garbage" if "/rd:true" in command else original(command)
+        run(collector, folder)
+        assert "newest record" in missing_exports(folder)[SYSMON]
+
+    def test_a_code_page_that_cannot_be_read_names_the_ansi_channels_only(
+        self, guest, collector, folder
+    ):
+        guest.broken_commands["reg.exe"] = ConnectionError("agent")
+        run(collector, folder)
+        reasons = missing_exports(folder)
+        assert set(reasons) == {SYSMON}
+        assert "code page" in reasons[SYSMON]
+
+    def test_an_export_that_fails_at_the_end_of_the_run_is_named(self, guest, collector, folder):
+        collector.start()
+        guest.broken_commands["/e:Events"] = TimeoutError("read timed out")
+        collector.export_to(folder)
+        assert "read timed out" in missing_exports(folder)[SYSMON]
+        assert (folder / "aux/defender.xml").exists()
+
+    def test_an_export_that_is_not_an_events_document_is_named(self, guest, collector, folder):
+        collector.start()
+        original = guest._answer
+        guest._answer = lambda command: (
+            b"Access denied" if "/e:Events" in command else original(command)
+        )
+        collector.export_to(folder)
+        assert "Events document" in missing_exports(folder)[SYSMON]
+
+    def test_the_marker_is_written_when_it_is_the_only_thing_to_write(
+        self, guest, collector, folder
+    ):
+        guest.refused_status_calls = 10**6
+        run(collector, folder)
+        assert sorted(path.name for path in folder.rglob("*") if path.is_file()) == [
+            "event_logs.json"
+        ]
 
 
 class TestTimeBudget:
@@ -593,6 +714,9 @@ class TestGuestAgent:
             self.calls = []
             self.status_error = None
 
+        def get(self, url, timeout=None):
+            return self.post(url, timeout=timeout)
+
         def post(self, url, data=None, files=None, timeout=None):
             self.calls.append(SimpleNamespace(url=url, data=data, files=files, timeout=timeout))
             outer = self
@@ -615,6 +739,15 @@ class TestGuestAgent:
         assert call.url == "http://192.168.150.10:8000/execute"
         assert call.data == {"command": "C:/Windows/System32/reg.exe query", "encoding": "base64"}
         assert call.timeout == (event_logs.CONNECT_TIMEOUT_S, 12)
+
+    def test_status_asks_the_agent_for_its_status_and_raises_when_it_cannot(self):
+        http = self.Http()
+        event_logs.GuestAgent("192.168.150.10", http).status(4)
+        assert http.calls[0].url == "http://192.168.150.10:8000/status"
+        assert http.calls[0].timeout == (event_logs.CONNECT_TIMEOUT_S, 4)
+        http.status_error = RuntimeError("503")
+        with pytest.raises(RuntimeError):
+            event_logs.GuestAgent("192.168.150.10", http).status(4)
 
     def test_an_error_status_raises(self):
         http = self.Http()
@@ -663,6 +796,18 @@ class TestAuxiliary:
         folder = tmp_path / "cape/storage/analyses/42"
         assert record_ids(folder / "sysmon/sysmon.xml") == [2]
         assert record_ids(folder / "aux/defender.xml") == [1]
+
+    def test_an_agent_that_never_answers_leaves_the_marker_in_the_analysis_folder(
+        self, auxiliary, guest, tmp_path
+    ):
+        guest.refused_status_calls = 10**6
+        auxiliary.start()
+        auxiliary.stop()
+        marker = tmp_path / "cape/storage/analyses/42/aux/event_logs.json"
+        assert {entry["channel"] for entry in json.loads(marker.read_text())["missing"]} == {
+            SYSMON,
+            DEFENDER,
+        }
 
     def test_start_and_stop_never_raise_because_cape_would_abort_the_task(
         self, auxiliary, monkeypatch

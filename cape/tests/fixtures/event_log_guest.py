@@ -52,6 +52,8 @@ class FakeGuest:
     broken_commands: dict[str, Exception] = field(default_factory=dict)
     sysmon_applied_config: bytes | None = None
     store_failure: Exception | None = None
+    refused_status_calls: int = 0
+    status_timeouts: list[float] = field(default_factory=list)
 
     def add_log(self, channel: str) -> None:
         self.logs.setdefault(channel, [])
@@ -63,6 +65,13 @@ class FakeGuest:
             Record(record_id, event_xml(record_id, event_id, **data), self.clock.now() + delay)
         )
         return record_id
+
+    def status(self, timeout: float) -> None:
+        self.clock.sleep(self.call_cost)
+        self.status_timeouts.append(timeout)
+        if self.refused_status_calls > 0:
+            self.refused_status_calls -= 1
+            raise ConnectionRefusedError("agent not listening yet")
 
     def execute(self, command: str, timeout: float) -> bytes:
         self.clock.sleep(self.call_cost)

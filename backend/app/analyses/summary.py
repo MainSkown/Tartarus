@@ -6,8 +6,10 @@ from pydantic import BaseModel
 
 from app.analyses.defender import DefenderVerdict
 from app.analyses.memory import MemorySummary
+from app.analyses.missing_exports import MissingExport, read_missing_exports
 from app.analyses.ports import ReportOutcome, ReportUnreadableError
 from app.db.models.analysis import Severity
+from app.ingest.clock import analysis_dir_of
 
 CRITICAL_FROM_CAPE_SEVERITY = 4
 CAPE_SEVERITY_SCALE = (Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH)
@@ -52,6 +54,7 @@ class ReportSummary(BaseModel):
     lane_counts: dict[str, int] = {}
     defender: DefenderVerdict | None = None
     hidden_events: dict[str, int] = {}
+    missing_exports: list[MissingExport] = []
     memory: MemorySummary | None = None
 
 
@@ -64,7 +67,7 @@ def read_report(path: Path) -> ReportOutcome:
             (item.severity for item in signatures), key=SEVERITY_ORDER.index, default=None
         ),
         detected_families=_families(report.get("detections")),
-        summary=_summarise(report, signatures).model_dump(mode="json"),
+        summary=_summarise(report, signatures, analysis_dir_of(path)).model_dump(mode="json"),
     )
 
 
@@ -81,7 +84,9 @@ def load_report(path: Path) -> dict[str, Any]:
     return report
 
 
-def _summarise(report: dict[str, Any], signatures: list[SignatureSummary]) -> ReportSummary:
+def _summarise(
+    report: dict[str, Any], signatures: list[SignatureSummary], analysis_dir: Path
+) -> ReportSummary:
     behavior = _section(report, "behavior")
     behavior_summary = _section(behavior, "summary")
     target_file = _section(_section(report, "target"), "file")
@@ -101,6 +106,7 @@ def _summarise(report: dict[str, Any], signatures: list[SignatureSummary]) -> Re
         sample=SampleSummary(
             name=_text(target_file.get("name")), type=_text(target_file.get("type"))
         ),
+        missing_exports=read_missing_exports(analysis_dir),
     )
 
 

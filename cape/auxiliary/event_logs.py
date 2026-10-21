@@ -8,6 +8,7 @@ modules (Defender kills it on the first read of a detected sample). Each channel
 import base64
 import codecs
 import importlib
+import json
 import logging
 import re
 import time
@@ -27,6 +28,10 @@ AGENT_PORT = 8000
 CONNECT_TIMEOUT_S = 5
 BASELINE_TIMEOUT_S = 15
 START_BUDGET_S = 90
+# A guest can be slow to answer after its snapshot revert (11 s instead of 4 to 6, spike P3 task
+# 397); the wait stops short of the start budget so the baselines still fit in it.
+AGENT_WAIT_S = 60
+AGENT_POLL_S = 2
 # The slowest export (Sysmon, 120 s) plus the Defender settle wait (30 s) and the polls around it.
 STOP_BUDGET_S = 180
 # Defender quarantines a detected file about ten seconds after it detects it (1117 after 1116);
@@ -42,6 +47,7 @@ POWERSHELL = "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 SYSMON_EXE = "C:/Windows/Sysmon64.exe"
 ANSI_CODE_PAGE_KEY = r"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Nls\\CodePage"
 
+MISSING_EXPORTS_FILE = "aux/event_logs.json"
 EMPTY_EVENTS = b"<Events>\n</Events>\n"
 XML_FORBIDDEN_CONTROL_CHARACTERS = re.compile(rb"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 EVENT = re.compile(rb"<Event[ >].*?</Event>", re.DOTALL)
@@ -69,6 +75,7 @@ class Clock(Protocol):
 
 
 class Agent(Protocol):
+    def status(self, read_timeout: float) -> None: ...
     def execute(self, command: str, read_timeout: float) -> bytes: ...
     def store(self, guest_path: str, data: bytes, read_timeout: float) -> None: ...
     def remove(self, guest_path: str, read_timeout: float) -> None: ...
@@ -91,24 +98,33 @@ class GuestAgent:
         self._base = f"http://{ip}:{AGENT_PORT}"
         self._http = http
 
+    def status(self, read_timeout: float) -> None:
+        self._send("get", "status", read_timeout)
+
     def execute(self, command: str, read_timeout: float) -> bytes:
-        answer = self._post(
-            "execute", read_timeout, data={"command": command, "encoding": "base64"}
+        answer = self._send(
+            "post", "execute", read_timeout, data={"command": command, "encoding": "base64"}
         )
         return base64.b64decode(answer.json()["stdout"])
 
     def store(self, guest_path: str, data: bytes, read_timeout: float) -> None:
-        self._post(
-            "store", read_timeout, data={"filepath": guest_path}, files={"file": ("upload", data)}
+        self._send(
+            "post",
+            "store",
+            read_timeout,
+            data={"filepath": guest_path},
+            files={"file": ("upload", data)},
         )
 
     def remove(self, guest_path: str, read_timeout: float) -> None:
-        self._post("remove", read_timeout, data={"path": guest_path})
+        self._send("post", "remove", read_timeout, data={"path": guest_path})
 
-    def _post(self, route: str, read_timeout: float, **form: Any) -> Any:
+    def _send(
+        self, method: Literal["get", "post"], route: str, read_timeout: float, **form: Any
+    ) -> Any:
         # Imported here because the unit tests run on the stdlib alone; CAPE's python has requests.
         http = self._http or importlib.import_module("requests")
-        answer = http.post(
+        answer = getattr(http, method)(
             f"{self._base}/{route}", timeout=(CONNECT_TIMEOUT_S, read_timeout), **form
         )
         answer.raise_for_status()
@@ -234,15 +250,18 @@ class EventLogCollector:
         self._channels = channels
         self._baselines: dict[str, int | None] = {}
         self._codec: str | None = None
+        self._missing: dict[str, str] = {}
 
     def start(self) -> None:
         budget = Budget(self._clock, START_BUDGET_S)
+        if not self._wait_for_agent(budget):
+            return
         if any(channel.guest_encoding == "ansi" for channel in self._channels):
             with logged_failure("reading the guest's ANSI code page"):
                 self._codec = self._read_codec(budget)
         for channel in self._channels:
             baseline = None
-            with logged_failure(f"the baseline of {channel.name}"):
+            with self._recorded_failure(channel, "the baseline could not be read"):
                 baseline = self._baseline(channel, budget)
             self._baselines[channel.name] = baseline
 
@@ -252,8 +271,43 @@ class EventLogCollector:
             baseline = self._baselines.get(channel.name)
             if baseline is None:
                 continue
-            with logged_failure(f"the export of {channel.name}"):
+            with self._recorded_failure(channel, "the export failed"):
                 self._write(folder, channel, self._export(channel, baseline, budget))
+        if self._missing:
+            with logged_failure("writing the list of missing exports"):
+                self._write_missing_exports(folder)
+
+    def _wait_for_agent(self, budget: Budget) -> bool:
+        waiting = Budget(self._clock, AGENT_WAIT_S)
+        while True:
+            try:
+                self._agent.status(budget.bound(CONNECT_TIMEOUT_S))
+                return True
+            except Exception as error:  # noqa: BLE001 - any failure to reach the agent means wait
+                failure = error
+            if waiting.remaining() <= AGENT_POLL_S:
+                break
+            self._clock.sleep(AGENT_POLL_S)
+        log.warning("the guest agent did not answer within %d s: %s", AGENT_WAIT_S, failure)
+        for channel in self._channels:
+            self._missing[channel.name] = (
+                f"the guest agent did not answer within {AGENT_WAIT_S} s ({failure})"
+            )
+        return False
+
+    @contextmanager
+    def _recorded_failure(self, channel: Channel, what: str) -> Iterator[None]:
+        try:
+            yield
+        except Exception as error:  # noqa: BLE001 - CAPE aborts the task on an exception out of start() or stop()
+            log.warning("%s: %s: %s", channel.name, what, error)
+            self._missing[channel.name] = f"{what}: {error}"
+
+    def _write_missing_exports(self, folder: Path) -> None:
+        marker = folder / MISSING_EXPORTS_FILE
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        entries = [{"channel": name, "reason": reason} for name, reason in self._missing.items()]
+        marker.write_text(json.dumps({"missing": entries}, indent=2))
 
     def _read_codec(self, budget: Budget) -> str | None:
         answer = self._agent.execute(
@@ -274,17 +328,19 @@ class EventLogCollector:
             log.info("%s is not on this guest; nothing to export", channel.name)
             return None
         if channel.guest_encoding == "ansi" and self._codec is None:
-            log.warning(
-                "%s needs the guest's ANSI code page, which could not be read", channel.name
-            )
+            self._miss(channel, "needs the guest's ANSI code page, which could not be read")
             return None
         if channel.config:
             self._apply_config(channel.config, budget)
         newest = self._newest_record_id(channel, budget)
         if newest is None and records > 0:
-            log.warning("could not read the newest record id of %s", channel.name)
+            self._miss(channel, "the newest record id could not be read")
             return None
         return newest or 0
+
+    def _miss(self, channel: Channel, reason: str) -> None:
+        log.warning("%s: %s", channel.name, reason)
+        self._missing[channel.name] = reason
 
     def _record_count(self, channel: Channel, budget: Budget) -> int | None:
         answer = self._agent.execute(
@@ -348,9 +404,7 @@ class EventLogCollector:
     def _write(self, folder: Path, channel: Channel, raw: bytes) -> None:
         document = events_document(raw)
         if document is None:
-            log.warning(
-                "%s: the guest did not return an Events document; nothing written", channel.name
-            )
+            self._miss(channel, "the guest did not return an Events document; nothing written")
             return
         target = folder / channel.target
         target.parent.mkdir(parents=True, exist_ok=True)
