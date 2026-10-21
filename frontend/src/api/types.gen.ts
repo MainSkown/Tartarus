@@ -2630,6 +2630,66 @@ export type QueryValidation = {
 };
 
 /**
+ * QueueMessage
+ *
+ * `/ws/system`'s `queue` push: the same snapshot `GET /api/system/queue` returns, sent on
+ * connect and whenever the running or queued analyses change.
+ */
+export type QueueMessage = {
+    /**
+     * Type
+     */
+    type?: 'queue';
+    /**
+     * Ts
+     */
+    ts: string;
+    data: QueueSnapshot;
+};
+
+/**
+ * QueueSnapshot
+ */
+export type QueueSnapshot = {
+    /**
+     * Running
+     */
+    running: Array<RunningAnalysis>;
+    /**
+     * Queued Count
+     */
+    queued_count: number;
+    /**
+     * Queued
+     */
+    queued: Array<QueuedAnalysis>;
+};
+
+/**
+ * QueuedAnalysis
+ */
+export type QueuedAnalysis = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Guest
+     */
+    guest: string | null;
+    /**
+     * Position
+     *
+     * 1 is served next on this guest; the line is per guest, so two analyses on different guests are both position 1.
+     */
+    position: number;
+};
+
+/**
  * RegistryChange
  */
 export type RegistryChange = {
@@ -2948,6 +3008,35 @@ export type RuleRead = {
 };
 
 /**
+ * RunningAnalysis
+ */
+export type RunningAnalysis = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Guest
+     */
+    guest: string | null;
+    status: AnalysisStatus;
+    /**
+     * Started At
+     */
+    started_at: string | null;
+    /**
+     * Elapsed S
+     *
+     * Seconds since `started_at`, as of when this queue was read. A client that shows a running clock counts on `started_at`, not on this value.
+     */
+    elapsed_s: number | null;
+};
+
+/**
  * SampleSummary
  */
 export type SampleSummary = {
@@ -3238,6 +3327,31 @@ export type SystemHealthResponses = {
 };
 
 export type SystemHealthResponse = SystemHealthResponses[keyof SystemHealthResponses];
+
+export type SystemQueueData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/queue';
+};
+
+export type SystemQueueErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type SystemQueueError = SystemQueueErrors[keyof SystemQueueErrors];
+
+export type SystemQueueResponses = {
+    /**
+     * Successful Response
+     */
+    200: QueueSnapshot;
+};
+
+export type SystemQueueResponse = SystemQueueResponses[keyof SystemQueueResponses];
 
 export type SettingsReadData = {
     body?: never;
@@ -5149,7 +5263,7 @@ export type SystemWsMessageSchemasResponses = {
      *
      * Successful Response
      */
-    200: HealthMessage | JobMessage;
+    200: HealthMessage | JobMessage | QueueMessage;
 };
 
 export type SystemWsMessageSchemasResponse = SystemWsMessageSchemasResponses[keyof SystemWsMessageSchemasResponses];

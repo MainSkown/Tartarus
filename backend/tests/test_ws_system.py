@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -8,14 +8,19 @@ from fastapi import FastAPI
 from fastapi.websockets import WebSocketDisconnect
 from starlette.testclient import TestClient
 
+from app.db.models.analysis import AnalysisStatus
 from app.db.models.job import JobStatus, JobType
 from app.health import ComponentHealth, HealthCheck, HealthStatus
 from app.jobs.feed import JobFeed
-from app.ws.messages import HealthMessage, JobMessage, JobProgress
+from app.schemas.system import QueueSnapshot, RunningAnalysis
+from app.ws.messages import HealthMessage, JobMessage, JobProgress, QueueMessage
 from app.ws.system import (
+    QueuePush,
     get_health_checks,
     get_health_push_interval_s,
     get_job_feed,
+    get_queue_push_interval_s,
+    get_queue_source,
     router,
     system_feed,
 )
@@ -57,6 +62,9 @@ def ws_app(app: FastAPI) -> FastAPI:
     # Mounted here, not in app/main.py: wiring the real app is a separate subtask's job (see
     # this subtask's report for the exact snippet to add there).
     app.include_router(router)
+    app.dependency_overrides[get_queue_source] = lambda: FakeQueue(
+        QueueSnapshot(running=[], queued_count=0, queued=[])
+    )
     return app
 
 
@@ -109,8 +117,8 @@ def test_a_store_going_down_is_reflected_within_one_interval(
     use_fast_interval(ws_app)
 
     with client.websocket_connect("/ws/system") as websocket:
-        first = HealthMessage.model_validate(websocket.receive_json())
-        second = HealthMessage.model_validate(websocket.receive_json())
+        first = receive_health(websocket)
+        second = receive_health(websocket)
 
     assert first.data.opensearch.status is HealthStatus.OK
     assert second.data.opensearch.status is HealthStatus.DOWN
@@ -140,6 +148,7 @@ async def test_disconnect_mid_stream_logs_no_unhandled_exception(
             checks=healthy_checks(),
             interval_s=0.0,
             jobs=JobFeed(),
+            queue=QueuePush(FakeQueue(QueueSnapshot(running=[], queued_count=0, queued=[])), 0.0),
         )
 
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
@@ -297,3 +306,87 @@ def test_job_messages_appear_in_the_openapi_schema() -> None:
     schemas = schema_app.openapi()["components"]["schemas"]
 
     assert {"JobMessage", "JobProgress"} <= schemas.keys()
+
+
+class FakeQueue:
+    """Answers with whatever snapshot the test has set last, so a test decides when the queue
+    changes without a database.
+    """
+
+    def __init__(self, snapshot: QueueSnapshot) -> None:
+        self.current = snapshot
+
+    async def __call__(self) -> QueueSnapshot:
+        return self.current
+
+
+def running_analysis(analysis_id: int) -> RunningAnalysis:
+    return RunningAnalysis(
+        id=analysis_id,
+        filename=f"sample-{analysis_id}.exe",
+        guest="lab3",
+        status=AnalysisStatus.RUNNING,
+        started_at=datetime(2026, 10, 21, 12, 0, tzinfo=UTC),
+        elapsed_s=0,
+    )
+
+
+def queue_of(*running: RunningAnalysis) -> QueueSnapshot:
+    return QueueSnapshot(running=list(running), queued_count=0, queued=[])
+
+
+def use_queue(app: FastAPI, queue: FakeQueue) -> None:
+    app.dependency_overrides[get_queue_source] = lambda: queue
+    app.dependency_overrides[get_queue_push_interval_s] = lambda: FAST_INTERVAL_S
+
+
+def receive_queue(websocket: Any) -> QueueMessage:
+    while True:
+        payload = websocket.receive_json()
+        if payload["type"] == "queue":
+            return QueueMessage.model_validate(payload)
+
+
+def receive_health(websocket: Any) -> HealthMessage:
+    while True:
+        payload = websocket.receive_json()
+        if payload["type"] == "health":
+            return HealthMessage.model_validate(payload)
+
+
+def test_a_connected_client_is_sent_the_queue(ws_app: FastAPI, client: TestClient) -> None:
+    use_checks(ws_app, healthy_checks())
+    use_fast_interval(ws_app)
+    use_queue(ws_app, FakeQueue(queue_of(running_analysis(7))))
+
+    with client.websocket_connect("/ws/system") as websocket:
+        message = receive_queue(websocket)
+
+    assert message.type == "queue"
+    assert [analysis.id for analysis in message.data.running] == [7]
+
+
+def test_a_queue_change_is_pushed_and_an_unchanged_queue_is_not(
+    ws_app: FastAPI, client: TestClient
+) -> None:
+    queue = FakeQueue(queue_of(running_analysis(1)))
+    use_checks(ws_app, healthy_checks())
+    use_fast_interval(ws_app)
+    use_queue(ws_app, queue)
+
+    with client.websocket_connect("/ws/system") as websocket:
+        first = receive_queue(websocket)
+        queue.current = queue_of(running_analysis(1), running_analysis(2))
+        second = receive_queue(websocket)
+
+    assert [analysis.id for analysis in first.data.running] == [1]
+    assert [analysis.id for analysis in second.data.running] == [1, 2]
+
+
+def test_queue_message_appears_in_the_openapi_schema() -> None:
+    schema_app = FastAPI()
+    schema_app.include_router(router)
+
+    schemas = schema_app.openapi()["components"]["schemas"]
+
+    assert {"QueueMessage", "QueueSnapshot", "RunningAnalysis", "QueuedAnalysis"} <= schemas.keys()

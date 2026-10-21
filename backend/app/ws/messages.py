@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.health import SystemHealth
 from app.schemas.jobs import JobProgress
+from app.schemas.system import QueueSnapshot
 
 
 class HealthMessage(BaseModel):
@@ -29,3 +30,15 @@ class JobMessage(BaseModel):
 
     type: Literal["job"] = "job"
     job: JobProgress
+
+
+class QueueMessage(BaseModel):
+    """`/ws/system`'s `queue` push: the same snapshot `GET /api/system/queue` returns, sent on
+    connect and whenever the running or queued analyses change.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["queue"] = "queue"
+    ts: datetime
+    data: QueueSnapshot
