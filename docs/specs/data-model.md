@@ -31,6 +31,7 @@ writes to the shared storage volume. See [architecture](../architecture.md#compo
 | `sample_sha256` | FK → sample | A sample can be analysed many times |
 | `filename` | text | Name as submitted |
 | `cape_task_id` | int, nullable | Set when submitted to CAPE |
+| `kind` | enum | `run` (analysed in a guest; the default, so analyses from before imports read as `run`), `imported` (read from an uploaded file; records no `guest`) |
 | `status` | enum | `queued`, `starting`, `running`, `processing`, `ingesting`, `done`, `failed`, `report_failed`, `cancelled` |
 | `phase` | enum | `live`, `final` |
 | `options` | jsonb | `{route, timeout, package, memory_dump, keep_memory_dump, interactive, guest}`. `guest` is the name of the guest the analysis runs on, written resolved when the analysis is queued (no migration: analyses from before guests have no `guest`, and the runner fails one that records none). The name is kept even after the guest is deleted |

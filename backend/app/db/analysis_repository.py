@@ -9,7 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import annotation_repository
 from app.db.base import utc_now
 from app.db.models import Analysis, Sample, Tag, TagLink
-from app.db.models.analysis import ACTIVE_STATUSES, AnalysisPhase, AnalysisStatus, Severity
+from app.db.models.analysis import (
+    ACTIVE_STATUSES,
+    AnalysisKind,
+    AnalysisPhase,
+    AnalysisStatus,
+    Severity,
+)
 from app.db.models.annotation import TargetType
 
 # The one definition of "who goes next", shared by the runner and the position shown to users.
@@ -60,10 +66,12 @@ async def create_analysis(
     sample_sha256: str,
     filename: str,
     options: dict[str, Any],
+    kind: AnalysisKind = AnalysisKind.RUN,
 ) -> Analysis:
     analysis = Analysis(
         sample_sha256=sample_sha256,
         filename=filename,
+        kind=kind,
         status=AnalysisStatus.QUEUED,
         options=options,
     )

@@ -82,3 +82,21 @@ def test_downgrading_drops_the_deadline_column(
     command.downgrade(alembic_config, "0007:0006", sql=True)
 
     assert "ALTER TABLE analysis DROP COLUMN deadline_at" in capsys.readouterr().out
+
+
+def test_the_kind_is_added_as_a_checked_text_column_defaulting_to_run(
+    alembic_config: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    command.upgrade(alembic_config, "0007:0008", sql=True)
+
+    sql = capsys.readouterr().out
+    assert "ALTER TABLE analysis ADD COLUMN kind VARCHAR(8) DEFAULT 'run' NOT NULL" in sql
+    assert "CONSTRAINT ck_analysis_analysis_kind CHECK (kind IN ('run', 'imported'))" in sql
+
+
+def test_downgrading_drops_the_kind_column(
+    alembic_config: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    command.downgrade(alembic_config, "0008:0007", sql=True)
+
+    assert "ALTER TABLE analysis DROP COLUMN kind" in capsys.readouterr().out

@@ -12,7 +12,7 @@ from app.db import analysis_repository as repository
 from app.db.analysis_repository import AnalysisFilter
 from app.db.base import Base
 from app.db.models import Analysis, Sample
-from app.db.models.analysis import AnalysisPhase, AnalysisStatus, Severity
+from app.db.models.analysis import AnalysisKind, AnalysisPhase, AnalysisStatus, Severity
 from app.schemas.analysis import AnalysisRead
 
 SHA_A = "a" * 64
@@ -478,6 +478,7 @@ def test_analysis_read_is_built_from_an_orm_row() -> None:
         id=7,
         sample_sha256=SHA_A,
         filename="benign.exe",
+        kind=AnalysisKind.RUN,
         status=AnalysisStatus.RUNNING,
         phase=AnalysisPhase.LIVE,
         options=OPTIONS,
@@ -656,3 +657,21 @@ async def test_an_analysis_the_guest_is_done_with_does_not_need_it(
 
 async def test_no_analysis_at_all_needs_no_guest(session: AsyncSession) -> None:
     assert await repository.has_analysis_needing_a_guest(session) is False
+
+
+async def test_an_analysis_is_a_run_unless_it_is_created_as_an_import(
+    session: AsyncSession,
+) -> None:
+    run = await seeded_analysis(session)
+    imported = await repository.create_analysis(
+        session, sample_sha256=SHA_A, filename="c.pcap", options={}, kind=AnalysisKind.IMPORTED
+    )
+
+    assert (run.kind, imported.kind) == (AnalysisKind.RUN, AnalysisKind.IMPORTED)
+
+
+async def test_the_database_refuses_a_kind_it_does_not_know(session: AsyncSession) -> None:
+    await seeded_analysis(session)
+
+    with pytest.raises(IntegrityError):
+        await session.execute(text("UPDATE analysis SET kind = 'bogus'"))

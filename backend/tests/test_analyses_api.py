@@ -35,7 +35,7 @@ from app.db import analysis_repository as repository
 from app.db import annotation_repository, job_repository
 from app.db.base import Base
 from app.db.models import Analysis, Sample, Setting
-from app.db.models.analysis import AnalysisStatus
+from app.db.models.analysis import AnalysisKind, AnalysisStatus
 from app.db.models.annotation import TargetType
 from app.db.models.job import JobStatus, JobType
 from app.errors import install_error_handlers
@@ -45,6 +45,7 @@ from app.live.utc import as_utc
 from app.samples.store import SampleStore
 from tests.analyses.fakes import FakeFreeSpace
 from tests.analyses.guest_fakes import ScriptedGuestControl, guest_named
+from tests.test_analysis_repository import SHA_A, make_sample
 
 CONTENT = b"MZ\x90\x00 a pretend executable"
 OTHER_CONTENT = b"MZ\x90\x00 another pretend executable"
@@ -1641,3 +1642,40 @@ def test_the_openapi_schema_always_lists_the_guest_fields_of_an_analysis() -> No
     read = app.openapi()["components"]["schemas"]["AnalysisRead"]
 
     assert {"guest", "guest_badges"} <= set(read["required"])
+
+
+async def test_a_submitted_analysis_reads_as_a_run(harness: Harness) -> None:
+    analysis_id = (await harness.upload()).json()["id"]
+
+    body = (await harness.client.get(f"/api/analyses/{analysis_id}")).json()
+
+    assert body["kind"] == "run"
+
+
+async def test_an_imported_analysis_without_a_guest_reads_and_lists(harness: Harness) -> None:
+    async with harness.factory() as session:
+        await repository.add_sample_if_new(session, make_sample())
+        imported = await repository.create_analysis(
+            session,
+            sample_sha256=SHA_A,
+            filename="capture.pcap",
+            options={},
+            kind=AnalysisKind.IMPORTED,
+        )
+    harness.guests.calls.clear()
+
+    body = (await harness.client.get(f"/api/analyses/{imported.id}")).json()
+    listed = (await harness.client.get("/api/analyses")).json()["items"]
+
+    assert (body["kind"], body["guest"], body["guest_badges"]) == ("imported", None, [])
+    assert [item["kind"] for item in listed] == ["imported"]
+    assert guest_calls(harness) == 0
+
+
+def test_the_openapi_schema_always_lists_the_kind_of_an_analysis() -> None:
+    app = FastAPI(generate_unique_id_function=generate_operation_id)
+    app.include_router(analyses_router, prefix="/api")
+
+    read = app.openapi()["components"]["schemas"]["AnalysisRead"]
+
+    assert "kind" in read["required"]

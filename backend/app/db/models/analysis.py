@@ -32,6 +32,11 @@ class AnalysisStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class AnalysisKind(StrEnum):
+    RUN = "run"
+    IMPORTED = "imported"
+
+
 class AnalysisPhase(StrEnum):
     LIVE = "live"
     FINAL = "final"
@@ -80,6 +85,11 @@ class Analysis(Base):
     filename: Mapped[str] = mapped_column(Text)
     cape_task_id: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[AnalysisStatus] = mapped_column(text_enum(AnalysisStatus, "analysis_status"))
+    kind: Mapped[AnalysisKind] = mapped_column(
+        text_enum(AnalysisKind, "analysis_kind"),
+        default=AnalysisKind.RUN,
+        server_default=AnalysisKind.RUN.value,
+    )
     phase: Mapped[AnalysisPhase] = mapped_column(
         text_enum(AnalysisPhase, "analysis_phase"), default=AnalysisPhase.LIVE
     )

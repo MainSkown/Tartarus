@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import ConfigDict, Field
 
 from app.analyses.summary import ReportSummary
-from app.db.models.analysis import AnalysisPhase, AnalysisStatus, Severity
+from app.db.models.analysis import AnalysisKind, AnalysisPhase, AnalysisStatus, Severity
 from app.schemas.base import ApiModel
 
 
@@ -15,6 +15,10 @@ class AnalysisRead(ApiModel):
     sample_sha256: str
     filename: str
     cape_task_id: int | None
+    kind: AnalysisKind = Field(
+        description="`run` is analysed in a guest; `imported` is read from an uploaded file and "
+        "has no guest."
+    )
     status: AnalysisStatus
     phase: AnalysisPhase
     options: dict[str, Any]
