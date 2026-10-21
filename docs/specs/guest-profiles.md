@@ -248,6 +248,11 @@ fixed in the template: the [S2 spike](../plans/m7-spikes/S2-findings.md) found n
 differently. New hardware is a new fragment file, not a template per profile, and the
 generic steps read the disk target, nvram and TPM from the domain, never from a constant.
 
+**Isolation between guests.** Every guest NIC in the template carries `<port isolated='yes'/>`, so the guests on
+`tt-guest` cannot reach each other's agent, SMB or ping, while the gateway's ResultServer and INetSim stay
+reachable. `isolate_guest` adds the flag to the domain and snapshots of guests built before it, when the control
+service starts. `scripts/verify-isolation.sh` probes it through the guest agents.
+
 ## Checklist for a new OS
 
 Work through these in order; each line either is a file in the profile or a decision recorded in it.
@@ -256,7 +261,7 @@ Work through these in order; each line either is a file in the profile or a deci
    cloud image has no installer: its pipeline has no `install` step and `define` copies and resizes it.
 2. **Unattended install and provisioning**, as profile steps, ending with the CAPE agent running at boot
    with the privileges the OS needs, on a static address from the guest's record.
-3. **Software the guest needs.** The guest network is isolated, so everything it installs must come from
+3. **Software the guest needs.** The guest network is isolated (and guests cannot reach each other), so everything it installs must come from
    the install media or from `fetch` into the cache at build time (`manifest.sha256`), or from a profile
    step that builds a mirror for the build only.
 4. **Identity rules, generators and neutral names**, and a facts script that scans the guest for the

@@ -31,7 +31,8 @@
 - Queue count and disk usage. The disk usage turns amber or red at the warn and block
   thresholds.
 - The `+ SUBMIT` button is outlined in `--blue-primary`.
-- While an analysis is running, a `● LIVE #42 01:12` chip appears and links to it.
+- `● LIVE n` counts the running analyses and opens a list linking to each one; the queue count sits beside it.
+  Planned as wave 3 task 3.5b: the header still has the deferred placeholder.
 
 **Global**
 - `/` focuses the query bar on pages that have one. `Esc` closes drawers and dialogs.
@@ -44,6 +45,7 @@
 |---|---|
 | `/` | Dashboard |
 | `/analyses/:id` | Analysis workspace (defaults to the `live` tab while running, otherwise `overview`) |
+| `/search` | Search across every analysis |
 | `/analyses/:id/:tab` | Tabs: `live`, `overview`, `processes`, `timeline`, `events`, `network`, `artifacts`, `detections`, `notes` |
 | `/rules` | Sigma rules |
 | `/guest` | Guests: one card per guest |
@@ -135,8 +137,13 @@ The query-bar state (query plus chips) and the selected process are kept in the 
   shown inline: `No guest is ready: none has been built`, or `No guest is ready: lab1 is building,
   lab2 is failed`, with an `[OPEN GUEST VM]` link to `/guest`. While any guest is building or testing the
   backend refuses a submission whichever guest was chosen ("A guest is being built"), shown on the field.
-- After submitting, the app navigates to `/analyses/:id`. If another analysis is running, it
-  shows "Queued, position N".
+- **Import** tab: a PCAP or a memory image, dropped or browsed, goes to `POST /analyses/import` or
+  `/import/memory-image`, whichever its first bytes say. There is no guest and no option; the analysis is
+  `imported` and queues apart from runs.
+- Planned with task 3.5b: a guest that is running an analysis carries a `BUSY` marker in the Guest picker. It
+  can still be chosen; its analysis queues behind the one running.
+- After submitting, the app navigates to `/analyses/:id`. If the guest is busy it shows "Queued, position N",
+  where N counts only the analyses waiting for that guest.
 
 ## Analysis workspace (`/analyses/:id`)
 
@@ -294,6 +301,8 @@ Sub-tabs:
 - **Registry:** changes grouped by key, old and new value.
 - **IOCs:** a deduplicated list with type, value, context and source, a copy button, and
   "filter events on this".
+- **IOC chip:** each value shows "Seen in N analyses" when other analyses hold it, linking to the list from
+  `GET /iocs/{kind}/{value}/analyses`; a `mutex` is not pivoted (the API answers `422`).
 
 ### DETECTIONS tab
 
@@ -318,6 +327,12 @@ Analysis-level notes are edited inline: a plain QInput textarea in autogrow mode
 - **IOCs:** STIX 2.1, MISP or CSV. These download immediately.
 - **Report:** HTML or PDF. Choosing one opens a dialog with include options (notes,
   screenshots, raw IOCs) and runs as a job with progress; the file downloads when done.
+
+## Search (`/search`)
+
+- The query bar and event table of an analysis, over every analysis: each row shows its analysis as a link
+  (`analysis 42`). The query, chips and cursor are the same as the analysis' own event search (`POST /search`).
+- The hint says to type a query and press Enter; `/` focuses the query bar.
 
 ## Rules (`/rules`)
 - Table of Sigma rules:

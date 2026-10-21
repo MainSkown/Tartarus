@@ -65,13 +65,13 @@ remote access. Everything binds to `127.0.0.1`.
 | M7 | **Foundations** | **Done 2026-10-17** ([plan](plans/m7-foundations.md)): a build can be cancelled, interactive runs can be extended with `+60s` (the backend ends them at the deadline), the resume race is fixed, failed guests are off the cap, `finish-run` is gone, run-mode guests have no optical drives, the wizard has a browser e2e in `make e2e`, and the open questions are closed. |
 | M7b | **Frontend i18n** | Built ([plan](plans/m7b-frontend-i18n.md)): every user-facing string of the frontend lives in a locale catalogue, English only; a lint rule fails the build on raw template text. |
 | M8 | **More event sources** | Built and proven on a real guest ([plan](plans/m8-event-sources.md)): Sysmon events, Defender's verdict, the full memory dump with Volatility3 findings and its symbols. ETW was dropped from v1. A few small follow-ups are listed in the plan. |
-| M9 | **Beyond one run** | Planned: PCAP and memory-image import, a cross-analysis Search page with IOC pivot, parallel analyses on several guests. |
+| M9 | **Beyond one run** | **Built** ([plan](plans/m9-beyond-one-run.md)): PCAP and memory-image import, a cross-analysis Search page with IOC pivot, parallel analyses on several guests. Wave 3's proof on the real stack is pending, and its header chip and busy marker are not built yet. |
 | M10 | **Guest proofs** | Planned: the manual Defender pause, a failing install step, a Windows 10 ISO and an English-language Windows ISO, run for real. |
 | M11 | **Hardening and release** | Planned: security review, CI on GitHub Actions, docs cleanup, GPL-3.0 and release files, a clean-host install test, `v1.0.0`. |
 
 ### Next up
 
-M0 to M8 are built, including M7b (frontend i18n) and M8 (more event sources); M9 (beyond one run) is next. The rest of v1 is M9 to M11, decided with the user on 2026-10-17 and written down in the
+M0 to M9 are built, including M7b (frontend i18n) and M8 (more event sources), with M9's parallel-analyses proof still pending. The rest of v1 is M10 and M11, decided with the user on 2026-10-17 and written down in the
 [finish line](plans/finish-line.md): foundations, then features, then guest proofs, then hardening and release.
 Open questions are closed there too (see the [v1 open questions](features/tartarus-v1.md#open-questions)).
 

@@ -136,6 +136,9 @@ proof is that every screenshot comes out pixel-identical and every English asser
   the ECS helpers. Each gets fixture tests and an e2e check on a real run.
 
 ### M9: Beyond one run
+
+**Status (2026-10-21): built; wave 3 (parallel analyses) pending its proof** (task 3.6). The header chip and the
+Guest picker's busy marker (3.5b) are not built yet.
 - **PCAP and memory import:** an `imported` analysis kind (no guest, no queue slot for a guest), upload and size
   limits, the existing network and memory normalisers run on the file, the Submit dialog gets an Import tab.
 - **Search and IOC pivot:** a cross-analysis query over an OpenSearch alias, a Search page reusing the query bar

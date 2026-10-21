@@ -17,7 +17,7 @@ with `make verify-cape`.
 | Network namespace | Its own namespace, never the host's. `tt-guest` (192.168.150.1/24), the rooter's iptables rules and QEMU's tap devices all live inside it. A `net.ipv4.ip_forward=1` sysctl is set on the container. |
 | Process supervisor | supervisord, no systemd: `virtlogd`, `libvirtd`, `cape-rooter`, `cape` (scheduler and ResultServer), `cape-processor`, `cape-web` (gunicorn serving CAPE's whole Django app, reachable only on the internal network and loopback), `suricata`, `inetsim`, `guacd`, `guest-control` (the guest control service, control address only, which also ends runs early). |
 | libvirt | Local UNIX socket only, for CAPE inside the container. The TCP endpoint is **off** (`libvirtd` runs without `--listen`): it has no authentication, and the guest wizard does not need it, because it goes through the [control service](#the-control-service) instead (see Findings). `security_driver = "none"` and `cgroup_controllers = [ ]` in `qemu.conf`. |
-| Guest network | `tt-guest` is a transient libvirt network rebuilt on every start: isolated (no forward), libvirt's DNS off so INetSim owns port 53, DHCP offering the pool `.100` to `.119` with router and DNS `.1`, for guests that cold-boot; registered guests have static addresses from `.10` to `.99`, because the rooter's INetSim route DNATs DHCP renewals. |
+| Guest network | `tt-guest` is a transient libvirt network rebuilt on every start: isolated (no forward), each guest NIC a `<port isolated='yes'/>` so guests cannot reach each other (the gateway's ResultServer and INetSim stay reachable), libvirt's DNS off so INetSim owns port 53, DHCP offering the pool `.100` to `.119` with router and DNS `.1`, for guests that cold-boot; registered guests have static addresses from `.10` to `.99`, because the rooter's INetSim route DNATs DHCP renewals. |
 | INetSim | Ubuntu's 1.3.2, patched at build time because its DNS service dies with the Net::DNS in Ubuntu 24.04 (`main_loop` becomes `loop_once`); the build fails if the patch stops applying. |
 | Analyzer patch | CAPE zips `analyzer/windows` and uploads it to the guest for every task, so the image patches it (`cape/patches/skip-packaged-apps.py`, run by the Dockerfile; it fails the build if CAPE's code moved) to not inject the monitor into Store apps in an interactive analysis, see "Store apps" under Interactive desktop. No change to the guest or its snapshot. |
 | Databases | The `cape` database on the `postgres` service. No Mongo: `web.conf [web_reporting]` and `reporting.conf [mongodb]` stay disabled. `pymongo` stays installed because CAPE imports `bson` unconditionally. The entrypoint creates the schema once before any process starts, because CAPE's processes race on `CREATE TYPE`. |
@@ -63,8 +63,10 @@ a channel is added with one line. Sysmon is optional: a guest without it (an ado
 
 - **Baseline, not a clear.** `start()` records each channel's newest `EventRecordID`; `stop()` exports only
   records after it. The log is never cleared: a clear at the start would erase the sample's own Defender
-  detection, which Defender writes before the analyzer starts. A channel whose baseline cannot be read (agent
-  unreachable, channel missing, code page unreadable) is skipped, never exported whole.
+  detection, which Defender writes before the analyzer starts. `start()` first waits up to 90 s for the agent's
+  `/status`, because a slow guest after its revert would otherwise lose the export silently. A channel whose
+  baseline still cannot be read (agent unreachable, channel missing, code page unreadable) is skipped, never
+  exported whole, and is named in `aux/event_logs.json`, which the ingest turns into `summary.missing_exports`.
 - **Sysmon config.** At `start()` the module pushes `guest/profiles/windows/sysmon-config.xml` (the image keeps it
   at `/usr/local/lib/tartarus/profiles/windows/`) to the guest through the agent and applies it with
   `Sysmon64.exe -accepteula -c`, then removes the file, before reading the baseline, so Sysmon's own
@@ -362,12 +364,13 @@ after it). So:
 
 - while a guest is `building` or `testing`, `POST /analyses` is `409` ("A guest is being built");
 - a build, clone, resume, restart, continue, delete and `[RUN CHECKS]` (which reverts a snapshot) are `409`
-  while an analysis is queued, starting or running;
+  while an analysis is queued, starting or running on any guest; the `409` names those analyses and their guests;
 - the engine runs one thing at a time: one build or clone (a paused one included), and no check or self-test
   check beside it.
 
-The cost is that no sample can be detonated for the minutes a build takes. One analysis at a time stays the
-rule, so two guests never run together.
+The cost is that no sample can be detonated for the minutes a build takes. Analyses run one per guest and
+several guests at once; a build, clone, resume, restart, continue, delete or check waits for every analysis on
+every guest, because the restart it causes reaches all of them.
 
 ### Supported guests
 
