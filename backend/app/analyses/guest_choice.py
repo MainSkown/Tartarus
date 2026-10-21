@@ -7,11 +7,7 @@ from app.guest.schemas import Guest, GuestProfile
 
 AUTO_PACKAGE = "auto"
 # A guest in these states changes CAPE's registration, which kills a running analysis (decision 7).
-BLOCKING_STATES = {
-    "building": "A guest is being built: wait for it to finish",
-    "testing": "A guest is being tested: wait for its self-test to finish",
-}
-TRANSIENT_STATES = frozenset(BLOCKING_STATES)
+TRANSIENT_STATES = frozenset({"building", "testing"})
 
 
 class GuestRefusedError(Exception):
@@ -67,9 +63,33 @@ def _requested_guest(guests: Sequence[Guest], name: str, *, gate: bool) -> Guest
 
 
 def _require_nothing_in_transition(guests: Sequence[Guest]) -> None:
-    for state, reason in BLOCKING_STATES.items():
-        if any(guest.state == state for guest in guests):
-            raise GuestRefusedError(reason)
+    building = _names_in_state(guests, "building")
+    if building:
+        raise GuestRefusedError(
+            _transition_refusal(
+                building, "being built", "wait for it to finish", "wait for them to finish"
+            )
+        )
+    testing = _names_in_state(guests, "testing")
+    if testing:
+        raise GuestRefusedError(
+            _transition_refusal(
+                testing,
+                "being tested",
+                "wait for its self-test to finish",
+                "wait for their self-tests to finish",
+            )
+        )
+
+
+def _names_in_state(guests: Sequence[Guest], state: str) -> list[str]:
+    return [guest.name for guest in guests if guest.state == state]
+
+
+def _transition_refusal(names: list[str], state_text: str, one_wait: str, many_wait: str) -> str:
+    if len(names) == 1:
+        return f"Guest {names[0]} is {state_text}: {one_wait}"
+    return f"Guests {', '.join(names)} are {state_text}: {many_wait}"
 
 
 def _default_guest(guests: Sequence[Guest], preferred: str | None) -> Guest:

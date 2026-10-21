@@ -22,7 +22,7 @@ from app.guest.build_job import BuildTracking
 from app.guest.http_errors import install_guest_control_error_handler
 from app.jobs.runner import JobRunner
 from tests.guest.fakes import FakeGuestControl
-from tests.test_analysis_repository import seeded_analysis
+from tests.test_analysis_repository import OPTIONS, SHA_A, make_sample, seeded_analysis
 
 UNREACHABLE_MESSAGE = "The guest control service is not reachable"
 
@@ -39,6 +39,22 @@ class Harness:
         async with self.factory() as session:
             created = await seeded_analysis(session)
             await repository.update_analysis(session, created.id, status=status)
+
+    async def add_analysis(self, status: AnalysisStatus, guest: str) -> int:
+        async with self.factory() as session:
+            await repository.add_sample_if_new(session, make_sample())
+            created = await repository.create_analysis(
+                session,
+                sample_sha256=SHA_A,
+                filename="benign.exe",
+                options={**OPTIONS, "guest": guest},
+            )
+            await repository.update_analysis(session, created.id, status=status)
+            return created.id
+
+    async def set_status(self, analysis_id: int, status: AnalysisStatus) -> None:
+        async with self.factory() as session:
+            await repository.update_analysis(session, analysis_id, status=status)
 
     def use(self, control: FakeGuestControl) -> FakeGuestControl:
         self.app.dependency_overrides[get_guest_control] = lambda: control

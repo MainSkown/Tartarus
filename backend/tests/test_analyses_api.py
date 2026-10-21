@@ -452,7 +452,7 @@ async def test_a_guest_in_the_making_blocks_every_submission_even_to_a_ready_gue
     response = await harness.upload(options={"guest": "win"})
 
     assert response.status_code == 409
-    assert f"A guest is being {words}" in message_of(response)
+    assert f"Guest lab2 is being {words}" in message_of(response)
     await assert_nothing_was_submitted(harness)
 
 

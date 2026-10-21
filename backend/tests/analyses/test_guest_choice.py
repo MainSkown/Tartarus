@@ -81,7 +81,13 @@ def test_a_requested_guest_that_is_not_ready_is_refused_naming_it_and_its_state(
 def test_a_building_guest_blocks_every_submission_even_to_another_ready_guest() -> None:
     message = refusal([guest("lab1"), guest("lab2", "building")], requested="lab1")
 
-    assert message == "A guest is being built: wait for it to finish"
+    assert message == "Guest lab2 is being built: wait for it to finish"
+
+
+def test_two_guests_being_built_are_both_named_in_the_refusal() -> None:
+    message = refusal([guest("lab1"), guest("lab2", "building"), guest("lab3", "building")])
+
+    assert message == "Guests lab2, lab3 are being built: wait for them to finish"
 
 
 def test_a_testing_guest_blocks_user_submissions() -> None:
