@@ -748,6 +748,19 @@ async def test_a_summary_stored_before_the_verdict_existed_is_served_with_empty_
     assert body["summary"]["defender"] is None
     assert body["summary"]["hidden_events"] == {}
     assert body["summary"]["memory"] is None
+    assert body["summary"]["warnings"] == []
+
+
+async def test_the_warnings_of_the_ingest_are_served_on_read_and_list(harness: Harness) -> None:
+    created = (await harness.upload()).json()
+    warning = "Sysmon events were not exported: the guest did not answer within 120 s"
+    await harness.set_state(created["id"], summary={"warnings": [warning]})
+
+    read = (await harness.client.get(f"/api/analyses/{created['id']}")).json()
+    listed = (await harness.client.get("/api/analyses")).json()["items"][0]
+
+    assert read["summary"]["warnings"] == [warning]
+    assert listed["summary"]["warnings"] == [warning]
 
 
 async def test_the_defender_verdict_and_hidden_event_counts_are_served_on_read_and_list(
@@ -1536,7 +1549,7 @@ def test_the_openapi_schema_describes_the_summary_and_the_upload() -> None:
 
     assert "ReportSummary" in schemas
     assert "lane_counts" in schemas["ReportSummary"]["properties"]
-    assert {"defender", "hidden_events"} <= set(schemas["ReportSummary"]["properties"])
+    assert {"defender", "hidden_events", "warnings"} <= set(schemas["ReportSummary"]["properties"])
     assert {"DefenderVerdict", "DefenderThreat"} <= set(schemas)
     assert set(schemas["Body_analyses_create"]["properties"]) == {"file", "options"}
 

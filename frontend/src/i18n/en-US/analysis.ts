@@ -17,6 +17,9 @@ export default {
     high: 'HIGH',
     critical: 'CRITICAL',
   },
+  warnings: {
+    label: 'Warnings from reading this analysis',
+  },
   tabs: {
     label: 'Analysis views',
     live: 'LIVE',

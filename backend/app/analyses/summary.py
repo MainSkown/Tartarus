@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.analyses.defender import DefenderVerdict
 from app.analyses.memory import MemorySummary
-from app.analyses.missing_exports import MissingExport, read_missing_exports
+from app.analyses.missing_exports import MissingExport, export_warnings, read_missing_exports
 from app.analyses.ports import ReportOutcome, ReportUnreadableError
 from app.db.models.analysis import Severity
 from app.ingest.clock import analysis_dir_of
@@ -56,6 +56,7 @@ class ReportSummary(BaseModel):
     hidden_events: dict[str, int] = {}
     missing_exports: list[MissingExport] = []
     memory: MemorySummary | None = None
+    warnings: list[str] = []
 
 
 def read_report(path: Path) -> ReportOutcome:
@@ -91,6 +92,7 @@ def _summarise(
     behavior_summary = _section(behavior, "summary")
     target_file = _section(_section(report, "target"), "file")
     network = _section(report, "network")
+    missing_exports = read_missing_exports(analysis_dir)
     return ReportSummary(
         duration_s=_integer(report["info"].get("duration")),
         process_count=process_count_of(report),
@@ -106,7 +108,8 @@ def _summarise(
         sample=SampleSummary(
             name=_text(target_file.get("name")), type=_text(target_file.get("type"))
         ),
-        missing_exports=read_missing_exports(analysis_dir),
+        missing_exports=missing_exports,
+        warnings=export_warnings(missing_exports),
     )
 
 

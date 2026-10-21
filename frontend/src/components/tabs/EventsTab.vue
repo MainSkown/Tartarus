@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AnalysisRead } from '@/api'
+import AnalysisWarnings from '@/components/AnalysisWarnings.vue'
 import EventDetailDrawer from '@/components/EventDetailDrawer.vue'
 import EventFacets from '@/components/EventFacets.vue'
 import EventTable from '@/components/EventTable.vue'
@@ -64,24 +65,28 @@ onBeforeUnmount(() => {
         :open="facetPanel.open.value"
         @toggle="facetPanel.toggle"
       />
-      <EventTable
-        :events="events.events"
-        :total="events.total"
-        :loading="tableLoading"
-        :loading-more="events.loadingMore"
-        :has-more="events.hasMore"
-        :sort="events.sort"
-        :selected-id="selectedId"
-        :filtered="!query.isEmpty"
-        :error="events.error?.message"
-        :load-more-error="events.loadMoreError"
-        @select="select"
-        @open="query.openEvent"
-        @toggle-sort="events.toggleSort"
-        @load-more="events.loadMore"
-        @retry="events.retry"
-        @clear="query.reset"
-      />
+      <div class="events-tab__main">
+        <AnalysisWarnings :warnings="analysis.summary?.warnings" />
+        <EventTable
+          class="events-tab__table"
+          :events="events.events"
+          :total="events.total"
+          :loading="tableLoading"
+          :loading-more="events.loadingMore"
+          :has-more="events.hasMore"
+          :sort="events.sort"
+          :selected-id="selectedId"
+          :filtered="!query.isEmpty"
+          :error="events.error?.message"
+          :load-more-error="events.loadMoreError"
+          @select="select"
+          @open="query.openEvent"
+          @toggle-sort="events.toggleSort"
+          @load-more="events.loadMore"
+          @retry="events.retry"
+          @clear="query.reset"
+        />
+      </div>
     </div>
     <EventDetailDrawer />
   </section>
@@ -99,6 +104,18 @@ onBeforeUnmount(() => {
   grid-template-columns: 240px minmax(0, 1fr);
   gap: var(--spacing-md);
   height: max(240px, var(--tab-fill-height));
+}
+
+.events-tab__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.events-tab__main > .events-tab__table {
+  flex: 1 1 0;
+  height: auto;
 }
 
 .events-tab__body.is-facets-collapsed {

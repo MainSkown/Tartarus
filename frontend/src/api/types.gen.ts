@@ -2868,6 +2868,10 @@ export type ReportSummary = {
      */
     missing_exports?: Array<MissingExport>;
     memory?: MemorySummary | null;
+    /**
+     * Warnings
+     */
+    warnings?: Array<string>;
 };
 
 /**

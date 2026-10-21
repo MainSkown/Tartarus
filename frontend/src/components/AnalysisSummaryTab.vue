@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AnalysisRead, AnalysisStatus, ReportSummary } from '@/api'
+import AnalysisWarnings from '@/components/AnalysisWarnings.vue'
 import DefenderVerdict from '@/components/DefenderVerdict.vue'
 import HiddenEventsNote from '@/components/HiddenEventsNote.vue'
 import LaneBars from '@/components/LaneBars.vue'
@@ -78,6 +79,8 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
     />
 
     <template v-else>
+      <AnalysisWarnings :warnings="report.warnings" />
+
       <DefenderVerdict
         v-if="defender && blockedBeforeRun"
         :verdict="defender"

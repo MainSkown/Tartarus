@@ -29,14 +29,14 @@ const QDialogStub = defineComponent({
 
 let query: ReturnType<typeof useQueryStateStore>
 
-async function mountTab() {
+async function mountTab(warnings?: string[]) {
   const pinia = createPinia()
   setActivePinia(pinia)
   query = useQueryStateStore()
   query.bindTo(45)
   const wrapper = mount(EventsTab, {
     attachTo: document.body,
-    props: { analysis: analysisWithStatus('done') },
+    props: { analysis: analysisWithStatus('done', warnings ? { summary: { warnings } } : {}) },
     global: { plugins: [Quasar, pinia], stubs: { QDialog: QDialogStub } },
   })
   await flushPromises()
@@ -64,6 +64,18 @@ describe('EventsTab', () => {
     expect(wrapper.attributes('data-tab')).toBe('events')
     expect(wrapper.find('.event-facets').exists()).toBe(true)
     expect(wrapper.find('.event-table').exists()).toBe(true)
+  })
+
+  it('says above the table what the ingest warned about, so a missing Sysmon lane is explained where it is looked at', async () => {
+    const warning = 'Sysmon events were not exported: the guest did not answer within 120 s'
+    const wrapper = await mountTab([warning])
+    expect(wrapper.find('.analysis-warnings .live-notice__text').text()).toBe(warning)
+    expect(wrapper.find('.events-tab__main').element.firstElementChild).toBe(wrapper.find('.analysis-warnings').element)
+  })
+
+  it('has no notice when the analysis has no warnings', async () => {
+    const wrapper = await mountTab()
+    expect(wrapper.find('.analysis-warnings').exists()).toBe(false)
   })
 
   it('loads the events and the facets of the analysis', async () => {

@@ -6,11 +6,20 @@ reported instead of looking like a quiet run.
 """
 
 import json
+import re
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
 MARKER_PATH = Path("aux") / "event_logs.json"
+CHANNEL_LABELS = {
+    "Microsoft-Windows-Sysmon/Operational": "Sysmon",
+    "Microsoft-Windows-Windows Defender/Operational": "Windows Defender",
+}
+# The module records the agent's own error text (`requests`' wording); only these two shapes are
+# worth rewording, anything else is shown as the module wrote it.
+READ_TIMEOUT = re.compile(r"Read timed out\. \(read timeout=(\d+)\)")
+AGENT_SILENT = re.compile(r"^the guest agent did not answer within \d+ s")
 
 
 class MissingExport(BaseModel):
@@ -30,3 +39,20 @@ def read_missing_exports(analysis_dir: Path) -> list[MissingExport]:
         return _Marker.model_validate(json.loads((analysis_dir / MARKER_PATH).read_bytes())).missing
     except (OSError, ValueError, ValidationError):
         return []
+
+
+def export_warnings(missing: list[MissingExport]) -> list[str]:
+    """One plain sentence per channel the guest could not export, for the analysis's warnings."""
+    return [
+        f"{CHANNEL_LABELS.get(gap.channel, gap.channel)} events were not exported: "
+        f"{_reason_in_words(gap.reason)}"
+        for gap in missing
+    ]
+
+
+def _reason_in_words(reason: str) -> str:
+    if timed_out := READ_TIMEOUT.search(reason):
+        return f"the guest did not answer within {timed_out.group(1)} s"
+    if silent := AGENT_SILENT.match(reason):
+        return silent.group(0)
+    return reason

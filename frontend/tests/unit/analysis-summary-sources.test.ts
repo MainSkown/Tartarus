@@ -240,3 +240,19 @@ describe('A summary from before the sources', () => {
     expect(wrapper.text()).not.toContain('DEFENDER')
   })
 })
+
+describe('Ingest warnings', () => {
+  const WARNING = 'Sysmon events were not exported: the guest did not answer within 120 s'
+
+  it('shows each warning of the ingest as an alert above the tiles, so an empty Sysmon lane is not read as a quiet run', () => {
+    const wrapper = mountTab({ warnings: [WARNING, 'Windows Defender events were not exported: the guest did not answer within 30 s'] })
+    expect(wrapper.findAll('.analysis-warnings [role="alert"]')).toHaveLength(2)
+    expect(wrapper.findAll('.analysis-warnings .live-notice__text').map((notice) => notice.text())).toEqual([WARNING, 'Windows Defender events were not exported: the guest did not answer within 30 s'])
+    expect(wrapper.find('.analysis-warnings').element.compareDocumentPosition(wrapper.find('.analysis-summary__tiles').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('shows no notice when the ingest had nothing to warn about', () => {
+    expect(mountTab({ warnings: [] }).find('.analysis-warnings').exists()).toBe(false)
+    expect(mountTab({}).find('.analysis-warnings').exists()).toBe(false)
+  })
+})
