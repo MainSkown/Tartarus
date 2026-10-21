@@ -20,7 +20,7 @@ TYPE_ORDER = list(IocType)
 
 
 @dataclass(frozen=True)
-class _EventIoc:
+class EventIoc:
     """An indicator that is one field of the events, optionally only in one lane."""
 
     type: IocType
@@ -36,11 +36,11 @@ class _EventIoc:
 
 
 EVENT_IOCS = (
-    _EventIoc(IocType.DOMAIN, "dns.question.name"),
-    _EventIoc(IocType.IP, "destination.ip", not_in_network=SANDBOX_NETWORK),
-    _EventIoc(IocType.URL, "url.full"),
-    _EventIoc(IocType.REGISTRY, "registry.path", lane="registry"),
-    _EventIoc(IocType.FILE, "file.path", lane="file"),
+    EventIoc(IocType.DOMAIN, "dns.question.name"),
+    EventIoc(IocType.IP, "destination.ip", not_in_network=SANDBOX_NETWORK),
+    EventIoc(IocType.URL, "url.full"),
+    EventIoc(IocType.REGISTRY, "registry.path", lane="registry"),
+    EventIoc(IocType.FILE, "file.path", lane="file"),
 )
 
 
@@ -52,12 +52,12 @@ async def collect_iocs(index: EventIndex, analysis: Analysis, files: AnalysisFil
 
 
 @dataclass(frozen=True)
-class _EventIocs:
+class EventIocs:
     iocs: list[Ioc]
     truncated_types: list[IocType]
 
 
-async def _event_iocs(index: EventIndex, analysis_id: int) -> _EventIocs:
+async def _event_iocs(index: EventIndex, analysis_id: int) -> EventIocs:
     response = await index.search(
         analysis_id,
         {"size": 0, "aggs": {spec.type.value: _aggregation(spec) for spec in EVENT_IOCS}},
@@ -70,10 +70,10 @@ async def _event_iocs(index: EventIndex, analysis_id: int) -> _EventIocs:
         iocs.extend(_ioc(spec, bucket) for bucket in values.get("buckets", []))
         if values.get("sum_other_doc_count"):
             truncated.append(spec.type)
-    return _EventIocs(iocs, truncated)
+    return EventIocs(iocs, truncated)
 
 
-def _aggregation(spec: _EventIoc) -> dict[str, Any]:
+def _aggregation(spec: EventIoc) -> dict[str, Any]:
     first_events = {
         "size": EVENTS_PER_IOC,
         "sort": TIME_ORDER,
@@ -99,7 +99,7 @@ def _aggregation(spec: _EventIoc) -> dict[str, Any]:
     }
 
 
-def _ioc(spec: _EventIoc, bucket: Mapping[str, Any]) -> Ioc:
+def _ioc(spec: EventIoc, bucket: Mapping[str, Any]) -> Ioc:
     events = hits_of(bucket["events"])
     # The index folds case, so the bucket key is lowercase; the first event has the original.
     original = text_at(events[0], *spec.field.split(".")) if events else None
