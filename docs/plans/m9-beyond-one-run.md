@@ -7,7 +7,7 @@ gates at once.
 
 ## Status
 
-**Planned 2026-10-21. P1 and P2 ran: both go ([P1](m9-spikes/P1-findings.md), [P2](m9-spikes/P2-findings.md)); nothing built yet.** Starting point, read from the code:
+**Planned 2026-10-21. P1 and P2 ran: both go ([P1](m9-spikes/P1-findings.md), [P2](m9-spikes/P2-findings.md)). Waves 1 and 2 built and proven on the real stack, see [Proof](#proof); wave 3 not started.** Starting point, read from the code:
 
 - Events live in one OpenSearch index per analysis (`tartarus-events-{id}`, `search/index.py`); `search_all` already
   queries `tartarus-events-*`, so Search needs no alias migration, only a query path that spans analyses.
@@ -95,3 +95,30 @@ share no files except the Submit dialog's neighbours and the router), so group A
 Each wave proven on the real stack through the public API (import a PCAP and a memory image and see events/findings;
 search an IOC across two analyses; two analyses running at once to `done`), screens approved from Artifacts, docs and
 overview updated.
+
+## Proof
+
+Tasks 1.9 and 2.6, run 2026-10-21 on the real stack (images rebuilt from `7e4ccf3`, nginx on port 8080) through the public
+API only; notes and timings in [PROOF-notes.md](m9-spikes/PROOF-notes.md). Two defects found and fixed on the way
+(table below). Screens were not part of this proof: the screenshot loop for the Import tab and the Search page is
+separate.
+
+| Check | Result | Numbers |
+|---|---|---|
+| (i) `POST /analyses/import` of the P1 fixture PCAP | pass | `done` in 6 s, 196 network events (the run's count), `guest` null, CAPE task category `pcap` with no machine |
+| (i) garbage files (3 KB random, a text line) | pass | 415 `unsupported_media_type`, nothing kept |
+| (ii) memory image through nginx (`/api/analyses/import/memory-image`) | pass | 4,294,776,995 B (the P2 dump of `p9sample.exe` on lab3) uploaded in 14.7 s, 201; scan 67 s; 26 events; `PING.EXE` high Volatility detection (11 `MsMpEng.exe` and 1 `OneDrive.exe` medium); `max_severity` high, `score` null |
+| (ii) delete of that analysis | pass | 204; upload and `storage/analyses/900000375/` both gone |
+| (iii) benign run still works | pass | analysis 376 on lab3 done (about 85 s), 624 events, score 6.0, `max_severity` high, as the earlier benign runs |
+| (iii) import during an active run | pass | PCAP import submitted while the `p9sample.exe` run was `running`: done in 6 s (the run ended 100 s later) |
+| (iv) Search across analyses | pass | `POST /search` `dns.question.name:p9-spike-one.example`: 5 events from analyses 373 (run, 3), 372 and 374 (imports, 1 each); after deleting them, 0 |
+| (iv) IOC pivot | pass | `GET /iocs/domain/p9-spike-one.example/analyses`: 373 (3), 374 (1), 372 (1); an unknown domain gives `[]` |
+| `make e2e` | pass | 129 checks OK, 0 FAIL, exit 0, about 7 minutes (no drills, no desktop) |
+
+| Finding | Fix |
+|---|---|
+| Imports answered 500 on a fresh stack: the `imports` volume was root's, the backend image never made `/imports` for its user | `backend/Dockerfile` makes and chowns `/imports`; test in `test_stack_config.py`. An existing root-owned volume must be removed once (`docker volume rm tartarus_imports`) |
+| Task 1.7 gaps: an image's detections left `max_severity` null; deleting the analysis left `analyses/900000000+id/` behind | `IngestResult.max_alert_severity`, folded with the report's in the one `_finish_done` (runs and images alike, so a run's Sigma or memory detections can now raise its `max_severity`); control service route `DELETE /memory/{task}/findings` (only ids from 900,000,000) called by the delete route, tolerated when it fails |
+
+Not covered: a real Windows-written `MEMORY.DMP`, an image of another build, the Import tab and Search page in a browser
+(`make e2e` does not drive them), wave 3. An image's `score` stays null by design (CAPE's malscore has no counterpart).
