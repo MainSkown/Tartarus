@@ -9,6 +9,7 @@ import os
 import stat
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -25,12 +26,19 @@ from memory_logic import (
     ANALYSIS_FILE_MODE,
     AlreadyRunningError,
     DumpMissingError,
+    ImageMissingError,
+    ImageRejectedError,
     MemoryAnalyser,
     analyse_response,
     delete_dump_response,
     pids_from_report,
 )
-from volatility import NO_SYMBOLS, CommandResult, VolatilityUnavailableError
+from volatility import (
+    NO_SYMBOLS,
+    NOT_A_MEMORY_IMAGE,
+    CommandResult,
+    VolatilityUnavailableError,
+)
 
 PLUGINS = [
     "windows.pslist",
@@ -41,6 +49,8 @@ PLUGINS = [
 ISF = "ntkrnlmp-24DE61DB3A27C5B383DFF181CB51F7E1-1.json.xz"
 DUMP_CONTENT = b"ELF" * 100
 REPORT_PIDS = [6304, 1936, 1384]
+PER_PROCESS = ["windows.malware.malfind", "windows.malware.hollowprocesses"]
+IMAGE_NAME = "injecting.raw"
 
 
 def report_with_processes(pids=REPORT_PIDS) -> dict:
@@ -127,6 +137,7 @@ def proc(tmp_path) -> Path:
 def analyser(storage, tmp_path, runner, logged, proc) -> MemoryAnalyser:
     analyser = MemoryAnalyser(storage, tmp_path / "symbols", runner, log=logged.append)
     analyser.proc_directory = proc
+    analyser.imports_directory = tmp_path / "imports"
     return analyser
 
 
@@ -328,7 +339,7 @@ def test_run_json_is_written_last_so_its_presence_means_the_run_finished(analyse
 
 
 @pytest.mark.parametrize("report", [None, "garbage", json.dumps(report_with_processes([]))])
-def test_without_pids_only_the_cheap_plugins_run_and_findings_are_empty_not_an_error(
+def test_without_pids_the_per_process_plugins_scan_the_whole_image_instead_of_being_skipped(
     analyser, storage, runner, report
 ):
     report_file = storage / "analyses" / "7" / "reports" / "report.json"
@@ -339,15 +350,69 @@ def test_without_pids_only_the_cheap_plugins_run_and_findings_are_empty_not_an_e
 
     summary = analyser.analyse(7)
 
-    assert runner.plugins_run == ["windows.info", "windows.pslist", "windows.cmdline"]
-    assert written(storage, "windows.malware.malfind.json") == []
-    assert written(storage, "windows.malware.hollowprocesses.json") == []
+    assert sorted(runner.plugins_run) == sorted(["windows.info", *PLUGINS])
+    assert all(runner.pids_of(command) == [] for command, _ in runner.calls)
+    assert written(storage, "windows.malware.malfind.json") == fixture_rows(
+        "windows.malware.malfind"
+    )
     run = run_json(storage)
     assert run["pids"] == []
-    findings = run["plugins"]["windows.malware.malfind"]
-    assert (findings["rows"], findings["error"]) == (0, None)
-    assert findings["skipped"] == "the report names no process of the analysis"
+    assert all("skipped" not in entry for entry in run["plugins"].values())
+    assert summary["plugins"]["windows.malware.malfind"] == 10
     assert summary["errors"] == {}
+
+
+def test_without_pids_the_two_per_process_plugins_run_at_the_same_time(analyser, storage, runner):
+    (storage / "analyses" / "7" / "reports" / "report.json").unlink()
+    # P2: 129 s one after the other, 66 s together on a 4 GB image, against a 300 s limit.
+    meeting = threading.Barrier(2, timeout=5)
+    runner.on_call = lambda plugin: meeting.wait() if plugin in PER_PROCESS else None
+
+    analyser.analyse(7)
+
+    assert sorted(runner.plugins_run[-2:]) == sorted(PER_PROCESS)
+
+
+def test_without_pids_the_results_keep_the_plugin_order_and_one_failure_spares_the_other(
+    analyser, storage, runner
+):
+    (storage / "analyses" / "7" / "reports" / "report.json").unlink()
+    runner.overrides["windows.malware.hollowprocesses"] = failure(2, stderr=BANNER + "boom\n")
+
+    summary = analyser.analyse(7)
+
+    assert list(summary["plugins"]) == PLUGINS
+    assert summary["plugins"]["windows.malware.malfind"] == 10
+    assert summary["errors"] == {
+        "windows.malware.hollowprocesses": "volatility exited with status 2: boom"
+    }
+
+
+def test_without_pids_a_volatility_that_cannot_start_is_raised_from_the_parallel_run(
+    analyser, storage, runner
+):
+    (storage / "analyses" / "7" / "reports" / "report.json").unlink()
+    runner.on_call = lambda plugin: (
+        fails_with(FileNotFoundError("vol"))(plugin) if plugin in PER_PROCESS else None
+    )
+
+    with pytest.raises(VolatilityUnavailableError):
+        analyser.analyse(7)
+
+
+def test_without_pids_the_whole_image_run_finds_the_injection_target_of_the_p2_image(
+    analyser, storage, runner
+):
+    (storage / "analyses" / "7" / "reports" / "report.json").unlink()
+    runner.overrides["windows.malware.malfind"] = success("windows.malware.malfind", image="p9")
+
+    analyser.analyse(7)
+
+    findings = written(storage, "windows.malware.malfind.json")
+    assert len(findings) == 16
+    injected = [row for row in findings if row["Process"] == "PING.EXE"]
+    assert {row["PID"] for row in injected} == {3888}
+    assert [row["Notes"] for row in injected].count("MZ header") == 1
 
 
 def test_a_plugin_that_fails_records_its_error_writes_no_file_and_the_others_still_run(
@@ -545,6 +610,164 @@ def test_the_task_is_free_again_after_a_run_that_failed(analyser, runner):
     assert analyser.analyse(7)["plugins"]["windows.pslist"] == 144
 
 
+# analyse: an image that is not a CAPE task's dump
+
+
+@pytest.fixture
+def imports(tmp_path) -> Path:
+    folder = tmp_path / "imports"
+    folder.mkdir()
+    (folder / IMAGE_NAME).write_bytes(b"\x7fELF" + bytes(100))
+    return folder
+
+
+def whole_image_runner(runner: ScriptedRunner) -> None:
+    runner.overrides["windows.pslist"] = success("windows.pslist", image="p9")
+    runner.overrides["windows.malware.malfind"] = success("windows.malware.malfind", image="p9")
+
+
+def test_an_image_under_imports_is_scanned_whole_with_no_report_and_no_task_dump(
+    analyser, storage, runner, imports
+):
+    whole_image_runner(runner)
+    analysis = storage / "analyses" / "900001"
+
+    summary = analyser.analyse(900001, image=IMAGE_NAME)
+
+    commands = [command for command, _ in runner.calls]
+    assert {command[command.index("-f") + 1] for command in commands} == {str(imports / IMAGE_NAME)}
+    assert [runner.pids_of(command) for command in commands] == [[]] * 5
+    assert summary["pids"] == []
+    assert summary["plugins"]["windows.pslist"] == 147
+    assert summary["plugins"]["windows.malware.malfind"] == 16
+    run = json.loads((analysis / "memory" / "run.json").read_text())
+    assert run["dump_bytes"] == 104
+    assert run["pids"] == []
+
+
+def test_an_image_may_be_named_by_its_full_path_under_imports(analyser, imports):
+    summary = analyser.analyse(900001, image=str(imports / IMAGE_NAME))
+
+    assert summary["plugins"]["windows.pslist"] == 144
+
+
+def test_the_image_is_left_where_it_is_because_the_caller_owns_it(analyser, imports):
+    analyser.analyse(900001, image=IMAGE_NAME)
+
+    assert (imports / IMAGE_NAME).is_file()
+
+
+@pytest.mark.parametrize(
+    "image",
+    ["../storage/analyses/7/memory.dmp", "/etc/passwd", "sub/../../x", "", ".", "..", "/imports"],
+)
+def test_an_image_outside_imports_is_rejected_before_volatility_runs(
+    analyser, runner, imports, image
+):
+    with pytest.raises(ImageRejectedError):
+        analyser.analyse(900001, image=image)
+
+    assert runner.calls == []
+
+
+def test_a_sibling_folder_whose_name_starts_like_imports_is_outside(analyser, runner, tmp_path):
+    (tmp_path / "imports-evil").mkdir()
+    (tmp_path / "imports-evil" / "x").write_bytes(b"x")
+
+    with pytest.raises(ImageRejectedError):
+        analyser.analyse(900001, image="../imports-evil/x")
+
+    assert runner.calls == []
+
+
+def test_a_symlink_inside_imports_to_a_file_outside_is_not_followed(
+    analyser, runner, imports, tmp_path
+):
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"secret")
+    (imports / "link").symlink_to(outside)
+
+    with pytest.raises(ImageMissingError):
+        analyser.analyse(900001, image="link")
+
+    assert runner.calls == []
+
+
+def test_a_symlinked_folder_inside_imports_is_not_followed(analyser, runner, imports, tmp_path):
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "image.raw").write_bytes(b"x")
+    (imports / "folder").symlink_to(outside)
+
+    with pytest.raises(ImageMissingError):
+        analyser.analyse(900001, image="folder/image.raw")
+
+    assert runner.calls == []
+
+
+@pytest.mark.parametrize("image", ["nothing.raw", "subfolder"])
+def test_an_image_that_is_not_a_file_is_missing(analyser, imports, image):
+    (imports / "subfolder").mkdir()
+
+    with pytest.raises(ImageMissingError):
+        analyser.analyse(900001, image=image)
+
+
+def test_two_analyses_of_one_image_name_for_one_id_are_refused_while_one_runs(
+    analyser, runner, imports
+):
+    refused = []
+
+    def asks_again(plugin):
+        if plugin == "windows.pslist":
+            with pytest.raises(AlreadyRunningError) as raised:
+                analyser.analyse(900001, image=IMAGE_NAME)
+            refused.append(raised.value)
+
+    runner.on_call = asks_again
+
+    analyser.analyse(900001, image=IMAGE_NAME)
+
+    assert len(refused) == 1
+
+
+def test_a_file_that_is_not_a_memory_image_says_so_and_not_that_symbols_are_missing(
+    analyser, storage, runner, imports
+):
+    runner.overrides["windows.info"] = failure(stdout=UNSATISFIED)
+
+    summary = analyser.analyse(900001, image=IMAGE_NAME)
+
+    assert runner.plugins_run == ["windows.info"]
+    assert summary["errors"] == dict.fromkeys(PLUGINS, NOT_A_MEMORY_IMAGE)
+    assert "missing_symbols" not in summary
+    run = json.loads((storage / "analyses" / "900001" / "memory" / "run.json").read_text())
+    assert {entry["error"] for entry in run["plugins"].values()} == {NOT_A_MEMORY_IMAGE}
+
+
+def test_an_image_whose_kernel_is_found_but_has_no_symbols_still_asks_for_the_symbols(
+    analyser, runner, imports
+):
+    runner.overrides["windows.info"] = failure(
+        stdout=UNSATISFIED, stderr=BANNER + missing_symbols_log()
+    )
+
+    summary = analyser.analyse(900001, image=IMAGE_NAME)
+
+    assert summary["errors"] == dict.fromkeys(PLUGINS, NO_SYMBOLS)
+    assert summary["missing_symbols"] == {"guid": KERNEL_GUID, "age": 1}
+
+
+def test_a_cape_tasks_dump_keeps_saying_no_symbols_when_the_kernel_id_cannot_be_read(
+    analyser, runner
+):
+    runner.overrides["windows.info"] = failure(stdout=UNSATISFIED)
+
+    summary = analyser.analyse(7)
+
+    assert set(summary["errors"].values()) == {NO_SYMBOLS}
+
+
 # delete_dump
 
 
@@ -663,6 +886,28 @@ def test_analyse_answers_200_with_the_summary(analyser):
     assert status == 200
     assert body["plugins"]["windows.malware.malfind"] == 10
     assert body["pids"] == [1384, 1936, 6304]
+
+
+def test_analyse_of_an_image_answers_200_with_the_summary(analyser, imports):
+    status, body = analyse_response("900001", analyser, image=IMAGE_NAME)
+
+    assert status == 200
+    assert body["pids"] == []
+
+
+def test_analyse_of_an_image_outside_imports_is_400(analyser, runner, imports):
+    assert analyse_response("900001", analyser, image="../x") == (
+        400,
+        {"error": "the image must be a file under /imports"},
+    )
+    assert runner.calls == []
+
+
+def test_analyse_of_an_image_that_is_not_there_is_404(analyser, imports):
+    assert analyse_response("900001", analyser, image="nothing.raw") == (
+        404,
+        {"error": "no such image under /imports"},
+    )
 
 
 def test_analyse_without_a_dump_is_404(analyser):

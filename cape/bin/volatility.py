@@ -23,6 +23,7 @@ CAPE_USER = "cape"
 # is where Volatility keeps its identifier cache.
 CAPE_ENVIRONMENT = {"HOME": "/home/cape", "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"}
 NO_SYMBOLS = "no symbols for this Windows build"
+NOT_A_MEMORY_IMAGE = "not a memory image: volatility found no Windows kernel in the file"
 # The JSON of 144 processes is 45 KB and the largest plugin here a few hundred; a hostile
 # dump must not be able to make the service hold gigabytes of someone else's output.
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024

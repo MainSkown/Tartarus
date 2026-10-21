@@ -150,3 +150,35 @@ def test_analyse_of_a_dump_without_symbols_names_the_pdb_id_that_would_fix_it(st
     assert reply.status == 200
     assert reply.json["missing_symbols"] == {"guid": KERNEL_GUID, "age": 1}
     assert set(reply.json["errors"].values()) == {"no symbols for this Windows build"}
+
+
+@pytest.fixture
+def imports(analyser, tmp_path):
+    folder = tmp_path / "imports"
+    folder.mkdir()
+    (folder / "image.raw").write_bytes(b"image")
+    analyser.imports_directory = folder
+    return folder
+
+
+def test_analyse_names_an_image_under_imports_in_its_body(client, storage, imports):
+    reply = client.request("POST", "/memory/900001/analyse", {"image": "image.raw"}, headers=AUTH)
+
+    assert reply.status == 200
+    assert reply.json["pids"] == []
+    assert (storage / "analyses" / "900001" / "memory" / "run.json").is_file()
+
+
+@pytest.mark.parametrize("image", [7, ["image.raw"]])
+def test_an_image_that_is_not_a_string_is_400(client, imports, image):
+    reply = client.request("POST", "/memory/900001/analyse", {"image": image}, headers=AUTH)
+
+    assert (reply.status, reply.json) == (400, {"error": "the image must be a file under /imports"})
+
+
+def test_an_image_outside_imports_is_400_and_a_missing_one_404(client, imports):
+    outside = client.request("POST", "/memory/7/analyse", {"image": "../x"}, headers=AUTH)
+    missing = client.request("POST", "/memory/7/analyse", {"image": "gone.raw"}, headers=AUTH)
+
+    assert outside.status == 400
+    assert missing.status == 404

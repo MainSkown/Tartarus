@@ -40,6 +40,7 @@ import control_http  # noqa: E402
 from control_http import HttpError, Request, Route  # noqa: E402
 from finish_logic import finish_response  # noqa: E402
 from memory_logic import (  # noqa: E402
+    IMAGE_REJECTED,
     MemoryAnalyser,
     analyse_response,
     delete_dump_response,
@@ -290,9 +291,14 @@ class Routes:
     def analyse_memory(self, request: Request) -> control_http.Answer:
         """Runs Volatility3 on the task's memory dump and leaves its JSON in `memory/` beside it.
 
-        Takes seconds with the analysis's own pids; the answer is the summary of what ran.
+        Takes seconds with the analysis's own pids, about a minute over a whole 4 GB image. The
+        optional body `{"image": "<name>"}` scans that file under /imports instead of the task's
+        dump; the answer is the summary of what ran.
         """
-        return analyse_response(request.arguments["task_id"], self.memory)
+        image = request.body.get("image")
+        if image is not None and not isinstance(image, str):
+            raise HttpError(400, IMAGE_REJECTED)
+        return analyse_response(request.arguments["task_id"], self.memory, image)
 
     def delete_memory_dump(self, request: Request) -> control_http.Answer:
         return delete_dump_response(request.arguments["task_id"], self.memory)

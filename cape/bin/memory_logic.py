@@ -13,6 +13,7 @@ import shutil
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
@@ -24,6 +25,8 @@ from finish_logic import TASK_ID_NOT_DIGITS, parse_task_id
 from volatility import (
     CAPE_ENVIRONMENT,
     CAPE_USER,
+    NO_SYMBOLS,
+    NOT_A_MEMORY_IMAGE,
     SYMBOLS_DIRECTORY,
     MissingSymbols,
     PluginRun,
@@ -34,6 +37,7 @@ from volatility import (
 )
 
 STORAGE_DIRECTORY = Path("/opt/CAPEv2/storage")
+IMPORTS_DIRECTORY = Path("/imports")
 PLUGIN_TIMEOUT_SECONDS = 120.0
 OVERALL_TIMEOUT_SECONDS = 300.0
 ANALYSIS_FILE_MODE = 0o644
@@ -42,8 +46,9 @@ ANALYSIS_DIRECTORY_MODE = 0o755
 PROBE_PLUGIN = "windows.info"
 CONTEXT_PLUGINS = ("windows.pslist", "windows.cmdline")
 PER_PROCESS_PLUGINS = ("windows.malware.malfind", "windows.malware.hollowprocesses")
-NO_PROCESSES = "the report names no process of the analysis"
 DUMP_MISSING = {"error": "no memory dump for this task"}
+IMAGE_REJECTED = {"error": "the image must be a file under /imports"}
+IMAGE_MISSING = {"error": "no such image under /imports"}
 RUNNING = {"error": "this task's memory dump is being analysed"}
 
 type Answer = tuple[int, dict[str, Any] | None]
@@ -53,12 +58,28 @@ class DumpMissingError(Exception):
     """The analysis has no regular `memory.dmp`."""
 
 
+class ImageRejectedError(Exception):
+    """The requested image path leads outside the imports folder."""
+
+
+class ImageMissingError(Exception):
+    """The requested image is not a regular file inside the imports folder, symlinks included."""
+
+
 class AlreadyRunningError(Exception):
     """Another analyse of the same task is reading the dump."""
 
 
 class ResultsNotWrittenError(Exception):
     """The `memory/` folder could not be written; the message says why, without a path."""
+
+
+REFUSALS: dict[type[Exception], Answer] = {
+    DumpMissingError: (404, DUMP_MISSING),
+    ImageRejectedError: (400, IMAGE_REJECTED),
+    ImageMissingError: (404, IMAGE_MISSING),
+    AlreadyRunningError: (409, RUNNING),
+}
 
 
 @dataclass(frozen=True)
@@ -73,7 +94,6 @@ class Scan:
     symbols: str | None
     pids: list[int]
     runs: dict[str, PluginRun]
-    skipped: dict[str, str]
     missing_symbols: MissingSymbols | None = None
 
 
@@ -124,16 +144,26 @@ class MemoryAnalyser:
         self.plugin_timeout = PLUGIN_TIMEOUT_SECONDS
         self.overall_timeout = OVERALL_TIMEOUT_SECONDS
         self.proc_directory = Path("/proc")
+        self.imports_directory = IMPORTS_DIRECTORY
         self._running: set[int] = set()
         self._running_lock = threading.Lock()
 
-    def analyse(self, task_id: int) -> dict[str, Any]:
+    def analyse(self, task_id: int, image: str | None = None) -> dict[str, Any]:
+        """Scans the task's dump, or `image` (a file under the imports folder) when one is named.
+
+        Results go to the task's `memory/` folder either way. An image has no report, so it is
+        scanned whole.
+        """
         with self._claimed(task_id):
-            dump = self._dump_of(task_id)
+            if image is None:
+                dump = self._dump_of(task_id)
+                pids = pids_from_report(self._analysis(task_id) / "reports" / "report.json")
+            else:
+                dump = self._image_in_imports(image)
+                pids = []
             started = self.clock()
             volatility = Volatility(dump, self.symbols_directory, self.runner, self.clock)
-            pids = pids_from_report(self._analysis(task_id) / "reports" / "report.json")
-            scan = self._scan(volatility, pids)
+            scan = self._scan(volatility, pids, standalone_image=image is not None)
             self._write(task_id, scan, dump_bytes=dump.stat().st_size)
             return _summary(scan, seconds=self.clock() - started)
 
@@ -160,6 +190,17 @@ class MemoryAnalyser:
             raise DumpMissingError
         return dump
 
+    def _image_in_imports(self, image: str) -> Path:
+        root = self.imports_directory
+        # Lexical first, so `..` cannot leave the folder; the symlink check below handles the rest.
+        candidate = Path(os.path.normpath(root / image))
+        if root not in candidate.parents:
+            raise ImageRejectedError
+        through_no_symlink = Path(os.path.realpath(root)) / candidate.relative_to(root)
+        if candidate.resolve() != through_no_symlink or not candidate.is_file():
+            raise ImageMissingError
+        return candidate
+
     @contextmanager
     def _claimed(self, task_id: int) -> Iterator[None]:
         with self._running_lock:
@@ -172,23 +213,33 @@ class MemoryAnalyser:
             with self._running_lock:
                 self._running.discard(task_id)
 
-    def _scan(self, volatility: Volatility, pids: list[int]) -> Scan:
+    def _scan(self, volatility: Volatility, pids: list[int], *, standalone_image: bool) -> Scan:
         deadline = self.clock() + self.overall_timeout
         probe = self._run(volatility, PROBE_PLUGIN, deadline, verbose=True)
-        plugins = (*CONTEXT_PLUGINS, *PER_PROCESS_PLUGINS)
         if probe.error:
-            failed = PluginRun(None, 0.0, probe.error)
-            runs = dict.fromkeys(plugins, failed)
-            return Scan(probe.version, None, pids, runs, {}, probe.missing_symbols)
-        runs: dict[str, PluginRun] = {}
-        skipped: dict[str, str] = {}
-        for plugin in plugins:
-            if plugin in PER_PROCESS_PLUGINS and not pids:
-                skipped[plugin] = NO_PROCESSES
-            else:
-                limited_to = pids if plugin in PER_PROCESS_PLUGINS else ()
-                runs[plugin] = self._run(volatility, plugin, deadline, limited_to)
-        return Scan(probe.version, symbols_file(probe.rows or []), pids, runs, skipped)
+            failed = PluginRun(None, 0.0, _probe_error(probe, standalone_image))
+            runs = dict.fromkeys((*CONTEXT_PLUGINS, *PER_PROCESS_PLUGINS), failed)
+            return Scan(probe.version, None, pids, runs, probe.missing_symbols)
+        runs = {plugin: self._run(volatility, plugin, deadline) for plugin in CONTEXT_PLUGINS}
+        runs |= self._per_process_runs(volatility, pids, deadline)
+        return Scan(probe.version, symbols_file(probe.rows or []), pids, runs)
+
+    def _per_process_runs(
+        self, volatility: Volatility, pids: list[int], deadline: float
+    ) -> dict[str, PluginRun]:
+        if pids:
+            return {
+                plugin: self._run(volatility, plugin, deadline, pids)
+                for plugin in PER_PROCESS_PLUGINS
+            }
+        # Without pids each plugin walks every process: 129 s one after the other, 66 s together
+        # on a 4 GB image (P2), against the 300 s overall limit.
+        with ThreadPoolExecutor(max_workers=len(PER_PROCESS_PLUGINS)) as pool:
+            pending = {
+                plugin: pool.submit(self._run, volatility, plugin, deadline)
+                for plugin in PER_PROCESS_PLUGINS
+            }
+            return {plugin: future.result() for plugin, future in pending.items()}
 
     def _run(
         self,
@@ -209,6 +260,7 @@ class MemoryAnalyser:
     def _write(self, task_id: int, scan: Scan, dump_bytes: int) -> None:
         folder = self._analysis(task_id) / "memory"
         try:
+            self._ensure_analysis_directory(task_id)
             # A rerun must not leave the file of a plugin that fails this time.
             shutil.rmtree(folder, ignore_errors=True)
             folder.mkdir()
@@ -216,8 +268,6 @@ class MemoryAnalyser:
             for plugin, run in scan.runs.items():
                 if run.rows is not None:
                     _write_readable(folder / f"{plugin}.json", run.rows)
-            for plugin in scan.skipped:
-                _write_readable(folder / f"{plugin}.json", [])
             _write_readable(folder / "run.json.tmp", _run_json(scan, dump_bytes))
             # The service runs as root; CAPE, as `cape`, deletes the whole task folder with the
             # analysis and cannot remove what root leaves in it.
@@ -228,6 +278,12 @@ class MemoryAnalyser:
             raise ResultsNotWrittenError(
                 f"the results could not be written ({type(unwritable).__name__})"
             ) from unwritable
+
+    def _ensure_analysis_directory(self, task_id: int) -> None:
+        analysis = self._analysis(task_id)
+        if not analysis.exists():
+            analysis.mkdir(parents=True)
+            analysis.chmod(ANALYSIS_DIRECTORY_MODE)
 
     def _holders_of_deleted(self, real_path: str) -> list[Holder]:
         return [
@@ -265,13 +321,18 @@ def _write_readable(path: Path, content: Any) -> None:
 
 
 def _plugin_entries(scan: Scan) -> dict[str, dict[str, Any]]:
-    entries: dict[str, dict[str, Any]] = {
+    return {
         plugin: {"rows": len(run.rows or []), "seconds": run.seconds, "error": run.error}
         for plugin, run in scan.runs.items()
     }
-    for plugin, reason in scan.skipped.items():
-        entries[plugin] = {"rows": 0, "seconds": 0.0, "error": None, "skipped": reason}
-    return entries
+
+
+def _probe_error(probe: PluginRun, standalone_image: bool) -> str | None:
+    # `vol -v` names the kernel's PDB whenever it found a kernel and only the ISF is missing. A
+    # CAPE task's dump is a Windows guest by construction, so only a named file can be garbage.
+    if standalone_image and probe.error == NO_SYMBOLS and probe.missing_symbols is None:
+        return NOT_A_MEMORY_IMAGE
+    return probe.error
 
 
 def _missing_symbols_entry(scan: Scan) -> dict[str, Any]:
@@ -300,16 +361,21 @@ def _summary(scan: Scan, seconds: float) -> dict[str, Any]:
     }
 
 
-def analyse_response(raw_task_id: str, analyser: MemoryAnalyser) -> Answer:
+def analyse_response(
+    raw_task_id: str, analyser: MemoryAnalyser, image: str | None = None
+) -> Answer:
     task_id = parse_task_id(raw_task_id)
     if task_id is None:
         return 400, TASK_ID_NOT_DIGITS
     try:
-        return 200, analyser.analyse(task_id)
-    except DumpMissingError:
-        return 404, DUMP_MISSING
-    except AlreadyRunningError:
-        return 409, RUNNING
+        return 200, analyser.analyse(task_id, image)
+    except (
+        DumpMissingError,
+        ImageRejectedError,
+        ImageMissingError,
+        AlreadyRunningError,
+    ) as refused:
+        return REFUSALS[type(refused)]
     except VolatilityUnavailableError as unavailable:
         return 502, {"error": str(unavailable)}
     except ResultsNotWrittenError as unwritten:

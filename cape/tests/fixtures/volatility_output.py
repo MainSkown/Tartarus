@@ -14,12 +14,15 @@ UNSATISFIED = (
 )
 
 
-def fixture_rows(plugin: str) -> list[dict]:
-    return json.loads((DIRECTORY / f"{plugin}.json").read_text())
+def fixture_rows(plugin: str, *, image: str | None = None) -> list[dict]:
+    name = f"{image}.{plugin}" if image else plugin
+    return json.loads((DIRECTORY / f"{name}.json").read_text())
 
 
-def success(plugin: str) -> CommandResult:
-    return CommandResult(0, (DIRECTORY / f"{plugin}.json").read_text(), BANNER)
+def success(plugin: str, *, image: str | None = None) -> CommandResult:
+    """`image` "p9": the P2 spike's whole-image run (no `--pid`) of the injecting dump."""
+    name = f"{image}.{plugin}" if image else plugin
+    return CommandResult(0, (DIRECTORY / f"{name}.json").read_text(), BANNER)
 
 
 def failure(returncode: int = 1, stdout: str = "", stderr: str = BANNER) -> CommandResult:
