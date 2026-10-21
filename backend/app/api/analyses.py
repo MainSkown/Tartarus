@@ -237,7 +237,7 @@ async def reingest(
     guests: Annotated[GuestControl, Depends(get_guest_control)],
 ) -> AnalysisRead:
     """Indexes a finished analysis's report again. `409` unless it is `done` or `report_failed`,
-    or while another analysis is active.
+    or while an analysis is active.
     """
     analysis = await require_analysis(session, analysis_id)
     started = await begin_reingest(session, analysis_id)
@@ -344,7 +344,7 @@ def _reason_not_reingestible(analysis: Analysis) -> str:
             f"Analysis {analysis.id} is {analysis.status.value}; "
             "only a done or report_failed analysis can be re-ingested"
         )
-    return f"Analysis {analysis.id} cannot be re-ingested while another analysis is active"
+    return f"Analysis {analysis.id} cannot be re-ingested while an analysis is active"
 
 
 def _extended_deadline_of(analysis: Analysis, seconds: int) -> datetime:

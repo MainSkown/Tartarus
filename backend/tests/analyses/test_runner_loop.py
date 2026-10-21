@@ -99,7 +99,7 @@ async def test_a_failing_tick_does_not_stop_the_loop(
     cape: FakeCape,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    real_get_active = runner_module.get_active_analysis
+    real_get_active = runner_module.get_active_analyses
     outage = [True]
 
     async def flaky_database(session: AsyncSession, *kind):
@@ -108,7 +108,7 @@ async def test_a_failing_tick_does_not_stop_the_loop(
             raise ConnectionError("database restarting")
         return await real_get_active(session, *kind)
 
-    monkeypatch.setattr(runner_module, "get_active_analysis", flaky_database)
+    monkeypatch.setattr(runner_module, "get_active_analyses", flaky_database)
     analysis_id = await enqueue(session_factory)
     runner.start()
     try:

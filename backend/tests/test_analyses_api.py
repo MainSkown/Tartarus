@@ -1479,7 +1479,7 @@ async def test_an_analysis_that_is_not_done_or_report_failed_cannot_be_reingeste
     assert harness.runner.nudges == nudges_before
 
 
-async def test_nothing_is_reingested_while_another_analysis_is_active(harness: Harness) -> None:
+async def test_nothing_is_reingested_while_an_analysis_is_active(harness: Harness) -> None:
     finished = (await harness.upload()).json()
     await harness.set_state(finished["id"], status=AnalysisStatus.DONE, cape_task_id=7)
     busy = (await harness.upload(content=OTHER_CONTENT)).json()
@@ -1488,7 +1488,7 @@ async def test_nothing_is_reingested_while_another_analysis_is_active(harness: H
     response = await harness.client.post(f"/api/analyses/{finished['id']}/reingest")
 
     assert response.status_code == 409
-    assert "another analysis" in response.json()["error"]["message"]
+    assert "while an analysis is active" in response.json()["error"]["message"]
     assert (await harness.analysis(finished["id"])).status is AnalysisStatus.DONE
 
 

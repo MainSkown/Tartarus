@@ -306,16 +306,15 @@ async def test_deleting_an_unknown_sample_reports_false(session: AsyncSession) -
         AnalysisStatus.INGESTING,
     ],
 )
-async def test_the_active_analysis_is_found_in_every_active_state(
+async def test_an_active_analysis_is_found_in_every_active_state(
     session: AsyncSession, active: AnalysisStatus
 ) -> None:
     created = await seeded_analysis(session)
     await repository.update_analysis(session, created.id, status=active)
 
-    found = await repository.get_active_analysis(session)
+    found = await repository.get_active_analyses(session)
 
-    assert found is not None
-    assert found.id == created.id
+    assert [analysis.id for analysis in found] == [created.id]
 
 
 @pytest.mark.parametrize(
@@ -334,34 +333,91 @@ async def test_no_analysis_is_active_when_none_is_in_an_active_state(
     created = await seeded_analysis(session)
     await repository.update_analysis(session, created.id, status=inactive)
 
-    assert await repository.get_active_analysis(session) is None
+    assert await repository.get_active_analyses(session) == []
+
+
+async def test_every_active_analysis_is_returned_oldest_first(session: AsyncSession) -> None:
+    first = await seeded_analysis(session, "first.exe")
+    await seeded_analysis(session, "queued.exe")
+    second = await seeded_analysis(session, "second.exe")
+    await repository.update_analysis(session, second.id, status=AnalysisStatus.INGESTING)
+    await repository.update_analysis(session, first.id, status=AnalysisStatus.RUNNING)
+
+    found = await repository.get_active_analyses(session)
+
+    assert [analysis.id for analysis in found] == [first.id, second.id]
 
 
 async def test_the_oldest_queued_analysis_is_returned_first(session: AsyncSession) -> None:
     first = await seeded_analysis(session, "first.exe")
     await seeded_analysis(session, "second.exe")
 
-    oldest = await repository.get_oldest_queued_analysis(session)
+    oldest = await repository.get_oldest_startable_analysis(session)
 
     assert oldest is not None
     assert oldest.id == first.id
 
 
-async def test_running_analyses_are_skipped_when_looking_for_the_next_queued_one(
-    session: AsyncSession,
-) -> None:
-    first = await seeded_analysis(session, "first.exe")
-    second = await seeded_analysis(session, "second.exe")
+async def seeded_for_guest(
+    session: AsyncSession, guest: str, filename: str = "benign.exe"
+) -> Analysis:
+    await repository.add_sample_if_new(session, make_sample())
+    return await repository.create_analysis(
+        session, sample_sha256=SHA_A, filename=filename, options={**OPTIONS, "guest": guest}
+    )
+
+
+async def test_a_running_analysis_is_not_started_again(session: AsyncSession) -> None:
+    first = await seeded_for_guest(session, "lab3", "first.exe")
+    second = await seeded_for_guest(session, "lab5", "second.exe")
     await repository.update_analysis(session, first.id, status=AnalysisStatus.RUNNING)
 
-    oldest = await repository.get_oldest_queued_analysis(session)
+    oldest = await repository.get_oldest_startable_analysis(session)
 
     assert oldest is not None
     assert oldest.id == second.id
 
 
+async def test_a_queued_analysis_whose_guest_is_busy_is_skipped_for_one_on_an_idle_guest(
+    session: AsyncSession,
+) -> None:
+    busy = await seeded_for_guest(session, "lab3", "busy.exe")
+    await repository.update_analysis(session, busy.id, status=AnalysisStatus.RUNNING)
+    await seeded_for_guest(session, "lab3", "waits.exe")
+    idle = await seeded_for_guest(session, "lab5", "idle.exe")
+
+    startable = await repository.get_oldest_startable_analysis(session)
+
+    assert startable is not None
+    assert startable.id == idle.id
+
+
+@pytest.mark.parametrize("busy", [AnalysisStatus.STARTING, AnalysisStatus.PROCESSING])
+async def test_a_guest_stays_busy_until_its_analysis_has_ended(
+    session: AsyncSession, busy: AnalysisStatus
+) -> None:
+    holding = await seeded_for_guest(session, "lab3")
+    await repository.update_analysis(session, holding.id, status=busy)
+    await seeded_for_guest(session, "lab3")
+
+    assert await repository.get_oldest_startable_analysis(session) is None
+
+
+async def test_a_queued_analysis_is_startable_once_its_guests_analysis_ended(
+    session: AsyncSession,
+) -> None:
+    holding = await seeded_for_guest(session, "lab3")
+    waiting = await seeded_for_guest(session, "lab3")
+    await repository.update_analysis(session, holding.id, status=AnalysisStatus.DONE)
+
+    startable = await repository.get_oldest_startable_analysis(session)
+
+    assert startable is not None
+    assert startable.id == waiting.id
+
+
 async def test_no_queued_analysis_when_the_queue_is_empty(session: AsyncSession) -> None:
-    assert await repository.get_oldest_queued_analysis(session) is None
+    assert await repository.get_oldest_startable_analysis(session) is None
 
 
 async def queue_of_three_with_a_running_and_a_done_one(
@@ -412,6 +468,27 @@ async def test_a_position_moves_up_when_an_earlier_queued_analysis_is_cancelled(
     assert positions == {queued[1].id: 1, queued[2].id: 2}
 
 
+async def test_a_position_counts_only_the_analyses_waiting_for_the_same_guest(
+    session: AsyncSession,
+) -> None:
+    first_on_lab3 = await seeded_for_guest(session, "lab3")
+    first_on_lab5 = await seeded_for_guest(session, "lab5")
+    second_on_lab3 = await seeded_for_guest(session, "lab3")
+    second_on_lab5 = await seeded_for_guest(session, "lab5")
+    third_on_lab3 = await seeded_for_guest(session, "lab3")
+    waiting = [first_on_lab3, first_on_lab5, second_on_lab3, second_on_lab5, third_on_lab3]
+
+    positions = await repository.queue_positions(session, [row.id for row in waiting])
+
+    assert positions == {
+        first_on_lab3.id: 1,
+        first_on_lab5.id: 1,
+        second_on_lab3.id: 2,
+        second_on_lab5.id: 2,
+        third_on_lab3.id: 3,
+    }
+
+
 async def test_positions_for_a_whole_page_cost_one_statement(session: AsyncSession) -> None:
     queued, _, _ = await queue_of_three_with_a_running_and_a_done_one(session)
     statements: list[str] = []
@@ -426,13 +503,14 @@ async def test_positions_for_a_whole_page_cost_one_statement(session: AsyncSessi
 async def test_the_analysis_at_position_one_is_the_one_the_runner_takes_next(
     session: AsyncSession,
 ) -> None:
-    queued, _, _ = await queue_of_three_with_a_running_and_a_done_one(session)
+    queued, running, _ = await queue_of_three_with_a_running_and_a_done_one(session)
+    await repository.update_analysis(session, running.id, status=AnalysisStatus.DONE)
     same_moment = datetime(2026, 10, 13, tzinfo=UTC)
     await session.execute(update(Analysis).values(submitted_at=same_moment))
     await session.commit()
 
     positions = await repository.queue_positions(session, [row.id for row in queued])
-    next_up = await repository.get_oldest_queued_analysis(session)
+    next_up = await repository.get_oldest_startable_analysis(session)
 
     assert next_up is not None
     assert positions[next_up.id] == 1
@@ -691,27 +769,38 @@ async def test_an_active_import_is_not_the_active_run_and_the_other_way_round(
     run = await seeded_analysis(session)
     await repository.update_analysis(session, imported.id, status=AnalysisStatus.RUNNING)
 
-    assert await repository.get_active_analysis(session) is None
-    active_import = await repository.get_active_analysis(session, AnalysisKind.IMPORTED)
-    assert active_import is not None
-    assert active_import.id == imported.id
+    assert await repository.get_active_analyses(session) == []
+    active_imports = await repository.get_active_analyses(session, AnalysisKind.IMPORTED)
+    assert [analysis.id for analysis in active_imports] == [imported.id]
     await repository.update_analysis(session, run.id, status=AnalysisStatus.RUNNING)
-    active_run = await repository.get_active_analysis(session)
-    assert active_run is not None
-    assert active_run.id == run.id
+    active_runs = await repository.get_active_analyses(session)
+    assert [analysis.id for analysis in active_runs] == [run.id]
 
 
 async def test_the_oldest_queued_run_is_not_an_older_queued_import(session: AsyncSession) -> None:
     await queued_import(session)
     run = await seeded_analysis(session)
 
-    next_run = await repository.get_oldest_queued_analysis(session)
-    next_import = await repository.get_oldest_queued_analysis(session, AnalysisKind.IMPORTED)
+    next_run = await repository.get_oldest_startable_analysis(session)
+    next_import = await repository.get_oldest_startable_analysis(session, AnalysisKind.IMPORTED)
 
     assert next_run is not None
     assert next_run.id == run.id
     assert next_import is not None
     assert next_import.id != run.id
+
+
+async def test_an_active_import_does_not_make_a_run_wait_and_the_other_way_round(
+    session: AsyncSession,
+) -> None:
+    imported = await queued_import(session)
+    run = await seeded_analysis(session)
+    await repository.update_analysis(session, imported.id, status=AnalysisStatus.RUNNING)
+
+    startable = await repository.get_oldest_startable_analysis(session)
+
+    assert startable is not None
+    assert startable.id == run.id
 
 
 async def test_a_queued_import_does_not_take_a_place_in_the_run_queue(

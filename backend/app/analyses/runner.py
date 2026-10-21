@@ -46,8 +46,9 @@ from app.config import Settings
 from app.db.analysis_repository import (
     AnalysisChanges,
     claim_queued,
-    get_active_analysis,
-    get_oldest_queued_analysis,
+    get_active_analyses,
+    get_analysis,
+    get_oldest_startable_analysis,
     update_analysis,
 )
 from app.db.base import utc_now
@@ -128,7 +129,8 @@ class GuestUnavailableError(Exception):
 
 
 class Runner:
-    """Feeds queued analyses to CAPE one at a time and follows the active one to its end.
+    """Feeds queued analyses to CAPE, one per guest at a time, and follows every active one to
+    its end, each in its own task.
 
     All state lives in the database, so a new runner carries on where a dead one stopped.
     """
@@ -160,7 +162,9 @@ class Runner:
         self._clock = clock
         self._now = now
         self._live = live or NoLiveCollection()
-        self._collecting: int | None = None
+        self._collecting: set[int] = set()
+        self._followers: dict[int, asyncio.Task[None]] = {}
+        self._follow_again: set[int] = set()
         self._trouble_since: dict[int, float] = {}
         self._consecutive_errors: dict[int, int] = {}
         self._end_requested: set[int] = set()
@@ -175,10 +179,11 @@ class Runner:
         self._loop_task = asyncio.create_task(self._loop(), name="analysis-runner")
 
     async def stop(self) -> None:
-        """Lets the tick in progress finish, so a submission keeps its task id. A memory image
-        being scanned is dropped; the next runner scans it again.
+        """Lets the tick and the passes in progress finish, so a submission keeps its task id. A
+        memory image being scanned is dropped; the next runner scans it again.
         """
         await self._stop_loop()
+        await self._settle_followers()
         await self._cancel_memory_imports()
 
     async def wait_for_memory_imports(self) -> None:
@@ -198,6 +203,19 @@ class Runner:
                 await self._loop_task
         self._loop_task = None
 
+    async def _settle_followers(self) -> None:
+        followers = list(self._followers.values())
+        if not followers:
+            return
+        _, unfinished = await asyncio.wait(followers, timeout=self._config.shutdown_patience)
+        if unfinished:
+            logger.warning(
+                "%s analyses were still being followed; cancelling them", len(unfinished)
+            )
+        for follower in unfinished:
+            follower.cancel()
+        await asyncio.gather(*unfinished, return_exceptions=True)
+
     async def _cancel_memory_imports(self) -> None:
         scans = list(self._memory_imports.values())
         for scan in scans:
@@ -212,37 +230,82 @@ class Runner:
         while not self._stopping:
             # Cleared before the tick, so a nudge that arrives during it is not lost.
             self._nudged.clear()
-            await self.run_once()
+            await self._pass()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._nudged.wait(), self._config.poll_interval)
 
     async def run_once(self) -> None:
-        """One pass over each queue; never raises, so a bad tick cannot stop the loop.
+        """One pass over each queue, then waits for the passes over the analyses it started.
+
+        Never raises, so a bad tick cannot stop the loop. An analysis whose previous pass is
+        still in progress (a slow ingest) is not waited for.
+        """
+        await asyncio.gather(*await self._pass())
+
+    async def _pass(self) -> list[asyncio.Task[None]]:
+        """Follows every active analysis in its own task and starts what can start.
 
         An import needs no guest, so its queue is followed apart from the runs': neither waits
         for the other's analysis to end.
         """
+        started: list[asyncio.Task[None]] = []
         for kind in (AnalysisKind.RUN, AnalysisKind.IMPORTED):
-            await self._tick(kind)
+            started += await self._tick(kind)
+        return started
 
-    async def _tick(self, kind: AnalysisKind) -> None:
+    async def _tick(self, kind: AnalysisKind) -> list[asyncio.Task[None]]:
+        followers: list[asyncio.Task[None]] = []
         try:
             async with self._session_factory() as session:
-                active = await get_active_analysis(session, kind)
-                if active is None:
-                    await self._start_next(session, kind)
-                else:
-                    await self._track_guarded(session, active)
+                active = await get_active_analyses(session, kind)
+                started = (self._follow_in_own_task(analysis.id) for analysis in active)
+                followers.extend(task for task in started if task is not None)
+                await self._start_startable(session, kind)
         except Exception:
             logger.exception("Runner tick failed")
+        return followers
 
-    async def _start_next(self, session: AsyncSession, kind: AnalysisKind) -> None:
-        while (queued := await get_oldest_queued_analysis(session, kind)) is not None:
-            if await claim_queued(session, queued.id):
-                # The claim is a bulk UPDATE the session did not see; without a refresh the
-                # object still says `queued` and a later write of `queued` would be skipped.
-                await session.refresh(queued)
-                await self._submit_guarded(session, queued)
+    def _follow_in_own_task(self, analysis_id: int) -> asyncio.Task[None] | None:
+        """None when a task is already on the analysis; it then follows once more when it is done,
+        so a nudge that arrives during a slow step is not lost.
+        """
+        if analysis_id in self._followers:
+            self._follow_again.add(analysis_id)
+            return None
+        follower = asyncio.create_task(
+            self._follow_until_settled(analysis_id), name=f"follow-analysis-{analysis_id}"
+        )
+        self._followers[analysis_id] = follower
+        follower.add_done_callback(lambda _: self._followers.pop(analysis_id, None))
+        return follower
+
+    async def _follow_until_settled(self, analysis_id: int) -> None:
+        while True:
+            self._follow_again.discard(analysis_id)
+            await self._follow_once(analysis_id)
+            if analysis_id not in self._follow_again:
+                return
+
+    async def _follow_once(self, analysis_id: int) -> None:
+        try:
+            async with self._session_factory() as session:
+                analysis = await get_analysis(session, analysis_id)
+                if analysis is not None and analysis.status in ACTIVE_STATUSES:
+                    await self._track_guarded(session, analysis)
+        except Exception:
+            logger.exception("Following analysis %s failed", analysis_id)
+
+    async def _start_startable(self, session: AsyncSession, kind: AnalysisKind) -> None:
+        while (queued := await get_oldest_startable_analysis(session, kind)) is not None:
+            if not await claim_queued(session, queued.id):
+                continue
+            # The claim is a bulk UPDATE the session did not see; without a refresh the
+            # object still says `queued` and a later write of `queued` would be skipped.
+            await session.refresh(queued)
+            await self._submit_guarded(session, queued)
+            if queued.status is AnalysisStatus.QUEUED:
+                # Sent back because CAPE or the control service is unreachable; trying the
+                # next row now would start it ahead of this one.
                 return
 
     async def _submit_guarded(self, session: AsyncSession, claimed: Analysis) -> None:
@@ -626,7 +689,7 @@ class Runner:
             analysis.kind is not AnalysisKind.RUN
             or analysis.status is not AnalysisStatus.RUNNING
             or analysis.started_at is None
-            or self._collecting == analysis.id
+            or analysis.id in self._collecting
         ):
             return
         try:
@@ -634,14 +697,14 @@ class Runner:
         except Exception:
             logger.exception("Starting the live collection of analysis %s failed", analysis.id)
         else:
-            self._collecting = analysis.id
+            self._collecting.add(analysis.id)
 
     async def _stop_live(self, analysis_id: int) -> None:
         """Drains and ends the collection before the status moves on, so the final ingest never
         races the collector; a collector that fails or hangs is abandoned, never fatal."""
-        if self._collecting != analysis_id:
+        if analysis_id not in self._collecting:
             return
-        self._collecting = None
+        self._collecting.discard(analysis_id)
         try:
             await asyncio.wait_for(self._live.stop(analysis_id), self._config.live_stop_timeout)
         except Exception:

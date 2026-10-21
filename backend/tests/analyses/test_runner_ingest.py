@@ -202,7 +202,7 @@ async def test_a_reingest_of_a_task_cape_has_forgotten_ends_report_failed_instea
 
 async def _active_count(session_factory: Factory) -> int:
     async with session_factory() as session:
-        return 0 if await repository.get_active_analysis(session) is None else 1
+        return len(await repository.get_active_analyses(session))
 
 
 @pytest.mark.parametrize(

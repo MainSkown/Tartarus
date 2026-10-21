@@ -5,6 +5,7 @@ from typing import Any, TypedDict, Unpack
 
 from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.db import annotation_repository
 from app.db.base import utc_now
@@ -176,17 +177,23 @@ async def delete_sample_if_unreferenced(session: AsyncSession, sha256: str) -> b
     return True
 
 
-async def get_active_analysis(
+def _guest_of(analysis: type[Analysis]) -> ColumnElement[str]:
+    guest: ColumnElement[str] = analysis.options["guest"].as_string()
+    return guest
+
+
+async def get_active_analyses(
     session: AsyncSession, kind: AnalysisKind = AnalysisKind.RUN
-) -> Analysis | None:
-    """The analysis of this kind the runner is following; runs and imports are followed apart."""
+) -> list[Analysis]:
+    """Every analysis of this kind the runner is following, oldest first; runs and imports are
+    followed apart.
+    """
     statement = (
         select(Analysis)
         .where(Analysis.status.in_(ACTIVE_STATUSES), Analysis.kind == kind)
-        .order_by(Analysis.submitted_at, Analysis.id)
-        .limit(1)
+        .order_by(*_QUEUE_ORDER)
     )
-    return await session.scalar(statement)
+    return list((await session.scalars(statement)).all())
 
 
 async def has_analysis_needing_a_guest(session: AsyncSession) -> bool:
@@ -198,12 +205,26 @@ async def has_analysis_needing_a_guest(session: AsyncSession) -> bool:
     return await session.scalar(statement) is not None
 
 
-async def get_oldest_queued_analysis(
+async def get_oldest_startable_analysis(
     session: AsyncSession, kind: AnalysisKind = AnalysisKind.RUN
 ) -> Analysis | None:
+    """The oldest queued analysis whose guest has no active analysis, so a queued row behind a
+    busy guest never holds up an idle guest's. Analyses that record no guest (every import) share
+    one slot per kind, which keeps an import queue single-file.
+    """
+    holder = aliased(Analysis)
+    guest_is_busy = (
+        select(holder.id)
+        .where(
+            holder.status.in_(ACTIVE_STATUSES),
+            holder.kind == kind,
+            _guest_of(holder).is_not_distinct_from(_guest_of(Analysis)),
+        )
+        .exists()
+    )
     statement = (
         select(Analysis)
-        .where(Analysis.status == AnalysisStatus.QUEUED, Analysis.kind == kind)
+        .where(Analysis.status == AnalysisStatus.QUEUED, Analysis.kind == kind, ~guest_is_busy)
         .order_by(*_QUEUE_ORDER)
         .limit(1)
     )
@@ -213,7 +234,8 @@ async def get_oldest_queued_analysis(
 async def queue_positions(session: AsyncSession, analysis_ids: Collection[int]) -> dict[int, int]:
     """Maps each queued analysis among `analysis_ids` to its place in line (1 is served next).
 
-    Runs and imports queue apart, so an import is never counted ahead of a run.
+    The line is the analyses waiting for the same guest, so a place never counts a row that is
+    waiting for another one; runs and imports queue apart.
     """
     if not analysis_ids:
         return {}
@@ -221,7 +243,7 @@ async def queue_positions(session: AsyncSession, analysis_ids: Collection[int]) 
         select(
             Analysis.id,
             func.row_number()
-            .over(partition_by=Analysis.kind, order_by=_QUEUE_ORDER)
+            .over(partition_by=[Analysis.kind, _guest_of(Analysis)], order_by=_QUEUE_ORDER)
             .label("position"),
         )
         .where(Analysis.status == AnalysisStatus.QUEUED)
@@ -262,16 +284,16 @@ async def cancel_if_queued(session: AsyncSession, analysis_id: int) -> bool:
 async def begin_reingest(session: AsyncSession, analysis_id: int) -> bool:
     """Puts a `done` or `report_failed` analysis back to `ingesting`; False if it may not.
 
-    One UPDATE checks both the analysis's state and that nothing else is active, because the
-    runner follows one analysis at a time and two callers must not both get past a separate check.
+    One UPDATE checks both the analysis's state and that no analysis is active, so two callers
+    cannot both get past a separate check.
     """
-    another_is_active = select(Analysis.id).where(Analysis.status.in_(ACTIVE_STATUSES)).exists()
+    an_analysis_is_active = select(Analysis.id).where(Analysis.status.in_(ACTIVE_STATUSES)).exists()
     statement = (
         update(Analysis)
         .where(
             Analysis.id == analysis_id,
             Analysis.status.in_(REINGESTABLE_STATUSES),
-            ~another_is_active,
+            ~an_analysis_is_active,
         )
         .values(status=AnalysisStatus.INGESTING, error=None, finished_at=None)
         .returning(Analysis.id)
