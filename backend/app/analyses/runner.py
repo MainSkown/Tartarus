@@ -17,6 +17,7 @@ from app.analyses.guest_choice import recorded_guest
 from app.analyses.memory import MemorySummary
 from app.analyses.memory_step import MemoryStep
 from app.analyses.monitor import first_monitor_log_time
+from app.analyses.pcap_import import ImportRefusedError, Submitted, submit_import
 from app.analyses.ports import (
     EventIngester,
     GuestSource,
@@ -49,7 +50,7 @@ from app.db.analysis_repository import (
 )
 from app.db.base import utc_now
 from app.db.models import Analysis
-from app.db.models.analysis import ACTIVE_STATUSES, AnalysisPhase, AnalysisStatus
+from app.db.models.analysis import ACTIVE_STATUSES, AnalysisKind, AnalysisPhase, AnalysisStatus
 from app.guest.errors import (
     GuestControlError,
     GuestControlNotConfigured,
@@ -81,6 +82,8 @@ class CapeTaskApi(Protocol):
         task_fields: Mapping[str, bool | int | str] | None = None,
     ) -> int: ...
 
+    async def create_pcap_task(self, source: Path, filename: str) -> int: ...
+
     async def task_status(self, task_id: int) -> str: ...
 
     async def task_view(self, task_id: int) -> TaskView: ...
@@ -93,6 +96,7 @@ class RunnerConfig:
     unreachable_grace: float
     shutdown_patience: float = 10.0
     live_stop_timeout: float = 10.0
+    imports_dir: Path = Path("/imports")
 
     @classmethod
     def from_settings(cls, settings: Settings) -> Self:
@@ -100,6 +104,7 @@ class RunnerConfig:
             cape_storage_path=settings.cape_storage_path,
             poll_interval=settings.runner_poll_interval_seconds,
             unreachable_grace=settings.runner_unreachable_grace_seconds,
+            imports_dir=settings.imports_dir,
         )
 
 
@@ -139,7 +144,7 @@ class Runner:
         self._now = now
         self._live = live or NoLiveCollection()
         self._collecting: int | None = None
-        self._trouble_since: float | None = None
+        self._trouble_since: dict[int, float] = {}
         self._consecutive_errors: dict[int, int] = {}
         self._end_requested: set[int] = set()
         self._nudged = asyncio.Event()
@@ -180,19 +185,27 @@ class Runner:
                 await asyncio.wait_for(self._nudged.wait(), self._config.poll_interval)
 
     async def run_once(self) -> None:
-        """One pass over the queue; never raises, so a bad tick cannot stop the loop."""
+        """One pass over each queue; never raises, so a bad tick cannot stop the loop.
+
+        An import needs no guest, so its queue is followed apart from the runs': neither waits
+        for the other's analysis to end.
+        """
+        for kind in (AnalysisKind.RUN, AnalysisKind.IMPORTED):
+            await self._tick(kind)
+
+    async def _tick(self, kind: AnalysisKind) -> None:
         try:
             async with self._session_factory() as session:
-                active = await get_active_analysis(session)
+                active = await get_active_analysis(session, kind)
                 if active is None:
-                    await self._start_next(session)
+                    await self._start_next(session, kind)
                 else:
                     await self._track_guarded(session, active)
         except Exception:
             logger.exception("Runner tick failed")
 
-    async def _start_next(self, session: AsyncSession) -> None:
-        while (queued := await get_oldest_queued_analysis(session)) is not None:
+    async def _start_next(self, session: AsyncSession, kind: AnalysisKind) -> None:
+        while (queued := await get_oldest_queued_analysis(session, kind)) is not None:
             if await claim_queued(session, queued.id):
                 # The claim is a bulk UPDATE the session did not see; without a refresh the
                 # object still says `queued` and a later write of `queued` would be skipped.
@@ -215,7 +228,7 @@ class Runner:
 
     async def _submit(self, session: AsyncSession, claimed: Analysis) -> None:
         try:
-            task_id = await self._upload(claimed)
+            submitted = await self._upload(claimed)
         except (CapeUnreachable, GuestControlUnreachable) as unreachable:
             if isinstance(unreachable, GuestControlNotConfigured):
                 await self._finish(
@@ -224,7 +237,7 @@ class Runner:
                 return
             logger.warning("Analysis %s goes back to the queue: %s", claimed.id, unreachable)
             await update_analysis(session, claimed.id, status=AnalysisStatus.QUEUED)
-        except (GuestUnavailableError, GuestControlError) as unavailable:
+        except (GuestUnavailableError, GuestControlError, ImportRefusedError) as unavailable:
             await self._finish(
                 session, claimed.id, status=AnalysisStatus.FAILED, error=str(unavailable)
             )
@@ -247,15 +260,19 @@ class Runner:
             # resubmitting could duplicate it.
             await self._finish(session, claimed.id, status=AnalysisStatus.FAILED, error=str(error))
         else:
-            await update_analysis(session, claimed.id, cape_task_id=task_id)
+            await update_analysis(
+                session, claimed.id, cape_task_id=submitted.task_id, started_at=submitted.started_at
+            )
 
-    async def _upload(self, analysis: Analysis) -> int:
+    async def _upload(self, analysis: Analysis) -> Submitted:
+        if analysis.kind is AnalysisKind.IMPORTED:
+            return await submit_import(self._cape, analysis, self._config.imports_dir)
         options = analysis.options
         guest = await self._guest_of(analysis)
         is_interactive = options.get("interactive") is True
         interactive = await self._interactive_options(guest) if is_interactive else NOT_INTERACTIVE
         async with self._samples.open_plain(analysis.sample_sha256) as path:
-            return await self._cape.create_file_task(
+            task_id = await self._cape.create_file_task(
                 path,
                 analysis.filename,
                 machine=guest.name,
@@ -266,6 +283,7 @@ class Runner:
                 options=interactive.options,
                 task_fields=_task_fields(options, interactive),
             )
+        return Submitted(task_id)
 
     async def _guest_of(self, analysis: Analysis) -> Guest:
         name = recorded_guest(analysis.options)
@@ -338,7 +356,7 @@ class Runner:
             await self._tolerate(session, analysis.id, _trouble_of(error))
         else:
             if trouble is None:
-                self._trouble_since = None
+                self._trouble_since.pop(analysis.id, None)
                 await self._steer_interactive_run(session, analysis, task_id)
             else:
                 await self._tolerate(session, analysis.id, trouble)
@@ -408,13 +426,12 @@ class Runner:
     async def _tolerate(self, session: AsyncSession, analysis_id: int, trouble: str) -> None:
         """Waits out a CAPE problem, but only for the grace period."""
         now = self._clock()
-        if self._trouble_since is None:
-            self._trouble_since = now
-        seconds = round(now - self._trouble_since)
+        trouble_since = self._trouble_since.setdefault(analysis_id, now)
+        seconds = round(now - trouble_since)
         logger.warning(
             "CAPE has been %s for %s seconds (analysis %s)", trouble, seconds, analysis_id
         )
-        if now - self._trouble_since > self._config.unreachable_grace:
+        if now - trouble_since > self._config.unreachable_grace:
             await self._finish(
                 session,
                 analysis_id,
@@ -478,7 +495,9 @@ class Runner:
             return
         memory = await self._memory.run(analysis, task_id)
         try:
-            indexed = await self._ingester.ingest(analysis_id, report_file)
+            indexed = await self._ingester.ingest(
+                analysis_id, report_file, started_at=_capture_start(analysis)
+            )
         except IngestFailedError as failure:
             # The ingester removes a half-built index, so no events are left to count.
             await self._finish(
@@ -520,7 +539,8 @@ class Runner:
 
     def _start_live_if_running(self, analysis: Analysis, task_id: int) -> None:
         if (
-            analysis.status is not AnalysisStatus.RUNNING
+            analysis.kind is not AnalysisKind.RUN
+            or analysis.status is not AnalysisStatus.RUNNING
             or analysis.started_at is None
             or self._collecting == analysis.id
         ):
@@ -549,7 +569,7 @@ class Runner:
         await self._stop_live(analysis_id)
         ended: AnalysisChanges = {**changes, "finished_at": utc_now()}
         await update_analysis(session, analysis_id, **ended)
-        self._trouble_since = None
+        self._trouble_since.pop(analysis_id, None)
         self._consecutive_errors.pop(analysis_id, None)
         self._end_requested.discard(analysis_id)
         logger.info("Analysis %s ended as %s", analysis_id, changes["status"])
@@ -565,6 +585,12 @@ def _task_fields(
     # CAPE reads `memory` as a form field; as an entry of the `options` string it takes no dump.
     asked_for_dump = options.get("memory_dump") is True
     return {**interactive.task_fields, **({"memory": True} if asked_for_dump else {})}
+
+
+def _capture_start(analysis: Analysis) -> datetime | None:
+    if analysis.kind is not AnalysisKind.IMPORTED or analysis.started_at is None:
+        return None
+    return as_utc(analysis.started_at)
 
 
 def _is_interactive_run(analysis: Analysis) -> bool:

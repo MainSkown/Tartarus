@@ -3,6 +3,7 @@ import contextlib
 import logging
 from collections import Counter
 from collections.abc import Iterable, Iterator, Sequence
+from datetime import datetime
 from itertools import chain
 from pathlib import Path
 from typing import Any, Protocol
@@ -86,18 +87,22 @@ class ReportIngester:
         self._injected_normalizers = normalizers
         self._rules = rules
 
-    async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
+    async def ingest(
+        self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
+    ) -> IngestResult:
         try:
-            return await self._rebuild(analysis_id, report_path)
+            return await self._rebuild(analysis_id, report_path, started_at)
         except IngestFailedError:
             raise
         except Exception as error:
             raise IngestFailedError(_reason(error)) from error
 
-    async def _rebuild(self, analysis_id: int, report_path: Path) -> IngestResult:
+    async def _rebuild(
+        self, analysis_id: int, report_path: Path, started_at: datetime | None
+    ) -> IngestResult:
         await self._index.ensure_template()
         await self._index.drop(analysis_id)
-        context, report = await asyncio.to_thread(_read, analysis_id, report_path)
+        context, report = await asyncio.to_thread(_read, analysis_id, report_path, started_at)
         try:
             await self._index.create(analysis_id)
             return await self._fill(analysis_id, report, context)
@@ -186,12 +191,14 @@ def _detections(
     yield from final_detections(rules, context, matchable)
 
 
-def _read(analysis_id: int, report_path: Path) -> tuple[IngestContext, dict[str, Any]]:
+def _read(
+    analysis_id: int, report_path: Path, started_at: datetime | None
+) -> tuple[IngestContext, dict[str, Any]]:
     try:
         report = load_report(report_path)
     except ReportUnreadableError as unreadable:
         raise IngestFailedError(str(unreadable)) from None
-    started_at = analysis_started(report)
+    started_at = started_at or analysis_started(report)
     if started_at is None:
         raise IngestFailedError(f"report {report_path.name} has no analysis start time")
     registrations = read_host_registrations(task_log_of(report_path))

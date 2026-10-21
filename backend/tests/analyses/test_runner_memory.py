@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -30,9 +31,11 @@ class JournalIngester(FakeIngester):
         super().__init__()
         self._guests = guests
 
-    async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
+    async def ingest(
+        self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
+    ) -> IngestResult:
         self._guests.calls.append(("ingest", analysis_id))
-        return await super().ingest(analysis_id, report_path)
+        return await super().ingest(analysis_id, report_path, started_at=started_at)
 
 
 @pytest.fixture

@@ -25,6 +25,7 @@ class FakeCape:
         self.create_errors: list[Exception] = []
         self.calls: list[tuple[str, Any]] = []
         self.created: list[dict[str, Any]] = []
+        self.pcap_tasks: list[dict[str, Any]] = []
         self.create_gate: asyncio.Event | None = None
         self.uploaded_bytes: list[bytes] = []
         self._next_task_id = FIRST_TASK_ID
@@ -61,6 +62,18 @@ class FakeCape:
                 "options": options,
                 "task_fields": dict(task_fields or {}),
             }
+        )
+        return task_id
+
+    async def create_pcap_task(self, source: Path, filename: str) -> int:
+        self.calls.append(("create_pcap", filename))
+        if self.create_errors:
+            raise self.create_errors.pop(0)
+        task_id = self._next_task_id
+        self._next_task_id += 1
+        self.scripts[task_id] = list(self.script_for_new_tasks)
+        self.pcap_tasks.append(
+            {"task_id": task_id, "filename": filename, "bytes": source.read_bytes()}  # noqa: ASYNC240
         )
         return task_id
 
@@ -124,9 +137,13 @@ class FakeIngester:
     def __init__(self) -> None:
         self.result: IngestResult | IngestFailedError | Exception = IngestResult(0, {})
         self.requests: list[tuple[int, Path]] = []
+        self.started_at: dict[int, datetime | None] = {}
 
-    async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
+    async def ingest(
+        self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
+    ) -> IngestResult:
         self.requests.append((analysis_id, report_path))
+        self.started_at[analysis_id] = started_at
         if isinstance(self.result, Exception):
             raise self.result
         return self.result

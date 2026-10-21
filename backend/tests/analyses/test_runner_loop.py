@@ -102,11 +102,11 @@ async def test_a_failing_tick_does_not_stop_the_loop(
     real_get_active = runner_module.get_active_analysis
     outage = [True]
 
-    async def flaky_database(session: AsyncSession):
+    async def flaky_database(session: AsyncSession, *kind):
         if outage:
             outage.clear()
             raise ConnectionError("database restarting")
-        return await real_get_active(session)
+        return await real_get_active(session, *kind)
 
     monkeypatch.setattr(runner_module, "get_active_analysis", flaky_database)
     analysis_id = await enqueue(session_factory)

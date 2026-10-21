@@ -160,9 +160,9 @@ async def test_the_collection_is_drained_before_the_events_are_ingested(  # noqa
     analysis_id = await adopt_by_cape(session_factory, TASK_ID)
     real_ingest = ingester.ingest
 
-    async def ingest_and_note(analysis: int, report_path):  # type: ignore[no-untyped-def]
+    async def ingest_and_note(analysis: int, report_path, **kwargs):  # type: ignore[no-untyped-def]
         live.journal.append(("ingest", analysis))
-        return await real_ingest(analysis, report_path)
+        return await real_ingest(analysis, report_path, **kwargs)
 
     ingester.ingest = ingest_and_note  # type: ignore[method-assign]
 

@@ -675,3 +675,63 @@ async def test_the_database_refuses_a_kind_it_does_not_know(session: AsyncSessio
 
     with pytest.raises(IntegrityError):
         await session.execute(text("UPDATE analysis SET kind = 'bogus'"))
+
+
+async def queued_import(session: AsyncSession) -> Analysis:
+    await repository.add_sample_if_new(session, make_sample())
+    return await repository.create_analysis(
+        session, sample_sha256=SHA_A, filename="c.pcap", options={}, kind=AnalysisKind.IMPORTED
+    )
+
+
+async def test_an_active_import_is_not_the_active_run_and_the_other_way_round(
+    session: AsyncSession,
+) -> None:
+    imported = await queued_import(session)
+    run = await seeded_analysis(session)
+    await repository.update_analysis(session, imported.id, status=AnalysisStatus.RUNNING)
+
+    assert await repository.get_active_analysis(session) is None
+    active_import = await repository.get_active_analysis(session, AnalysisKind.IMPORTED)
+    assert active_import is not None
+    assert active_import.id == imported.id
+    await repository.update_analysis(session, run.id, status=AnalysisStatus.RUNNING)
+    active_run = await repository.get_active_analysis(session)
+    assert active_run is not None
+    assert active_run.id == run.id
+
+
+async def test_the_oldest_queued_run_is_not_an_older_queued_import(session: AsyncSession) -> None:
+    await queued_import(session)
+    run = await seeded_analysis(session)
+
+    next_run = await repository.get_oldest_queued_analysis(session)
+    next_import = await repository.get_oldest_queued_analysis(session, AnalysisKind.IMPORTED)
+
+    assert next_run is not None
+    assert next_run.id == run.id
+    assert next_import is not None
+    assert next_import.id != run.id
+
+
+async def test_a_queued_import_does_not_take_a_place_in_the_run_queue(
+    session: AsyncSession,
+) -> None:
+    imported = await queued_import(session)
+    run = await seeded_analysis(session)
+
+    positions = await repository.queue_positions(session, [imported.id, run.id])
+
+    assert positions == {imported.id: 1, run.id: 1}
+
+
+@pytest.mark.parametrize(
+    "status", [AnalysisStatus.QUEUED, AnalysisStatus.STARTING, AnalysisStatus.RUNNING]
+)
+async def test_an_import_never_needs_the_guest(
+    session: AsyncSession, status: AnalysisStatus
+) -> None:
+    imported = await queued_import(session)
+    await repository.update_analysis(session, imported.id, status=status)
+
+    assert await repository.has_analysis_needing_a_guest(session) is False

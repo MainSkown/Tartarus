@@ -62,8 +62,14 @@ class IngestResult:
 class EventIngester(Protocol):
     """Indexes a finished report's events for one analysis, replacing any earlier index."""
 
-    async def ingest(self, analysis_id: int, report_path: Path) -> IngestResult:
-        """Raises `IngestFailedError`, leaving no index behind, when the events cannot be stored."""
+    async def ingest(
+        self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
+    ) -> IngestResult:
+        """Raises `IngestFailedError`, leaving no index behind, when the events cannot be stored.
+
+        `started_at` replaces the report's own start, for a capture imported long after it was
+        taken.
+        """
 
 
 class MemoryControl(Protocol):

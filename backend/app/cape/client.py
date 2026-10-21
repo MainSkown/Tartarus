@@ -86,7 +86,6 @@ class CapeClient:
         guest profile supplies both for an interactive run). Raises `CapeRejected` when CAPE
         answers `error: true`, which it does with HTTP 200 for a machine it does not know.
         """
-        call = "tasks/create/file"
         fields = {
             **_form_fields(task_fields or {}),
             "machine": machine,
@@ -97,6 +96,20 @@ class CapeClient:
             fields["package"] = package
         if options:
             fields["options"] = options
+        return await self._submit_file(source, filename, fields)
+
+    async def create_pcap_task(self, source: Path | BinaryIO, filename: str) -> int:
+        """Submit a packet capture for CAPE's network processing alone and return the task id.
+
+        CAPE's `pcap` category runs no guest and takes no machine, route or timeout.
+        Raises `CapeRejected` when CAPE refuses the upload, for one over its size limit.
+        """
+        return await self._submit_file(source, filename, {"pcap": "1"})
+
+    async def _submit_file(
+        self, source: Path | BinaryIO, filename: str, fields: Mapping[str, str]
+    ) -> int:
+        call = "tasks/create/file"
         if isinstance(source, Path):
             with source.open("rb") as stream:
                 body = await self._send(call, "POST", f"{call}/", fields, (filename, stream))

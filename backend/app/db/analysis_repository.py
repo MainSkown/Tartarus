@@ -176,10 +176,13 @@ async def delete_sample_if_unreferenced(session: AsyncSession, sha256: str) -> b
     return True
 
 
-async def get_active_analysis(session: AsyncSession) -> Analysis | None:
+async def get_active_analysis(
+    session: AsyncSession, kind: AnalysisKind = AnalysisKind.RUN
+) -> Analysis | None:
+    """The analysis of this kind the runner is following; runs and imports are followed apart."""
     statement = (
         select(Analysis)
-        .where(Analysis.status.in_(ACTIVE_STATUSES))
+        .where(Analysis.status.in_(ACTIVE_STATUSES), Analysis.kind == kind)
         .order_by(Analysis.submitted_at, Analysis.id)
         .limit(1)
     )
@@ -187,14 +190,20 @@ async def get_active_analysis(session: AsyncSession) -> Analysis | None:
 
 
 async def has_analysis_needing_a_guest(session: AsyncSession) -> bool:
-    statement = select(Analysis.id).where(Analysis.status.in_(GUEST_NEEDING_STATUSES)).limit(1)
+    statement = (
+        select(Analysis.id)
+        .where(Analysis.status.in_(GUEST_NEEDING_STATUSES), Analysis.kind == AnalysisKind.RUN)
+        .limit(1)
+    )
     return await session.scalar(statement) is not None
 
 
-async def get_oldest_queued_analysis(session: AsyncSession) -> Analysis | None:
+async def get_oldest_queued_analysis(
+    session: AsyncSession, kind: AnalysisKind = AnalysisKind.RUN
+) -> Analysis | None:
     statement = (
         select(Analysis)
-        .where(Analysis.status == AnalysisStatus.QUEUED)
+        .where(Analysis.status == AnalysisStatus.QUEUED, Analysis.kind == kind)
         .order_by(*_QUEUE_ORDER)
         .limit(1)
     )
@@ -202,11 +211,19 @@ async def get_oldest_queued_analysis(session: AsyncSession) -> Analysis | None:
 
 
 async def queue_positions(session: AsyncSession, analysis_ids: Collection[int]) -> dict[int, int]:
-    """Maps each queued analysis among `analysis_ids` to its place in line (1 is served next)."""
+    """Maps each queued analysis among `analysis_ids` to its place in line (1 is served next).
+
+    Runs and imports queue apart, so an import is never counted ahead of a run.
+    """
     if not analysis_ids:
         return {}
     numbered = (
-        select(Analysis.id, func.row_number().over(order_by=_QUEUE_ORDER).label("position"))
+        select(
+            Analysis.id,
+            func.row_number()
+            .over(partition_by=Analysis.kind, order_by=_QUEUE_ORDER)
+            .label("position"),
+        )
         .where(Analysis.status == AnalysisStatus.QUEUED)
         .subquery()
     )

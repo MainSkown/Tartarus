@@ -532,6 +532,31 @@ async def test_create_file_task_rejected_when_cape_could_not_add_the_task(
         )
 
 
+async def test_create_pcap_task_posts_the_capture_as_a_pcap_task_without_a_machine(
+    cape_client: ClientFactory,
+) -> None:
+    cape = RecordingCape({"/apiv2/tasks/create/file/": json_response(SUBMITTED)})
+
+    task_id = await cape_client(cape, TOKEN).create_pcap_task(io.BytesIO(b"capture"), "dump.pcap")
+
+    (request,) = cape.requests
+    assert task_id == 7
+    assert multipart_filename(request) == "dump.pcap"
+    assert parse_multipart(request) == {"file": b"capture", "pcap": b"1"}
+
+
+async def test_create_pcap_task_rejected_when_cape_refuses_the_size(
+    cape_client: ClientFactory,
+) -> None:
+    refused = json_response(
+        {"error": True, "error_value": "Uploaded file exceeds the maximum allowed size"}
+    )
+    cape = RecordingCape({"/apiv2/tasks/create/file/": refused})
+
+    with pytest.raises(CapeRejected, match="exceeds the maximum"):
+        await cape_client(cape, TOKEN).create_pcap_task(io.BytesIO(b"x"), "dump.pcap")
+
+
 async def test_the_client_does_not_retry_a_failed_call(cape_client: ClientFactory) -> None:
     cape = RecordingCape({"/apiv2/cuckoo/status/": httpx.ConnectError("refused")})
 
