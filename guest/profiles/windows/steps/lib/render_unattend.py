@@ -1,11 +1,14 @@
 #!/usr/bin/python3
-"""Renders the Windows answer file from the autounattend template and the guest's record.
+"""Renders the Windows answer file and the provisioning parameter file from the guest's record.
 
-Usage: render_unattend.py <output file>   (reads TT_GUEST_JSON and TT_PROFILE_DIR)
+Usage: render_unattend.py <answer file> <parameters file>   (reads TT_GUEST_JSON and TT_PROFILE_DIR)
 
 Every value is XML-escaped before it is substituted, so no value can change the document, and the
 product key element is built here: Setup fails without a message on an empty one, so with no key it
-is absent. The password is in the output, hence the file is created readable by its owner only.
+is absent. The password is in the answer file, hence the file is created readable by its owner only.
+
+provision.ps1 reads its parameters from the second file instead of the first-logon command line:
+Windows 10 silently skips a long RunOnce command, and Setup stores that command there.
 """
 
 import json
@@ -26,7 +29,7 @@ QUOTE_ENTITIES = {'"': "&quot;", "'": "&apos;"}
 # carriage return, and the two non-characters U+FFFE and U+FFFF.
 XML_FORBIDDEN = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
 OWNER_ONLY = 0o600
-ARGUMENT_COUNT = 2  # the program name and the output file
+ARGUMENT_COUNT = 3  # the program name and the two output files
 # powershell.exe -File passes every argument as a string and cannot bind one to a [bool], so the
 # switches of provision.ps1 are integers.
 POWERSHELL_SWITCHES = {True: "1", False: "0"}
@@ -91,18 +94,29 @@ def placeholder_values(
         "GUEST_USERNAME": _required_text(record, "identity.account"),
         "GUEST_PASSWORD": _required_text(record, "identity.password"),
         "GUEST_HOSTNAME": _required_text(record, "identity.machine"),
-        "WORK_DIR": _required_text(record, "work_dir"),
-        "GUEST_IP": _required_text(record, "ip"),
-        "DEFENDER": _required_bool(record, "options.defender"),
-        "DECOYS": _required_bool(record, "options.decoys"),
-        "SYSMON": _required_bool(record, "options.sysmon"),
-        "FIREWALL_RULE_NAME": names["firewall_rule"],
-        "TASK_NAME": names["scheduled_task"],
-        "LOG_FILE": names["log_file"],
-        "DONE_MARKER": names["done_marker"],
         "CD_MARKER_FILE": names["cd_marker_file"],
         "FIRST_LOGON_DESCRIPTION": names["first_logon_description"],
     }
+
+
+def provision_parameters(record: Mapping[str, Any], names: Mapping[str, str]) -> dict[str, str]:
+    """The parameters of provision.ps1 other than -Media, keyed by their PowerShell names."""
+    return {
+        "WorkDir": _required_text(record, "work_dir"),
+        "GuestIp": _required_text(record, "ip"),
+        "Defender": _required_bool(record, "options.defender"),
+        "Decoys": _required_bool(record, "options.decoys"),
+        "Sysmon": _required_bool(record, "options.sysmon"),
+        "FirewallRuleName": names["firewall_rule"],
+        "TaskName": names["scheduled_task"],
+        "LogName": names["log_file"],
+        "DoneMarker": names["done_marker"],
+    }
+
+
+def provision_parameters_json(record: Mapping[str, Any], names: Mapping[str, str]) -> str:
+    # json.dumps escapes every non-ASCII character, so PowerShell 5 has no encoding to guess.
+    return json.dumps(provision_parameters(record, names), indent=2)
 
 
 def render_answer_file(
@@ -137,20 +151,24 @@ def _load(path: Path) -> dict[str, Any]:
 
 def main(argv: list[str]) -> int:
     if len(argv) != ARGUMENT_COUNT:
-        sys.stderr.write("usage: render_unattend.py <output file>\n")
+        sys.stderr.write("usage: render_unattend.py <answer file> <parameters file>\n")
         return 2
     profile_dir = Path(os.environ["TT_PROFILE_DIR"])
+    record = _load(Path(os.environ["TT_GUEST_JSON"]))
+    names = _load(profile_dir / NAMES_FILE)
     try:
-        text = render_answer_file(
+        answer_file = render_answer_file(
             (profile_dir / TEMPLATE_FILE).read_text(encoding="utf-8"),
-            _load(Path(os.environ["TT_GUEST_JSON"])),
-            _load(profile_dir / NAMES_FILE),
+            record,
+            names,
             _load(profile_dir / KEYBOARDS_FILE),
         )
+        parameters = provision_parameters_json(record, names)
     except RenderError as problem:
         sys.stderr.write(f"render_unattend: {problem}\n")
         return 1
-    _write_owner_only(Path(argv[1]), text)
+    _write_owner_only(Path(argv[1]), answer_file)
+    _write_owner_only(Path(argv[2]), parameters)
     return 0
 
 

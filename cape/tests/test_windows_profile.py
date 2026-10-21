@@ -33,15 +33,6 @@ ALL_PLACEHOLDERS = {
     "PRODUCT_KEY_BLOCK",
     "FIRST_LOGON_DESCRIPTION",
     "CD_MARKER_FILE",
-    "WORK_DIR",
-    "GUEST_IP",
-    "DEFENDER",
-    "DECOYS",
-    "SYSMON",
-    "FIREWALL_RULE_NAME",
-    "TASK_NAME",
-    "LOG_FILE",
-    "DONE_MARKER",
 }
 NAME_KEYS = {
     "done_marker",
@@ -473,15 +464,6 @@ def render_autounattend(names: dict[str, str], keyboards: dict[str, str], **over
         "GUEST_HOSTNAME": "DESKTOP-ABC1234",
         "FIRST_LOGON_DESCRIPTION": names["first_logon_description"],
         "CD_MARKER_FILE": names["cd_marker_file"],
-        "WORK_DIR": "C:\\ProgramData\\qwertyui",
-        "GUEST_IP": "192.168.150.100",
-        "DEFENDER": "1",
-        "DECOYS": "0",
-        "SYSMON": "1",
-        "FIREWALL_RULE_NAME": names["firewall_rule"],
-        "TASK_NAME": names["scheduled_task"],
-        "LOG_FILE": names["log_file"],
-        "DONE_MARKER": names["done_marker"],
     }
     key = overrides.pop("PRODUCT_KEY", "")
     values.update(overrides)
@@ -572,18 +554,14 @@ class TestAutounattendTemplate:
         assert description == [names["first_logon_description"]]
         assert len(command) == 1
         assert names["cd_marker_file"] in command[0]
-        for argument in (
-            "-WorkDir",
-            "-GuestIp",
-            "-Defender",
-            "-Decoys",
-            "-Sysmon",
-            "-FirewallRuleName",
-            "-TaskName",
-            "-LogName",
-            "-DoneMarker",
-        ):
-            assert argument in command[0], argument
+        assert command[0].endswith("provision.ps1 -Media %i:")
+
+    def test_the_first_logon_command_is_short_and_fixed_because_windows_10_skips_long_ones(
+        self, names, keyboards
+    ):
+        command = element_texts(parse(render_autounattend(names, keyboards)), "CommandLine")[0]
+        assert len(command) < 200
+        assert "-WorkDir" not in command
 
     def test_the_template_spells_out_none_of_the_names(self, names):
         template = (PROFILE_DIR / "autounattend.xml.tpl").read_text(encoding="utf-8").lower()

@@ -65,6 +65,7 @@ done
 [[ -e $output ]] && echo "iso-existed" >>"$STUB_DIR/calls"
 (cd "$source" && find . -type f | sort) >"$STUB_DIR/iso-listing"
 cp "$source/autounattend.xml" "$STUB_DIR/staged-autounattend.xml"
+cp "$source/provision/parameters.json" "$STUB_DIR/staged-parameters.json" 2>/dev/null
 : >"$output"
 STUB
     chmod +x "$SB/bin/"*
@@ -184,9 +185,19 @@ test_install_stages_what_first_logon_provisioning_reads_from_the_disc() {
     local marker expected
     marker=$(json_get "$PROFILE/names.json" cd_marker_file)
     for expected in ./autounattend.xml "./$marker" ./provision/provision.ps1 ./provision/defender-settings.ps1 \
-        ./provision/decoys.ps1 ./provision/sysmon-config.xml ./payload/agent.py ./payload/python-3.11.9.exe ./payload/Sysmon64.exe; do
+        ./provision/decoys.ps1 ./provision/sysmon-config.xml ./provision/parameters.json ./payload/agent.py ./payload/python-3.11.9.exe ./payload/Sysmon64.exe; do
         grep -qxF "$expected" "$STUB_DIR/iso-listing" || { echo "  the disc lacks $expected:"; cat "$STUB_DIR/iso-listing"; return 1; }
     done
+}
+
+test_install_stages_the_provisioning_parameters_from_the_guest_record_and_not_on_the_command_line() {
+    new_sandbox
+    appears_after 2
+    run_step install
+    assert_status 0 || return 1
+    grep -q '"WorkDir": "C:\\\\ProgramData\\\\abcdefgh"' "$STUB_DIR/staged-parameters.json" &&
+        grep -q '"DoneMarker": "setup.state"' "$STUB_DIR/staged-parameters.json" &&
+        ! grep -q -- "-WorkDir" "$STUB_DIR/staged-autounattend.xml"
 }
 
 test_install_renders_the_answer_file_from_the_guest_record() {

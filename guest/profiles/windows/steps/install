@@ -41,7 +41,7 @@ stage_answer_files() {
     local file
     rm -rf "$STAGING"
     install -d -m 700 "$STAGING" "$STAGING/provision" "$STAGING/payload"
-    python3 -I "$WINDOWS_STEPS_LIB/render_unattend.py" "$STAGING/autounattend.xml" \
+    python3 -I "$WINDOWS_STEPS_LIB/render_unattend.py" "$STAGING/autounattend.xml" "$STAGING/provision/parameters.json" \
         || fail "could not render the answer file"
     for file in "${PROVISION_FILES[@]}"; do
         cp "$TT_PROFILE_DIR/$file" "$STAGING/provision/$file" || fail "could not copy $file"

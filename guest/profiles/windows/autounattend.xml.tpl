@@ -5,7 +5,9 @@
      removable drive, so it rides on the second CD together with the provisioning payload. The
      LabConfig bypass keys are belt-and-braces: the domain already gives the guest a TPM 2.0 and
      Secure Boot, but build 26200's checker is stricter than the docs describe, so the bypass stops
-     a surprise hardware-check wall from failing the build. -->
+     a surprise hardware-check wall from failing the build. The first-logon command stays short on
+     purpose: Setup stores it in the RunOnce key, and Windows 10 silently skips a long one, so the
+     rest of provision.ps1's parameters travel in provision\parameters.json on the same disc. -->
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
   <settings pass="windowsPE">
     <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64"
@@ -163,7 +165,7 @@
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
           <Description>${FIRST_LOGON_DESCRIPTION}</Description>
-          <CommandLine>cmd /c for %i in (D E F G H I J K) do @if exist %i:\${CD_MARKER_FILE} powershell.exe -ExecutionPolicy Bypass -NoProfile -File %i:\provision\provision.ps1 -Media %i: -WorkDir "${WORK_DIR}" -GuestIp ${GUEST_IP} -Defender ${DEFENDER} -Decoys ${DECOYS} -Sysmon ${SYSMON} -FirewallRuleName "${FIREWALL_RULE_NAME}" -TaskName "${TASK_NAME}" -LogName "${LOG_FILE}" -DoneMarker "${DONE_MARKER}"</CommandLine>
+          <CommandLine>cmd /c for %i in (D E F G H I J K) do @if exist %i:\${CD_MARKER_FILE} powershell.exe -ExecutionPolicy Bypass -NoProfile -File %i:\provision\provision.ps1 -Media %i:</CommandLine>
         </SynchronousCommand>
       </FirstLogonCommands>
     </component>

@@ -1,7 +1,8 @@
 #requires -version 5
 <#
   First-logon provisioning of the guest, launched once by the answer file's FirstLogonCommands with
-  -Media set to the provisioning CD's drive letter. Every step is best-effort and logged to the
+  -Media set to the provisioning CD's drive letter; every other parameter is read from
+  provision\parameters.json on that CD. Every step is best-effort and logged to the
   log file inside WorkDir: a failed step is recorded, not retried, so the build report inherits an
   honest list of what went wrong.
 
@@ -12,18 +13,28 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)] [string] $Media,
-  [Parameter(Mandatory = $true)] [string] $WorkDir,
-  [string] $GuestIp = '192.168.150.10',
+  [string] $WorkDir,
+  [string] $GuestIp,
   [string] $Gateway = '192.168.150.1',
   [int]    $Prefix  = 24,
-  [int]    $Defender = 1,
-  [int]    $Decoys = 0,
-  [int]    $Sysmon = 0,
-  [Parameter(Mandatory = $true)] [string] $FirewallRuleName,
-  [Parameter(Mandatory = $true)] [string] $TaskName,
-  [Parameter(Mandatory = $true)] [string] $LogName,
-  [Parameter(Mandatory = $true)] [string] $DoneMarker
+  [int]    $Defender,
+  [int]    $Decoys,
+  [int]    $Sysmon,
+  [string] $FirewallRuleName,
+  [string] $TaskName,
+  [string] $LogName,
+  [string] $DoneMarker
 )
+
+# Windows 10 silently skips a long RunOnce command, so the parameters do not ride on the command line.
+$parametersPath = Join-Path $Media 'provision\parameters.json'
+$parameters = Get-Content -LiteralPath $parametersPath -Raw -Encoding UTF8 | ConvertFrom-Json
+foreach ($parameter in $parameters.PSObject.Properties) {
+  Set-Variable -Name $parameter.Name -Value $parameter.Value
+}
+foreach ($required in 'WorkDir', 'GuestIp', 'Defender', 'Decoys', 'Sysmon', 'FirewallRuleName', 'TaskName', 'LogName', 'DoneMarker') {
+  if ($null -eq $parameters.$required) { throw "$parametersPath has no $required" }
+}
 
 $ErrorActionPreference = 'Continue'
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
