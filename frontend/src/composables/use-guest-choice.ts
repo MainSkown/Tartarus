@@ -2,6 +2,7 @@ import { computed, ref, watch, type ComputedRef, type Ref, type WritableComputed
 import type { Guest } from '@/api'
 import { t } from '@/i18n'
 import { useGuestsStore } from '@/stores/guests'
+import { useQueueStore } from '@/stores/queue'
 
 export const AUTO_PACKAGE = 'auto'
 // Used only while the profiles are unavailable; the gui spec names these as the usual CAPE packages.
@@ -15,6 +16,8 @@ export interface GuestOption {
   disabled: boolean
   /** The guest's state, when that is what keeps it from being chosen. */
   reason?: string
+  /** It runs an analysis or has one queued, so a submission waits behind it. */
+  busy?: boolean
 }
 
 export interface GuestChoice {
@@ -35,6 +38,7 @@ export interface GuestChoice {
  */
 export function useGuestChoice(defaultGuest: Ref<string | null | undefined>): GuestChoice {
   const store = useGuestsStore()
+  const queue = useQueueStore()
   const listLoaded = ref(false)
   const picked = ref<string>()
   const packageName = ref(AUTO_PACKAGE)
@@ -63,6 +67,7 @@ export function useGuestChoice(defaultGuest: Ref<string | null | undefined>): Gu
         ramMb: guest.resources?.ram_mb,
         disabled: !ready,
         reason: ready ? undefined : guest.state,
+        busy: queue.guestBusy(guest.name),
       }
     }),
   )

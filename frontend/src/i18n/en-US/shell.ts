@@ -3,6 +3,16 @@ export default {
     wordmark: 'TARTARUS',
     reconnecting: 'Reconnecting…',
     submit: '+ SUBMIT',
+    queue: 'QUEUE {count}',
+  },
+  live: {
+    single: 'LIVE #{id} {clock}',
+    count: 'LIVE {count}',
+    menuLabel: 'Running analyses',
+    menuTitle: 'no analysis running | 1 analysis running | {count} analyses running',
+    item: '#{id} {filename}',
+    meta: '{guest} · {clock}',
+    noGuest: 'no guest',
   },
   nav: {
     dashboard: 'Dashboard',

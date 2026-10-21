@@ -16,6 +16,7 @@ export default {
     none: 'none ready',
     loading: 'loading…',
     unavailable: 'The guest list could not be loaded: the backend picks the default guest.',
+    busy: 'busy',
     openGuestVm: '[OPEN GUEST VM]',
   },
   route: {

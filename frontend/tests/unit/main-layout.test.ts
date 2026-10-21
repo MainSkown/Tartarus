@@ -14,6 +14,7 @@ const HEALTHY: SystemHealth = {
 }
 
 vi.mock('@/api', () => ({
+  systemQueue: () => Promise.resolve({ data: undefined }),
   systemHealth: vi.fn().mockResolvedValue({ data: undefined }),
   settingsRead: vi.fn().mockResolvedValue({ data: undefined, error: {} }),
   analysesList: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),

@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import type { HealthMessage, JobMessage } from '@/api'
+import type { HealthMessage, JobMessage, QueueMessage } from '@/api'
 import { JOB_STATUSES } from '@/services/job-status'
 
 export type WsConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed'
@@ -139,14 +139,14 @@ const HEALTH_COMPONENTS = ['postgres', 'opensearch', 'cape', 'guest'] as const
  * (`src/api/types.gen.ts`) only checks types at compile time and vanishes once the JSON is
  * parsed, so a malformed payload must be caught here instead of trusted with `as`.
  */
-export function parseHealthMessage(raw: unknown): HealthMessage | undefined {
+export function parseHealthMessage(raw: unknown): HealthPush | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
   const { type, ts, data } = raw as Record<string, unknown>
   if (type !== 'health' || typeof ts !== 'string') return undefined
   if (typeof data !== 'object' || data === null) return undefined
   const healthData = data as Record<string, unknown>
   if (!HEALTH_COMPONENTS.every((key) => hasComponentHealth(healthData, key))) return undefined
-  return raw as HealthMessage
+  return raw as HealthPush
 }
 
 function isJobProgress(value: unknown): boolean {
@@ -163,16 +163,31 @@ function isJobProgress(value: unknown): boolean {
 }
 
 /** Validates a `/ws/system` `job` push at runtime, for the same reason as `parseHealthMessage`. */
-export function parseJobMessage(raw: unknown): JobMessage | undefined {
+export function parseJobMessage(raw: unknown): JobPush | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
   const { type, job } = raw as Record<string, unknown>
-  return type === 'job' && isJobProgress(job) ? (raw as JobMessage) : undefined
+  return type === 'job' && isJobProgress(job) ? (raw as JobPush) : undefined
 }
 
-export type SystemMessage = HealthMessage | JobMessage
+/** Validates a `/ws/system` `queue` push at runtime, for the same reason as `parseHealthMessage`. */
+export function parseQueueMessage(raw: unknown): QueuePush | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const { type, data } = raw as Record<string, unknown>
+  if (type !== 'queue' || typeof data !== 'object' || data === null) return undefined
+  const snapshot = data as Record<string, unknown>
+  const isQueue = Array.isArray(snapshot.running) && Array.isArray(snapshot.queued) && typeof snapshot.queued_count === 'number'
+  return isQueue ? (raw as QueuePush) : undefined
+}
+
+// The generated types make `type` optional; the parsers always set it, so the socket's messages are tagged.
+type Tagged<Message, Tag extends string> = Message & { type: Tag }
+export type HealthPush = Tagged<HealthMessage, 'health'>
+export type JobPush = Tagged<JobMessage, 'job'>
+export type QueuePush = Tagged<QueueMessage, 'queue'>
+export type SystemMessage = HealthPush | JobPush | QueuePush
 
 function parseSystemMessage(raw: unknown): SystemMessage | undefined {
-  return parseHealthMessage(raw) ?? parseJobMessage(raw)
+  return parseHealthMessage(raw) ?? parseJobMessage(raw) ?? parseQueueMessage(raw)
 }
 
 export function createSystemClient(webSocketFactory?: WebSocketFactory): ReconnectingWebSocketClient<SystemMessage> {

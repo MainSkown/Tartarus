@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSystemClient, parseHealthMessage, parseJobMessage } from '@/services/ws'
-import type { HealthMessage, JobMessage } from '@/api'
+import { createSystemClient, parseHealthMessage, parseJobMessage, parseQueueMessage } from '@/services/ws'
+import type { HealthMessage, JobMessage, QueueMessage } from '@/api'
+
+const QUEUE_MESSAGE: QueueMessage = {
+  type: 'queue',
+  ts: '2026-10-21T10:00:00Z',
+  data: {
+    running: [{ id: 42, filename: 'invoice.exe', guest: 'lab1', status: 'running', started_at: '2026-10-21T09:59:00Z', elapsed_s: 60 }],
+    queued_count: 1,
+    queued: [{ id: 43, filename: 'macro.doc', guest: 'lab1', position: 1 }],
+  },
+}
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = []
@@ -267,5 +277,38 @@ describe('ReconnectingWebSocketClient close handlers', () => {
 
     FakeWebSocket.instances[0]!.close(1000)
     expect(codes).toEqual([])
+  })
+})
+
+describe('parseQueueMessage', () => {
+  it('accepts a well-formed queue message', () => {
+    expect(parseQueueMessage(QUEUE_MESSAGE)).toEqual(QUEUE_MESSAGE)
+  })
+
+  it('accepts an empty queue', () => {
+    const empty = { type: 'queue', ts: QUEUE_MESSAGE.ts, data: { running: [], queued_count: 0, queued: [] } }
+    expect(parseQueueMessage(empty)).toEqual(empty)
+  })
+
+  it('rejects a queue message whose lists are missing', () => {
+    expect(parseQueueMessage({ type: 'queue', ts: QUEUE_MESSAGE.ts, data: { queued_count: 0 } })).toBeUndefined()
+  })
+
+  it('rejects a queue message with a non-numeric count', () => {
+    expect(parseQueueMessage({ ...QUEUE_MESSAGE, data: { ...QUEUE_MESSAGE.data, queued_count: '1' } })).toBeUndefined()
+  })
+})
+
+describe('createSystemClient queue pushes', () => {
+  it('delivers a parsed queue message on the same socket', () => {
+    const client = createSystemClient(fakeFactory())
+    const received: unknown[] = []
+    client.subscribe((message) => received.push(message))
+
+    client.connect()
+    FakeWebSocket.instances[0]?.onopen?.()
+    FakeWebSocket.instances[0]?.serverPush(QUEUE_MESSAGE)
+
+    expect(received).toEqual([QUEUE_MESSAGE])
   })
 })

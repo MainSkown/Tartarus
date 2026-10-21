@@ -20,6 +20,10 @@ export default {
     submitSample: '[+ SUBMIT SAMPLE]',
   },
   showing: 'showing {shown} of {total}',
+  queue: {
+    forGuest: '{position} for {guest}',
+    position: 'position {position}',
+  },
   table: {
     file: 'FILE',
     sha256: 'SHA256',

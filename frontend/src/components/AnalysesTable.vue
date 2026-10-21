@@ -2,6 +2,7 @@
 import type { AnalysisRead } from '@/api'
 import AnalysisRowMenu from '@/components/AnalysisRowMenu.vue'
 import GuestChip from '@/components/GuestChip.vue'
+import QueuePosition from '@/components/QueuePosition.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagList from '@/components/TagList.vue'
@@ -87,6 +88,7 @@ function shaPrefix(sha256: string): string {
           </td>
           <td>
             <StatusBadge :status="analysis.status" />
+            <QueuePosition :analysis-id="analysis.id" />
           </td>
           <td class="col-numeric">
             <template v-if="analysis.score !== null">

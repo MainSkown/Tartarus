@@ -9,7 +9,9 @@ const guestsProfilesMock = vi.fn()
 vi.mock('@/api', () => ({
   guestsList: (...args: unknown[]) => guestsListMock(...args),
   guestsProfiles: (...args: unknown[]) => guestsProfilesMock(...args),
+  systemQueue: () => Promise.resolve({ data: { running: [], queued_count: 0, queued: [] } }),
 }))
+vi.mock('@/stores/system', () => ({ useSystemStore: () => ({ onQueue: () => () => undefined }) }))
 
 const { useGuestChoice, FALLBACK_PACKAGES } = await import('@/composables/use-guest-choice')
 const { useGuestsStore } = await import('@/stores/guests')

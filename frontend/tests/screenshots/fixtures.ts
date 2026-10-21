@@ -18,6 +18,7 @@ import type {
   FilterChip,
   HistogramRequest,
   QueryErrorRead,
+  QueueSnapshot,
   RuleDetail,
   RuleRead,
   SearchRequest,
@@ -64,6 +65,9 @@ function atPath(pathname: string): (url: URL) => boolean {
 const HEALTH_URL = atPath('/api/system/health')
 const SETTINGS_URL = atPath('/api/settings')
 const WS_SYSTEM_URL = atPath('/ws/system')
+const QUEUE_URL = atPath('/api/system/queue')
+
+export const EMPTY_QUEUE: QueueSnapshot = { running: [], queued_count: 0, queued: [] }
 
 // cape/guest have no backing service at all yet in this phase (no CAPE container, no guest
 // VM orchestration — see MainLayout.vue's deferred-items comment), so "ok" for them is a state
@@ -95,22 +99,30 @@ export async function mockHealthGet(page: Page, health: SystemHealth = HEALTHY_S
  */
 export async function mockHealthWebSocket(
   page: Page,
-  options: { health?: SystemHealth; closeImmediately?: boolean } = {},
+  options: { health?: SystemHealth; queue?: QueueSnapshot; closeImmediately?: boolean } = {},
 ): Promise<void> {
   const health = options.health ?? HEALTHY_SYSTEM
+  const queue = options.queue ?? EMPTY_QUEUE
   await page.routeWebSocket(WS_SYSTEM_URL, (ws) => {
     if (options.closeImmediately) {
       void ws.close()
       return
     }
     ws.send(JSON.stringify({ type: 'health', ts: new Date().toISOString(), data: health }))
+    ws.send(JSON.stringify({ type: 'queue', ts: new Date().toISOString(), data: queue }))
   })
 }
 
+/** Serves `GET /api/system/queue`, the snapshot the queue store loads before any push. */
+export async function mockQueueGet(page: Page, queue: QueueSnapshot = EMPTY_QUEUE): Promise<void> {
+  await page.route(QUEUE_URL, (route) => route.fulfill({ json: queue }))
+}
+
 /** The combination every route under MainLayout needs: a GET snapshot plus a live WS push. */
-export async function mockShell(page: Page, health: SystemHealth = HEALTHY_SYSTEM): Promise<void> {
+export async function mockShell(page: Page, health: SystemHealth = HEALTHY_SYSTEM, queue: QueueSnapshot = EMPTY_QUEUE): Promise<void> {
   await mockHealthGet(page, health)
-  await mockHealthWebSocket(page, { health })
+  await mockQueueGet(page, queue)
+  await mockHealthWebSocket(page, { health, queue })
 }
 
 /**

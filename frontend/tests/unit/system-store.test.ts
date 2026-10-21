@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { HealthStatus, JobProgress, SystemHealth } from '@/api'
+import type { HealthStatus, JobProgress, QueueSnapshot, SystemHealth } from '@/api'
 import type { SystemMessage } from '@/services/ws'
 
 const REST_HEALTH: SystemHealth = {
@@ -13,6 +13,7 @@ const REST_HEALTH: SystemHealth = {
 
 const systemHealthMock = vi.fn()
 vi.mock('@/api', () => ({
+  systemQueue: () => Promise.resolve({ data: undefined }),
   systemHealth: (...args: unknown[]) => systemHealthMock(...args),
 }))
 
@@ -123,6 +124,20 @@ describe('useSystemStore', () => {
       store.$dispose()
     },
   )
+
+  it('hands queue pushes to whoever registered with onQueue, not to the health snapshot', async () => {
+    const store = useSystemStore()
+    await vi.waitFor(() => expect(store.health).toBeDefined())
+    const received: QueueSnapshot[] = []
+    store.onQueue((snapshot) => received.push(snapshot))
+
+    const snapshot: QueueSnapshot = { running: [], queued_count: 2, queued: [] }
+    pushHealth?.({ type: 'queue', ts: '2026-10-21T10:00:00Z', data: snapshot })
+
+    expect(received).toEqual([snapshot])
+    expect(store.health).toEqual(REST_HEALTH)
+    store.$dispose()
+  })
 
   it('exposes guest readiness and message for the Submit button', async () => {
     const store = useSystemStore()

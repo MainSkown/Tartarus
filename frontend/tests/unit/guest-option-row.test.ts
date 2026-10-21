@@ -22,4 +22,14 @@ describe('GuestOptionRow', () => {
     const wrapper = mount(GuestOptionRow, { props: { option: { ...READY, profileName: undefined } } })
     expect(wrapper.find('.guest-option-row__profile').exists()).toBe(false)
   })
+
+  it('marks a guest that is running or has a queued analysis as busy', () => {
+    const wrapper = mount(GuestOptionRow, { props: { option: { ...READY, busy: true } } })
+    expect(wrapper.find('.guest-option-row__busy').text()).toBe('busy')
+  })
+
+  it('shows no busy marker for a free guest', () => {
+    const wrapper = mount(GuestOptionRow, { props: { option: READY } })
+    expect(wrapper.find('.guest-option-row__busy').exists()).toBe(false)
+  })
 })

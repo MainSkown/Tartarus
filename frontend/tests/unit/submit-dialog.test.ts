@@ -18,6 +18,7 @@ const READY: SystemHealth = {
 const CREATED = { id: 7, filename: 'invoice.exe', status: 'queued', warnings: [] } as unknown as AnalysisCreated
 
 vi.mock('@/api', () => ({
+  systemQueue: () => Promise.resolve({ data: undefined }),
   analysesCreate: vi.fn(),
   analysesList: vi.fn(),
   settingsRead: vi.fn(),

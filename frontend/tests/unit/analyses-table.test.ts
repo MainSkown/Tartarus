@@ -1,10 +1,16 @@
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
-import { describe, expect, it } from 'vitest'
+import { createPinia } from 'pinia'
+import { describe, expect, it, vi } from 'vitest'
 import type { AnalysisRead } from '@/api'
 import AnalysesTable from '@/components/AnalysesTable.vue'
 import AnalysisRowMenu from '@/components/AnalysisRowMenu.vue'
 import { formatTimestamp } from '@/services/format-time'
+
+vi.mock('@/api', () => ({
+  systemQueue: () => Promise.resolve({ data: { running: [], queued_count: 0, queued: [] } }),
+}))
+vi.mock('@/stores/system', () => ({ useSystemStore: () => ({ onQueue: () => () => undefined }) }))
 
 const SUBMITTED_AT = new Date(2026, 9, 12, 14, 3).toISOString()
 
@@ -33,7 +39,7 @@ function analysis(overrides: Partial<AnalysisRead> = {}): AnalysisRead {
 }
 
 function mountTable(analyses: AnalysisRead[]) {
-  return mount(AnalysesTable, { global: { plugins: [Quasar] }, props: { analyses } })
+  return mount(AnalysesTable, { global: { plugins: [Quasar, createPinia()] }, props: { analyses } })
 }
 
 describe('AnalysesTable', () => {

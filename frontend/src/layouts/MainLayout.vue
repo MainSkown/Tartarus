@@ -3,11 +3,13 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import GuestHealthMenu from '@/components/guest/GuestHealthMenu.vue'
 import HealthDot from '@/components/HealthDot.vue'
+import LiveChip from '@/components/LiveChip.vue'
 import { useReportNotices } from '@/composables/use-report-notices'
 import { t, type MessageKey } from '@/i18n'
 import { useGuestBlockReason } from '@/services/guest-gate'
 import { openSubmitDialog } from '@/services/submit-dialog'
 import { useGuestsStore } from '@/stores/guests'
+import { useQueueStore } from '@/stores/queue'
 import { useSystemStore } from '@/stores/system'
 
 interface NavItem {
@@ -29,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const system = useSystemStore()
 const guests = useGuestsStore()
+const queue = useQueueStore()
 const route = useRoute()
 const drawerExpanded = ref(false)
 
@@ -103,9 +106,12 @@ useReportNotices()
           />
         </div>
 
-        <!-- Queue count, disk usage and the "LIVE #42 01:12" chip (gui spec "App shell") are
-             deferred: there is no queue/job backend and no disk-usage endpoint yet in this
-             phase. They are not faked here; they arrive with the milestones that back them. -->
+        <LiveChip />
+        <span class="header-queue text-mono text-gray">
+          {{ t('shell.header.queue', { count: queue.queuedCount }) }}
+        </span>
+
+        <!-- Disk usage (gui spec "App shell") is deferred: there is no disk-usage endpoint yet. -->
 
         <q-space />
 
@@ -209,6 +215,13 @@ useReportNotices()
   gap: var(--spacing-md);
 }
 
+.header-queue {
+  flex: none;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
 /* A <button> does not inherit font or line-height from its parent, so without these it sits
    at a different height from the plain HealthDots beside it. */
 .guest-health-trigger {
@@ -234,6 +247,14 @@ useReportNotices()
 
 .submit-btn {
   color: var(--blue-primary);
+  white-space: nowrap;
+}
+
+/* Below 640 px the queue count goes; the live chip and the health dots keep their room. */
+@media (max-width: 640px) {
+  .header-queue {
+    display: none;
+  }
 }
 
 .nav-list {

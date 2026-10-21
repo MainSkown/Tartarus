@@ -7,6 +7,7 @@ import type { AnalysisRead, SystemHealth } from '@/api'
 import AnalysisRowMenu from '@/components/AnalysisRowMenu.vue'
 
 vi.mock('@/api', () => ({
+  systemQueue: () => Promise.resolve({ data: undefined }),
   analysesList: vi.fn(),
   analysesRead: vi.fn(),
   analysesCreate: vi.fn(),
