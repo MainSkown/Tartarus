@@ -374,10 +374,23 @@ every guest, because the restart it causes reaches all of them.
 
 ### Supported guests
 
-Windows 11 25H2 x64 is the verified guest: the user's `Win11_25H2_Polish_x64_v2.iso` (Pro, build 26200,
-pl-PL) built and cloned. The Windows profile accepts Windows 10 22H2 media, but neither it nor another UI
-language has been run, and the GUI does not say so. Only the Polish names of
-Windows Security were seen (see Defender below).
+Two guests are verified, each built and cloned with its self-test: Windows 11 25H2 x64 from the user's
+`Win11_25H2_Polish_x64_v2.iso` (Pro, build 26200, pl-PL) and **Windows 10 22H2 x64 from
+`Win10_22H2_EnglishInternational_x64v1.iso`** (Pro, build 19045, en-GB; M10). The GUI does not say which is which
+beyond the edition name the media gave. What differs on Windows 10, found by building it:
+
+- Setup stores the first-logon command in the `RunOnce` key and **Windows 10 silently skips a long one**, so the
+  command carries only the media drive and `provision.ps1` reads its other parameters from `provision\parameters.json`
+  on the same disc.
+- Windows Security exposes its four switches **without an `AutomationId`** (Windows 11 gives all five `settingToggle`),
+  so the switches are found by toggle behaviour; Tamper Protection is the last on both versions.
+- Tamper Protection reads **off** on a fresh Windows 10 guest even with Defender on.
+- The first network connection opens the "Networks: allow your PC to be discoverable" prompt and, through INetSim's
+  fake page, an Edge window (a captive-portal check). Nothing answers them and neither blocks provisioning.
+- Windows' own English service names contain "Antivirus", which the giveaway scan allows (see Names and giveaways).
+- Not verified: a PowerShell sample on Windows 10 stalls the guest agent after the analyzer ends and the run loses
+  its Sysmon and Defender events (see [M10 findings](../plans/m10-guest-proofs.md)); the CAPE tag of every Windows
+  guest is still `win11`.
 
 ### Inputs (the Windows profile)
 
@@ -537,7 +550,7 @@ settled the old question of choosing per submission.
   with the guest's desktop, and `[CONTINUE]` runs the step again. Because the step reads the state first when
   it cannot operate the window, a switch the analyst made by hand is accepted (`RESULT toggle_skipped=...`)
   and still verified by flag and by file: real-time protection is checked and the test file is written (or
-  removed) as usual. A failed verification or proof (exit 20, 30) fails the build with the evidence. This path was not exercised for real.
+  removed) as usual. A failed verification or proof (exit 20, 30) fails the build with the evidence. This path ran for real on Windows 10 (M10): with the switch lookup forced to find nothing the build paused with the instructions and the desktop, the analyst switched Tamper Protection off by hand, and `[CONTINUE]` finished the step (before the state was read first, the same sequence looped).
 - **Defender on in a clone** of a Defender-off guest is the reverse step, `defender-on`: remove the policy
   keys, switch Tamper Protection on, require real-time protection and that the test file is removed. It
   passed on a real clone (`lab5` from the Defender-off `lab3`, 5.5 minutes, the toggle found by its Polish

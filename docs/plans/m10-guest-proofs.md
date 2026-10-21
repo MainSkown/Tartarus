@@ -6,9 +6,10 @@ RESTART. M10 adds no feature; what it finds becomes a fix (test-first, rule 2), 
 
 ## Status
 
-**Started 2026-10-21. Nothing built yet; the media scan is done.** The user supplied
+**Proofs Q0 to Q6 ran on 2026-10-21; Q0 to Q5 pass, Q6 passes with a finding.** The user supplied
 `data/iso/Win10_22H2_EnglishInternational_x64v1.iso` (one ISO for both ISO proofs), next to the verified
-`Win11_25H2_Polish_x64_v2.iso`.
+`Win11_25H2_Polish_x64_v2.iso`. Windows 10 needed four fixes before a build finished (F2, F3, F4, F6, all committed
+test-first); F1, F5, F7, F8, F9 and tasks 10.5b, 10.6 to 10.11 are open, see [Proof](#proof) and the findings.
 
 ### What the scan said (through `GET /api/guests/media`, the wizard's own inspector)
 
@@ -70,6 +71,34 @@ proves "English names" and not a third language; and 19041 is not proof of 22H2,
   Windows 10**, which is half of Q5. Windows 10 also shows `IsTamperProtected = False` before the step touches
   anything. Fix: task 10.5c. UI dump kept as a test fixture.
 
+- **F7, the panel headers on the build page are not aligned** (user report with a screenshot, 2026-10-21; the first
+  reading, ragged status chips, was wrong). The "STEPS" and "BUILD LOG" headers sit at slightly different heights, and
+  the [PAUSE FOLLOW] and [COPY LOG] buttons are not on the same baseline as their header text. A shared panel header
+  (title left, actions right, one height and baseline) should serve STEPS, DESKTOP and BUILD LOG, written once (rule 3).
+  Fixed with F1 (task 10.9) in the same screenshot round.
+
+- **F6, the manual Defender pause loops** (Q5, proven on the real guest `w10-q5`, 2026-10-21). With the switch lookup
+  forced to find nothing, `tamper-off` paused as designed. The user then switched Tamper Protection off by hand on the
+  desktop (`IsTamperProtected=False`, real-time protection off confirmed through the agent) and pressed CONTINUE
+  three times: each run paused again with the same instructions. Cause: CONTINUE re-runs `tamper-off.ps1` from the
+  top, which exits 10 at the same failed lookup before it ever reads `IsTamperProtected`, the language-independent
+  flag the step already trusts. The documented fallback therefore cannot complete in the case it exists for. Fix:
+  task 10.5d (read the state first and again when the lookup fails; pause only when the state is still wrong;
+  `defender-on` the same), proven by CONTINUE on this same clone with the broken lookup still in place.
+
+- **F8, a PowerShell sample on Windows 10 stalls the guest agent after the analyzer ends, and the run loses its
+  Sysmon and Defender events** (Q6, analyses 436 and 438 on `w10`, reproduced; 2026-10-21). The same `.ps1` sample
+  on the Windows 11 guest `lab1` (analysis 437) took 115 s, produced about 980 `capemon.api` events and exported
+  8,346 Sysmon and 12 Defender events. On Windows 10 it ran 232 s, produced about 25,500 `capemon.api` events (25 times
+  as many), and both exports ended `Read timed out` (120 s and 30 s against the agent on `:8000`). The self-test
+  analyses on the same Windows 10 guest (a benign `.exe`) exported 17 Sysmon events, so the log export itself works there.
+  Cause not known: the candidates are capemon's hooks looping inside Windows PowerShell 5.1 on 19045 (the AMSI
+  enumeration signature fired), a hung payload process starving the agent, or a slow `wevtutil`. The eb19828 fix
+  for an interactive analysis was the same symptom with a different trigger. Task 10.10 (spike).
+- **F9, a failed event-log export is silent** (same runs). The analysis ends `done` with no error and no Sysmon
+  events, and only the cape container's log says why. The analysis should record that an export failed and show
+  it, because an empty Sysmon lane otherwise reads as "nothing happened". Task 10.11.
+
 ## Spikes and proofs (all on the real stack; notes file each under `m10-notes/`)
 
 The engine runs one build or clone at a time and a build takes about 16 minutes, so the order is chosen to get the
@@ -108,6 +137,9 @@ single-file (one build at a time), so they run one after another, not in paralle
 | 10.5a | **F2 fix.** The first-logon command stays short (well under 260 characters with the longest identity, work-dir and rule-name values) and `provision.ps1` reads the rest of its parameters from a file on the answer disc, written by the same code that renders the answer file (one source of truth, rule 3) | S | none | tests first: the rendered `CommandLine` is under the limit for worst-case values, and the disc's parameter file round-trips every value `provision.ps1` takes; then a real Windows 10 build gets past `install` |
 | 10.5b | **F2 follow-up.** `install` fails early with a readable message when provisioning has not started a few minutes after the desktop is up (the work dir or the guest's agent is absent), instead of waiting 90 minutes. Together with F1 (10.9) so a stuck step never looks like a working one | S | 10.5a | a fake-agent test: no work dir after the grace period fails with that message; a slow but live provision does not |
 | 10.5c | **F3 fix.** The switches are found by toggle behaviour, not by `AutomationId`; the pick is a pure function (by name, else the last switch), tested against the Windows 10 dump and a Windows 11 shape with real PowerShell when `pwsh` exists | S | none | tests first (fail on the old `Find-TamperToggle`); then the paused `w10` build CONTINUEs and passes `tamper-off` on Windows 10 |
+| 10.5d | **F6 fix.** One pure decision (`switch`, `already there`, `pause`) from the toggle lookup and `IsTamperProtected`, shared by `tamper-off.ps1` and `defender-on.ps1`: a missing window or switch no longer pauses when the state is already the wanted one, the verification and the file proof still run | S | 10.5c | tests first against the decision with real PowerShell; then CONTINUE on `w10-q5` with the broken lookup still in place passes |
+| 10.10 | **F8 spike.** What the guest is doing in the stall window of a PowerShell analysis on Windows 10 (CPU, the processes, the agent's state, capemon's hook counts), and whether it is capemon in PowerShell 5.1, a hung payload or the export. Ends in a cheapest fix or a recorded limit | S+ | none | the same sample on `w10` exports its Sysmon events after the fix, or the limit is written into the spec |
+| 10.11 | **F9.** A failed event-log export is recorded on the analysis and shown (a warning on the report and the Events tab), never silent | S | none | tests first: an export failure in the module's output reaches the analysis warnings |
 | 10.6 | Profile neutrality: `display_name`, the `win11` tag and the Win11-only defaults come from the media, not the profile | S | 10.1 | a unit test that a 19041 image registers a tag that says Windows 10 |
 | 10.7 | `verify-*` for what can be automated (the failure and RESUME path through the public API, the clone's Defender flip), `make` target | S | 10.3 | the check fails when the injection is left in |
 | 10.8 | Spec: supported-guests table, Defender section ("not exercised for real" removed), per-ISO differences, README note | H | 10.5 | `grep` for "not exercised" and "only Polish" finds nothing stale |
@@ -132,3 +164,20 @@ so they follow Q1/Q2 and share its window.
 | The injected failure leaves the engine in a state a real failure would not | The injection is a real non-zero exit from a real step, not a patched engine |
 | 22H2 vs another 19041 build | The guest's own `DisplayVersion` is recorded in the notes |
 | Disk | Delete throwaway guests and the memory dumps when each proof is recorded |
+
+## Proof
+
+All on the real stack (2026-10-21), notes in [m10-notes/](m10-notes/).
+
+| ID | Result |
+|---|---|
+| Q0 | PASS. `docker cp` of a modified step into the running `tartarus-cape` container (reverted, never committed); a real non-zero exit fails the build with the step's output on the page (`symbols`, build `b07a66ed4987a`) |
+| Q1 | PASS after F2, F3. `w10` (Windows 10 Pro 22H2, 19045.2965, en-GB, Defender off): `tamper-off` found the English switch by name (`toggle_name=Tamper Protection`), `IsTamperProtected=False`, real-time off, EICAR survived write and scan. A clean rebuild with all fixes and no injection ended `ready`, self-test passed (build `bd29234d12861`) |
+| Q2 | PASS. RESUME after the injected `symbols` failure restarted at `symbols`, not `install`, and the build reached `snapshot` and `register`; the guest then failed its self-test on F4, fixed and re-proven by the clean rebuild |
+| Q3 | PASS. `w10-on`, a clone of `w10` with Defender on: `defender-on` found the switch by its English name, `IsTamperProtected=True`, real-time on, EICAR removed, self-test passed, 5 minutes |
+| Q4 | PASS. A full Windows 10 build `w10b` (Defender on) failed at `provision` after the install (the injected file lacked the execute bit, so the engine said "not found or not executable" and not the step's own output); RESTART ran `preflight` again ("removing the domain left by an earlier attempt"), reinstalled, `ready`, self-test passed |
+| Q5 | PASS after F6. The pause appeared twice on Windows 10, once by itself (F3) and once forced; the user switched Tamper Protection off by hand on the desktop and CONTINUE looped three times until F6; with the fix and the lookup still broken CONTINUE logged `toggle=not-found`, `toggle_skipped=tamper-protection-already-off` and the whole verification and file proof |
+| Q6 | PASS with findings. The self-tests and a benign `.exe` produce capemon, network and Sysmon events on Windows 10. A `.ps1` sample loses its Sysmon and Defender export (F8, F9) |
+
+What the user's two checks became: the ISO is Windows 10 (19045.2965, `DisplayVersion` 22H2) and English is **en-GB**.
+Left in place: `w10` (Defender off) and `w10b` (Defender on). The clones `w10-on` and `w10-q5` were deleted.
