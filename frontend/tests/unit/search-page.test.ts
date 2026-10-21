@@ -78,6 +78,13 @@ describe('SearchPage', () => {
     expect(wrapper.text()).toContain(t('search.table.analysis'))
   })
 
+  it('puts the analysis column right after the time, where it stays in view', async () => {
+    searchAcrossAnalysesMock.mockResolvedValue({ data: ANSWER, error: undefined, response: { status: 200 } })
+    const { wrapper, query } = await mountSearch()
+    await applyQuery(query, 'process.name:cmd.exe')
+    expect(wrapper.find('.event-table__grid').classes()).toContain('is-end-after-time')
+  })
+
   it('says no event matches when the search finds nothing', async () => {
     searchAcrossAnalysesMock.mockResolvedValue({
       data: { events: [], total: 0, next_cursor: null },

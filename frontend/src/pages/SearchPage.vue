@@ -61,6 +61,7 @@ watch(
         :error="error?.message"
         :load-more-error="loadMoreError"
         :end-column="t('search.table.analysis')"
+        end-column-position="after-time"
         @toggle-sort="toggleSort"
         @load-more="loadMore"
         @retry="retry"

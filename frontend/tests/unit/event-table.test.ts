@@ -23,6 +23,7 @@ interface Props {
   error?: string
   loadMoreError?: string
   endColumn?: string
+  endColumnPosition?: 'last' | 'after-time'
 }
 
 const EVENTS: Event[] = [
@@ -314,13 +315,13 @@ describe('the first page replaced', () => {
 })
 
 describe('the end column', () => {
-  function mountWithEndColumn(endColumn?: string) {
+  function mountWithEndColumn(endColumn?: string, endColumnPosition?: Props['endColumnPosition']) {
     const pinia = createPinia()
     setActivePinia(pinia)
     return mount(EventTable, {
       attachTo: document.body,
       global: { plugins: [Quasar, pinia] },
-      props: { events: EVENTS, total: 3, loading: false, loadingMore: false, hasMore: false, sort: '@timestamp', selectedId: null, filtered: false, endColumn },
+      props: { events: EVENTS, total: 3, loading: false, loadingMore: false, hasMore: false, sort: '@timestamp', selectedId: null, filtered: false, endColumn, endColumnPosition },
       slots: { end: ({ item }: { item: Event }) => h('a', { href: `/analyses/${item.id}` }, `open ${item.id}`) },
     })
   }
@@ -330,6 +331,20 @@ describe('the end column', () => {
       .findAll('[role="columnheader"]')
       .map((header) => header.text().replace(/arrow_\w+/, ''))
     expect(headers.slice(0, 7)).toEqual(['TIME', 'LANE', 'PROCESS', 'ACTION', 'SUMMARY', 'SEVERITY', 'ANALYSIS'])
+  })
+
+  function trackList(wrapper: ReturnType<typeof mountWithEndColumn>): string[] {
+    return (wrapper.find('.event-table__grid').element as HTMLElement).style.getPropertyValue('--event-columns').split(' ')
+  }
+
+  it('goes last among the columns by default', () => {
+    expect(trackList(mountWithEndColumn('ANALYSIS'))[1]).toBe('2rem')
+  })
+
+  it('sits right after the time column when asked, so the view shows it without scrolling', () => {
+    const wrapper = mountWithEndColumn('ANALYSIS', 'after-time')
+    expect(trackList(wrapper).slice(0, 2)).toEqual(['6.2rem', '14rem'])
+    expect(wrapper.findAll('.event-table__end')).toHaveLength(EVENTS.length + 1)
   })
 
   it('fills each row with what the slot renders for that row', () => {

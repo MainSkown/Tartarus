@@ -41,6 +41,8 @@ const props = defineProps<{
   loadMoreError?: string
   /** Header of an extra column that the parent fills through the `end` slot, one cell per row. */
   endColumn?: string
+  /** Where the extra column sits: after the default columns, or right after the time column. */
+  endColumnPosition?: 'last' | 'after-time'
 }>()
 defineSlots<{ end?: (props: { item: T }) => unknown }>()
 const emit = defineEmits<{
@@ -63,12 +65,20 @@ const ascending = computed(() => props.sort === '@timestamp')
 
 const extraColumns = computed(() => columns.chosen.map((field) => ({ field, label: field.toUpperCase() })))
 const endColumnCount = computed(() => (props.endColumn === undefined ? 0 : 1))
+const endAfterTime = computed(() => props.endColumnPosition === 'after-time')
+const showsEndAfterTime = computed(() => endAfterTime.value && props.endColumn !== undefined)
 const extraColumnCount = computed(() => extraColumns.value.length + endColumnCount.value)
 const HEAD_END_REM = 2.25
 const gridColumns = computed(() => {
   const { time, lane, process, action, summary, severity } = DEFAULT_COLUMN_REMS
-  const extras = Array.from({ length: extraColumnCount.value }, () => `${EXTRA_COLUMN_REM}rem`)
-  return [`${time}rem`, `${lane}rem`, `${process}rem`, `${action}rem`, `minmax(${summary}rem, 1fr)`, `${severity}rem`, ...extras, `${HEAD_END_REM}rem`].join(' ')
+  const timeTrack = `${time}rem`
+  const otherDefaultTracks = [`${lane}rem`, `${process}rem`, `${action}rem`, `minmax(${summary}rem, 1fr)`, `${severity}rem`]
+  const endTracks = Array.from({ length: endColumnCount.value }, () => `${EXTRA_COLUMN_REM}rem`)
+  const extraTracks = Array.from({ length: extraColumns.value.length }, () => `${EXTRA_COLUMN_REM}rem`)
+  const defaultTracks = endAfterTime.value
+    ? [timeTrack, ...endTracks, ...otherDefaultTracks]
+    : [timeTrack, ...otherDefaultTracks, ...endTracks]
+  return [...defaultTracks, ...extraTracks, `${HEAD_END_REM}rem`].join(' ')
 })
 const gridMinWidth = computed(() => {
   const fixed = Object.values(DEFAULT_COLUMN_REMS).reduce((sum, width) => sum + width, 0)
@@ -174,7 +184,7 @@ watch(
         >
           <div
             class="event-table__grid"
-            :class="{ 'is-stale': isStale }"
+            :class="{ 'is-stale': isStale, 'is-end-after-time': showsEndAfterTime }"
             :style="{ '--event-columns': gridColumns, '--event-min-width': gridMinWidth }"
             role="grid"
             tabindex="0"
@@ -220,6 +230,7 @@ watch(
               </div>
               <div
                 v-if="endColumn"
+                class="event-table__end"
                 role="columnheader"
               >
                 {{ endColumn }}
@@ -261,7 +272,7 @@ watch(
                 <span />
                 <span
                   v-if="endColumn"
-                  class="skeleton"
+                  class="skeleton event-table__end"
                 />
                 <span
                   v-for="column in extraColumns"
@@ -329,7 +340,7 @@ watch(
                   /></span>
                   <span
                     v-if="endColumn"
-                    class="event-row__text"
+                    class="event-row__text event-table__end"
                     role="gridcell"
                     data-column="end"
                   ><slot
@@ -447,6 +458,12 @@ watch(
 .event-table__grid.is-stale .event-table__list {
   opacity: 0.45;
   transition: opacity var(--transition-fast);
+}
+
+/* Time and the end column share order -1, so they lead in document order: time, then the end column, then the rest. */
+.event-table__grid.is-end-after-time .event-table__line > :first-child,
+.event-table__grid.is-end-after-time .event-table__end {
+  order: -1;
 }
 
 .event-table__line {

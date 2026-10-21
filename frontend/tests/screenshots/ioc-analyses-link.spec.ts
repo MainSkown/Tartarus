@@ -112,6 +112,8 @@ test.describe('IOC view (artifacts)', () => {
     await expect(rowOf(page, 'time.windows.com').locator(CHIP)).toHaveText(/Seen in 1 analysis$/)
     await expect(rowOf(page, 'tartarus-selftest.example').locator(CHIP)).toHaveText(/Seen in 14 analyses$/)
     await expect(rowOf(page, MUTEX).locator(`${CHIP}, ${FAILED}`)).toHaveCount(0)
+    const chipBox = await rowOf(page, 'time.windows.com').locator(CHIP).boundingBox()
+    expect(chipBox?.height ?? 0, 'the chip is taller than a row line').toBeLessThanOrEqual(20)
     await shoot(page, 'view-chips')
   })
 
@@ -122,6 +124,11 @@ test.describe('IOC view (artifacts)', () => {
     await expect(page.locator('.ioc-analyses__menu')).toBeVisible()
     await expect(page.locator('.ioc-analyses__menu .q-item')).toHaveCount(14)
     await waitForTransitions(page)
+    const menu = await page.locator('.ioc-analyses__popup').boundingBox()
+    expect(menu?.y ?? -1, 'the menu opens clipped above the viewport').toBeGreaterThanOrEqual(0)
+    const last = page.locator('.ioc-analyses__menu .q-item').last()
+    await last.scrollIntoViewIfNeeded()
+    await expect(last).toBeInViewport()
     await shoot(page, 'view-menu-open')
   })
 

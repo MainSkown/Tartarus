@@ -41,6 +41,7 @@ const seenIn = computed(() => (state.value.status === 'seen' ? state.value.analy
     <q-menu
       anchor="bottom left"
       self="top left"
+      class="ioc-analyses__popup"
     >
       <q-list
         dense
@@ -67,11 +68,26 @@ const seenIn = computed(() => (state.value.status === 'seen' ? state.value.analy
 
 <style scoped>
 .ioc-analyses__chip {
+  flex: none;
+  height: 20px;
+  min-height: 0;
   margin-left: var(--spacing-xs);
   padding: 0 var(--spacing-xs);
   border: 1px solid var(--border-secondary);
   color: var(--blue-light);
   font-size: 0.7rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.ioc-analyses__chip :deep(.q-btn__content) {
+  line-height: 1;
+}
+
+/* Quasar places the menu on the side with room; the list scrolls inside it, so all analyses stay reachable. */
+.ioc-analyses__popup {
+  max-height: min(45vh, 360px);
+  overflow-y: auto;
 }
 
 .ioc-analyses__failed {
