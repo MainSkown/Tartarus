@@ -3,9 +3,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page } from '@
 // The image the stack's data/iso holds; the wizard lists it by file name.
 const POLISH_ISO = 'Win11_25H2_Polish_x64_v2.iso'
 const GUEST = 'e2e-wizard'
-const TAKEN_NAME = 'win'
 const NAME_RULE = 'Use 2 to 32 lower-case letters, digits or hyphens, starting with a letter'
-const TAKEN_MESSAGE = 'Another guest is already called win'
 const GIVEAWAY_MESSAGE = "contains 'sandbox', which tells a sample what the machine is"
 const GIVEAWAY_COMPUTER_NAME = 'sandbox-1'
 const RANDOM_PLACEHOLDER = 'chosen at build time'
@@ -66,7 +64,11 @@ async function removeWizardGuest(request: APIRequestContext): Promise<void> {
 
 test('the wizard builds a guest, a cancelled build ends failed and the guest is deleted', async ({ page, request }) => {
   test.setTimeout(TEST_TIMEOUT_MS)
-  const originalGuests = summaryOf(await guestsOrFail(request))
+  const existingGuests = await guestsOrFail(request)
+  const originalGuests = summaryOf(existingGuests)
+  expect(existingGuests, 'the stack has no guest, so there is no name to find taken').not.toHaveLength(0)
+  const takenName = existingGuests[0]!.name
+  const takenMessage = `Another guest is already called ${takenName}`
   expect(await wizardGuest(request), `a guest named ${GUEST} already exists; this spec does not delete a guest it did not start. Remove it with DELETE /api/guests/${GUEST} and run again`).toBeUndefined()
 
   try {
@@ -91,12 +93,12 @@ test('the wizard builds a guest, a cancelled build ends failed and the guest is 
       await expect(page.getByText(NAME_RULE)).toBeVisible()
       await expect(continueButton(page)).toBeDisabled()
 
-      await name.fill(TAKEN_NAME)
-      await expect(page.getByText(TAKEN_MESSAGE)).toBeVisible()
+      await name.fill(takenName)
+      await expect(page.getByText(takenMessage)).toBeVisible()
       await expect(continueButton(page)).toBeDisabled()
 
       await name.fill(GUEST)
-      await expect(page.getByText(TAKEN_MESSAGE)).toHaveCount(0)
+      await expect(page.getByText(takenMessage)).toHaveCount(0)
       await expect(continueButton(page)).toBeEnabled()
 
       await page.getByRole('switch', { name: /Microsoft Defender/ }).click()

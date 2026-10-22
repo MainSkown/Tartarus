@@ -3,7 +3,10 @@
 # Expects the caller to have cd'd to the repository root.
 
 TERMINAL_STATES="done failed report_failed cancelled"
-DEFAULT_OPTIONS='{}'
+# E2E_GUEST pins every run to one guest: the default is the idle one, which on a host with a
+# Windows 10 and a Windows 11 guest is whichever answered last.
+DEFAULT_OPTIONS=${E2E_GUEST:+"{\"guest\":\"$E2E_GUEST\"}"}
+DEFAULT_OPTIONS=${DEFAULT_OPTIONS:-'{}'}
 POLL_SECONDS=${E2E_POLL_SECONDS:-2}
 # How long cleanup waits for an analysis that is still running: the longest a default run takes.
 CLEANUP_WAIT_SECONDS=${E2E_CLEANUP_WAIT:-300}
