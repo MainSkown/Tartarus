@@ -161,7 +161,7 @@ Plan: [m11-hardening-and-release.md](m11-hardening-and-release.md).
 1. **Security review** of the backend (it parses untrusted report data), the control service, the cape container
    and the compose network layout; findings fixed or recorded.
 2. **CI on GitHub Actions:** lint, types, the unit suites of backend, cape and frontend, the integration suite,
-   the screenshot harness; a status badge in the README.
+   (the screenshot harness stays a local check: too slow for CI); a status badge in the README.
 3. **Docs cleanup:** `docs/plans/**` to `docs/history/` with an index; new top-level docs for users (install,
    first analysis, building a guest, reading a report, backup and disk use, troubleshooting) and contributors
    (architecture overview, running the tests, the rules in `.claude/CLAUDE.md` in plain language, how to add a

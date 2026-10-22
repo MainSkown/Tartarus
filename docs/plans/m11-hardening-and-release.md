@@ -28,7 +28,7 @@ A to C run in parallel with D1 prep only if disjoint; E needs the logo (user).
 |---|---|---|
 | A1 | Fix the 50 failing screenshot specs: add the unmocked `/api/iocs/*/analyses` routes, replace the "not implemented yet" assertion, mock export/report toasts in `artifacts`, `export-menu`, `report-dialog`, `filter-on`, `submit-memory`, `timeline`, `events`, `shell`, `placeholders`. Mocks/assertions only; if a spec fails for a real UI bug, fix test-first | Haiku, per spec group |
 | A2 | Make the harness CI-ready: no dependence on `data/`, a running stack or a display | Sonnet |
-| B1 | `.github/workflows/ci.yml`: jobs `backend` (ruff, ruff format --check, mypy, `pytest -m "not integration"`), `backend-integration` (Docker is on hosted runners), `cape-unit` (`make test-cape`), `frontend` (eslint, vue-tsc, vitest, i18n key test), `screenshots` (Playwright, browsers cached), `compose-smoke` (`make smoke`, `MODE=static`); concurrency cancel, uv and npm caches; `make e2e`/`verify-*` stay manual (no nested KVM) | Sonnet |
+| B1 | `.github/workflows/ci.yml`: jobs `backend` (ruff, ruff format --check, mypy, `pytest -m "not integration"`), `backend-integration` (Docker is on hosted runners), `cape-unit` (`make test-cape`), `frontend` (eslint, vue-tsc, vitest, i18n key test), `compose-smoke` (`make smoke`, `MODE=static`); concurrency cancel, uv and npm caches; `make e2e`/`verify-*` stay manual (no nested KVM) | Sonnet |
 | B2 | README badge; `docs` note that the real-guest checks are manual | Haiku |
 | C1 | Backend: untrusted report parsing (CAPE JSON, Sysmon EVTX, Defender log, PCAP/memory import, ZIP/upload handling, filename and path handling, size limits, query compiler and Sigma input, SSRF-ish fetches, report/PDF HTML escaping) | Sonnet, `security-review` + `code-review` |
 | C2 | Control service and cape container: token check (constant time), command construction, path inputs, privileges, what the privileged container exposes | Sonnet, extra care |
@@ -61,7 +61,7 @@ A to C run in parallel with D1 prep only if disjoint; E needs the logo (user).
 | CI is only provable after a push | Work on a branch; B1 iterates until green before merging |
 | Docs move breaks links in code comments | D1 link-check script; run in CI |
 | A security finding needs design change | Record in `docs/security.md`, ask the user before expanding scope |
-| Hosted runners lack disk/time for screenshots or integration containers | Split jobs; OpenSearch heap tuned; fall back to unit-only and record |
+| Hosted runners lack disk for the integration containers | Split jobs; OpenSearch disk watermarks off in the test container; the screenshot harness (about 20 minutes) stays local, out of CI |
 | Agents over-report (seen in M6) | I re-run each gate and read the diff before committing |
 
 ## Proof

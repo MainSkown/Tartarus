@@ -53,7 +53,7 @@ is what lets the backend, and nothing else, ask the `cape` container to build an
 For development with hot reload, use `make dev` instead (frontend on `127.0.0.1:5173`, backend
 and its API docs on `127.0.0.1:8000`). Database migrations run when the backend starts.
 
-CI (GitHub Actions) runs the lint, type, unit, integration and screenshot checks on every push and pull request; the checks that need a real guest (`make build-guest`, `verify-*`, `e2e`) are run by hand, since hosted runners have no nested KVM.
+CI (GitHub Actions) runs the lint, type, unit, integration and compose-smoke checks on every push (the screenshot harness is local: `make screenshots`); the checks that need a real guest (`make build-guest`, `verify-*`, `e2e`) are run by hand, since hosted runners have no nested KVM.
 
 `make check` runs everything (lint, unit and integration tests, screenshots) and needs `uv` and
 Node 24 or newer on the host. `make smoke` checks the compose files' safety rules without
