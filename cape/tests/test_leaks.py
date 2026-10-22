@@ -105,6 +105,6 @@ def test_a_running_child_is_seen_and_a_finished_one_is_not(tmp_path):
 
 def test_a_thread_that_exits_while_the_listing_is_read_is_not_an_error(tmp_path, monkeypatch):
     gone = tmp_path / "exited-thread" / "children"
-    monkeypatch.setattr(Path, "glob", lambda self, pattern: iter([gone]))
+    monkeypatch.setattr(Path, "glob", lambda *_: iter([gone]))
 
     assert not has_child_processes()
