@@ -35,8 +35,8 @@ lint: ## Run ruff, mypy, eslint and the TypeScript check
 	cd backend && uv run ruff check
 	cd backend && uv run ruff format --check
 	cd backend && uv run mypy app
-	cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
-	cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
+	cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
+	cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
 	cd frontend && npm run lint
 	cd frontend && npm run typecheck
 
@@ -66,7 +66,7 @@ build-guest: ## Build the Windows analysis guest unattended and register it with
 verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; needs make build-guest first)
 	scripts/verify-guest.sh
 
-verify-isolation: ## Prove two running guests cannot reach each other but both reach the gateway: make verify-isolation GUESTS="lab1 lab5" (needs the stack up and two ready guests; starts them by snapshot revert)
+verify-isolation: ## Prove a guest reaches only what its route allows (not the compose networks, the LAN, guacd, the control service, the other guest, even from an address it invented or through the gateway) on every route: make verify-isolation GUESTS="lab1 lab5" (needs the stack up and two ready guests; starts them by snapshot revert)
 	scripts/verify-isolation.sh $${GUESTS:?GUESTS="labelA labelB"}
 
 verify-wizard: ## Prove the guest wizard's path through the public API: clone a ready guest, check the gates, run an analysis on it, delete it (about 6 minutes; needs the stack up and a ready guest)

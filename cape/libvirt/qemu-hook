@@ -1,0 +1,5 @@
+#!/bin/sh
+# libvirt runs this for every event of every QEMU domain: $1 is the domain, $2 the event, and the
+# domain XML is on stdin. It must not call back into libvirt: for these events libvirt holds the
+# domain, so guest-firewall works from the XML alone.
+exec python3 -I /usr/local/lib/tartarus/guest-firewall hook "$@"

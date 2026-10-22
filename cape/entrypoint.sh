@@ -88,6 +88,9 @@ CAPE_INTERNAL_IP=$(address_on_network "$INTERNAL_NETWORK_ALIAS")
 CAPE_INTERNAL_IFACE=$(interface_with_address "$CAPE_INTERNAL_IP")
 CAPE_CONTROL_IP=$(address_on_network "$CONTROL_NETWORK_ALIAS")
 derive_guest_addresses
+# Before anything else starts: a guest must never run with only the rooter's rules between it and the
+# container. A failure here stops the container (set -e).
+python3 -I /usr/local/lib/tartarus/guest-firewall init
 install -m 0644 "$TEMPLATES/libvirtd.conf" /etc/libvirt/libvirtd.conf
 render_inetsim_config
 render_cape_guest_network_overrides

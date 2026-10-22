@@ -170,6 +170,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc-mingw-w64-x
     && rm -rf /var/lib/apt/lists/*
 
 COPY cape/libvirt/qemu.conf /etc/libvirt/qemu.conf
+# libvirt reads its hooks directory once, at start; the hook binds each started guest's port (guest-firewall).
+COPY cape/libvirt/qemu-hook /etc/libvirt/hooks/qemu
+RUN chmod 0755 /etc/libvirt/hooks/qemu
 COPY cape/supervisord.conf /etc/supervisor/conf.d/cape.conf
 COPY cape/templates/ /usr/local/lib/tartarus/templates/
 COPY cape/bin/ /usr/local/lib/tartarus/

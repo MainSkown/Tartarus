@@ -1,0 +1,133 @@
+#!/usr/bin/python3
+"""Applies and maintains the guest firewall (guest_engine/firewall.py) inside the cape container.
+
+    guest-firewall init                              entrypoint: find the networks, bind no guest
+    guest-firewall hook DOMAIN EVENT SUBEVENT EXTRA  libvirt's qemu hook; the domain XML is on stdin
+
+`init` keeps the policy it found under /run so the hook, which libvirtd starts without the
+entrypoint's environment, applies the same one. A failure exits non-zero: the entrypoint then
+stops the container instead of leaving guests with the rooter's rules alone.
+"""
+
+import fcntl
+import ipaddress
+import os
+import sys
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+# `python3 -I` does not put the script's directory on the path. The image lays guest_engine/ next
+# to the scripts; in the repository it sits one level up, beside bin/.
+SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+sys.path[:0] = [SCRIPT_DIRECTORY, os.path.dirname(SCRIPT_DIRECTORY)]
+
+from guest_engine.config import DEFAULT_SUBNET, EngineConfig  # noqa: E402
+from guest_engine.firewall import (  # noqa: E402
+    FirewallPolicy,
+    GuestFirewall,
+    PortLedger,
+    load_policy,
+    policy_for,
+    store_policy,
+)
+from guest_engine.media import Runner, run_command  # noqa: E402
+from guest_engine.registry import Registry  # noqa: E402
+
+BRIDGE = "tt-guest"
+FAILED = 1
+USAGE_ERROR = 2
+HOOK_ARGUMENTS = 2  # the domain and the event; libvirt passes two more that are not used
+
+
+@dataclass(frozen=True)
+class Paths:
+    state: Path
+    registry: Path
+    rules: Path
+
+    @property
+    def ports(self) -> Path:
+        return self.state / "ports"
+
+
+@dataclass(frozen=True)
+class Container:
+    """What the command reads from the container it runs in, so a test can stand in for it."""
+
+    paths: Paths
+    runner: Runner
+    routes: Callable[[], str]
+    environ: Mapping[str, str]
+
+
+DEFAULT_STATE = Path("/run/tartarus/guest-firewall")
+
+
+def _routes_of_this_container() -> str:
+    return run_command(["ip", "-4", "-o", "route", "show"]).stdout
+
+
+def _firewall(policy: FirewallPolicy, container: Container) -> GuestFirewall:
+    paths = container.paths
+    return GuestFirewall(
+        policy=policy,
+        ledger=PortLedger(paths.ports),
+        registry=Registry(paths.registry),
+        runner=container.runner,
+        rules_file=paths.rules,
+    )
+
+
+def _initialise(container: Container) -> None:
+    policy = policy_for(container.environ, container.routes(), BRIDGE, DEFAULT_SUBNET)
+    store_policy(container.paths.state, policy)
+    container.paths.ports.mkdir(parents=True, exist_ok=True)
+    _firewall(policy, container).initialise()
+
+
+def _handle_hook(arguments: Sequence[str], domain_xml: str, container: Container) -> None:
+    domain, event = arguments[0], arguments[1]
+    policy = load_policy(container.paths.state)
+    _firewall(policy, container).hook(domain, event, domain_xml)
+
+
+def _is_usage_error(command: str, arguments: Sequence[str]) -> bool:
+    if command == "hook":
+        return len(arguments) < HOOK_ARGUMENTS
+    return command != "init"
+
+
+def main(arguments: Sequence[str], domain_xml: str, container: Container) -> int:
+    command, rest = (arguments[0], arguments[1:]) if arguments else ("", [])
+    if _is_usage_error(command, rest):
+        sys.stderr.write(__doc__ or "")
+        return USAGE_ERROR
+    container.paths.state.mkdir(parents=True, exist_ok=True)
+    try:
+        with (container.paths.state / "lock").open("a") as lock:
+            # Two guests starting together must not interleave their updates of the ledger.
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if command == "init":
+                _initialise(container)
+            else:
+                _handle_hook(rest, domain_xml, container)
+    except (OSError, ValueError, RuntimeError, ipaddress.AddressValueError) as error:
+        sys.stderr.write(f"guest-firewall: {error}\n")
+        return FAILED
+    return 0
+
+
+if __name__ == "__main__":
+    event_xml = sys.stdin.read() if sys.argv[1:2] == ["hook"] else ""
+    this_container = Container(
+        paths=Paths(
+            state=DEFAULT_STATE,
+            registry=EngineConfig().registry_root,
+            rules=DEFAULT_STATE / "rules.nft",
+        ),
+        runner=run_command,
+        routes=_routes_of_this_container,
+        environ=os.environ,
+    )
+    sys.exit(main(sys.argv[1:], event_xml, this_container))
