@@ -157,6 +157,7 @@ localized names of the Security window and the giveaway scan. What differs per I
 proof becomes a `verify-*` check where it can be automated.
 
 ### M11: Hardening and release
+Plan: [m11-hardening-and-release.md](m11-hardening-and-release.md).
 1. **Security review** of the backend (it parses untrusted report data), the control service, the cape container
    and the compose network layout; findings fixed or recorded.
 2. **CI on GitHub Actions:** lint, types, the unit suites of backend, cape and frontend, the integration suite,
