@@ -31,7 +31,7 @@ const LANE_STYLE: Record<string, LaneStyle> = {
 export const LANE_ORDER = Object.keys(LANE_STYLE)
 
 export function laneMeta(lane: string): LaneMeta {
-  const style = LANE_STYLE[lane]
+  const style = Object.hasOwn(LANE_STYLE, lane) ? LANE_STYLE[lane] : undefined
   if (style) return { label: t(style.labelKey), color: style.color, icon: style.icon }
   const neutral = LANE_STYLE.api!
   return { label: lane.toUpperCase(), color: neutral.color, icon: neutral.icon }

@@ -64,6 +64,7 @@ services:
       TZ: ${TZ:-UTC}
       ENVIRONMENT: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      TARTARUS_ALLOWED_HOSTS: ${TARTARUS_ALLOWED_HOSTS:-}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tartarus}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env (copy .env.example)}@postgres:5432/${POSTGRES_DB:-tartarus}
       OPENSEARCH_URL: http://opensearch:9200
       CAPE_API_URL: http://cape:8000

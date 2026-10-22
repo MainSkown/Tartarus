@@ -39,6 +39,9 @@ export default defineConfig(() => ({
 
   devServer: {
     host: '0.0.0.0',
+    // Vite already admits IP literals and localhost; pinning the list keeps a rebound DNS name out
+    // even if a future Vite default loosens. Docker publishes the port on 127.0.0.1 only.
+    allowedHosts: ['localhost'],
     port: devServerPort,
     open: false,
     proxy: {

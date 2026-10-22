@@ -16,6 +16,12 @@ describe('LaneIcon', () => {
     expect(wrapper.attributes('aria-hidden')).toBe('true')
   })
 
+  it.each(['constructor', 'toString', '__proto__'])('treats the Object.prototype member %s as an unknown lane', (lane) => {
+    const meta = laneMeta(lane)
+    expect(meta.label).toBe(lane.toUpperCase())
+    expect(meta.color).toBe('--cat-api')
+  })
+
   it('falls back to the neutral lane for a lane it does not know', () => {
     const wrapper = mount(LaneIcon, { global: { plugins: [Quasar] }, props: { lane: 'sysmon' } })
     expect(wrapper.attributes('style')).toContain('--cat-api')

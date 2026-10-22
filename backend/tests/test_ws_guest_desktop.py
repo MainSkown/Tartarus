@@ -14,7 +14,6 @@ from app.desktop.admission import (
 )
 from app.desktop.guacamole import Instruction, encode
 from app.guest.schemas import BuildProgress, GuestDisplay
-from app.main import create_app
 from app.ws.desktop import DesktopConfig, get_desktop_config, get_guest_build_control, router
 from tests.desktop.fake_guacd import OBSERVED_ARGS, FakeGuacd
 from tests.desktop.sockets import (
@@ -267,8 +266,7 @@ def test_the_browser_leaving_closes_the_connection_to_guacd(desk: BuildDesk) -> 
     desk.guacd.wait_for_disconnect()
 
 
-def test_the_route_is_wired_into_the_application() -> None:
-    app = create_app()
+def test_the_route_is_wired_into_the_application(app: FastAPI) -> None:
     app.dependency_overrides[get_guest_build_control] = lambda: StubGuestControl()  # noqa: PLW0108 - FastAPI would read the dataclass fields as parameters
     app.dependency_overrides[get_desktop_config] = lambda: DesktopConfig("127.0.0.1", 1)
 

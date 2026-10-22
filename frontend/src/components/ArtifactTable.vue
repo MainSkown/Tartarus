@@ -15,7 +15,7 @@ const props = defineProps<{ analysisId: number; artifacts: Artifact[]; showFamil
 const anyDownloadable = computed(() => props.artifacts.some((artifact) => artifact.downloadable))
 
 function downloadUrl(artifact: Artifact): string {
-  return `/api/analyses/${props.analysisId}/artifacts/${artifact.id}/download`
+  return `/api/analyses/${props.analysisId}/artifacts/${encodeURIComponent(artifact.id)}/download`
 }
 </script>
 

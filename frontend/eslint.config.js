@@ -23,6 +23,7 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
+      'vue/no-v-html': 'error',
     },
   },
 )

@@ -153,6 +153,11 @@ describe('GuestCard actions', () => {
     expect(button(wrapper, 'CLONE')!.attributes('href')).toBe('/guest/clone/lab1')
   })
 
+  it('encodes a guest name that is not a plain path segment in the CLONE link', async () => {
+    const { wrapper } = await mountCard({ guest: guestFixture({ name: 'a/b?c#d' }) })
+    expect(button(wrapper, 'CLONE')!.attributes('href')).toBe('/guest/clone/a%2Fb%3Fc%23d')
+  })
+
   it('shows progress and a link to the build for a building guest, with no checks and no delete', async () => {
     const guest = guestFixture({ name: 'lab4', state: 'building', build_id: 'b-lab4', identity: null, selftest: null })
     const { wrapper } = await mountCard({ guest, build: buildFixture() })

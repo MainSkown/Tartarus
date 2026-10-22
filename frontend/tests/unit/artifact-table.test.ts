@@ -76,6 +76,11 @@ describe('ArtifactTable', () => {
       expect(link.text()).toBe('[DOWNLOAD]')
     })
 
+    it('encodes an artifact id that is not a plain path segment', () => {
+      const link = mountTable([artifactFixture({ id: '../x?y#z' })]).find('a.download-link')
+      expect(link.attributes('href')).toBe('/api/analyses/45/artifacts/..%2Fx%3Fy%23z/download')
+    })
+
     it('says in a caption that the download is a zip with the password infected', () => {
       expect(mountTable([artifactFixture()]).find('.download-note').text()).toContain('infected')
     })

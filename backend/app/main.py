@@ -13,6 +13,7 @@ from app.analyses.summary import read_report
 from app.api import api_router
 from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
+from app.browser_guard import BrowserOriginGuard, SecurityHeaders
 from app.cape.client import CapeClient
 from app.cape.health import CapeCheck, CapeProbe
 from app.config import Settings, get_settings
@@ -153,6 +154,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(system_ws_router)
     app.include_router(desktop_ws_router)
     app.include_router(live_ws_router)
+    app.add_middleware(
+        BrowserOriginGuard,
+        allowed_hosts=lambda: (settings or get_settings()).allowed_hosts,
+    )
+    app.add_middleware(SecurityHeaders)
     return app
 
 

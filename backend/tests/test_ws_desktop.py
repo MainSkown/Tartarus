@@ -13,7 +13,6 @@ from app.desktop.admission import (
     CLOSE_NOT_FOUND,
 )
 from app.desktop.guacamole import Instruction, encode
-from app.main import create_app
 from app.ws.desktop import (
     DesktopConfig,
     get_analysis_lookup,
@@ -393,8 +392,7 @@ def test_binary_frames_from_the_browser_are_ignored(desk: Desk) -> None:
         desk.guacd.wait_for_opcode("nop")
 
 
-def test_the_route_is_wired_into_the_application() -> None:
-    app = create_app()
+def test_the_route_is_wired_into_the_application(app: FastAPI) -> None:
     app.dependency_overrides[get_analysis_lookup] = lambda: StubLookup()  # noqa: PLW0108 - FastAPI would read the class's fields as parameters
     app.dependency_overrides[get_task_viewer] = lambda: StubViewer()  # noqa: PLW0108
     app.dependency_overrides[get_desktop_config] = lambda: DesktopConfig("127.0.0.1", 1)

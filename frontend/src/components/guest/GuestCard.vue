@@ -240,7 +240,7 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
         square
         :label="t('guests.card.action.clone')"
         class="guest-card__action text-mono"
-        :to="`/guest/clone/${guest.name}`"
+        :to="`/guest/clone/${encodeURIComponent(guest.name)}`"
       />
       <q-btn
         v-if="actions.viewBuild"

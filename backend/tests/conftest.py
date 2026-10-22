@@ -15,6 +15,7 @@ def settings() -> Settings:
         opensearch_url="http://localhost:9200",
         environment="development",
         log_level="info",
+        tartarus_allowed_hosts=("test", "testserver"),
     )
 
 

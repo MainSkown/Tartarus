@@ -28,6 +28,11 @@ describe('quasar.config', () => {
     })
   })
 
+  it('answers only the loopback host names, so a rebound DNS name cannot reach the dev server', async () => {
+    const { devServer } = await loadConfig()
+    expect(devServer?.allowedHosts).toEqual(['localhost'])
+  })
+
   it('takes the dev server port from DEV_SERVER_PORT, so the screenshot harness can run its own instance', async () => {
     vi.stubEnv('DEV_SERVER_PORT', '5190')
     const { devServer } = await loadConfig()
