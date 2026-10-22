@@ -21,7 +21,12 @@ def postgres_url() -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def opensearch_url() -> Iterator[str]:
-    with OpenSearchContainer(compose_image("opensearch")) as opensearch:
+    # A hosted CI runner's disk is nearly full, which trips OpenSearch's flood-stage watermark and
+    # makes it refuse every index creation (403 index_create_block_exception) mid-run.
+    container = OpenSearchContainer(compose_image("opensearch")).with_env(
+        "cluster.routing.allocation.disk.threshold_enabled", "false"
+    )
+    with container as opensearch:
         config = opensearch.get_config()
         yield f"http://{config['host']}:{config['port']}"
 
