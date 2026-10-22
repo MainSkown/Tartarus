@@ -50,6 +50,7 @@ jobs:
       - run: cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
       - run: cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
       - run: make test-cape
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: make test-scripts
 
   frontend:
