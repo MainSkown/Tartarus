@@ -25,7 +25,15 @@ def has_child_processes() -> bool:
     helpers are its children until their parent dies, and listing /proc takes tens of milliseconds.
     Where the kernel does not list children, assume there are some."""
     listings = list(Path("/proc/self/task").glob("*/children"))
-    return not listings or any(listing.read_text().strip() for listing in listings)
+    return not listings or any(_lists_a_child(listing) for listing in listings)
+
+
+def _lists_a_child(listing: Path) -> bool:
+    # A thread of the test process can exit between the glob and the read.
+    try:
+        return bool(listing.read_text().strip())
+    except FileNotFoundError:
+        return False
 
 
 def kill(pids: list[int]) -> None:

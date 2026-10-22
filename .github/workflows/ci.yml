@@ -15,12 +15,14 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
+      - run: sudo apt-get update && sudo apt-get install -y libharfbuzz-subset0
       - run: cd backend && uv sync --frozen
       - run: cd backend && uv run ruff check
       - run: cd backend && uv run ruff format --check
@@ -29,6 +31,7 @@ jobs:
 
   backend-integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -40,6 +43,7 @@ jobs:
 
   cape-and-scripts:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -50,6 +54,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,12 +63,14 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: cd frontend && npm ci
+      - run: cd frontend && npm ci --ignore-scripts --prefix src-pwa
       - run: cd frontend && npm run lint
       - run: cd frontend && npm run typecheck
       - run: cd frontend && npm run test:unit
 
   screenshots:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -83,6 +90,12 @@ jobs:
 
   compose-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Write a throwaway .env
+        run: |
+          cp .env.example .env
+          echo "CAPE_API_TOKEN=$(openssl rand -hex 32)" >> .env
+          echo "GUEST_CONTROL_TOKEN=$(openssl rand -hex 32)" >> .env
       - run: make smoke

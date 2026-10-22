@@ -226,7 +226,7 @@ class ExplodingNormalizer:
         for number, extra in enumerate([{}, self._bad_event]):
             yield {
                 "@timestamp": "2026-10-13T12:12:18Z",
-                "event": {"id": f"exploding-{number}", "sequence": number},
+                "event": {"id": f"exploding-{number}", "kind": "event", "sequence": number},
                 "tartarus": {"analysis_id": context.analysis_id, "lane": "process"},
             } | extra
 
