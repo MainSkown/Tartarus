@@ -8,6 +8,7 @@ import {
   mockAnnotations,
   mockEvents,
   mockHealthGet,
+  mockQueueGet,
   mockQuery,
   mockViews,
   screenshotPath,
@@ -84,6 +85,7 @@ export async function mockExports(page: Page, options: ExportsMockOptions = {}):
   let acceptedId = JOB_ID
 
   await mockHealthGet(page, GUEST_READY_SYSTEM)
+  await mockQueueGet(page)
   await page.routeWebSocket((url) => url.pathname === '/ws/system', (ws) => {
     sockets.push(ws)
     ws.send(JSON.stringify({ type: 'health', ts: new Date().toISOString(), data: GUEST_READY_SYSTEM }))

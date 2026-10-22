@@ -506,6 +506,14 @@ export function realView<T = unknown>(name: ViewName | `process-${number}`): T {
   return JSON.parse(readFileSync(path.join(DATA_DIR, 'views', `${name}.json`), 'utf8')) as T
 }
 
+/** The pivot link under every indicator asks which other analyses hold it; none, unless a spec answers. */
+export async function mockIocAnalysesNone(page: Page): Promise<void> {
+  await page.route(
+    (url) => /^\/api\/iocs\/[^/]+\/.+\/analyses$/.test(url.pathname),
+    (route) => route.fulfill({ json: [] }),
+  )
+}
+
 /**
  * Serves every view of an analysis from the real responses, so a tab (or the Overview) never meets
  * an unmocked request. `overrides` replaces, delays or fails any one view; `processes/{pid}` serves
@@ -536,6 +544,7 @@ export async function mockViews(page: Page, overrides: Partial<Record<ViewName, 
       }
     },
   )
+  await mockIocAnalysesNone(page)
   await page.route(
     (url) => /^\/api\/analyses\/\d+\/artifacts\/screenshots\/\d+$/.test(url.pathname),
     async (route) => {
@@ -947,6 +956,7 @@ export interface EventsMock {
  * Register it after `mockAnalyses` and `mockQuery`.
  */
 export async function mockEvents(page: Page, options: EventsMockOptions = {}): Promise<EventsMock> {
+  await mockIocAnalysesNone(page)
   const all = options.events ?? sampleEvents()
   const { details } = sampleEventDetails()
   const sampled = sampleSources()

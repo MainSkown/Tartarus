@@ -5,6 +5,7 @@ import {
   mockFlappingHealthWebSocket,
   mockAnalyses,
   mockHealthGet,
+  mockQueueGet,
   mockShell,
   screenshotPath,
   test,
@@ -39,6 +40,7 @@ test('shell-opensearch-down', async ({ page }) => {
 
 test('shell-reconnecting', async ({ page }) => {
   await mockHealthGet(page, HEALTHY_SYSTEM)
+  await mockQueueGet(page)
   await mockFlappingHealthWebSocket(page)
   await mockAnalyses(page, { items: [] })
   await page.goto('/')

@@ -1,7 +1,6 @@
 import { expect, mockShell, screenshotPath, test } from './fixtures'
 
 const PLACEHOLDER_ROUTES: { name: string; path: string }[] = [
-  { name: 'guest-placeholder', path: '/guest' },
   { name: 'not-found', path: '/this-route-does-not-exist' },
 ]
 
