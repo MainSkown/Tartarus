@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-cape test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest verify-isolation verify-wizard e2e hooks
+.PHONY: help dev up down logs test test-cape test-scripts test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest verify-isolation verify-wizard e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -18,12 +18,15 @@ down: ## Stop the stack
 logs: ## Follow the stack logs
 	docker compose logs -f
 
-test: test-cape ## Run backend, cape-side and frontend unit tests
+test: test-cape test-scripts ## Run backend, cape-side and frontend unit tests
 	cd backend && uv run pytest -m "not integration"
 	cd frontend && npm run test:unit
 
 test-cape: ## Run the unit tests of the code that runs inside the cape container
 	cd cape && uv run --no-project --with pytest pytest -q
+
+test-scripts: ## Run the shell tests of the scripts against fakes; the *_real.sh ones need a real ISO and stay manual
+	for t in $$(ls scripts/tests/test_*.sh | grep -v '_real\.sh$$'); do echo "== $$t"; bash $$t || exit 1; done
 
 test-integration: ## Run backend tests that need Docker
 	cd backend && uv run pytest -m integration

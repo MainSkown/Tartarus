@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# The real-guest checks (make build-guest, verify-*, e2e) stay manual: hosted runners have no nested KVM.
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: cd backend && uv sync --frozen
+      - run: cd backend && uv run ruff check
+      - run: cd backend && uv run ruff format --check
+      - run: cd backend && uv run mypy app
+      - run: cd backend && uv run pytest -m "not integration"
+
+  backend-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: cd backend && uv sync --frozen
+      - run: make test-integration
+
+  cape-and-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
+      - run: cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
+      - run: make test-cape
+      - run: make test-scripts
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: cd frontend && npm run lint
+      - run: cd frontend && npm run typecheck
+      - run: cd frontend && npm run test:unit
+
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx playwright install --with-deps chromium
+      - run: cd frontend && npm run screenshots
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: screenshot-failures
+          path: frontend/test-results
+          retention-days: 7
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make smoke
