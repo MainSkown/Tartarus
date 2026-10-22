@@ -77,11 +77,17 @@ def _structured_value(type_byte: int, data: bytes, position: int, depth: int) ->
             document, after = _document(data, position, depth + 1)
             return list(document.values()), after
         case 0x09:
-            millis = _read(_INT64, data, position)
-            return datetime.fromtimestamp(millis / 1000, UTC), position + 8
+            return _datetime(_read(_INT64, data, position)), position + 8
         case 0x0A:
             return None, position
     raise BsonError(f"unsupported element type 0x{type_byte:02x}")
+
+
+def _datetime(millis: int) -> datetime:
+    try:
+        return datetime.fromtimestamp(millis / 1000, UTC)
+    except (OverflowError, OSError, ValueError) as error:
+        raise BsonError(f"datetime of {millis} ms is outside the supported years") from error
 
 
 def _string(data: bytes, position: int, limit: int) -> tuple[str, int]:

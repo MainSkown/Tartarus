@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 import httpx
 import pytest
 
@@ -32,6 +34,24 @@ async def test_listing_returns_every_guest_with_what_the_card_shows(harness: Har
     assert lab2["ip"] == "192.168.150.12"
     assert lab2["resources"] == {"vcpus": 2, "ram_mb": 4096, "disk_gb": 80}
     assert lab2["identity"]["account"] == "Alice"
+
+
+async def test_the_host_path_of_a_guests_disk_is_not_exposed(harness: Harness) -> None:
+    harness.use(
+        FakeGuestControl(guests=[Guest(name="lab1", state="ready", disk_path="/srv/vm/lab1.qcow2")])
+    )
+
+    listed = (await harness.client.get("/api/guests")).json()[0]
+    single = (await harness.client.get("/api/guests/lab1")).json()
+
+    assert "disk_path" not in listed
+    assert "disk_path" not in single
+
+
+async def test_the_openapi_schema_of_a_guest_has_no_disk_path(harness: Harness) -> None:
+    schema = harness.app.openapi()["components"]["schemas"]["Guest"]
+
+    assert "disk_path" not in schema["properties"]
 
 
 async def test_listing_with_no_guest_is_an_empty_list(harness: Harness) -> None:
@@ -308,7 +328,7 @@ async def test_a_422_of_the_control_service_keeps_its_field_problems_in_the_erro
 async def test_a_400_of_the_control_service_is_reported_as_a_422(harness: Harness) -> None:
     harness.use(FakeGuestControl(error=GuestControlRejected("guest", 400, "invalid guest name")))
 
-    response = await harness.client.get("/api/guests/Bad_Name")
+    response = await harness.client.get("/api/guests/lab1")
 
     assert response.status_code == 422
     assert error_of(response)["message"] == "invalid guest name"
@@ -367,3 +387,49 @@ def test_the_routes_have_the_operation_ids_the_generated_client_is_named_after(
         ("/api/guests/builds/{build_id}/continue", "post"): "guests_continue_build",
         ("/api/guests/builds/{build_id}/cancel", "post"): "guests_cancel_build",
     }
+
+
+# --- path parameters -----------------------------------------------------------------------------
+
+BAD_GUEST_NAMES = ["..", "Win", "a", "x?tail=1", "a#b", "-x", "a" * 33]
+BAD_BUILD_IDS = ["..", ".", "a b", "x?y", "a#b", "a" * 65]
+GUEST_ROUTES = [
+    ("get", "/api/guests/{}"),
+    ("delete", "/api/guests/{}"),
+    ("post", "/api/guests/{}/check"),
+    ("post", "/api/guests/{}/clone"),
+    ("post", "/api/guests/{}/selftest"),
+]
+BUILD_ROUTES = [
+    ("get", "/api/guests/builds/{}"),
+    ("post", "/api/guests/builds/{}/resume"),
+    ("post", "/api/guests/builds/{}/restart"),
+    ("post", "/api/guests/builds/{}/cancel"),
+    ("post", "/api/guests/builds/{}/continue"),
+]
+
+
+def escaped(segment: str) -> str:
+    return quote(segment, safe="").replace(".", "%2E")
+
+
+@pytest.mark.parametrize("name", BAD_GUEST_NAMES)
+@pytest.mark.parametrize(("method", "template"), GUEST_ROUTES)
+async def test_a_guest_name_the_control_service_would_not_accept_never_reaches_it(
+    harness: Harness, method: str, template: str, name: str
+) -> None:
+    response = await harness.client.request(method, template.format(escaped(name)), json={})
+
+    assert response.status_code in (404, 422)
+    assert harness.control.calls == []
+
+
+@pytest.mark.parametrize("build_id", BAD_BUILD_IDS)
+@pytest.mark.parametrize(("method", "template"), BUILD_ROUTES)
+async def test_a_build_id_the_control_service_would_not_accept_never_reaches_it(
+    harness: Harness, method: str, template: str, build_id: str
+) -> None:
+    response = await harness.client.request(method, template.format(escaped(build_id)))
+
+    assert response.status_code in (404, 422)
+    assert harness.control.calls == []

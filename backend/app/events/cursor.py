@@ -39,7 +39,7 @@ def _payload(cursor: str) -> dict[str, object]:
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
-    except (binascii.Error, ValueError):
+    except (binascii.Error, ValueError, RecursionError):
         raise _invalid("The cursor is malformed") from None
     if not isinstance(payload, dict):
         raise _invalid("The cursor is malformed")

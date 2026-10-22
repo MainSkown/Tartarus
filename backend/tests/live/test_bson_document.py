@@ -84,3 +84,12 @@ def test_invalid_utf8_in_a_string_is_replaced_not_fatal() -> None:
     raw = struct.pack("<i", len(element) + 5) + element + b"\x00"
 
     assert decode_document(raw) == {"a": "\ufffd\ufffd"}
+
+
+@pytest.mark.parametrize("millis", [2**62, -(2**62)])
+def test_a_datetime_outside_the_supported_years_is_a_bson_error(millis: int) -> None:
+    element = b"\x09a\x00" + struct.pack("<q", millis)
+    raw = struct.pack("<i", len(element) + 5) + element + b"\x00"
+
+    with pytest.raises(BsonError):
+        decode_document(raw)

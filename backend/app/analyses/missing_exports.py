@@ -5,11 +5,14 @@ channel it should have exported (Sysmon above all) could not be, so a gap in the
 reported instead of looking like a quiet run.
 """
 
-import json
 import re
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
+
+from app.ingest.json_file import load_json_file
+
+MAX_MARKER_BYTES = 1024**2
 
 MARKER_PATH = Path("aux") / "event_logs.json"
 CHANNEL_LABELS = {
@@ -36,7 +39,9 @@ def read_missing_exports(analysis_dir: Path) -> list[MissingExport]:
     must not fail the ingest of an analysis whose events are fine.
     """
     try:
-        return _Marker.model_validate(json.loads((analysis_dir / MARKER_PATH).read_bytes())).missing
+        return _Marker.model_validate(
+            load_json_file(analysis_dir / MARKER_PATH, MAX_MARKER_BYTES)
+        ).missing
     except (OSError, ValueError, ValidationError):
         return []
 

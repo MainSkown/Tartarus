@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +31,7 @@ from app.api.dependencies import (
 )
 from app.api.internal import router as internal_router
 from app.api.operation_ids import generate_operation_id
+from app.api.upload_limit import MULTIPART_ALLOWANCE
 from app.cape.errors import CapeRejected, CapeTaskNotFound, CapeUnreachable
 from app.db import analysis_repository as repository
 from app.db import annotation_repository, job_repository
@@ -314,6 +315,24 @@ async def test_a_file_over_the_size_limit_is_rejected_with_413_and_stores_nothin
 
     assert response.status_code == 413
     assert await harness.rows(Sample) == []
+    assert harness.stored_files() == []
+
+
+async def test_a_body_announced_far_over_the_limit_is_refused_before_it_is_parsed(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    harness.app.dependency_overrides[get_sample_store] = lambda: SampleStore(
+        harness.store.root, max_bytes=8
+    )
+
+    async def never_parsed(self: Any) -> None:
+        raise AssertionError("the multipart body was parsed")
+
+    monkeypatch.setattr(Request, "_get_form", never_parsed)
+
+    response = await harness.upload(b"x" * (2 * MULTIPART_ALLOWANCE))
+
+    assert response.status_code == 413
     assert harness.stored_files() == []
 
 

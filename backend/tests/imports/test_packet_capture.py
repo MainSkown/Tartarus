@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.imports.packet_capture import UnreadableCaptureError, first_packet_time
+from app.imports.packet_capture import MAX_LEADING_BLOCKS, UnreadableCaptureError, first_packet_time
 
 FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "plans" / "m9-spikes" / "fixtures"
 FIXTURE_FIRST_PACKET = datetime(2026, 10, 21, 12, 52, 52, 871033, tzinfo=UTC)
@@ -94,6 +94,15 @@ def test_pcapng_skips_blocks_that_carry_no_packet_before_the_first_one(tmp_path:
     content = section_header("<") + interface("<") + statistics + enhanced_packet("<", ticks)
 
     assert first_packet_time(write(tmp_path, content)) == MOMENT
+
+
+def test_pcapng_gives_up_after_the_leading_blocks_the_walk_allows(tmp_path: Path) -> None:
+    filler = block("<", 5, struct.pack("<III", 0, 0, 0))
+    ticks = EPOCH_SECONDS * 1_000_000 + 871033
+    content = section_header("<") + filler * MAX_LEADING_BLOCKS + enhanced_packet("<", ticks)
+
+    with pytest.raises(UnreadableCaptureError, match="no packet"):
+        first_packet_time(write(tmp_path, content))
 
 
 @pytest.mark.parametrize(

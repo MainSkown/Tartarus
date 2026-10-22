@@ -7,6 +7,7 @@ from app.api.dependencies import get_guest_control, require_no_analysis_needing_
 from app.db.session import get_session
 from app.guest.build_job import SELFTEST_KIND, BuildTracking
 from app.guest.client import GuestControl
+from app.guest.identifiers import BuildIdPath, GuestNamePath
 from app.guest.schemas import (
     ActiveBuild,
     BuildStarted,
@@ -91,7 +92,7 @@ async def active_build(tracking: BuildTrackingDependency) -> ActiveBuild:
 
 @router.get("/builds/{build_id}")
 async def read_build(
-    build_id: str,
+    build_id: BuildIdPath,
     control: GuestControlDependency,
     tail: Annotated[int, Query(ge=1, le=MAX_LOG_TAIL)] = DEFAULT_LOG_TAIL,
 ) -> BuildView:
@@ -104,7 +105,7 @@ async def read_build(
 
 @router.post("/builds/{build_id}/resume", status_code=202)
 async def resume_build(
-    build_id: str,
+    build_id: BuildIdPath,
     control: GuestControlDependency,
     session: SessionDependency,
     tracking: BuildTrackingDependency,
@@ -119,7 +120,7 @@ async def resume_build(
 
 @router.post("/builds/{build_id}/restart", status_code=202)
 async def restart_build(
-    build_id: str,
+    build_id: BuildIdPath,
     control: GuestControlDependency,
     session: SessionDependency,
     tracking: BuildTrackingDependency,
@@ -134,7 +135,7 @@ async def restart_build(
 
 @router.post("/builds/{build_id}/cancel", status_code=202)
 async def cancel_build(
-    build_id: str,
+    build_id: BuildIdPath,
     control: GuestControlDependency,
     session: SessionDependency,
 ) -> Response:
@@ -150,7 +151,7 @@ async def cancel_build(
 
 @router.post("/builds/{build_id}/continue", status_code=202)
 async def continue_build(
-    build_id: str,
+    build_id: BuildIdPath,
     control: GuestControlDependency,
     session: SessionDependency,
     tracking: BuildTrackingDependency,
@@ -171,14 +172,14 @@ async def _follow(control: GuestControl, tracking: BuildTracking, build_id: str)
 
 
 @router.get("/{name}")
-async def read(name: str, control: GuestControlDependency) -> Guest:
+async def read(name: GuestNamePath, control: GuestControlDependency) -> Guest:
     """One guest's record. `404` when no guest has that name."""
     return await control.guest(name)
 
 
 @router.delete("/{name}", status_code=204)
 async def delete(
-    name: str,
+    name: GuestNamePath,
     control: GuestControlDependency,
     session: SessionDependency,
 ) -> Response:
@@ -193,7 +194,7 @@ async def delete(
 
 @router.post("/{name}/check")
 async def check(
-    name: str,
+    name: GuestNamePath,
     control: GuestControlDependency,
     session: SessionDependency,
 ) -> HealthCheckResult:
@@ -208,7 +209,7 @@ async def check(
 
 @router.post("/{name}/clone", status_code=202)
 async def clone(
-    name: str,
+    name: GuestNamePath,
     params: ControlParams,
     control: GuestControlDependency,
     session: SessionDependency,
@@ -227,7 +228,7 @@ async def clone(
 
 @router.post("/{name}/selftest", status_code=202)
 async def retry_selftest(
-    name: str,
+    name: GuestNamePath,
     control: GuestControlDependency,
     session: SessionDependency,
     tracking: BuildTrackingDependency,

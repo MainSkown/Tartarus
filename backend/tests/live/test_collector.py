@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from app.live.bson_log import BsonLogParser, LogRecord
 from app.live.collector import LiveCollector
 from tests.live.bson_encode import encode_document
 from tests.live.collector_support import (
@@ -22,6 +23,7 @@ from tests.live.collector_support import (
     wait_until,
     write_in_slices,
 )
+from tests.live.test_bson_log import process_record_bytes
 
 SEEDS = (1, 2, 3)
 THREE_BYTES = 3
@@ -359,5 +361,42 @@ async def test_a_log_that_cannot_be_read_does_not_stop_the_others(
 
     await write_in_slices(logs_dir, fixture_logs(), seed=9)
     await collector.stop()
+
+    assert by_id(sink.events) == by_id(reference_events())
+
+
+async def test_a_log_with_a_hostile_value_is_dropped_without_hiding_the_other_logs(
+    logs_dir: Path, store: FakeStore, sink: FakeSink
+) -> None:
+    hostile = process_record_bytes(0xFFFFFFFF, 0xFFFFFFFF)
+    await append(logs_dir, "0001.bson", hostile)
+    collector = make_collector(logs_dir, store, sink)
+    collector.start()
+    await wait_until(lambda: sink.errors != [])
+
+    await write_in_slices(logs_dir, fixture_logs(), seed=5)
+    await collector.stop()
+
+    assert sink.error_codes() == ["log_format"]
+    assert "0001.bson" in sink.errors[0][1]
+    assert by_id(sink.events) == by_id(reference_events())
+
+
+async def test_an_unexpected_failure_in_one_log_does_not_lose_the_events_of_the_others(
+    logs_dir: Path, store: FakeStore, sink: FakeSink, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name, data in fixture_logs().items():
+        await append(logs_dir, name, data)
+    await append(logs_dir, "zzz.bson", b"anything")
+    original = BsonLogParser.feed
+
+    def feed(self: BsonLogParser, chunk: bytes) -> list[LogRecord]:
+        if chunk == b"anything":
+            raise RuntimeError("a parser bug")
+        return original(self, chunk)
+
+    monkeypatch.setattr(BsonLogParser, "feed", feed)
+
+    await make_collector(logs_dir, store, sink).stop()
 
     assert by_id(sink.events) == by_id(reference_events())

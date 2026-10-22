@@ -42,6 +42,12 @@ from app.api.dependencies import (
     get_sample_store,
     require_analysis,
 )
+from app.api.upload_limit import (
+    memory_image_limit,
+    pcap_limit,
+    refusing_oversized_bodies,
+    sample_limit,
+)
 from app.cape.client import CapeClient
 from app.cape.errors import CapeError, CapeTaskNotFound
 from app.db.analysis_repository import (
@@ -116,7 +122,6 @@ def parse_options(
         ) from None
 
 
-@router.post("", status_code=201)
 async def create(  # noqa: PLR0913 - one argument per dependency of the submission
     file: Annotated[UploadFile, File(description="The sample to detonate.")],
     options: Annotated[AnalysisOptions, Depends(parse_options)],
@@ -153,7 +158,6 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
     return AnalysisCreated(**read_back.model_dump(), warnings=submitted.warnings)
 
 
-@router.post("/import", status_code=201)
 async def import_capture(
     file: Annotated[UploadFile, File(description="A PCAP or PCAPNG capture.")],
     importer: Annotated[ImportSubmitter, Depends(get_import_submitter)],
@@ -168,7 +172,6 @@ async def import_capture(
     return await _import(importer, session, guests, file, accept_memory_image=False)
 
 
-@router.post("/import/memory-image", status_code=201)
 async def import_memory_image(
     file: Annotated[UploadFile, File(description="A memory image, or a PCAP or PCAPNG capture.")],
     importer: Annotated[ImportSubmitter, Depends(get_import_submitter)],
@@ -182,6 +185,22 @@ async def import_memory_image(
     `415` when the file is neither; `413` over the size limit of its kind; `422` for an empty file.
     """
     return await _import(importer, session, guests, file, accept_memory_image=True)
+
+
+# Upload routes are registered by hand: `router.post` cannot take a route class, and these must
+# turn an oversized body away before Starlette reads it.
+for _path, _endpoint, _limit in (
+    ("", create, sample_limit),
+    ("/import", import_capture, pcap_limit),
+    ("/import/memory-image", import_memory_image, memory_image_limit),
+):
+    router.add_api_route(
+        _path,
+        _endpoint,
+        methods=["POST"],
+        status_code=201,
+        route_class_override=refusing_oversized_bodies(_limit),
+    )
 
 
 @router.get("", name="list")

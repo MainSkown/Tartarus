@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Iterable, Iterator
 from itertools import islice
 from typing import Any
@@ -6,9 +7,13 @@ from typing import Any
 from opensearchpy import AsyncOpenSearch, NotFoundError, RequestError
 from opensearchpy.helpers import BulkIndexError, async_bulk
 
+from app.search.oversize import with_capped_raw
 from app.search.template import INDEX_PREFIX, TEMPLATE_NAME, build_index_template
 
 REPORTED_FAILURES = 3
+MAX_BULK_REQUEST_BYTES = 50 * 1024**2
+
+logger = logging.getLogger(__name__)
 INDEX_EXISTS = "resource_already_exists_exception"
 
 
@@ -120,9 +125,19 @@ class EventIndex:
 
     async def _index_chunk(self, analysis_id: int, chunk: list[dict[str, Any]]) -> int:
         index = index_name(analysis_id)
-        actions = [{"_index": index, "_id": _event_id(event), "_source": event} for event in chunk]
+        capped = [with_capped_raw(event) for event in chunk]
+        if (cut := sum(new is not old for new, old in zip(capped, chunk, strict=True))) > 0:
+            logger.warning(
+                "Analysis %s: %d events had an oversized raw record cut", analysis_id, cut
+            )
+        actions = [{"_index": index, "_id": _event_id(event), "_source": event} for event in capped]
         try:
-            stored, _ = await async_bulk(self._client, actions, chunk_size=len(actions))
+            stored, _ = await async_bulk(
+                self._client,
+                actions,
+                chunk_size=len(actions),
+                max_chunk_bytes=MAX_BULK_REQUEST_BYTES,
+            )
         except BulkIndexError as error:
             raise IndexingError(_describe_failures(list(error.errors))) from error
         return int(stored)

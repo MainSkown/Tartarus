@@ -22,6 +22,9 @@ _DEFAULT_TICKS_PER_SECOND = _MICROSECONDS
 # A section header and the interface blocks before the first packet are small; a larger block
 # before it is not a capture worth importing.
 _MAX_LEADING_BLOCK = 1 << 20
+# A real capture has a section header, an interface block per interface and a few metadata blocks
+# before its first packet; walking more than that only serves to burn CPU on a 512 MiB upload.
+MAX_LEADING_BLOCKS = 1000
 _NO_PACKETS = "The capture holds no packets"
 
 
@@ -57,7 +60,9 @@ def _classic_first_packet(stream: BinaryIO) -> datetime:
 def _pcapng_first_packet(stream: BinaryIO) -> datetime:
     order = "<"
     ticks_per_second: list[int] = []
-    while len(header := stream.read(_BLOCK_HEADER_SIZE)) == _BLOCK_HEADER_SIZE:
+    for _ in range(MAX_LEADING_BLOCKS):
+        if len(header := stream.read(_BLOCK_HEADER_SIZE)) != _BLOCK_HEADER_SIZE:
+            break
         if header[:4] == struct.pack(">I", _SECTION_HEADER):
             order = _section_byte_order(stream)
             ticks_per_second = []

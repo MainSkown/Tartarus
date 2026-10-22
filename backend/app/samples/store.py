@@ -91,7 +91,7 @@ class SampleStore:
 
     def __init__(self, root: Path, *, max_bytes: int = DEFAULT_MAX_BYTES) -> None:
         self.root = root
-        self._max_bytes = max_bytes
+        self.max_bytes = max_bytes
 
     @classmethod
     def from_settings(cls, settings: Settings) -> Self:
@@ -133,8 +133,8 @@ class SampleStore:
         digests = Digests()
         with destination.open("xb") as plain:
             while chunk := await stream.read(CHUNK_SIZE):
-                if digests.size + len(chunk) > self._max_bytes:
-                    raise SampleTooLargeError(self._max_bytes)
+                if digests.size + len(chunk) > self.max_bytes:
+                    raise SampleTooLargeError(self.max_bytes)
                 await asyncio.to_thread(self._absorb, chunk, digests, plain)
         if digests.size == 0:
             raise EmptySampleError

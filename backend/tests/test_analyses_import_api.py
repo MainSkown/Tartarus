@@ -5,7 +5,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -20,6 +20,7 @@ from app.api.dependencies import (
     get_sample_store,
 )
 from app.api.operation_ids import generate_operation_id
+from app.api.upload_limit import MULTIPART_ALLOWANCE
 from app.config import Settings, get_settings
 from app.db.analysis_repository import update_analysis
 from app.db.base import Base
@@ -225,6 +226,28 @@ async def test_a_memory_image_over_its_limit_is_refused_with_413(
     imports_harness.limit(memory_image=len(MEMORY_IMAGE) - 1)
 
     response = await imports_harness.upload(MEMORY_IMAGE, MEMORY_PATH)
+
+    assert response.status_code == 413
+    await assert_nothing_kept(imports_harness)
+
+
+@pytest.mark.parametrize(
+    ("path", "limit"), [(PLAIN, {"pcap": 100}), (MEMORY_PATH, {"memory_image": 100})]
+)
+async def test_a_body_announced_far_over_the_limit_is_refused_before_it_is_parsed(
+    imports_harness: ImportHarness,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    limit: dict[str, int],
+) -> None:
+    imports_harness.limit(**limit)
+
+    async def never_parsed(self: Request) -> None:
+        raise AssertionError("the multipart body was parsed")
+
+    monkeypatch.setattr(Request, "_get_form", never_parsed)
+
+    response = await imports_harness.upload(PCAP + b"\x00" * (2 * MULTIPART_ALLOWANCE), path)
 
     assert response.status_code == 413
     await assert_nothing_kept(imports_harness)

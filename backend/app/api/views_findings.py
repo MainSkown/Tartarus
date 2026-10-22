@@ -20,6 +20,7 @@ from app.search.index import EventIndex
 from app.views.artifacts import (
     SCREENSHOT_MEDIA_TYPES,
     AnalysisFiles,
+    TemporarySpaceError,
     download_name,
     pack_for_download,
     read_analysis_files,
@@ -99,12 +100,16 @@ async def artifacts(files: Files) -> ArtifactsView:
 )
 async def download_artifact(artifact_id: str, files: Files) -> FileResponse:
     """The artifact as an AES-encrypted zip, password `infected`. `404` for an id the artifact
-    list does not hold or whose file is gone.
+    list does not hold or whose file is gone; `507` when the temporary directory has less free
+    space than the file.
     """
     file = files.catalog.files.get(artifact_id)
     if file is None:
         raise HTTPException(404, "Artifact not found")
-    packed = await pack_for_download(file)
+    try:
+        packed = await pack_for_download(file)
+    except TemporarySpaceError:
+        raise HTTPException(507, "Not enough temporary disk space to pack this artifact") from None
     return FileResponse(
         packed,
         media_type=ZIP_MEDIA_TYPE,

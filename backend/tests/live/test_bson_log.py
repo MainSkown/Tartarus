@@ -432,3 +432,34 @@ def test_a_message_that_is_not_valid_bson_inside_its_length_raises() -> None:
         BsonLogParser().feed(broken)
 
     assert caught.value.offset == 0
+
+
+def _hostile_messages() -> dict[str, bytes]:
+    api = make_info(5, "Api", ["is_success", "retval"])
+    return {
+        "datetime element past year 9999": process_record_bytes() + _datetime_message(2**62),
+        "FILETIME past year 9999": process_record_bytes(0xFFFFFFFF, 0xFFFFFFFF),
+        "elapsed time past year 9999": process_record_bytes() + api + make_call(5, [1, 0], t=2**62),
+    }
+
+
+def _datetime_message(millis: int) -> bytes:
+    element = b"\x09when\x00" + struct.pack("<q", millis)
+    return struct.pack("<I", len(element) + 5) + element + b"\x00"
+
+
+@pytest.mark.parametrize("name", list(_hostile_messages()))
+def test_a_hostile_value_is_a_log_format_error(name: str) -> None:
+    data = _hostile_messages()[name]
+
+    with pytest.raises(LogFormatError):
+        BsonLogParser().feed(data)
+
+
+def test_args_that_are_not_a_list_make_an_unknown_record_not_a_failure() -> None:
+    data = process_record_bytes() + make_info(5, "Api", ["is_success", "retval"])
+
+    records = parse_whole(data + make_call(5, 12345))
+
+    unknown = [r for r in records if isinstance(r, UnknownRecord)]
+    assert [(u.kind, "int" in u.reason) for u in unknown] == [("call", True)]

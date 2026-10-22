@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import re
+import shutil
 import tempfile
 from collections import Counter
 from collections.abc import Mapping
@@ -98,8 +99,18 @@ def read_analysis_files(storage_root: Path, cape_task_id: int | None) -> Analysi
     return AnalysisFiles(report, build_catalog(report, directory if directory.is_dir() else None))
 
 
+class TemporarySpaceError(Exception):
+    """The temporary directory has less free space than the file to pack."""
+
+
 async def pack_for_download(file: ArtifactFile) -> Path:
-    """An encrypted zip of the file in a temporary file the caller must delete."""
+    """An encrypted zip of the file in a temporary file the caller must delete.
+
+    Raises ``TemporarySpaceError`` when the file is larger than the free temporary space: a
+    memory dump is gigabytes, and a deflate of it can need nearly as much again.
+    """
+    if file.path.stat().st_size > shutil.disk_usage(tempfile.gettempdir()).free:
+        raise TemporarySpaceError
     descriptor, temporary = await asyncio.to_thread(
         tempfile.mkstemp, prefix="artifact-", suffix=".zip"
     )

@@ -87,7 +87,8 @@ class Guest(ControlModel):
     machine: MachineIdentity | None = None
     work_dir: str | None = None
     snapshot: str | None = None
-    disk_path: str | None = None
+    # A host path the GUI never shows: read from the control service, never sent on.
+    disk_path: str | None = Field(default=None, exclude=True)
     selftest: dict[str, Any] | None = None
     adopted: bool = False
     giveaways: list[str] = Field(default_factory=list)

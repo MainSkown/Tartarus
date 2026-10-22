@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from app.analyses import summary
 from app.analyses.defender import DefenderStatus
 from app.analyses.ports import ReportUnreadableError
 from app.analyses.summary import ReportSummary, process_count_of, read_report
@@ -144,6 +145,34 @@ def test_invalid_json_is_unreadable_and_says_so(tmp_path: Path) -> None:
 
     with pytest.raises(ReportUnreadableError, match="not valid JSON"):
         read_report(path)
+
+
+@pytest.mark.parametrize("text", ['{"info": {"duration": Infinity}}', '{"info": {"x": NaN}}'])
+def test_json_constants_python_accepts_but_json_does_not_are_unreadable(
+    tmp_path: Path, text: str
+) -> None:
+    path = tmp_path / "report.json"
+    path.write_text(text)
+
+    with pytest.raises(ReportUnreadableError, match="not valid JSON"):
+        read_report(path)
+
+
+def test_a_report_nested_past_the_recursion_limit_is_unreadable(tmp_path: Path) -> None:
+    path = tmp_path / "report.json"
+    path.write_text("[" * 200_000)
+
+    with pytest.raises(ReportUnreadableError, match="not valid JSON"):
+        read_report(path)
+
+
+def test_a_report_over_the_size_cap_is_unreadable_without_being_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(summary, "MAX_REPORT_BYTES", 10)
+
+    with pytest.raises(ReportUnreadableError, match="too large"):
+        read_report(write_report(tmp_path, {"info": {}, "padding": "x" * 100}))
 
 
 @pytest.mark.parametrize("content", [[], {"signatures": []}, {"info": "nope"}])

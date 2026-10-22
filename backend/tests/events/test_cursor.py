@@ -67,3 +67,12 @@ def test_a_cursor_from_the_other_sort_is_refused() -> None:
         decode_cursor(cursor, "@timestamp")
 
     assert "other sort" in caught.value.message
+
+
+def test_a_cursor_nested_deeper_than_the_json_parser_allows_is_an_invalid_cursor() -> None:
+    nested = base64.urlsafe_b64encode(b"[" * 200_000).decode().rstrip("=")
+
+    with pytest.raises(ApiError) as caught:
+        decode_cursor(nested, "@timestamp")
+
+    assert caught.value.code == "invalid_cursor"

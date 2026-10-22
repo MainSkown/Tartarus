@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +9,9 @@ from app.analyses.missing_exports import MissingExport, export_warnings, read_mi
 from app.analyses.ports import ReportOutcome, ReportUnreadableError
 from app.db.models.analysis import Severity
 from app.ingest.clock import analysis_dir_of
+from app.ingest.json_file import JsonFileTooLargeError, load_json_file
 
+MAX_REPORT_BYTES = 1024**3
 CRITICAL_FROM_CAPE_SEVERITY = 4
 CAPE_SEVERITY_SCALE = (Severity.INFO, Severity.LOW, Severity.MEDIUM, Severity.HIGH)
 SEVERITY_ORDER = list(Severity)
@@ -74,9 +75,11 @@ def read_report(path: Path) -> ReportOutcome:
 
 def load_report(path: Path) -> dict[str, Any]:
     try:
-        report = json.loads(path.read_bytes())
+        report = load_json_file(path, MAX_REPORT_BYTES)
     except FileNotFoundError:
         raise ReportUnreadableError(f"report is missing: {path.name}") from None
+    except JsonFileTooLargeError:
+        raise ReportUnreadableError(f"report {path.name} is too large to ingest") from None
     except (OSError, ValueError) as error:
         reason = "not valid JSON" if isinstance(error, ValueError) else type(error).__name__
         raise ReportUnreadableError(f"report {path.name} is {reason}") from None

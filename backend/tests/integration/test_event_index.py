@@ -6,6 +6,7 @@ from opensearchpy import AsyncOpenSearch
 
 from app.search.client import create_opensearch_client
 from app.search.index import EventIndex, IndexingError, index_name
+from app.search.oversize import MAX_RAW_BYTES
 
 pytestmark = pytest.mark.integration
 
@@ -194,3 +195,17 @@ async def test_ensure_index_creates_a_missing_index_and_leaves_an_existing_one_a
 
     assert await count_where(client, {"match_all": {}}) == 1
     await events_index.drop(ANALYSIS_ID)
+
+
+async def test_an_oversized_raw_record_is_cut_and_its_neighbours_are_still_indexed(
+    client: AsyncOpenSearch, events_index: EventIndex
+) -> None:
+    huge = make_event(1)
+    huge["tartarus"]["raw"] = {"blob": "x" * (MAX_RAW_BYTES + 1)}
+    neighbours = [make_event(0), huge, make_event(2)]
+
+    stored = await events_index.bulk_index(ANALYSIS_ID, neighbours)
+
+    document = await client.get(index=index_name(ANALYSIS_ID), id="event-1")
+    assert stored == 3
+    assert document["_source"]["tartarus"]["raw"]["truncated"] is True

@@ -5,14 +5,15 @@ Every reader tolerates what a half-written or hostile folder can hold: it return
 part it cannot read and leaves the other parts alone.
 """
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.ingest.json_file import load_json_file
 from app.ingest.reading import mapping_list, text_or_none, to_int
 
+MAX_PLUGIN_OUTPUT_BYTES = 512 * 1024**2
 MEMORY_FOLDER = "memory"
 RUN_FILE = "run.json"
 PSLIST = "windows.pslist"
@@ -50,8 +51,8 @@ def _failed(run: Mapping[str, Any], plugin: str) -> bool:
 
 def _load(path: Path) -> object:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError):
+        return load_json_file(path, MAX_PLUGIN_OUTPUT_BYTES)
+    except (OSError, ValueError):
         return None
 
 

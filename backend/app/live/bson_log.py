@@ -155,7 +155,7 @@ class BsonLogParser:
         try:
             while (size := self._complete_message_size(position)) is not None:
                 document = self._decode(position, size)
-                if (record := self._record_for(document, self._consumed + position)) is not None:
+                if (record := self._record(document, self._consumed + position)) is not None:
                     records.append(record)
                 position += size
         finally:
@@ -178,6 +178,14 @@ class BsonLogParser:
             return decode_document(self._buffer[position : position + size])
         except BsonError as error:
             raise LogFormatError(self._consumed + position, str(error)) from error
+
+    def _record(self, document: dict[str, Any], offset: int) -> LogRecord | None:
+        try:
+            return self._record_for(document, offset)
+        except (ArithmeticError, ValueError, TypeError) as error:
+            # Guest-controlled values (a FILETIME or elapsed time past year 9999) can break the
+            # record building; that is a corrupt log, not a bug to retry on every poll.
+            raise LogFormatError(offset, f"{type(error).__name__}: {error}") from error
 
     def _record_for(self, document: dict[str, Any], offset: int) -> LogRecord | None:
         kind = document.get("type")
@@ -208,7 +216,8 @@ class BsonLogParser:
             return UnknownRecord("call", reason, offset, document)
         values = document.get("args", [])
         if not isinstance(values, list) or len(values) != len(api.arguments):
-            reason = f"{api.name} carries {len(values)} values for {len(api.arguments)} names"
+            carried = len(values) if isinstance(values, list) else type(values).__name__
+            reason = f"{api.name} carries {carried} values for {len(api.arguments)} names"
             return UnknownRecord("call", reason, offset, document)
         named = [(spec, value) for spec, value in zip(api.arguments, values, strict=True)]
         named += _auxiliary_values(document.get("aux"))

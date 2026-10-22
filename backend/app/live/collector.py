@@ -203,17 +203,24 @@ class LiveCollector:
             if log.dead:
                 continue
             try:
-                chunk = _read_from(path, log.offset)
-            except OSError as error:
-                logger.warning("Analysis %s: cannot read %s: %s", self._analysis_id, name, error)
-                continue
-            log.offset += len(chunk)
-            records = self._parse(name, log, chunk, scan)
-            scan.unknown += [(name, r) for r in records if isinstance(r, UnknownRecord)]
-            known = [r for r in records if not isinstance(r, UnknownRecord)]
-            scan.events += self._live.update(name, known)
+                self._scan_file(name, path, log, scan)
+            except Exception:
+                log.dead = True
+                logger.exception("Analysis %s: reading %s failed", self._analysis_id, name)
         self._detect(scan)
         return scan
+
+    def _scan_file(self, name: str, path: Path, log: _LogFile, scan: _Scan) -> None:
+        try:
+            chunk = _read_from(path, log.offset)
+        except OSError as error:
+            logger.warning("Analysis %s: cannot read %s: %s", self._analysis_id, name, error)
+            return
+        log.offset += len(chunk)
+        records = self._parse(name, log, chunk, scan)
+        scan.unknown += [(name, r) for r in records if isinstance(r, UnknownRecord)]
+        known = [r for r in records if not isinstance(r, UnknownRecord)]
+        scan.events += self._live.update(name, known)
 
     def _release_held(self) -> _Scan:
         scan = _Scan(events=self._live.flush())

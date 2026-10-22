@@ -6,7 +6,6 @@ that as the build's `desktop`. Once the build ends, the desktop of a ready guest
 
 import asyncio
 import logging
-import re
 from collections.abc import Awaitable
 from typing import Protocol
 
@@ -19,13 +18,10 @@ from app.desktop.admission import (
 )
 from app.desktop.resolver import CheckUnavailableError, VncTarget
 from app.guest.errors import GuestControlError, GuestControlRejected
+from app.guest.identifiers import GUEST_NAME
 from app.guest.schemas import BuildStatus, Guest, GuestDisplay
 
 logger = logging.getLogger(__name__)
-
-# The control service's own rule for a guest name; checked here so that nothing else in the path
-# can reach its URLs.
-GUEST_NAME = re.compile(r"[a-z][a-z0-9-]{1,31}")
 
 ACTIVE_BUILD_STATUSES = frozenset({"running", "paused"})
 
