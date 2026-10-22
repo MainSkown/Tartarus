@@ -12,10 +12,12 @@ import importlib
 import json
 import logging
 import re
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Literal, Protocol
 from xml.parsers import expat
@@ -27,6 +29,10 @@ log = logging.getLogger(__name__)
 
 AGENT_PORT = 8000
 CONNECT_TIMEOUT_S = 5
+# What the guest may hand back, as an HTTP body and as a document written to the analysis folder.
+# The "agent" answering is whatever the sample left listening on the guest's port 8000.
+MAX_EXPORT_BYTES = 256 * 1024 * 1024
+ANSWER_CHUNK_BYTES = 64 * 1024
 ANSWER_PREVIEW_CHARS = 80
 BASELINE_TIMEOUT_S = 15
 START_BUDGET_S = 90
@@ -91,6 +97,10 @@ class AgentAnswerError(Exception):
     pass
 
 
+class DeadlineExceededError(Exception):
+    pass
+
+
 class SystemClock:
     def now(self) -> float:
         return time.monotonic()
@@ -108,10 +118,10 @@ class GuestAgent:
         self._send("get", "status", read_timeout)
 
     def execute(self, command: str, read_timeout: float) -> bytes:
-        answer = self._send(
+        body = self._send(
             "post", "execute", read_timeout, data={"command": command, "encoding": "base64"}
         )
-        stdout = answer.json()["stdout"]
+        stdout = json.loads(body)["stdout"]
         try:
             return base64.b64decode(stdout, validate=True)
         except binascii.Error:
@@ -134,14 +144,74 @@ class GuestAgent:
 
     def _send(
         self, method: Literal["get", "post"], route: str, read_timeout: float, **form: Any
-    ) -> Any:
+    ) -> bytes:
         # Imported here because the unit tests run on the stdlib alone; CAPE's python has requests.
         http = self._http or importlib.import_module("requests")
-        answer = getattr(http, method)(
-            f"{self._base}/{route}", timeout=(CONNECT_TIMEOUT_S, read_timeout), **form
+
+        def fetch(cancelled: threading.Event) -> bytes:
+            # No redirects: requests would replay the POST to wherever the guest points it, and
+            # the host can reach the backend and OpenSearch.
+            answer = getattr(http, method)(
+                f"{self._base}/{route}",
+                timeout=(CONNECT_TIMEOUT_S, read_timeout),
+                allow_redirects=False,
+                stream=True,
+                **form,
+            )
+            try:
+                return read_answer(answer, cancelled)
+            finally:
+                answer.close()
+
+        return run_within(CONNECT_TIMEOUT_S + read_timeout, fetch)
+
+
+def read_answer(answer: Any, cancelled: threading.Event) -> bytes:
+    if HTTPStatus.MULTIPLE_CHOICES <= answer.status_code < HTTPStatus.BAD_REQUEST:
+        raise AgentAnswerError(
+            f"the guest agent answered {answer.status_code}, a redirect; refused"
         )
-        answer.raise_for_status()
-        return answer
+    answer.raise_for_status()
+    body = bytearray()
+    for chunk in answer.iter_content(ANSWER_CHUNK_BYTES):
+        if cancelled.is_set():
+            raise DeadlineExceededError("the call was abandoned at its deadline")
+        body += chunk
+        if len(body) > MAX_EXPORT_BYTES:
+            raise AgentAnswerError(
+                f"the guest agent's answer is larger than {MAX_EXPORT_BYTES} bytes"
+            )
+    return bytes(body)
+
+
+def run_within(seconds: float, work: Callable[[threading.Event], bytes]) -> bytes:
+    """Runs `work` and gives up on it after `seconds` in total.
+
+    requests' read timeout restarts with every byte received, so a guest that drips one byte every
+    few seconds never trips it and would hold the machine slot for good. The worker is a daemon
+    thread: when abandoned it stops at its next chunk (it holds at most MAX_EXPORT_BYTES) or when
+    the read timeout closes the connection.
+    """
+    cancelled = threading.Event()
+    outcome: dict[str, Any] = {}
+
+    def target() -> None:
+        try:
+            outcome["value"] = work(cancelled)
+        except BaseException as error:  # noqa: BLE001 - handed to the caller's thread below
+            outcome["error"] = error
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        cancelled.set()
+        raise DeadlineExceededError(
+            f"the guest agent did not finish answering within {seconds:g} s"
+        )
+    if "error" in outcome:
+        raise outcome["error"]
+    return bytes(outcome["value"])
 
 
 class Budget:
@@ -418,6 +488,11 @@ class EventLogCollector:
         document = events_document(raw)
         if document is None:
             self._miss(channel, "the guest did not return an Events document; nothing written")
+            return
+        if len(document) > MAX_EXPORT_BYTES:
+            self._miss(
+                channel, f"the export is larger than {MAX_EXPORT_BYTES} bytes; nothing written"
+            )
             return
         target = folder / channel.target
         target.parent.mkdir(parents=True, exist_ok=True)

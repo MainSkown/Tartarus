@@ -6,16 +6,17 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       POSTGRES_USER: ${POSTGRES_USER:-tartarus}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env (copy .env.example)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env (make init-env writes one)}
       POSTGRES_DB: ${POSTGRES_DB:-tartarus}
       CAPE_DB_USER: ${CAPE_DB_USER:-cape}
-      CAPE_DB_PASSWORD: ${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set in .env (copy .env.example)}
+      CAPE_DB_PASSWORD: ${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set in .env (make init-env writes one)}
       CAPE_DB_NAME: ${CAPE_DB_NAME:-cape}
     volumes:
       - pg-data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     networks:
-      - tartarus-internal
+      - tartarus-db
+      - tartarus-cape-db
     healthcheck:
       # TCP, not the default socket: the temporary server that runs the init scripts only listens on the socket.
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -45,7 +46,7 @@ services:
     volumes:
       - os-data:/usr/share/opensearch/data
     networks:
-      - tartarus-internal
+      - tartarus-search
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"]
       interval: 10s
@@ -65,14 +66,14 @@ services:
       ENVIRONMENT: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TARTARUS_ALLOWED_HOSTS: ${TARTARUS_ALLOWED_HOSTS:-}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tartarus}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env (copy .env.example)}@postgres:5432/${POSTGRES_DB:-tartarus}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tartarus}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env (make init-env writes one)}@postgres:5432/${POSTGRES_DB:-tartarus}
       OPENSEARCH_URL: http://opensearch:9200
       CAPE_API_URL: http://cape:8000
-      CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
+      CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (make init-env writes one)}
       # The alias, not the name cape: cape also lives on tartarus-internal, where its API and guacd
       # listen, and the control service listens only on tartarus-control.
       GUEST_CONTROL_URL: http://cape-control:8002
-      GUEST_CONTROL_TOKEN: ${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
+      GUEST_CONTROL_TOKEN: ${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set in .env (make init-env writes one)}
       CAPE_STORAGE_PATH: /cape-storage
       SAMPLE_STORE_PATH: /data/samples
       EXPORTS_PATH: /data/exports
@@ -94,6 +95,9 @@ services:
       cape:
         condition: service_healthy
     networks:
+      - tartarus-web
+      - tartarus-db
+      - tartarus-search
       - tartarus-internal
       - tartarus-control
     healthcheck:
@@ -119,7 +123,7 @@ services:
       backend:
         condition: service_healthy
     networks:
-      - tartarus-internal
+      - tartarus-web
     healthcheck:
       # 127.0.0.1, not localhost: busybox wget does not fall back to IPv4 when localhost resolves to ::1 first.
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
@@ -145,10 +149,10 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       CAPE_DB_USER: ${CAPE_DB_USER:-cape}
-      CAPE_DB_PASSWORD: ${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set in .env (copy .env.example)}
+      CAPE_DB_PASSWORD: ${CAPE_DB_PASSWORD:?CAPE_DB_PASSWORD must be set in .env (make init-env writes one)}
       CAPE_DB_NAME: ${CAPE_DB_NAME:-cape}
-      CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
-      GUEST_CONTROL_TOKEN: ${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set in .env (openssl rand -hex 32 makes one)}
+      CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (make init-env writes one)}
+      GUEST_CONTROL_TOKEN: ${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set in .env (make init-env writes one)}
       GUEST_SUBNET: ${GUEST_SUBNET:-192.168.150.0/24}
     sysctls:
       net.ipv4.ip_forward: "1"
@@ -173,8 +177,33 @@ services:
       tartarus-control:
         aliases:
           - cape-control
+      tartarus-cape-db: {}
 
+# Each network joins only the services that talk to each other, and the ones that carry data have no
+# route out (internal: true). Docker publishes a port only from a network with a route out, which is
+# why tartarus-web is a plain bridge: the frontend's port is published through it.
 networks:
+  # frontend <-> backend. Plain bridge so the frontend can publish its loopback port.
+  tartarus-web:
+    name: tartarus-web
+    driver: bridge
+  # backend <-> postgres (the Tartarus database).
+  tartarus-db:
+    name: tartarus-db
+    driver: bridge
+    internal: true
+  # backend <-> opensearch, unauthenticated: nothing else may share this network.
+  tartarus-search:
+    name: tartarus-search
+    driver: bridge
+    internal: true
+  # cape <-> postgres (the CAPE database).
+  tartarus-cape-db:
+    name: tartarus-cape-db
+    driver: bridge
+    internal: true
+  # cape <-> backend: CAPE's API and guacd listen here, and it is the one network cape's guests
+  # leave through, so it keeps a route out (the rooter's `internet` route and the symbol fetch).
   tartarus-internal:
     name: tartarus-internal
     driver: bridge

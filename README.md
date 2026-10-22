@@ -34,10 +34,11 @@ query bar, and export IOCs and reports.
 
 ## Quick start
 
-Needs Docker with Compose 2.24.4 or newer. Run `make preflight` first to check your host.
+Needs Docker with Compose 2.24.4 or newer. `make preflight` checks your host and the secrets in `.env`.
 
 ```bash
-cp .env.example .env     # then set POSTGRES_PASSWORD, CAPE_DB_PASSWORD, CAPE_API_TOKEN and GUEST_CONTROL_TOKEN
+make init-env            # writes .env from .env.example with random secrets (mode 600), never overwrites one
+make preflight           # host prerequisites; rejects missing, placeholder or short secrets
 make up                  # production build at http://127.0.0.1:8080
 ```
 
@@ -46,9 +47,10 @@ make up                  # production build at http://127.0.0.1:8080
 UI with `docker compose up -d --no-deps postgres opensearch backend frontend` (`--no-deps`,
 because the backend waits for a healthy `cape` otherwise); CAPE then shows as down.
 
-The two tokens are secrets between containers: make each with `openssl rand -hex 32`. `GUEST_CONTROL_TOKEN`
-is what lets the backend, and nothing else, ask the `cape` container to build and delete guests;
-`make preflight` checks it is at least 32 characters.
+The four secrets (`POSTGRES_PASSWORD`, `CAPE_DB_PASSWORD`, `CAPE_API_TOKEN`, `GUEST_CONTROL_TOKEN`) have no defaults:
+compose refuses to start while one is empty. `make init-env` fills them with `openssl rand -hex 32`; by hand,
+the two tokens must be at least 32 characters and the passwords may use letters, digits, `-`, `_` and `.` only.
+`GUEST_CONTROL_TOKEN` is what lets the backend, and nothing else, ask the `cape` container to build and delete guests.
 
 For development with hot reload, use `make dev` instead (frontend on `127.0.0.1:5173`, backend
 and its API docs on `127.0.0.1:8000`). Database migrations run when the backend starts.

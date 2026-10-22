@@ -6,6 +6,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 BASE_FILE=docker-compose.yml
 DEV_FILE=docker-compose.dev.yml
 failed=0
+MODE=
 
 ok() { printf '[ OK ] %s\n' "$1"; }
 fail() { printf '[FAIL] %s\n' "$1"; failed=1; }
@@ -25,14 +26,51 @@ compose() { docker compose "${COMPOSE_FILES[@]}" "$@"; }
 
 compose_all_profiles_config() { compose --profile '*' config --format json; }
 
+# The resolved compose config holds every secret, so it travels over stdin, never in an argument list
+# (which any local user can read from /proc while the script runs). printf is a builtin: no process
+# is spawned with the config in its arguments.
 policy_violations() {
-    python3 -I - "$1" "$2" "${3:-{\}}" <<'PY'
+    printf '{"mode":"%s","config":%s,"other":%s}' "$MODE" "$2" "${3:-{\}}" |
+        python3 -I -c "$POLICY_PROGRAM" "$1"
+}
+
+IFS= read -r -d '' POLICY_PROGRAM <<'PY' || true
 import json
 import sys
 
-check, config = sys.argv[1], json.loads(sys.argv[2])
+check = sys.argv[1]
+payload = json.load(sys.stdin)
+config = payload["config"]
 services = config["services"]
 published = [(name, port) for name, svc in services.items() for port in svc.get("ports", [])]
+
+
+def networks_of(name):
+    return set(services.get(name, {}).get("networks") or {})
+
+
+def peers_of(name):
+    return {other for other in services if other != name and networks_of(other) & networks_of(name)}
+
+
+def non_internal_joins(name, publishing_networks):
+    declared = config.get("networks", {})
+    return [
+        f"{name} joins {network}, which is not internal"
+        for network in sorted(networks_of(name) - publishing_networks)
+        if not declared.get(network, {}).get("internal")
+    ]
+
+
+def unexpected_peers(name, allowed):
+    return [f"{name} is reachable by {peer}" if name == "opensearch" else f"{name} shares a network with {peer}"
+            for peer in sorted(peers_of(name) - allowed)]
+
+
+# Docker publishes a port only from a network that has a route out, so in dev the databases join
+# one more network for that alone, and postgres is then next to opensearch on it.
+dev = payload["mode"] == "dev"
+publishing_networks = {"tartarus-dev"} if dev else set()
 
 
 def volume_mounts(service, volume):
@@ -52,7 +90,7 @@ elif check == "dev-frontend-vite-only":
     extra = [port.get("published") for name, port in published if name == "frontend" and port.get("target") != 5173]
     problems = [f"frontend also publishes {', '.join(extra)} in dev"] if extra else []
 elif check == "distinct-build-image-tags":
-    other = json.loads(sys.argv[3]).get("services", {})
+    other = payload["other"].get("services", {})
     collisions = [
         f"{name} is tagged {image!r} in both files but built differently"
         for name, svc in services.items()
@@ -65,7 +103,7 @@ elif check == "distinct-build-image-tags":
     print("; ".join(collisions))
     sys.exit(1 if collisions else 0)
 elif check == "same-build-same-image-tag":
-    other = json.loads(sys.argv[3]).get("services", {})
+    other = payload["other"].get("services", {})
     problems = [
         f"{name} is tagged {svc['image']!r} here and {other[name]['image']!r} in the other compose file"
         for name, svc in services.items()
@@ -94,6 +132,14 @@ elif check == "sample-store-only-in-backend":
         for name, svc in services.items()
         if name != "backend" and volume_mounts(svc, "sample-store")
     ]
+elif check == "opensearch-reachable-only-by-backend":
+    problems = unexpected_peers("opensearch", {"backend", "postgres"} if dev else {"backend"})
+elif check == "databases-only-on-internal-networks":
+    problems = non_internal_joins("postgres", publishing_networks) + non_internal_joins("opensearch", publishing_networks)
+elif check == "frontend-reaches-only-backend":
+    problems = unexpected_peers("frontend", {"backend"})
+elif check == "cape-reaches-only-backend-and-postgres":
+    problems = unexpected_peers("cape", {"backend", "postgres"})
 elif check == "cape-no-ports":
     problems = [f"cape publishes {port.get('published')}" for name, port in published if name == "cape"]
 elif check == "cape-iso-readonly":
@@ -120,7 +166,6 @@ else:
 print("; ".join(problems))
 sys.exit(1 if problems else 0)
 PY
-}
 
 http_status_is_200() {
     local code
@@ -146,6 +191,7 @@ check_static() {
     COMPOSE_FILES=(-f "$BASE_FILE"); prod_config=$(compose_all_profiles_config) || prod_config="{}"
     COMPOSE_FILES=(-f "$BASE_FILE" -f "$DEV_FILE"); dev_config=$(compose_all_profiles_config) || dev_config="{}"
     for mode in prod dev; do
+        MODE=$mode
         COMPOSE_FILES=(-f "$BASE_FILE")
         if [[ $mode == dev ]]; then
             COMPOSE_FILES+=(-f "$DEV_FILE")
@@ -166,6 +212,12 @@ check_static() {
         check "$mode: backend mounts cape-storage read-only" policy_violations cape-storage-read-only-in-backend "$config"
         check "$mode: only backend and cape mount cape-storage" policy_violations cape-storage-only-in-backend-and-cape "$config"
         check "$mode: only backend mounts sample-store" policy_violations sample-store-only-in-backend "$config"
+        check "$mode: opensearch shares a network only with the services that need it" \
+            policy_violations opensearch-reachable-only-by-backend "$config"
+        check "$mode: postgres and opensearch join internal networks only" policy_violations databases-only-on-internal-networks "$config"
+        check "$mode: the frontend shares a network with the backend only" policy_violations frontend-reaches-only-backend "$config"
+        check "$mode: cape shares a network with the backend and postgres only" \
+            policy_violations cape-reaches-only-backend-and-postgres "$config"
         check "$mode: unchanged builds keep their image tag across both compose files" \
             policy_violations same-build-same-image-tag "$config" "${other_config:-{\}}"
         check "$mode: built images are not shared with the other compose file" \

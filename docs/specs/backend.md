@@ -601,8 +601,11 @@ indexed, that is lowercase. It looks at the whole analysis, not at the current f
 `TARTARUS_PORT=8080` (the frontend's published port; the backend listens on `8000` internally), `TZ`, `OPENSEARCH_HEAP=1536m`,
 `GUEST_SUBNET=192.168.150.0/24`, `CAPE_REF=<commit>`, `DEFAULT_ROUTE=inetsim`,
 `DEFAULT_TIMEOUT=180`, `DISK_WARN_GB=50`, `DISK_BLOCK_GB=20`, optional `VPN_*` / `WG_*` /
-`SOCKS5_*`. Secrets such as the CAPE API token and the callback token are generated on first
-start into `data/secrets.env`.
+`SOCKS5_*`. The four secrets (`POSTGRES_PASSWORD`, `CAPE_DB_PASSWORD`, `CAPE_API_TOKEN`,
+`GUEST_CONTROL_TOKEN`) have no defaults and nothing generates them on start: `make init-env`
+(`scripts/gen-env.sh`) writes `.env` with random values, mode 600, and refuses to overwrite one;
+compose refuses an empty secret and `make preflight` rejects placeholders, tokens under 32 characters
+and warns about a group- or world-readable `.env`.
 
 The backend reads `GUEST_CONTROL_URL` (compose sets `http://cape-control:8002`: the name `cape-control` exists
 only on the `tartarus-control` network, so the control service is not reached over `tartarus-internal`) and

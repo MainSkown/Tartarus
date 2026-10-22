@@ -17,7 +17,6 @@ frontend/screenshots/
 
 # Local configuration and secrets
 .env
-data/secrets.env
 
 # User-supplied ISOs
 data/iso/*

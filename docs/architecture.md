@@ -10,7 +10,7 @@ isolation and the tech stack. The details of each part are in the [specs](specs/
  │                                                                                                │
  │  Browser / installed PWA ──HTTP + WS──► 127.0.0.1:8080 (the only published port)               │
  │                                  │                                                             │
- │  ┌────────────────────── docker compose: network "tartarus-internal" ───────────────────────┐  │
+ │  ┌────────────────────── docker compose: networks, see below ───────────────────────────────┐  │
  │  │                                  ▼                                                       │  │
  │  │  ┌─ frontend (nginx) ───────────────────────────────────────────┐                        │  │
  │  │  │ Quasar PWA build · proxies /api and /ws to backend:8000      │                        │  │
@@ -36,8 +36,24 @@ isolation and the tech stack. The details of each part are in the [specs](specs/
  └────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The diagram shows `tartarus-internal`. `backend` and `cape` also share a second network,
-`tartarus-control`, that nothing else joins: the guest control service in `cape` listens only there.
+### Networks
+
+The services share no flat network: each network joins only the services that talk to each other, and
+the ones that carry data have no route out (`internal: true`). Service names and ports are the same on
+whichever network they are reached.
+
+| Network | Members | `internal` | What it carries |
+|---|---|---|---|
+| `tartarus-web` | `frontend`, `backend` | no | nginx's proxy to `backend:8000`. A plain bridge because Docker publishes the frontend's loopback port only from a network with a route out |
+| `tartarus-db` | `backend`, `postgres` | yes | The Tartarus database |
+| `tartarus-search` | `backend`, `opensearch` | yes | The event store. OpenSearch has no authentication, so only the backend shares a network with it |
+| `tartarus-cape-db` | `cape`, `postgres` | yes | CAPE's task database |
+| `tartarus-internal` | `cape`, `backend` | no | CAPE's API and guacd. `cape` needs the route out: the guests' `internet` route and the symbol fetch leave through it. The backend therefore has a route out too, until the CAPE API moves to `tartarus-control` |
+| `tartarus-control` | `cape`, `backend` | yes | The guest control service, which nothing else may reach |
+
+`cape` does not need OpenSearch (nothing in `cape/` talks to it), so it shares no network with it. In dev,
+`docker-compose.dev.yml` adds `tartarus-dev`, a plain bridge for `postgres` and `opensearch`, only so
+Docker publishes their loopback ports; `make smoke` checks all of the above.
 
 ## Compose services
 

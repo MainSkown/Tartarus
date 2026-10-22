@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-cape test-scripts test-integration lint check api-sync screenshots preflight smoke verify-cape build-guest verify-guest verify-isolation verify-wizard e2e hooks
+.PHONY: help dev up down logs test test-cape test-scripts test-integration lint check api-sync screenshots init-env preflight smoke verify-cape build-guest verify-guest verify-isolation verify-wizard e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -48,7 +48,10 @@ api-sync: ## Regenerate the frontend API client from the running backend (make d
 screenshots: ## Capture the visual review screenshots
 	cd frontend && npm run screenshots
 
-preflight: ## Check host prerequisites
+init-env: ## Write .env from .env.example with random secrets (mode 600, never overwrites an existing .env)
+	scripts/gen-env.sh
+
+preflight: ## Check host prerequisites, the secrets in .env included
 	scripts/preflight.sh
 
 smoke: ## Smoke-test the stack: MODE=static (default, no daemon needed), prod or dev

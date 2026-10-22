@@ -60,12 +60,14 @@ stage_answer_files() {
     : >"$STAGING/$(profile_name cd_marker_file)"
 }
 
-# The staging folder holds the answer file with the account password in it; the disc is all that stays.
+# The staging folder holds the answer file with the account password in it; the disc is all that stays,
+# owner-only: libvirt gives the file to QEMU's user when the guest starts. It cannot be deleted after the
+# install, because the install domain stays defined with it as a CD for every later restart.
 build_answer_iso() {
     local label
     label=$(profile_name cd_volume_label)
     rm -f "$ANSWER_ISO"
-    if ! xorriso -as mkisofs -quiet -V "$label" -J -joliet-long -r -o "$ANSWER_ISO" "$STAGING"; then
+    if ! (umask 077 && xorriso -as mkisofs -quiet -V "$label" -J -joliet-long -r -o "$ANSWER_ISO" "$STAGING"); then
         rm -rf "$STAGING"
         fail "could not build the answer-file ISO"
     fi

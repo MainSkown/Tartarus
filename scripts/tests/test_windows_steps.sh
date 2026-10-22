@@ -219,6 +219,16 @@ test_install_never_prints_the_password_or_leaves_the_staging_folder_behind() {
     [[ ! -e $SB/build/answer-files ]] || { echo "  the plaintext staging folder was left behind"; return 1; }
 }
 
+# The disc carries the account password; libvirt hands the file to QEMU's user when the guest starts, and
+# deleting it is not safe: the install domain stays defined with it as a CD for every later restart.
+test_install_keeps_the_answer_iso_readable_by_its_owner_only() {
+    new_sandbox
+    appears_after 2
+    run_step install
+    assert_status 0 || return 1
+    [[ $(stat -c %a "$SB/build/answer.iso") == 600 ]] || { echo "  answer.iso has mode $(stat -c %a "$SB/build/answer.iso")"; return 1; }
+}
+
 test_install_replaces_an_answer_iso_an_earlier_attempt_left() {
     new_sandbox
     appears_after 2

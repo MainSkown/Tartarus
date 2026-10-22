@@ -14,10 +14,14 @@ port_entry() { printf '{"mode":"ingress","host_ip":"%s","target":%s,"published":
 
 CAPE_STORAGE_VOLUME='{"type":"volume","source":"cape-storage","target":"/opt/CAPEv2/storage"}'
 ISO_MOUNT='{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":true}'
-DEFAULT_CAPE='{"image":"tartarus-cape:latest","build":{},"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"volumes":['"$CAPE_STORAGE_VOLUME,$ISO_MOUNT"'],"networks":{"tartarus-internal":null}}'
+CAPE_NETWORKS='{"tartarus-internal":null,"tartarus-control":null,"tartarus-cape-db":null}'
+DEFAULT_CAPE='{"image":"tartarus-cape:latest","build":{},"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"volumes":['"$CAPE_STORAGE_VOLUME,$ISO_MOUNT"'],"networks":'"$CAPE_NETWORKS"'}'
 CAPE_STORAGE_READ_ONLY='{"type":"volume","source":"cape-storage","target":"/cape-storage","read_only":true}'
 SAMPLE_STORE='{"type":"volume","source":"sample-store","target":"/data/samples"}'
 DEFAULT_BACKEND_VOLUMES="$CAPE_STORAGE_READ_ONLY,$SAMPLE_STORE"
+BACKEND_NETWORKS='"networks":{"tartarus-web":null,"tartarus-db":null,"tartarus-search":null,"tartarus-internal":null,"tartarus-control":null}'
+PROD_NETWORKS='{"tartarus-web":{},"tartarus-internal":{},"tartarus-db":{"internal":true},"tartarus-search":{"internal":true},"tartarus-cape-db":{"internal":true},"tartarus-control":{"internal":true}}'
+DEV_NETWORKS='{"tartarus-web":{},"tartarus-internal":{},"tartarus-dev":{},"tartarus-db":{"internal":true},"tartarus-search":{"internal":true},"tartarus-cape-db":{"internal":true},"tartarus-control":{"internal":true}}'
 
 write_prod_config() {
     local frontend_ip=$1 backend_ports=$2 backend_image=${3:-tartarus-backend:latest} frontend_image=${4:-tartarus-frontend:latest}
@@ -25,12 +29,12 @@ write_prod_config() {
     local postgres_image=${8:-postgres:16}
     cat >"$STUB_DIR/config-prod.json" <<JSON
 {"services":{
-  "frontend":{"image":"$frontend_image","build":{"target":"production-stage"},"ports":[$(port_entry "$frontend_ip" 80 8080)]},
-  "backend":{"image":"$backend_image","build":{"target":"prod"},"ports":[$backend_ports],"volumes":[$backend_volumes]${backend_extra:+,$backend_extra}},
+  "frontend":{"image":"$frontend_image","build":{"target":"production-stage"},"ports":[$(port_entry "$frontend_ip" 80 8080)],"networks":{"tartarus-web":null}},
+  "backend":{"image":"$backend_image","build":{"target":"prod"},"ports":[$backend_ports],"volumes":[$backend_volumes],$BACKEND_NETWORKS${backend_extra:+,$backend_extra}},
   "cape":$cape,
-  "postgres":{"image":"$postgres_image","volumes":[{"type":"volume","source":"pg-data","target":"/var/lib/postgresql/data"}]},
-  "opensearch":{"volumes":[{"type":"volume","source":"os-data","target":"/usr/share/opensearch/data"}]}
-}}
+  "postgres":{"image":"$postgres_image","volumes":[{"type":"volume","source":"pg-data","target":"/var/lib/postgresql/data"}],"networks":{"tartarus-db":null,"tartarus-cape-db":null}},
+  "opensearch":{"volumes":[{"type":"volume","source":"os-data","target":"/usr/share/opensearch/data"}],"networks":{"tartarus-search":null}}
+},"networks":$PROD_NETWORKS}
 JSON
 }
 
@@ -39,12 +43,12 @@ write_dev_config() {
     local cape=${6:-$DEFAULT_CAPE} postgres_image=${7:-postgres:16}
     cat >"$STUB_DIR/config-dev.json" <<JSON
 {"services":{
-  "frontend":{"image":"$frontend_image","build":{"target":"dev-stage"},"ports":[$(port_entry 127.0.0.1 5173 5173)${extra_frontend_ports:+,$extra_frontend_ports}]},
-  "backend":{"image":"$backend_image","build":{"target":"dev"},"ports":[$(port_entry 127.0.0.1 8000 8000)],"volumes":[$backend_volumes]},
+  "frontend":{"image":"$frontend_image","build":{"target":"dev-stage"},"ports":[$(port_entry 127.0.0.1 5173 5173)${extra_frontend_ports:+,$extra_frontend_ports}],"networks":{"tartarus-web":null}},
+  "backend":{"image":"$backend_image","build":{"target":"dev"},"ports":[$(port_entry 127.0.0.1 8000 8000)],"volumes":[$backend_volumes],$BACKEND_NETWORKS},
   "cape":$cape,
-  "postgres":{"image":"$postgres_image","ports":[$(port_entry "$postgres_ip" 5432 5432)]},
-  "opensearch":{"ports":[$(port_entry 127.0.0.1 9200 9200)]}
-}}
+  "postgres":{"image":"$postgres_image","ports":[$(port_entry "$postgres_ip" 5432 5432)],"networks":{"tartarus-db":null,"tartarus-cape-db":null,"tartarus-dev":null}},
+  "opensearch":{"ports":[$(port_entry 127.0.0.1 9200 9200)],"networks":{"tartarus-search":null,"tartarus-dev":null}}
+},"networks":$DEV_NETWORKS}
 JSON
 }
 
@@ -115,6 +119,117 @@ run_test() {
     local name=$1
     new_sandbox
     if "$name"; then echo "ok   $name"; else echo "FAIL $name"; failures=$((failures + 1)); fi
+}
+
+REAL_PYTHON="$(command -v python3)"
+
+record_python_arguments() {
+    cat >"$STUB_DIR/bin/python3" <<STUB
+#!/usr/bin/env bash
+printf '%s\\n' "\$*" >>"\$STUB_DIR/python-arguments"
+exec "$REAL_PYTHON" "\$@"
+STUB
+    chmod +x "$STUB_DIR/bin/python3"
+}
+
+test_static_keeps_resolved_secrets_off_every_command_line() {
+    write_prod_config 127.0.0.1 "" "" "" "" '"environment":{"CAPE_API_TOKEN":"SECRET-MARKER-123"}'
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES"
+    record_python_arguments
+    run_smoke static
+    expect_pass || return 1
+    if [[ ! -s $STUB_DIR/python-arguments ]]; then echo "  the python stub was never called"; return 1; fi
+    if grep -q SECRET-MARKER-123 "$STUB_DIR/python-arguments"; then
+        echo "  the resolved config reached a python command line"; return 1
+    fi
+}
+
+test_static_output_never_contains_resolved_secrets() {
+    write_prod_config 127.0.0.1 "" "" "" "" '"environment":{"CAPE_API_TOKEN":"SECRET-MARKER-123"},"privileged":true'
+    run_smoke static
+    [[ $OUTPUT != *SECRET-MARKER-123* ]]
+}
+
+edit_config() {
+    local file=$STUB_DIR/config-$1.json
+    python3 -I - "$file" "$2" <<'PY'
+import json, sys
+path, snippet = sys.argv[1], sys.argv[2]
+config = json.load(open(path))
+exec(snippet)
+json.dump(config, open(path, "w"))
+PY
+}
+
+test_static_rejects_opensearch_shared_with_the_frontend() {
+    edit_config prod 'config["services"]["frontend"]["networks"]["tartarus-search"] = None'
+    run_smoke static
+    expect_fail_mentioning "opensearch is reachable by frontend"
+}
+
+test_static_rejects_opensearch_shared_with_cape() {
+    edit_config prod 'config["services"]["cape"]["networks"]["tartarus-search"] = None'
+    run_smoke static
+    expect_fail_mentioning "opensearch is reachable by cape"
+}
+
+test_static_rejects_opensearch_shared_with_postgres_in_prod() {
+    edit_config prod 'config["services"]["opensearch"]["networks"]["tartarus-db"] = None'
+    run_smoke static
+    expect_fail_mentioning "opensearch is reachable by postgres"
+}
+
+test_static_accepts_postgres_next_to_opensearch_in_dev() {
+    run_smoke static
+    expect_pass && [[ $OUTPUT == *"dev: opensearch shares a network only with"* ]]
+}
+
+test_static_rejects_opensearch_on_a_network_with_a_route_out() {
+    edit_config prod 'config["services"]["opensearch"]["networks"]["tartarus-internal"] = None'
+    run_smoke static
+    expect_fail_mentioning "opensearch joins tartarus-internal, which is not internal"
+}
+
+test_static_rejects_postgres_on_a_network_with_a_route_out_in_prod() {
+    edit_config prod 'config["services"]["postgres"]["networks"]["tartarus-web"] = None'
+    run_smoke static
+    expect_fail_mentioning "postgres joins tartarus-web, which is not internal"
+}
+
+test_static_rejects_dev_postgres_on_a_route_out_network_other_than_the_dev_one() {
+    edit_config dev 'config["services"]["postgres"]["networks"]["tartarus-internal"] = None'
+    run_smoke static
+    expect_fail_mentioning "postgres joins tartarus-internal, which is not internal"
+}
+
+test_static_rejects_prod_publishing_network_for_a_database() {
+    edit_config prod 'config["networks"]["tartarus-dev"] = {}; config["services"]["postgres"]["networks"]["tartarus-dev"] = None'
+    run_smoke static
+    expect_fail_mentioning "postgres joins tartarus-dev, which is not internal"
+}
+
+test_static_rejects_a_database_network_that_lost_its_internal_flag() {
+    edit_config prod 'config["networks"]["tartarus-search"] = {}'
+    run_smoke static
+    expect_fail_mentioning "opensearch joins tartarus-search, which is not internal"
+}
+
+test_static_rejects_the_frontend_sharing_a_network_with_cape() {
+    edit_config prod 'config["services"]["frontend"]["networks"]["tartarus-internal"] = None'
+    run_smoke static
+    expect_fail_mentioning "frontend shares a network with cape"
+}
+
+test_static_rejects_the_frontend_sharing_a_network_with_postgres() {
+    edit_config prod 'config["services"]["frontend"]["networks"]["tartarus-db"] = None'
+    run_smoke static
+    expect_fail_mentioning "frontend shares a network with postgres"
+}
+
+test_static_rejects_cape_sharing_a_network_with_the_frontend() {
+    edit_config prod 'config["services"]["cape"]["networks"]["tartarus-web"] = None'
+    run_smoke static
+    expect_fail_mentioning "cape shares a network with frontend"
 }
 
 test_static_passes_on_loopback_only_config() {

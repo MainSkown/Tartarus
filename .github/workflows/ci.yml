@@ -75,8 +75,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Write a throwaway .env
-        run: |
-          cp .env.example .env
-          echo "CAPE_API_TOKEN=$(openssl rand -hex 32)" >> .env
-          echo "GUEST_CONTROL_TOKEN=$(openssl rand -hex 32)" >> .env
+        run: scripts/gen-env.sh
       - run: make smoke

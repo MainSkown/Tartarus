@@ -6,6 +6,8 @@ import dataclasses
 import json
 import logging
 import re
+import threading
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
@@ -493,6 +495,18 @@ class TestDefenderSettle:
         assert event_logs.every_detection_closed(EMPTY_EVENTS)
 
 
+class TestDocumentCap:
+    def test_a_document_larger_than_the_cap_is_not_written_and_is_reported(
+        self, guest, collector, folder, monkeypatch
+    ):
+        collector.start()
+        guest.add_event(SYSMON, event_id=1)
+        monkeypatch.setattr(event_logs, "MAX_EXPORT_BYTES", 50)
+        collector.export_to(folder)
+        assert not (folder / "sysmon/sysmon.xml").exists()
+        assert "larger than" in (folder / event_logs.MISSING_EXPORTS_FILE).read_text()
+
+
 class TestNeverRaises:
     def test_an_unreachable_agent_makes_start_and_export_no_ops(
         self, guest, collector, folder, caplog
@@ -713,22 +727,45 @@ class TestGuestAgent:
         def __init__(self):
             self.calls = []
             self.status_error = None
+            self.status_code = 200
             self.stdout = base64.b64encode(b"out").decode()
+            self.body = None
+            self.chunks = None
+            self.pause_before_answer = 0.0
+            self.closed = threading.Event()
+            self.bytes_served = 0
 
-        def get(self, url, timeout=None):
-            return self.post(url, timeout=timeout)
+        def get(self, url, timeout=None, **options):
+            return self.post(url, timeout=timeout, **options)
 
-        def post(self, url, data=None, files=None, timeout=None):
-            self.calls.append(SimpleNamespace(url=url, data=data, files=files, timeout=timeout))
+        def post(self, url, data=None, files=None, timeout=None, **options):
+            self.calls.append(
+                SimpleNamespace(url=url, data=data, files=files, timeout=timeout, options=options)
+            )
+            time.sleep(self.pause_before_answer)
+            return self.answer()
+
+        def answer(self):
             outer = self
 
             class Answer:
+                status_code = outer.status_code
+
                 def raise_for_status(self):
                     if outer.status_error:
                         raise outer.status_error
 
-                def json(self):
-                    return {"stdout": outer.stdout}
+                def iter_content(self, chunk_size):
+                    if outer.chunks is not None:
+                        yield from outer.chunks()
+                        return
+                    body = outer.body or json.dumps({"stdout": outer.stdout}).encode()
+                    for start in range(0, len(body), chunk_size):
+                        outer.bytes_served += len(body[start : start + chunk_size])
+                        yield body[start : start + chunk_size]
+
+                def close(self):
+                    outer.closed.set()
 
             return Answer()
 
@@ -785,6 +822,68 @@ class TestGuestAgent:
         event_logs.GuestAgent("192.168.150.10", http).remove("C:\\Windows\\Temp\\c.xml", 15)
         assert http.calls[0].url == "http://192.168.150.10:8000/remove"
         assert http.calls[0].data == {"path": "C:\\Windows\\Temp\\c.xml"}
+
+    def test_requests_neither_follow_redirects_nor_buffer_the_whole_answer(self):
+        http = self.Http()
+        event_logs.GuestAgent("192.168.150.10", http).execute("x", 5)
+        assert http.calls[0].options == {"allow_redirects": False, "stream": True}
+
+    @pytest.mark.parametrize("status", [301, 302, 307, 308])
+    def test_a_redirect_from_the_guest_is_refused_and_not_followed(self, status):
+        http = self.Http()
+        http.status_code = status
+        with pytest.raises(event_logs.AgentAnswerError, match="redirect"):
+            event_logs.GuestAgent("192.168.150.10", http).execute("x", 5)
+        assert len(http.calls) == 1
+
+    def test_an_answer_larger_than_the_cap_is_refused_before_it_is_all_read(self, monkeypatch):
+        monkeypatch.setattr(event_logs, "MAX_EXPORT_BYTES", 10_000)
+        http = self.Http()
+        http.stdout = base64.b64encode(b"x" * 1_000_000).decode()
+        with pytest.raises(event_logs.AgentAnswerError, match="larger than"):
+            event_logs.GuestAgent("192.168.150.10", http).execute("x", 5)
+        assert http.bytes_served < 100_000
+        assert http.closed.is_set()
+
+    def test_an_answer_at_the_cap_is_accepted(self, monkeypatch):
+        http = self.Http()
+        monkeypatch.setattr(
+            event_logs, "MAX_EXPORT_BYTES", len(json.dumps({"stdout": http.stdout}))
+        )
+        assert event_logs.GuestAgent("192.168.150.10", http).execute("x", 5) == b"out"
+
+    def test_an_answer_that_drips_in_is_cut_off_at_the_overall_deadline(self, monkeypatch):
+        monkeypatch.setattr(event_logs, "CONNECT_TIMEOUT_S", 0.1)
+        http = self.Http()
+
+        def drip():
+            while True:
+                time.sleep(0.02)
+                yield b" "
+
+        http.chunks = drip
+        started = time.monotonic()
+        with pytest.raises(event_logs.DeadlineExceededError):
+            event_logs.GuestAgent("192.168.150.10", http).execute("x", 0.2)
+        assert time.monotonic() - started < 2
+        assert http.closed.wait(timeout=2)
+
+    def test_an_agent_that_is_slow_to_start_answering_is_cut_off_at_the_deadline(self, monkeypatch):
+        monkeypatch.setattr(event_logs, "CONNECT_TIMEOUT_S", 0.1)
+        http = self.Http()
+        http.pause_before_answer = 1.0
+        started = time.monotonic()
+        with pytest.raises(event_logs.DeadlineExceededError):
+            event_logs.GuestAgent("192.168.150.10", http).status(0.1)
+        assert time.monotonic() - started < 0.8
+
+    def test_a_failure_inside_the_request_reaches_the_caller_unchanged(self):
+        class Refusing:
+            def post(self, *_args, **_options):
+                raise ConnectionError("no route")
+
+        with pytest.raises(ConnectionError, match="no route"):
+            event_logs.GuestAgent("192.168.150.10", Refusing()).execute("x", 5)
 
 
 class TestAuxiliary:

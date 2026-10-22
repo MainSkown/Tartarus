@@ -2,10 +2,14 @@ services:
   postgres:
     ports:
       - "127.0.0.1:5432:5432"
+    networks:
+      - tartarus-dev
 
   opensearch:
     ports:
       - "127.0.0.1:9200:9200"
+    networks:
+      - tartarus-dev
 
   backend:
     image: tartarus-backend:dev
@@ -56,3 +60,10 @@ services:
           path: ./frontend/src-pwa/package.json
         - action: rebuild
           path: ./frontend/src-pwa/package-lock.json
+
+networks:
+  # Docker publishes a port only from a network with a route out, and the two data networks have none,
+  # so the databases join this one for their loopback ports in dev only.
+  tartarus-dev:
+    name: tartarus-dev
+    driver: bridge

@@ -11,7 +11,8 @@ MIN_MAX_MAP_COUNT=262144
 MIN_RAM_KB=$((15 * 1024 * 1024))
 MIN_FREE_DISK_KB=$((200 * 1024 * 1024))
 MIN_NODE_MAJOR=24
-MIN_CONTROL_TOKEN_LENGTH=32
+
+source "$REPO_DIR/scripts/lib/secrets.sh"
 
 FAILED=0
 
@@ -122,25 +123,49 @@ check_node() {
     fi
 }
 
-control_token() {
-    local token=${GUEST_CONTROL_TOKEN:-}
-    if [ -z "$token" ] && [ -r "$ENV_FILE" ]; then
-        token=$(sed -n 's/^GUEST_CONTROL_TOKEN=//p' "$ENV_FILE" | tail -n 1)
-        token=${token#[\"\']}
-        token=${token%[\"\']}
+secret_value() {
+    local name=$1 value=${!1:-}
+    if [ -z "$value" ] && [ -r "$ENV_FILE" ]; then
+        value=$(sed -n "s/^$name=//p" "$ENV_FILE" | tail -n 1)
+        value=${value#[\"\']}
+        value=${value%[\"\']}
     fi
-    printf '%s' "$token"
+    printf '%s' "$value"
 }
 
-check_control_token() {
-    local length
-    length=$(control_token | wc -c)
+# Never echoes the value: the verdict names the secret and, for a length, only the count.
+check_secret() {
+    local name=$1 value length
+    value=$(secret_value "$name")
+    length=${#value}
     if (( length == 0 )); then
-        fail "GUEST_CONTROL_TOKEN is not set in $ENV_FILE (compose refuses to start without it; openssl rand -hex 32 makes one)"
-    elif (( length < MIN_CONTROL_TOKEN_LENGTH )); then
-        fail "GUEST_CONTROL_TOKEN is $length characters, the control service needs >= $MIN_CONTROL_TOKEN_LENGTH (openssl rand -hex 32 makes one)"
+        fail "$name is not set in $ENV_FILE (compose refuses to start without it; scripts/gen-env.sh makes the file, openssl rand -hex 32 one value)"
+    elif in_list "$value" "${KNOWN_PLACEHOLDERS[@]}"; then
+        fail "$name is the placeholder from .env.example; set a random value (openssl rand -hex 32)"
+    elif is_token "$name" && (( length < MIN_TOKEN_LENGTH )); then
+        fail "$name is $length characters, it needs >= $MIN_TOKEN_LENGTH (openssl rand -hex 32 makes one)"
+    elif ! is_token "$name" && [[ ! $value =~ $URL_SAFE_PASSWORD_PATTERN ]]; then
+        fail "$name contains characters outside letters, digits, \"-\", \"_\" and \".\" (it ends up inside a database URL)"
     else
-        ok "GUEST_CONTROL_TOKEN set ($length characters)"
+        ok "$name set ($length characters)"
+    fi
+}
+
+check_secrets() {
+    local name
+    for name in "${SECRET_NAMES[@]}"; do
+        check_secret "$name"
+    done
+}
+
+check_env_file_mode() {
+    [ -e "$ENV_FILE" ] || return 0
+    local mode
+    mode=$(stat -c %a "$ENV_FILE")
+    if (( 8#$mode & 8#077 )); then
+        warn "$ENV_FILE is readable by group or others (mode $mode): chmod 600 $ENV_FILE"
+    else
+        ok "$ENV_FILE is private (mode $mode)"
     fi
 }
 
@@ -154,7 +179,8 @@ main() {
     check_disk
     check_uv
     check_node
-    check_control_token
+    check_secrets
+    check_env_file_mode
     exit "$FAILED"
 }
 

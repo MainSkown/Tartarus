@@ -12,6 +12,7 @@ DEV="$WORK/dev"
 EMPTY_DEV="$WORK/empty-dev"
 ENV_FILE="$WORK/env"
 GOOD_TOKEN=0123456789abcdef0123456789abcdef
+GOOD_PASSWORD=Db-pass_0.9
 FAILURES=0
 
 write_stub() {
@@ -54,7 +55,8 @@ run_case() {
     shift 3
     local output actual_exit=0
     output=$(env PATH="$STUB_BIN:/usr/bin:/bin" PREFLIGHT_PROC_DIR="$PROC" PREFLIGHT_DEV_DIR="$DEV" \
-        PREFLIGHT_ENV_FILE="$ENV_FILE" GUEST_CONTROL_TOKEN="$GOOD_TOKEN" "$@" "$PREFLIGHT" 2>&1) || actual_exit=$?
+        PREFLIGHT_ENV_FILE="$ENV_FILE" GUEST_CONTROL_TOKEN="$GOOD_TOKEN" CAPE_API_TOKEN="$GOOD_TOKEN" \
+        POSTGRES_PASSWORD="$GOOD_PASSWORD" CAPE_DB_PASSWORD="$GOOD_PASSWORD" "$@" "$PREFLIGHT" 2>&1) || actual_exit=$?
 
     if [ "$actual_exit" -eq "$expected_exit" ] && grep -qF -- "$expected_text" <<< "$output"; then
         echo "PASS $name"
@@ -62,6 +64,19 @@ run_case() {
         echo "FAIL $name (exit $actual_exit, expected $expected_exit; expected text: '$expected_text')"
         sed 's/^/    | /' <<< "$output"
         FAILURES=$((FAILURES + 1))
+    fi
+}
+
+check_output_hides_secret_values() {
+    local output
+    output=$(env PATH="$STUB_BIN:/usr/bin:/bin" PREFLIGHT_PROC_DIR="$PROC" PREFLIGHT_DEV_DIR="$DEV" \
+        PREFLIGHT_ENV_FILE="$ENV_FILE" GUEST_CONTROL_TOKEN="$GOOD_TOKEN" CAPE_API_TOKEN="$GOOD_TOKEN" \
+        POSTGRES_PASSWORD='p@ss/word' CAPE_DB_PASSWORD="$GOOD_PASSWORD" "$PREFLIGHT" 2>&1 || true)
+    if grep -qF -e 'p@ss/word' -e "$GOOD_TOKEN" -e "$GOOD_PASSWORD" <<< "$output"; then
+        echo "FAIL preflight printed a secret value"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "PASS preflight prints no secret value"
     fi
 }
 
@@ -91,6 +106,29 @@ main() {
     printf 'GUEST_CONTROL_TOKEN=\n' > "$ENV_FILE"
     run_case "an empty token in .env fails" 1 "[FAIL] GUEST_CONTROL_TOKEN is not set" GUEST_CONTROL_TOKEN=
     rm -f "$ENV_FILE"
+
+    run_case "a missing api token fails" 1 "[FAIL] CAPE_API_TOKEN is not set" CAPE_API_TOKEN=
+    run_case "a 31 character api token fails" 1 "[FAIL] CAPE_API_TOKEN is 31 characters" CAPE_API_TOKEN="${GOOD_TOKEN%?}"
+    run_case "a single character api token fails" 1 "[FAIL] CAPE_API_TOKEN is 1 characters" CAPE_API_TOKEN=a
+    run_case "a missing postgres password fails" 1 "[FAIL] POSTGRES_PASSWORD is not set" POSTGRES_PASSWORD=
+    run_case "a missing cape database password fails" 1 "[FAIL] CAPE_DB_PASSWORD is not set" CAPE_DB_PASSWORD=
+    run_case "the change-me postgres password fails" 1 "[FAIL] POSTGRES_PASSWORD is the placeholder from .env.example" POSTGRES_PASSWORD=change-me
+    run_case "the change-me-too cape password fails" 1 "[FAIL] CAPE_DB_PASSWORD is the placeholder from .env.example" CAPE_DB_PASSWORD=change-me-too
+    run_case "a placeholder token fails" 1 "[FAIL] GUEST_CONTROL_TOKEN is the placeholder from .env.example" GUEST_CONTROL_TOKEN=change-me
+    run_case "a short database password is accepted (only the tokens have a minimum)" 0 "[ OK ] POSTGRES_PASSWORD" POSTGRES_PASSWORD=short
+    run_case "a password with a character that breaks the database URL fails" 1 "[FAIL] POSTGRES_PASSWORD contains characters" POSTGRES_PASSWORD='p@ss/word'
+    printf 'POSTGRES_PASSWORD=%s\nCAPE_DB_PASSWORD=%s\nCAPE_API_TOKEN=%s\nGUEST_CONTROL_TOKEN=%s\n' \
+        "$GOOD_PASSWORD" "$GOOD_PASSWORD" "$GOOD_TOKEN" "$GOOD_TOKEN" > "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    run_case "all four secrets are read from .env when the shell has none" 0 "[ OK ] CAPE_API_TOKEN" \
+        GUEST_CONTROL_TOKEN= CAPE_API_TOKEN= POSTGRES_PASSWORD= CAPE_DB_PASSWORD=
+    run_case "a private .env is reported ok" 0 "[ OK ] $ENV_FILE is private"
+    chmod 640 "$ENV_FILE"
+    run_case "a group readable .env warns" 0 "[WARN] $ENV_FILE is readable by group or others (mode 640)"
+    chmod 644 "$ENV_FILE"
+    run_case "a world readable .env warns and says how to fix it" 0 "chmod 600 $ENV_FILE"
+    rm -f "$ENV_FILE"
+    check_output_hides_secret_values
 
     if [ "$FAILURES" -gt 0 ]; then
         echo "$FAILURES case(s) failed"
