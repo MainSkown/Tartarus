@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { Quasar, QVirtualScroll } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -60,6 +60,10 @@ function mountTable(props: Partial<Props> = {}) {
     },
   })
 }
+
+// Quasar's virtual scroll debounces its scroll handler with a timer; a table left mounted lets that
+// timer fire after the test environment is gone ("window is not defined"), which a slow CI runner hits.
+enableAutoUnmount(afterEach)
 
 beforeEach(() => {
   document.body.innerHTML = ''
