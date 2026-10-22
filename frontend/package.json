@@ -51,5 +51,8 @@
     "vitest": "^5.0.4",
     "vue-tsc": "^3.3.13",
     "workbox-build": "^7.4.1"
+  },
+  "overrides": {
+    "js-yaml": "^4.3.2"
   }
 }
