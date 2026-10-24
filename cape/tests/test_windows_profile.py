@@ -1387,7 +1387,9 @@ KEPT_SHELL_HOSTS = (
     "LockApp",
     "SecurityHealthSystray",
 )
-KEPT_SCRIPT_HOSTS = ("powershell", "pwsh", "cmd", "conhost")
+# Windows 11 runs the agent's console scripts inside Windows Terminal, a window of its own: closing
+# it ends the very script that closes it (seen on a Windows 11 clone: no output, no exit code).
+KEPT_SCRIPT_HOSTS = ("powershell", "pwsh", "cmd", "conhost", "WindowsTerminal")
 
 
 def app_process_names(names: list[str]) -> list[str]:

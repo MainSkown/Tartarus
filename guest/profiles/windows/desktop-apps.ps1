@@ -14,6 +14,8 @@
 #   python and pythonw are the guest agent (a scheduled task started with pythonw.exe by
 #     provision.ps1); closing it cuts the host off from the guest for good.
 #   powershell, pwsh, cmd and conhost run the very script that is asking, started by the agent.
+#   WindowsTerminal is where Windows 11 hosts that console, as a window of its own: closing it ends
+#     the script before it prints anything, so the host sees no exit code at all.
 $KeptProcessNames = @(
   'explorer',
   'ShellExperienceHost',
@@ -34,7 +36,8 @@ $KeptProcessNames = @(
   'powershell',
   'pwsh',
   'cmd',
-  'conhost'
+  'conhost',
+  'WindowsTerminal'
 )
 
 function Test-KeptProcess([string] $ProcessName) {
