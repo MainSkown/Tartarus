@@ -35,8 +35,9 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 - Tunnel routes: Tor, VPN, WireGuard and SOCKS5. Planned after v1. The API accepts them as a `Route`, but no
   tunnel is built, so Settings and the submit dialog offer only INetSim, none, drop and internet until the
   rooter can send an analysis through a configured tunnel ([architecture](../architecture.md)).
-- URL and archive submission; PCAP or memory-image import.
-- Parallel analyses.
+- URL and archive submission. (PCAP and memory-image import moved into v1 and were built in M9.)
+- Parallel analyses on one guest. Since M9 several guests run an analysis each at the same time
+  ([backend](../specs/backend.md#queue-and-runner-m9)).
 - Comparing analyses and searching across analyses.
 - Custom rule language, sequence rules, Sigma correlation/aggregation rules.
 - Multi-user, auth, remote access.
@@ -62,10 +63,10 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 - [ ] FastAPI app with operation ids, serving the schema at `/openapi.json` for `@hey-api/openapi-ts`
 - [ ] PostgreSQL models + Alembic: sample, analysis, tag, tag_link, note, sigma_rule, job, setting (guests live in the control service's registry, not in Postgres)
 - [ ] OpenSearch index template (ECS + `tartarus.*` + `api.*`), one index per analysis
-- [ ] Submission + one-at-a-time queue runner
-- [ ] Live collector (BSON + ETW tailing, offsets, resume)
-- [ ] Normalisers for capemon (with derived semantic events), Sysmon, ETW, Suricata, Volatility3 and CAPE report
-- [ ] Report ingester (callback → catch-up → enrichment; idempotent)
+- [ ] Submission + queue runner (one analysis per guest at a time)
+- [ ] Live collector (BSON tailing, per-file offsets; a restart re-reads the logs)
+- [ ] Normalisers for capemon (with derived semantic events), Sysmon, Suricata, Volatility3 and CAPE report. ETW was dropped in M8 ([plan](../history/m8-event-sources.md))
+- [ ] Report ingester (callback → collector drain → enrichment; idempotent)
 - [ ] Sigma engine (pySigma ECS pipeline → in-memory matcher; flood suppression)
 - [ ] KQL-like query compiler with aliases, validation and autocomplete endpoints
 - [ ] Views: processes, network, artifacts, registry, detections, ATT&CK, IOCs
@@ -81,7 +82,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 - [ ] Dashboard: analyses table, queue, system, disk, empty states
 - [ ] Submit dialog
 - [ ] Workspace header, query bar + chips, event detail drawer, URL-synced state
-- [ ] Tabs: Live (desktop, process tree, detections, stream), Overview, Processes (graph + tree), Timeline, Events (facets), Network, Artifacts, Detections (+ ATT&CK), Notes
+- [ ] Tabs: Live (desktop, process tree, detections, stream), Summary, Processes (graph + tree), Timeline, Events (facets), Network, Artifacts, Detections (+ ATT&CK), Notes
 - [ ] Export menu
 - [ ] Rules page
 - [ ] Guest page with build wizard
@@ -117,7 +118,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | CAPE in a privileged Ubuntu 24.04 container; everything in Docker Compose | Any distro; the user's preferred deployment style |
 | Windows guests only in v1, as one of several possible guest profiles | CAPE's Linux guest support is community-grade ("Linux guests don't have official CAPE support"). Creating a guest does not depend on the OS: Windows is the first profile, and a Linux guest later is a new profile, not a rewrite. There can be several guests (for example Windows 11 with Defender on and off), and the analyst chooses one for every detonation |
 | Backend: Python + FastAPI; client via `@hey-api/openapi-ts` | Reuse CAPE/Python tooling. Same pattern as the user's Momos project |
-| Custom live collector tailing BSON/ETW; final data via `callback` + report.json on the shared volume | CAPE has no streaming feed |
+| Custom live collector tailing BSON; final data via `callback` + report.json on the shared volume | CAPE has no streaming feed |
 | OpenSearch (events) + PostgreSQL (metadata) | Full-text log search is the main UX |
 | ECS field names + `tartarus.*` / `api.*` extensions | Standard; pySigma's ECS pipeline works out of the box |
 | One OpenSearch index per analysis | Instant delete; no cross-run search in v1 |
@@ -130,9 +131,9 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 | Event-category colours: validated six-lane palette with icons and labels | Colour-blind safe on the dark surface; never colour-only |
 | Interactive live desktop (Guacamole via backend proxy), clipboard disabled | ANY.RUN-style interaction, safely |
 | Default route INetSim; others per run | Safe default that still captures C2 attempts |
-| One analysis at a time; file submissions only; keep data forever (manual delete) | Solo-workstation scope |
+| One analysis per guest at a time, several guests at once (M9); file submissions and PCAP or memory-image imports only; keep data forever (manual delete) | Solo-workstation scope |
 | Guided auto-build of the guest from a user ISO | Guest prep is the hardest part of running CAPE |
-| Sources: capemon, Sysmon, ETW, Suricata/PCAP, Volatility3 | User's choice; Sysmon and ETW complement user-mode hooks |
+| Sources: capemon, Sysmon, Suricata/PCAP, Volatility3 (ETW was dropped in M8, see [plan](../history/m8-event-sources.md)) | User's choice; Sysmon complements user-mode hooks |
 | Extra workflows: tags/notes and export/report only | User's choice |
 | Defender in the guest is the user's choice, **on by default**, a per-guest option: "Defender on" and "Defender off" are two guests and the analyst picks one at submission | Which is right depends on the malware. Known malware is detected either way, but newer samples may check whether Defender is running and behave differently when it is off, since that suggests a sandbox; and leaving it on shows how a sample gets past Defender. Turning it off helps when Defender would remove a sample before it runs. The state is baked into the guest's snapshot, so it is a property of the guest, not of the submission. "Off" is built by a scripted step that turns Tamper Protection off and proves it with the EICAR test string; a manual pause is only the fallback if the toggle cannot be found |
 | Separate `frontend` container: Vite in dev, nginx in prod proxying `/api` and `/ws` | Same pattern as the user's Momos project; fast HMR; still one published port |
@@ -165,7 +166,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
    turns it off, verified by `IsTamperProtected` and proved with the EICAR test string (kept on a
    Defender-off guest, removed on a Defender-on one, checked by every guest's self-test); a manual pause
    remains only as a fallback if the toggle cannot be found. See
-   [CAPE integration](../specs/cape-integration.md#defender). **Report what Defender did in an analysis: built in the backend in M8, the Overview chip still to come.**
+   [CAPE integration](../specs/cape-integration.md#defender). **Report what Defender did in an analysis: built in the backend in M8, the Summary chip still to come.**
    When Defender is on, the ingest records its verdict (the Windows Defender operational event log, and
    whether the sample file or its process was removed) as `summary.defender`
    ([backend spec](../specs/backend.md)), so the analysis can say "Defender removed the sample" instead of

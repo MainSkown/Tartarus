@@ -43,9 +43,9 @@
 | Route | Page |
 |---|---|
 | `/` | Dashboard |
-| `/analyses/:id` | Analysis workspace (defaults to the `live` tab while running, otherwise `overview`) |
+| `/analyses/:id` | Analysis workspace (defaults to the `live` tab while running, otherwise `summary`) |
 | `/search` | Search across every analysis |
-| `/analyses/:id/:tab` | Tabs: `live`, `overview`, `processes`, `timeline`, `events`, `network`, `artifacts`, `detections`, `notes` |
+| `/analyses/:id/:tab` | Tabs: `live`, `summary`, `processes`, `timeline`, `events`, `network`, `artifacts`, `detections`, `notes` |
 | `/rules` | Sigma rules |
 | `/guest` | Guests: one card per guest |
 | `/guest/new` | Build wizard |
@@ -151,7 +151,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 ```
 #42  invoice.exe   sha256 9f2c…a1 ⧉   ● LIVE   REMAINING 01:48   SCORE –   ⚠ HIGH   [phishing ×][+]
                                                        [⇩ EXPORT ▾] [🗑]
-[ LIVE ][ OVERVIEW ][ PROCESSES ][ TIMELINE ][ EVENTS ][ NETWORK ][ ARTIFACTS ][ DETECTIONS ][ NOTES ]
+[ LIVE ][ SUMMARY ][ PROCESSES ][ TIMELINE ][ EVENTS ][ NETWORK ][ ARTIFACTS ][ DETECTIONS ][ NOTES ]
 > process.name:cmd.exe AND lane:network                                              [?] [✕]
 [proc: cmd.exe ×] [NOT api: NtDelayExecution ×]
 ```
@@ -172,7 +172,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
   - `FINAL` when done.
   - Whenever partial data is shown, a small note says "live data, final report pending".
 - **Query bar** (`.terminal-input-group`):
-  - Shared by the Timeline, Events, Processes and Network tabs.
+  - Shown only on the TIMELINE and EVENTS tabs of a finished analysis, and on the Search page. The other tabs have no query bar.
   - Field-name autocomplete comes from `/query/fields` (including aliases); value autocomplete
     comes after `field:`.
   - Errors are underlined in red with the message in a tooltip, and the query isn't run.
@@ -227,7 +227,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 - The API lane is hidden by default in the stream (it's very loud). A `[ ] show API calls`
   toggle brings it back.
 
-### OVERVIEW tab
+### SUMMARY tab
 
 - **Stat tiles:**
   - Score.

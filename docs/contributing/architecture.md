@@ -31,11 +31,11 @@ Source: `docker-compose.yml`. No MongoDB is used; the final report is read from 
    to the live WebSocket (`backend/app/ws/live.py`).
 5. **Finish.** CAPE writes `reports/report.json` and calls `POST /internal/cape/callback`
    (`backend/app/api/internal.py`).
-6. **Final ingest.** The report ingester (`backend/app/ingest/ingester.py`) first catches up on any
-   BSON the collector has not read. It then runs the normalisers from `default_normalizers()` over
+6. **Final ingest.** The runner drains the live collector first. The report ingester
+   (`backend/app/ingest/ingester.py`) then runs the normalisers from `default_normalizers()` over
    `report.json` and the files beside it: signatures, network, Sysmon, Defender and Volatility. API
-   calls are not indexed a second time, and deterministic ids make a re-run harmless. Sigma runs again
-   over the events that exist only in the final phase. The analysis becomes `done`.
+   calls are not indexed a second time, and deterministic ids make a re-run harmless. Sigma runs over
+   the whole ingest, live and final events alike. The analysis becomes `done`.
 7. **Views and exports.** Every view, query and export reads OpenSearch through the backend
    (`backend/app/views/`, `backend/app/export/`). The GUI never talks to OpenSearch.
 

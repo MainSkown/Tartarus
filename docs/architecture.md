@@ -59,9 +59,9 @@ Docker publishes their loopback ports; `make smoke` checks all of the above.
 
 | Service | Image | Purpose | Exposed to host |
 |---|---|---|---|
-| `frontend` | `tartarus/frontend` (built from `frontend/`; targets `dev-stage` = Vite dev server, `production-stage` = nginx) | Serves the Quasar PWA build and reverse-proxies `/api` and `/ws` to `backend:8000` | `127.0.0.1:8080` only (prod) |
-| `backend` | `tartarus/backend` (built from `backend/`; targets `dev` = uvicorn `--reload`, `prod`) | API, WebSocket, collector, ingester, rules, export, jobs, the client of the guest control service | nothing in prod (dev: `127.0.0.1:8000`) |
-| `cape` | `tartarus/cape` (built from the repo root: `cape/` and `guest/`) | CAPE + KVM/libvirt + rooter + Suricata + INetSim + guacd + the guest control service | nothing |
+| `frontend` | `tartarus-frontend` (built from `frontend/`; targets `dev-stage` = Vite dev server, `production-stage` = nginx) | Serves the Quasar PWA build and reverse-proxies `/api` and `/ws` to `backend:8000` | `127.0.0.1:8080` only (prod) |
+| `backend` | `tartarus-backend` (built from `backend/`; targets `dev` = uvicorn `--reload`, `prod`) | API, WebSocket, collector, ingester, rules, export, jobs, the client of the guest control service | nothing in prod (dev: `127.0.0.1:8000`) |
+| `cape` | `tartarus-cape` (built from the repo root: `cape/` and `guest/`) | CAPE + KVM/libvirt + rooter + Suricata + INetSim + guacd + the guest control service | nothing |
 | `opensearch` | `opensearchproject/opensearch:3.9.0` (single node, security plugin disabled, internal network only) | Event store | nothing |
 | `postgres` | `postgres:16` | Two databases: `tartarus` (Tartarus metadata) and `cape` (CAPE's task DB) | nothing |
 
@@ -101,10 +101,12 @@ touch CAPE's SQL task DB, and the final report is read from `report.json` (writt
   registry is the one source of truth; the libvirt domains and the CAPE registration are derived from it.
 - **Host prerequisite for OpenSearch:** `vm.max_map_count ≥ 262144` (checked by the preflight
   script).
-- **Volumes:** `pg-data`, `os-data`, `cape-storage` (CAPE `storage/`; mounted
-  read-write in `cape` and **read-only** in `backend`), `guest-images` (qcow2 disks and
-  snapshots, and the guest registry), `./data/iso` (bind mount, read-only in `cape`, where the user
-  drops installation media), `./rules` (bind mount for Sigma rules).
+- **Volumes:** Docker named volumes, which Compose prefixes with the project name:
+  `tartarus_pg-data`, `tartarus_os-data`, `tartarus_cape-storage` (CAPE `storage/`; mounted
+  read-write in `cape` and **read-only** in `backend`), `tartarus_guest-images` (qcow2 disks and
+  snapshots, and the guest registry), `tartarus_sample-store`, `tartarus_exports` and
+  `tartarus_imports`. Only two folders on the host are bind-mounted: `./data/iso` (read-only in `cape`,
+  where the user drops installation media) and `./rules/sigma` (the Sigma rules, read-only in `backend`).
 - **Only the frontend (nginx) is reachable from the host**, and only on `127.0.0.1`. The backend,
   guacd, libvirtd, CAPE apiv2,
   OpenSearch and the databases are reachable on the internal compose network only, and the guest
@@ -147,22 +149,22 @@ tartarus/
 
 ### 1. Submission
 GUI → `POST /api/analyses` (multipart) → the backend stores the sample, writes an `analysis` row
-(`queued`) and, when the queue is free, calls CAPE `apiv2/tasks/create/file` with options
+(`queued`). The queue runner submits it once its guest has no other analysis running, calling CAPE `apiv2/tasks/create/file` with options
 (the guest to run on as the CAPE `machine`, route, timeout, package, memory dump, interactive). It saves `cape_task_id` and starts watching
 the task.
 
 ### 2. Live phase (while the guest runs)
 1. capemon in the guest streams per-process BSON over TCP to CAPE's ResultServer, which appends
-   to `storage/analyses/<task>/logs/<pid>.bson`. ETW aux modules write JSON under `aux/`.
-2. The backend **collector** watches that directory (inotify via `watchfiles`) and reads only new
-   bytes from each file, keeping an offset per file. It parses records with CAPE's BSON log
+   to `storage/analyses/<task>/logs/<pid>.bson`.
+2. The backend **collector** polls that `logs/` folder every 0.25 s and reads only new bytes from
+   each file, keeping an offset per file in memory. It parses records with CAPE's BSON log
    format (code reused from CAPE's `netlog.py`).
 3. The **normaliser** maps each record to an ECS document (see
    [data-model](specs/data-model.md)) with a deterministic `event.id`.
 4. The **Sigma matcher** checks every normalised event in-stream. A match emits a `detection`
    event linked to the triggering event(s).
-5. The **bulk indexer** writes batches to OpenSearch every ≤250 ms or 500 events, whichever
-   comes first.
+5. The **bulk indexer** writes each poll's events to OpenSearch in bulk. The index is best effort:
+   its failure is reported and never stops the collector.
 6. **Live pub/sub** (in-process asyncio broadcast) pushes the same batches to subscribed
    WebSocket clients. The target is under 2 s from CAPE writing a record to it appearing in the
    GUI.
@@ -174,14 +176,14 @@ the task.
 1. CAPE processes the task (behaviour, network, Suricata, CAPE payloads/configs, YARA,
    signatures, ATT&CK, optional Volatility3) and writes `reports/report.json`.
 2. CAPE's `callback` reporting module calls `POST /internal/cape/callback` with `{task_id}`.
-3. The **report ingester** first runs a collector catch-up pass, reading any BSON bytes not yet
-   tailed. It then reads `report.json` from the shared volume and indexes the *enrichment*:
+3. Before the ingest, the runner drains the live collector, so any BSON bytes not yet read are
+   read. The **report ingester** then reads `report.json` from the shared volume and indexes the *enrichment*:
    signatures, TTPs, network (DNS/HTTP/TLS/flows with process attribution), Suricata alerts,
    dropped files, payloads and configs, YARA, Volatility3 findings, Sysmon EVTX events,
    screenshots and malscore. API calls are **not** re-indexed from the report because the
    collector already has them, so deterministic IDs make re-runs idempotent.
-4. Sigma runs again over the events that only exist in the final phase (Sysmon, Suricata,
-   Volatility).
+4. Sigma runs over the whole event set of the ingest, live and final events alike, in event-time
+   order, and its alerts are indexed after the other events.
 5. The analysis becomes `done` with `phase = final`, and a WebSocket `phase` message tells the
    GUI to refresh its views.
 
@@ -225,8 +227,9 @@ aggregate events and report data.
 
 ## Process model and concurrency
 
-- One analysis at a time: the backend's **queue runner** submits the next queued analysis only
-  when the current one reaches a terminal state.
+- One analysis per guest at a time: the backend's **queue runner** submits the oldest queued analysis
+  whose guest has no active analysis, so several guests run analyses at once. Builds, clones, deletes
+  and guest registration wait until every analysis has finished, because they restart `cape`.
 - Long jobs (guest build, PDF export, delete, re-ingest) go through a small **job runner**
   (asyncio tasks persisted in the `job` table) so progress survives a browser reload. If the
   backend restarts, a running job is marked `interrupted`. A guest build is the exception that
@@ -234,4 +237,5 @@ aggregate events and report data.
   starts a new job for it at start-up. Builds, deletes and analyses exclude each other, because
   registering or deleting a guest restarts `cape` (see
   [CAPE integration](specs/cape-integration.md#building-checking-deleting-and-analysing-exclude-each-other)).
-- On backend start, the collector resumes any running analysis from the stored file offsets.
+- After a backend restart, the collector of a running analysis starts again from byte 0 of its logs:
+  it keeps no checkpoint, and the index upserts by event id, so the repeated work loses nothing.

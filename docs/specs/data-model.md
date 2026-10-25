@@ -93,8 +93,8 @@ Common fields on every document:
 | `event.category` | keyword[] | ECS categories (`process`, `file`, `registry`, `network`, `malware`, `intrusion_detection`, …) |
 | `event.type` | keyword[] | ECS types (`start`, `end`, `creation`, `deletion`, `change`, `access`, `connection`, `protocol`, `info`, `indicator`) |
 | `event.action` | keyword | Specific action, e.g. `process-created`, `file-written`, `reg-value-set`, `dns-query`, `api-call`, `inject-thread` |
-| `event.module` | keyword | `capemon`, `sysmon`, `etw`, `suricata`, `volatility`, `cape`, `defender`, `sigma`, `yara`, `tartarus` |
-| `event.dataset` | keyword | e.g. `capemon.api`, `sysmon.evtx`, `etw.dns`, `suricata.alert`, `cape.signature`, `defender.operational`, `volatility.malfind` |
+| `event.module` | keyword | `capemon`, `sysmon`, `suricata`, `volatility`, `cape`, `defender`, `sigma`, `yara`, `tartarus` |
+| `event.dataset` | keyword | e.g. `capemon.api`, `sysmon.evtx`, `suricata.alert`, `cape.signature`, `defender.operational`, `volatility.malfind` |
 | `event.severity` | integer | 0 info, 1 low, 2 medium, 3 high, 4 critical (alerts only) |
 | `event.outcome` | keyword | `success` or `failure`, on action events (Defender); omitted otherwise |
 | `tartarus.analysis_id` | long | |
@@ -163,7 +163,7 @@ becomes in the event document.
 | Sysmon EID 12 / 13 / 14 | n/a | `reg-key-created`, `reg-key-deleted` or `reg-value-deleted` (by `EventType`) / `reg-value-set` / `reg-rename` | registry |
 | Sysmon EID 19 / 20 / 21 (WMI filter, consumer, binding) | n/a | `wmi-filter` / `wmi-consumer` / `wmi-binding` | process |
 | Sysmon EID 4 / 16 (the service's own state and configuration) | n/a | dropped | |
-| ETW DNS / network / WMI / AMSI | n/a | `dns-query` / `network-*` / `wmi-*` / `amsi-scan` | network / network / process / process |
+| ETW (DNS, network, WMI, AMSI) | n/a | not mapped: ETW was dropped in M8, see the [M8 plan](../history/m8-event-sources.md) | n/a |
 | Suricata flow, http, dns, tls | n/a | `flow` / `http-request` / `dns-query` / `tls-handshake` | network |
 | Suricata alert | n/a | detection, `rule.ruleset: suricata` | network |
 | CAPE signature | n/a | detection, `rule.ruleset: cape` | lane of the referenced call, or `process` |
@@ -228,7 +228,7 @@ construction, whatever the pid's history.
 
 Choices that differ from the mapping table above:
 - Network actions are `dns-query`, `network-connection` and `http-request`, the Sigma-facing names
-  already used for Sysmon and ETW, not a capemon-only `net-*` family.
+  already used for Sysmon, not a capemon-only `net-*` family.
 - `WinHttpSendRequest` is not derived: the call carries no URL (capemon logs headers and data),
   so HTTP for it comes from the CAPE network records.
 - Calls with no row (`NtClose`, `EventUnregister`, `LdrGetDllHandle`, `NtQueryValueKey`, `NtOpenFile`,
@@ -540,7 +540,7 @@ are computed only for an event that matched, by an explainer compiled beside the
 
 | Artefact | Location | Exposed as |
 |---|---|---|
-| Sample | Tartarus sample store (`/data/samples/<sha256>.zip`) | Download |
+| Sample | Tartarus sample store: the `tartarus_sample-store` Docker volume, mounted at `/data/samples` in `backend`, holding `<sha256>.zip` | Download |
 | Dropped files, payloads, procdumps, memory dump, PCAP, screenshots, report.json | CAPE storage volume `analyses/<task>/…` | `artifact` entries computed from report.json, downloaded as password-protected zips |
 
 Deleting an analysis removes: the CAPE task (apiv2 delete), the OpenSearch index, its

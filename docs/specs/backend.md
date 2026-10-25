@@ -11,20 +11,19 @@ and the client of the guest control service (the guests themselves are built and
 |---|---|
 | `main.py` | App factory, lifespan (start collector, queue runner, job runner, rule loader). No static files: the frontend container serves the PWA |
 | `config.py` | Settings from env (pydantic-settings) |
-| `api/` | Routers: `analyses`, `events`, `processes`, `network`, `artifacts`, `detections`, `annotations`, `rules`, `export`, `guests`, `jobs`, `system`, `internal` |
+| `api/` | Routers, one per area: `analyses`, `annotations`, `events`, `query`, `search`, `iocs`, `views_events` (processes, network, registry), `views_findings` (detections, ATT&CK, artifacts, IOCs), `export`, `guests`, `jobs`, `rules`, `settings`, `system`, `version`, `internal`. The code behind the analysis views is in `views/` |
 | `ws/` | WebSocket endpoints: `live`, `desktop` (an analysis's and a guest build's), `system` |
 | `cape/` | apiv2 client, task options mapping, storage path helpers |
-| `collector/` | Directory watcher, per-file offset tailer, CAPE BSON parser (ported from CAPE `lib/cuckoo/common/netlog.py`), ETW JSON tailer |
-| `normalize/` | Source → ECS mappers (`capemon.py`, `sysmon.py`, `etw.py`, `suricata.py`, `volatility.py`, `cape_report.py`), derived-event rules, `tartarus.summary` builders |
+| `live/` | The live collector: `collector.py` polls an analysis's `logs/` folder and keeps per-file offsets; `bson_log.py` is the CAPE BSON log parser (ported from CAPE `lib/cuckoo/common/netlog.py`); `detections.py` runs Sigma over each batch; `hub.py` sends each batch to the live WebSocket; `process_tree.py` builds the live tree |
 | `rules/` | Sigma loader (pySigma + ECS pipeline), compiled in-memory matcher, detection emitter |
-| `ingest/` | Report ingester (report.json → enrichment events + analysis summary), catch-up pass |
+| `ingest/` | Report ingester (report.json → enrichment events + analysis summary) and the source ECS mappers: `capemon.py`, `sysmon.py`, `defender.py`, `volatility.py`, `cape_network.py`, `cape_signatures.py`, with `capemon_rules.py` (derived events), `ecs.py` (shared field helpers) and `sigma.py` (the Sigma pass over an ingest). ETW was dropped in M8 ([plan](../history/m8-event-sources.md)); Suricata has no mapper yet |
 | `search/` | OpenSearch client, index template, bulk indexer, query helpers (search, facets, histogram) |
 | `query/` | KQL-like grammar (lark), AST → OpenSearch DSL compiler, field catalog and aliases |
 | `export/` | STIX 2.1, MISP JSON, CSV, HTML/PDF report (Jinja2 + WeasyPrint) |
-| `guest/` | The client of the guest control service and what is built on it (M6): `client.py` (`GuestControl`, an HTTP client with the bearer token and its errors), `schemas.py` (the control service's JSON), `health.py` (the aggregate guest check), `build_job.py` (the `guest_build` job and its reattach), `selftest_runner.py`, `selftest_verdict.py` and `selftest_evidence.py` (the self-test). No `libvirt-python`, no Docker socket: libvirt's TCP endpoint stays off and the only way to the guests is the control service |
+| `guest/` | The client of the guest control service and what is built on it (M6): `client.py` (`GuestControl`, the protocol, and `HttpGuestControl`, the HTTP client with the bearer token and its errors), `schemas.py` (the control service's JSON), `health.py` (the aggregate guest check), `build_job.py` (the `guest_build` job and its reattach), `selftest_runner.py`, `selftest_verdict.py` and `selftest_evidence.py` (the self-test). No `libvirt-python`, no Docker socket: libvirt's TCP endpoint stays off and the only way to the guests is the control service |
 | `analyses/` | `guest_choice.py` (which guest an analysis runs on, the package check; pure) and `submission.py` (`AnalysisSubmitter`, the one path `POST /analyses` and the self-test queue an analysis through) |
-| `jobs/` | Persistent job runner, queue runner |
-| `pubsub.py` | In-process broadcast: topics `analysis:{id}` and `system` |
+| `jobs/` | Persistent job runner (`runner.py`), the job feed (`feed.py`) and the exports the jobs write. The queue runner is `analyses/runner.py` |
+| `live/hub.py`, `jobs/feed.py` | In-process broadcast: `LiveHub` sends each analysis's events to its live subscribers, `JobFeed` the job and system messages |
 | `db/` | SQLAlchemy models, session, Alembic |
 
 ## REST API
@@ -325,10 +324,10 @@ sent on connect and whenever it changes; the running clock (`elapsed_s`) does no
 
 ## Live collector
 
-- Starts when the analysis status becomes `running` and watches `analyses/<task>/logs/` and
-  `analyses/<task>/aux/`.
-- Keeps a per-file `(path, offset, record_index)` saved in memory and checkpointed in the `job`
-  row every 5 s, so it can resume after a restart.
+- Starts when the analysis status becomes `running` and polls `analyses/<task>/logs/` every 0.25 s
+  (`live_poll_interval_seconds`). It does not read `aux/`, which the ingest reads.
+- Keeps a per-file offset and parser state in memory. It keeps no checkpoint: after a restart it reads
+  each log from byte 0, and the index upserts by event id, so the repeated work loses nothing.
 - Reads only complete BSON records. A partial trailing record waits for more bytes.
 - capemon logs start with process and API-description messages. The parser keeps that state
   per file so it can map call indices to API names and argument names.
@@ -342,7 +341,7 @@ sent on connect and whenever it changes; the running clock (`elapsed_s`) does no
   document is rewritten by id and the hub is not sent the alert again. Logs can be read late, so
   an event may arrive older than ones already matched; the engine takes it as it comes (inside an
   open window it counts as a repeat), and the final ingest, which sorts, replaces the result.
-- When the task leaves `running`, the collector does a final drain and stops.
+- When the task leaves `running`, the runner stops the collector before the ingest starts; the collector does a final drain and stops.
 
 ## Sigma engine
 

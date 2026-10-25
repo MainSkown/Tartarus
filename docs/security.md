@@ -33,6 +33,10 @@ and the dependencies. Their reports are kept in [the history](history/m11-notes/
 checked against the running stack where they claimed an exploit; one claim was refuted (OpenSearch is not reachable from a guest) and one was
 found to be worse than reported (guest-to-guest through the gateway worked in both directions).
 
+The security-critical code has had these automated reviews and real-stack proofs (`verify-isolation`, `verify-cape-hardening`, `e2e`), and no
+independent audit yet. The files to audit first are `cape/guest_engine/firewall.py`, `cape/bin/guest-firewall`,
+`backend/app/browser_guard.py` and `cape/bin/keep-secrets`.
+
 ## Accepted risks
 
 | Risk | Why it stays | What would close it |
