@@ -67,24 +67,44 @@ def test_the_root_urlconf_is_the_tartarus_one(web_package):
     assert load("web.local_settings", WEB / "local_settings.py").ROOT_URLCONF == "web.tartarus_urls"
 
 
-def test_the_tartarus_urlconf_routes_apiv2_and_nothing_else(monkeypatch):
-    routes: list[tuple[str, object]] = []
+def load_tartarus_urls(monkeypatch):
     django = types.ModuleType("django")
     urls = types.ModuleType("django.urls")
-    urls.re_path = lambda pattern, view: routes.append((pattern, view)) or (pattern, view)  # type: ignore[attr-defined]
+    urls.re_path = lambda pattern, view: (pattern, view)  # type: ignore[attr-defined]
+    urls.path = lambda route, view: (route, view)  # type: ignore[attr-defined]
     urls.include = lambda module: ("include", module)  # type: ignore[attr-defined]
+    views = types.ModuleType("django.views")
+    generic = types.ModuleType("django.views.generic")
+    generic.RedirectView = types.SimpleNamespace(  # type: ignore[attr-defined]
+        as_view=lambda **kwargs: ("redirect", kwargs)
+    )
     apiv2 = types.ModuleType("apiv2")
     apiv2_urls = types.ModuleType("apiv2.urls")
     apiv2.urls = apiv2_urls  # type: ignore[attr-defined]
     for name, module in (
         ("django", django),
         ("django.urls", urls),
+        ("django.views", views),
+        ("django.views.generic", generic),
         ("apiv2", apiv2),
         ("apiv2.urls", apiv2_urls),
     ):
         monkeypatch.setitem(sys.modules, name, module)
-
     module = load("tartarus_urls_under_test", WEB / "tartarus_urls.py")
+    return module, apiv2_urls
 
-    assert [pattern for pattern, _ in routes] == [r"^apiv2/"]
-    assert module.urlpatterns == [(r"^apiv2/", ("include", apiv2_urls))]
+
+def test_the_tartarus_urlconf_routes_apiv2_and_nothing_else(monkeypatch):
+    module, apiv2_urls = load_tartarus_urls(monkeypatch)
+
+    assert [route for route, _ in module.urlpatterns] == ["apiv2/", r"^apiv2/"]
+    assert module.urlpatterns[1] == (r"^apiv2/", ("include", apiv2_urls))
+
+
+def test_the_bare_apiv2_index_redirects_to_the_status_endpoint(monkeypatch):
+    module, _ = load_tartarus_urls(monkeypatch)
+
+    route, view = module.urlpatterns[0]
+
+    assert route == "apiv2/"
+    assert view == ("redirect", {"url": "/apiv2/cuckoo/status/", "permanent": False})
