@@ -2,7 +2,7 @@ services:
   postgres:
     container_name: tartarus-postgres
     image: postgres:16
-    restart: unless-stopped
+    restart: "no"
     environment:
       TZ: ${TZ:-UTC}
       POSTGRES_USER: ${POSTGRES_USER:-tartarus}
@@ -28,7 +28,7 @@ services:
   opensearch:
     container_name: tartarus-opensearch
     image: opensearchproject/opensearch:3.9.0
-    restart: unless-stopped
+    restart: "no"
     environment:
       TZ: ${TZ:-UTC}
       discovery.type: single-node
@@ -60,7 +60,7 @@ services:
     build:
       context: ./backend
       target: prod
-    restart: unless-stopped
+    restart: "no"
     environment:
       TZ: ${TZ:-UTC}
       ENVIRONMENT: production
@@ -114,7 +114,7 @@ services:
     build:
       context: ./frontend
       target: production-stage
-    restart: unless-stopped
+    restart: "no"
     environment:
       TZ: ${TZ:-UTC}
     ports:
@@ -140,7 +140,7 @@ services:
       dockerfile: cape/Dockerfile
       args:
         CAPE_REF: ${CAPE_REF:-9f806acd24ae23ee9a52cf4f1e82657635f07659}
-    restart: unless-stopped
+    restart: "no"
     # libvirtd, the rooter's iptables, the tt-guest bridge and QEMU's tap devices all live in this
     # container's own network namespace; privileged grants that, and never the host's namespace.
     privileged: true
