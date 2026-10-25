@@ -21,7 +21,9 @@ def requirement_lines() -> list[str]:
 
 def build_stage() -> str:
     dockerfile = (CAPE / "Dockerfile").read_text()
-    stage = re.search(r"FROM ubuntu:24\.04@sha256:[0-9a-f]{64} AS cape-build\n(.*?)\nFROM ", dockerfile, re.DOTALL)
+    stage = re.search(
+        r"FROM ubuntu:24\.04@sha256:[0-9a-f]{64} AS cape-build\n(.*?)\nFROM ", dockerfile, re.DOTALL
+    )
     assert stage
     return stage.group(1)
 
