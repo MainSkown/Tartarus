@@ -24,7 +24,10 @@ async def test_health_endpoint_reflects_the_real_stores(
 ) -> None:
     app = create_app(
         Settings(
-            database_url=postgres_url, opensearch_url=opensearch_url, environment="development"
+            database_url=postgres_url,
+            opensearch_url=opensearch_url,
+            environment="development",
+            tartarus_allowed_hosts=("test",),
         )
     )
 

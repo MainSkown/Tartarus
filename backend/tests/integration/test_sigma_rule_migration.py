@@ -106,6 +106,7 @@ async def test_the_app_lists_rules_and_keeps_a_toggle_across_a_restart(
         database_url=migrated_engine.url.render_as_string(hide_password=False),
         opensearch_url=opensearch_url,
         rules_path=rules_dir,
+        tartarus_allowed_hosts=("test",),
     )
 
     first_run = create_app(settings)
