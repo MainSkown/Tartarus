@@ -73,7 +73,7 @@ case "$args" in
     *"/dev/tcp/"*)
         target=${args#*head -c 4096 }; target=${target%% *}
         [[ -e $f/no-control-$target ]] && exit 1
-        echo "X-Cuckoo-Version unauthorized uvicorn SCRAM cluster_name tartarus-canary INetSim HTTP/1.1 301 CAPE Agent 4.args" ;;
+        echo "Server: gunicorn unauthorized uvicorn SCRAM cluster_name tartarus-canary INetSim HTTP/1.1 301 CAPE Agent 4.args" ;;
     *"python - enable "*|*"python - disable "*)
         words=${args#*python - }; read -r action route ip <<<"$words"
         if [[ $action == enable ]]; then echo "$route" >"$f/route-$ip"; else rm -f "$f/route-$ip"; fi ;;

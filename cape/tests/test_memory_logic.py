@@ -32,6 +32,7 @@ from memory_logic import (
     ImageRejectedError,
     MemoryAnalyser,
     NotAnImageTaskError,
+    ResultsNotWrittenError,
     analyse_response,
     delete_dump_response,
     pids_from_report,
@@ -295,18 +296,21 @@ def test_the_results_belong_to_whoever_owns_the_analysis_folder_so_cape_can_dele
 ):
     # Found in the M8 real run: the service runs as root, left memory/ owned by root, and CAPE
     # (the `cape` user) then could not remove the task folder when the analysis was deleted.
-    handed_over: dict[Path, tuple[int, int]] = {}
+    handed_over: dict[str, tuple[int, int]] = {}
     monkeypatch.setattr(
-        os, "chown", lambda path, uid, gid: handed_over.update({Path(path): (uid, gid)})
+        os,
+        "fchown",
+        lambda descriptor, uid, gid: handed_over.update(
+            {os.readlink(f"/proc/self/fd/{descriptor}"): (uid, gid)}
+        ),
     )
 
     analyser.analyse(7)
 
     analysis = storage / "analyses" / "7"
     owner = (analysis.stat().st_uid, analysis.stat().st_gid)
-    folder = memory_folder(storage)
-    assert handed_over.pop(folder) == owner
-    assert {path.name for path in handed_over} >= {"windows.pslist.json", "run.json.tmp"}
+    names = {Path(path).name for path in handed_over}
+    assert names >= {"memory", "windows.pslist.json", "run.json.tmp"}
     assert set(handed_over.values()) == {owner}
 
 
@@ -324,13 +328,14 @@ def test_a_second_run_replaces_the_first_and_leaves_no_file_of_a_plugin_that_now
 
 def test_run_json_is_written_last_so_its_presence_means_the_run_finished(analyser, monkeypatch):
     order: list[str] = []
-    original = Path.write_text
+    original = os.open
 
-    def recording(self, *arguments, **options):
-        order.append(self.name)
-        return original(self, *arguments, **options)
+    def recording(path, flags, mode=0o777, *, dir_fd=None):
+        if flags & os.O_CREAT:
+            order.append(path)
+        return original(path, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(Path, "write_text", recording)
+    monkeypatch.setattr(os, "open", recording)
 
     analyser.analyse(7)
 
@@ -1006,3 +1011,84 @@ def test_the_findings_cannot_be_deleted_while_the_image_is_being_read(analyser, 
     analyser.analyse(IMAGE_TASK, IMAGE_NAME)
 
     assert len(refused) == 1
+
+
+# The service runs as root inside a tree the `cape` user owns (C2 F11): `cape` can swap any folder
+# below the storage root for a symlink, so root must never follow one.
+
+
+@pytest.fixture
+def victim(tmp_path) -> Path:
+    folder = tmp_path / "victim"
+    folder.mkdir()
+    (folder / "precious").write_text("keep")
+    (folder / "memory.dmp").write_bytes(DUMP_CONTENT)
+    return folder
+
+
+def swap_for_symlink(path: Path, target: Path) -> None:
+    shutil.move(path, path.with_name(path.name + ".real"))
+    path.symlink_to(target)
+
+
+def test_results_are_not_written_through_an_analysis_folder_replaced_by_a_symlink(
+    analyser, storage, victim
+):
+    swap_for_symlink(storage / "analyses" / "7", victim)
+    (victim / "reports").mkdir()
+    (victim / "reports" / "report.json").write_text(json.dumps(report_with_processes()))
+
+    with pytest.raises(ResultsNotWrittenError):
+        analyser.analyse(7)
+
+    assert sorted(entry.name for entry in victim.iterdir()) == [
+        "memory.dmp",
+        "precious",
+        "reports",
+    ]
+
+
+def test_results_are_not_written_through_the_analyses_folder_replaced_by_a_symlink(
+    analyser, storage, victim
+):
+    swap_for_symlink(storage / "analyses", victim)
+    (victim / "7").mkdir()
+    (victim / "7" / "memory.dmp").write_bytes(DUMP_CONTENT)
+
+    with pytest.raises(ResultsNotWrittenError):
+        analyser.analyse(7)
+
+    assert not (victim / "7" / "memory").exists()
+
+
+def test_a_memory_folder_replaced_by_a_symlink_is_not_written_through(analyser, storage, victim):
+    (storage / "analyses" / "7" / "memory").symlink_to(victim)
+
+    analyser.analyse(7)
+
+    assert sorted(entry.name for entry in victim.iterdir()) == ["memory.dmp", "precious"]
+    assert (memory_folder(storage) / "run.json").is_file()
+    assert not memory_folder(storage).is_symlink()
+
+
+def test_the_dump_of_a_replaced_analysis_folder_is_not_deleted_through_the_symlink(
+    analyser, storage, victim
+):
+    swap_for_symlink(storage / "analyses" / "7", victim)
+
+    with pytest.raises(DumpMissingError):
+        analyser.delete_dump(7)
+
+    assert (victim / "memory.dmp").exists()
+
+
+def test_the_findings_of_an_image_are_not_deleted_through_a_replaced_analyses_folder(
+    analyser, storage, victim
+):
+    (victim / str(IMAGE_TASK)).mkdir()
+    (victim / str(IMAGE_TASK) / "precious").write_text("keep")
+    swap_for_symlink(storage / "analyses", victim)
+
+    analyser.delete_image_findings(IMAGE_TASK)
+
+    assert (victim / str(IMAGE_TASK) / "precious").read_text() == "keep"

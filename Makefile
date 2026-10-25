@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-cape test-scripts test-integration lint check api-sync screenshots init-env preflight smoke verify-cape build-guest verify-guest verify-isolation verify-wizard e2e hooks
+.PHONY: help dev up down logs test test-cape test-scripts test-integration lint check api-sync screenshots init-env preflight smoke verify-cape build-guest verify-guest verify-isolation verify-cape-hardening verify-wizard e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -65,6 +65,9 @@ build-guest: ## Build the Windows analysis guest unattended and register it with
 
 verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; needs make build-guest first)
 	scripts/verify-guest.sh
+
+verify-cape-hardening: ## Prove the cape container's privilege and secret hardening (cape cannot open the host's disks or run anything as root, per-program secrets, API-only web, root-run code not writable by cape; starts no guest)
+	scripts/verify-cape-hardening.sh
 
 verify-isolation: ## Prove a guest reaches only what its route allows (not the compose networks, the LAN, guacd, the control service, the other guest, even from an address it invented or through the gateway) on every route: make verify-isolation GUESTS="lab1 lab5" (needs the stack up and two ready guests; starts them by snapshot revert)
 	scripts/verify-isolation.sh $${GUESTS:?GUESTS="labelA labelB"}

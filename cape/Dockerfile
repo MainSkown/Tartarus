@@ -119,20 +119,31 @@ RUN find /usr/share/qemu/firmware -name '*.json' ! -name '*x86_64*' -delete
 RUN groupadd --system cape \
     && useradd --system --gid cape --home-dir /home/cape --create-home --shell /bin/bash cape \
     && (getent group kvm || groupadd --system kvm) \
-    && usermod -aG libvirt,kvm cape \
-    && echo "cape ALL=NOPASSWD: /usr/bin/tcpdump" > /etc/sudoers.d/tcpdump \
-    && chmod 440 /etc/sudoers.d/tcpdump
+    && usermod -aG libvirt,kvm cape
 
-COPY --from=cape-build --chown=cape:cape /opt/CAPEv2 /opt/CAPEv2
+# Root-owned: the rooter runs as root and imports this tree, so the `cape` user that parses hostile
+# data must not be able to rewrite it. What cape writes while running is listed further down.
+COPY --from=cape-build /opt/CAPEv2 /opt/CAPEv2
 RUN bash /opt/CAPEv2/installer/cape2.sh suricata \
     && suricata-update --suricata /usr/bin/suricata --suricata-conf /etc/suricata/suricata.yaml -o /etc/suricata/rules/ \
     && rm -rf /var/lib/apt/lists/*
+
+# cape2.sh adds its user to the suricata group, which inside a privileged container is also the host's
+# `disk` group (gid 993): its members open the host's raw disks. Nothing cape runs needs the group.
+RUN gpasswd -d cape suricata
+# CAPE's sniffer starts tcpdump itself; file capabilities replace a sudo rule that let cape run it as
+# root with any argument (`-z <script>`). Chmod and chgrp first: a change of owner drops file capabilities.
+# CAPE's startup check wants the user in group `pcap`.
+RUN groupmod --gid 64010 pcap && usermod -aG pcap cape \
+    && chgrp pcap /usr/bin/tcpdump && chmod 0750 /usr/bin/tcpdump \
+    && setcap cap_net_raw,cap_net_admin=eip /usr/bin/tcpdump
 
 # Domain definitions live with the disks on the guest-images volume, so a recreated container
 # keeps the guest, its snapshot and its CAPE registration.
 RUN rm -rf /etc/libvirt/qemu \
     && mkdir -p /var/lib/libvirt/definitions /var/lib/libvirt/tartarus/kvm.conf.d /opt/CAPEv2/custom/conf \
-    && install -d -o cape -g cape /opt/CAPEv2/storage /opt/CAPEv2/storage/analyses \
+    && install -d -o cape -g cape /opt/CAPEv2/storage /opt/CAPEv2/storage/analyses /opt/CAPEv2/log /opt/CAPEv2/data/feeds /var/lib/cape-web \
+    && install -o cape -g cape -m 0644 /dev/null /opt/CAPEv2/data/yara/index_memory.yarc \
     && ln -s /var/lib/libvirt/definitions /etc/libvirt/qemu \
     && ln -s /var/lib/libvirt/tartarus/kvm.conf.d /opt/CAPEv2/custom/conf/kvm.conf.d
 
@@ -157,7 +168,7 @@ RUN python3 /tmp/leave-dcom-launch-alone.py /opt/CAPEv2/analyzer/windows/analyze
 # Host-side auxiliary that exports the guest's Sysmon and Defender logs through the agent at the end of
 # a run. CAPE imports every module in this directory; auxiliary.conf enables it by file name. It reads
 # the Sysmon config from the profiles copied below.
-COPY --chown=cape:cape cape/auxiliary/event_logs.py /opt/CAPEv2/modules/auxiliary/event_logs.py
+COPY cape/auxiliary/event_logs.py /opt/CAPEv2/modules/auxiliary/event_logs.py
 
 # Reads the Windows installation media (wiminfo) for the guest wizard. A layer of its own, after the
 # slow ones, so adding it does not re-resolve the packages the proven libvirt and QEMU were installed with.
@@ -183,9 +194,14 @@ COPY guest/steps/ /usr/local/lib/tartarus/steps/
 COPY guest/domain/ /usr/local/lib/tartarus/domain/
 COPY guest/personas/ /usr/local/lib/tartarus/personas/
 COPY cape/entrypoint.sh /usr/local/bin/cape-entrypoint
-COPY --chown=cape:cape cape/conf/ /opt/CAPEv2/custom/conf/
+COPY cape/conf/ /opt/CAPEv2/custom/conf/
+# CAPE's web process serves only the REST API, without debug pages; see web/local_settings.py.
+COPY cape/web/ /opt/CAPEv2/web/web/
+RUN python3 -c "import secrets; print('SECRET_KEY = %r' % secrets.token_urlsafe(50))" > /opt/CAPEv2/web/web/secret_key.py
 
+# The token reaches curl on stdin: printf is a builtin, so it is never among any process's arguments.
 HEALTHCHECK --interval=15s --timeout=10s --start-period=120s --retries=5 \
     CMD virsh -q -c qemu:///system list >/dev/null \
-        && curl -fsS -o /dev/null -H "Authorization: Token ${CAPE_API_TOKEN}" http://127.0.0.1:8000/apiv2/cuckoo/status/
+        && printf 'header = "Authorization: Token %s"\n' "$CAPE_API_TOKEN" \
+        | curl -fsS -o /dev/null -K - http://127.0.0.1:8000/apiv2/cuckoo/status/
 ENTRYPOINT ["cape-entrypoint"]

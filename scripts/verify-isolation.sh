@@ -14,7 +14,7 @@
 # The rooter rules of a route are opened with scripts/lib/rooter-route.py, the commands CAPE itself
 # sends for a task. A probe connects, sends what the target's protocol needs and demands a marker only
 # the real service answers with, because INetSim accepts a connection to any address. Targets:
-# the gateway services, the CAPE web interface, guacd and the control service on the cape container's own
+# the gateway services, the CAPE web process (answers 404 to the probe: only its Server header counts), guacd and the control service on the cape container's own
 # addresses, the backend, Postgres and OpenSearch, a canary on the docker host and on its LAN address, the
 # internet, and the other guest. A probe whose target does not answer from the cape container either
 # proves nothing and is skipped with an [INFO] line.
@@ -139,7 +139,7 @@ catalogue() { # other-guest-address
 gateway-dns;$GATEWAY_IP;53;;;raw inetsim internet invented
 gateway-http;$GATEWAY_IP;80;get;INetSim;raw inetsim internet invented
 gateway-resultserver;$GATEWAY_IP;2042;;;raw none inetsim internet invented
-cape-web;$CAPE_INTERNAL_IP;8000;get;X-Cuckoo-Version;
+cape-web;$CAPE_INTERNAL_IP;8000;get;Server: gunicorn;
 guacd;$CAPE_INTERNAL_IP;4822;guacd;4\.args;
 guest-control;$CAPE_CONTROL_IP;8002;get;unauthorized;
 backend;$BACKEND_IP;8000;get;uvicorn;

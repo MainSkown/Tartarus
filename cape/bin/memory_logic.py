@@ -10,11 +10,12 @@ has what it needs. Volatility's own command line lives in `volatility.py`.
 import json
 import os
 import shutil
+import stat
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -42,6 +43,8 @@ PLUGIN_TIMEOUT_SECONDS = 120.0
 OVERALL_TIMEOUT_SECONDS = 300.0
 ANALYSIS_FILE_MODE = 0o644
 ANALYSIS_DIRECTORY_MODE = 0o755
+DUMP_NAME = "memory.dmp"
+RESULTS_FOLDER = "memory"
 
 PROBE_PLUGIN = "windows.info"
 CONTEXT_PLUGINS = ("windows.pslist", "windows.cmdline")
@@ -181,7 +184,7 @@ class MemoryAnalyser:
         with self._claimed(task_id):
             dump = self._dump_of(task_id)
             real_path = os.path.realpath(dump)
-            dump.unlink()
+            self._unlink_dump(task_id)
         holders = self._holders_of_deleted(real_path)
         for holder in holders:
             self.log(
@@ -195,13 +198,38 @@ class MemoryAnalyser:
         if task_id < IMAGE_TASK_ID_BASE:
             raise NotAnImageTaskError
         with self._claimed(task_id):
-            shutil.rmtree(self._analysis(task_id), ignore_errors=True)
+            try:
+                with _open_directory(self.storage / "analyses") as analyses:
+                    shutil.rmtree(str(task_id), ignore_errors=True, dir_fd=analyses)
+            except OSError:
+                return
 
     def _analysis(self, task_id: int) -> Path:
         return self.storage / "analyses" / str(task_id)
 
+    def _unlink_dump(self, task_id: int) -> None:
+        try:
+            with self._open_analysis(task_id) as analysis:
+                os.unlink(DUMP_NAME, dir_fd=analysis)
+        except OSError as unreachable:
+            raise DumpMissingError from unreachable
+
+    @contextmanager
+    def _open_analysis(self, task_id: int, *, create: bool = False) -> Iterator[int]:
+        """The task folder as a directory descriptor, opened without following a symlink.
+
+        `cape` owns every folder from `analyses/` down and can swap one for a symlink at any moment,
+        while this service runs as root: everything done to the folder goes through this descriptor.
+        """
+        name = str(task_id)
+        with _open_directory(self.storage / "analyses") as analyses:
+            if create:
+                _make_directory(name, analyses)
+            with _open_directory(name, analyses) as analysis:
+                yield analysis
+
     def _dump_of(self, task_id: int) -> Path:
-        dump = self._analysis(task_id) / "memory.dmp"
+        dump = self._analysis(task_id) / DUMP_NAME
         if dump.is_symlink() or not dump.is_file():
             raise DumpMissingError
         return dump
@@ -274,32 +302,24 @@ class MemoryAnalyser:
         return volatility.run(plugin, min(self.plugin_timeout, remaining), pids, verbose=verbose)
 
     def _write(self, task_id: int, scan: Scan, dump_bytes: int) -> None:
-        folder = self._analysis(task_id) / "memory"
         try:
-            self._ensure_analysis_directory(task_id)
-            # A rerun must not leave the file of a plugin that fails this time.
-            shutil.rmtree(folder, ignore_errors=True)
-            folder.mkdir()
-            folder.chmod(ANALYSIS_DIRECTORY_MODE)
-            for plugin, run in scan.runs.items():
-                if run.rows is not None:
-                    _write_readable(folder / f"{plugin}.json", run.rows)
-            _write_readable(folder / "run.json.tmp", _run_json(scan, dump_bytes))
-            # The service runs as root; CAPE, as `cape`, deletes the whole task folder with the
-            # analysis and cannot remove what root leaves in it.
-            _give_to_owner_of(self._analysis(task_id), [folder, *folder.iterdir()])
-            # Last, and atomically: the backend treats the presence of run.json as "finished".
-            os.replace(folder / "run.json.tmp", folder / "run.json")
+            with self._open_analysis(task_id, create=True) as analysis:
+                owner = os.fstat(analysis)
+                # A rerun must not leave the file of a plugin that fails this time.
+                _remove_results(analysis)
+                os.mkdir(RESULTS_FOLDER, ANALYSIS_DIRECTORY_MODE, dir_fd=analysis)
+                with _open_directory(RESULTS_FOLDER, analysis) as folder:
+                    _hand_over(folder, owner, ANALYSIS_DIRECTORY_MODE)
+                    for plugin, run in scan.runs.items():
+                        if run.rows is not None:
+                            _write_readable(folder, f"{plugin}.json", run.rows, owner)
+                    _write_readable(folder, "run.json.tmp", _run_json(scan, dump_bytes), owner)
+                    # Last, and atomically: the backend reads run.json's presence as "finished".
+                    os.rename("run.json.tmp", "run.json", src_dir_fd=folder, dst_dir_fd=folder)
         except OSError as unwritable:
             raise ResultsNotWrittenError(
                 f"the results could not be written ({type(unwritable).__name__})"
             ) from unwritable
-
-    def _ensure_analysis_directory(self, task_id: int) -> None:
-        analysis = self._analysis(task_id)
-        if not analysis.exists():
-            analysis.mkdir(parents=True)
-            analysis.chmod(ANALYSIS_DIRECTORY_MODE)
 
     def _holders_of_deleted(self, real_path: str) -> list[Holder]:
         return [
@@ -325,15 +345,49 @@ def _name_of(process: Path) -> str:
         return "?"
 
 
-def _give_to_owner_of(analysis: Path, paths: Sequence[Path]) -> None:
-    owner = analysis.stat()
-    for path in paths:
-        os.chown(path, owner.st_uid, owner.st_gid)
+@contextmanager
+def _open_directory(path: str | Path, parent: int | None = None) -> Iterator[int]:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptor = os.open(path, flags, dir_fd=parent)
+    try:
+        yield descriptor
+    finally:
+        os.close(descriptor)
 
 
-def _write_readable(path: Path, content: Any) -> None:
-    path.write_text(json.dumps(content))
-    path.chmod(ANALYSIS_FILE_MODE)
+def _remove_results(analysis: int) -> None:
+    try:
+        replaced_by_link = stat.S_ISLNK(
+            os.stat(RESULTS_FOLDER, dir_fd=analysis, follow_symlinks=False).st_mode
+        )
+    except FileNotFoundError:
+        return
+    if replaced_by_link:
+        os.unlink(RESULTS_FOLDER, dir_fd=analysis)
+    else:
+        shutil.rmtree(RESULTS_FOLDER, ignore_errors=True, dir_fd=analysis)
+
+
+def _make_directory(name: str, parent: int) -> None:
+    with suppress(FileExistsError):
+        os.mkdir(name, ANALYSIS_DIRECTORY_MODE, dir_fd=parent)
+        with _open_directory(name, parent) as created:
+            os.fchmod(created, ANALYSIS_DIRECTORY_MODE)
+
+
+def _hand_over(descriptor: int, owner: os.stat_result, mode: int) -> None:
+    """The service runs as root; CAPE, as `cape`, deletes the whole task folder with the analysis
+    and cannot remove what root leaves in it, so each result belongs to the folder's owner."""
+    os.fchown(descriptor, owner.st_uid, owner.st_gid)
+    os.fchmod(descriptor, mode)
+
+
+def _write_readable(folder: int, name: str, content: Any, owner: os.stat_result) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptor = os.open(name, flags, ANALYSIS_FILE_MODE, dir_fd=folder)
+    with os.fdopen(descriptor, "w") as file:
+        file.write(json.dumps(content))
+        _hand_over(file.fileno(), owner, ANALYSIS_FILE_MODE)
 
 
 def _plugin_entries(scan: Scan) -> dict[str, dict[str, Any]]:

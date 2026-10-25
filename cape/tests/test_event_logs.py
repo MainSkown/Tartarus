@@ -949,15 +949,12 @@ class TestAuxiliary:
 
 
 class TestShipping:
-    def test_the_dockerfile_copies_the_module_where_cape_loads_auxiliaries_owned_like_cape_files(
+    def test_the_dockerfile_copies_the_module_where_cape_loads_auxiliaries_root_owned(
         self,
     ):
         dockerfile = (REPO / "cape/Dockerfile").read_text()
         module = "cape/auxiliary/event_logs.py"
-        assert (
-            f"COPY --chown=cape:cape {module} /opt/CAPEv2/modules/auxiliary/event_logs.py"
-            in dockerfile
-        )
+        assert f"COPY {module} /opt/CAPEv2/modules/auxiliary/event_logs.py" in dockerfile
 
     def test_the_dockerfile_copies_the_guest_profiles_the_module_reads_the_sysmon_config_from(self):
         dockerfile = (REPO / "cape/Dockerfile").read_text()
