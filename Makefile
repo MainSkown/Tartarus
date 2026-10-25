@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-cape test-scripts test-integration lint check api-sync screenshots init-env preflight smoke verify-cape build-guest verify-guest verify-isolation verify-cape-hardening verify-wizard e2e hooks
+.PHONY: help dev up down logs test test-cape test-scripts test-integration check-links lint check api-sync screenshots init-env preflight smoke verify-cape build-guest verify-guest verify-isolation verify-cape-hardening verify-wizard e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -30,6 +30,9 @@ test-scripts: ## Run the shell tests of the scripts against fakes; the *_real.sh
 
 test-integration: ## Run backend tests that need Docker
 	cd backend && uv run pytest -m integration
+
+check-links: ## Fail on a relative markdown link whose file or heading does not exist (stdlib only)
+	python3 -I scripts/check-links.py
 
 lint: ## Run ruff, mypy, eslint and the TypeScript check
 	cd backend && uv run ruff check

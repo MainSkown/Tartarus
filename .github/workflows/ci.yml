@@ -52,6 +52,7 @@ jobs:
       - run: make test-cape
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: make test-scripts
+      - run: python3 -I scripts/check-links.py
 
   frontend:
     runs-on: ubuntu-latest
