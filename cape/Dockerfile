@@ -1,5 +1,5 @@
 # Written for the classic builder as well as BuildKit: hosts without buildx get the classic one.
-FROM ubuntu:24.04 AS cape-source
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS cape-source
 ARG CAPE_REF
 RUN [ "${#CAPE_REF}" -eq 40 ] || { echo "CAPE_REF must be a full kevoreilly/CAPEv2 commit SHA" >&2; exit 1; }
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git \
@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 
 # QEMU and SeaBIOS rebuild only when kvm-qemu.sh or the anti-VM strings change, not on every CAPE_REF bump.
-FROM ubuntu:24.04 AS qemu-build
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS qemu-build
 ARG ANTIVM_TABLET_VENDOR=Wacom
 ARG ANTIVM_SCSI_VENDOR=ATA
 ARG ANTIVM_ATAPI_VENDOR=HL-DT-ST
@@ -34,7 +34,7 @@ RUN mkdir /out \
 
 
 # VNC only: Tartarus never uses guacd for RDP, SSH or telnet.
-FROM ubuntu:24.04 AS guacd-build
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS guacd-build
 ARG GUACAMOLE_VERSION=1.6.0
 ARG GUACAMOLE_SHA256=8bc45675da96d7b6f39728160181e3d4ff3c08f460f6d26de5805b642bf13f2b
 ENV DEBIAN_FRONTEND=noninteractive
@@ -57,12 +57,12 @@ COPY cape/build/runtime-packages.sh ./
 RUN ./runtime-packages.sh /usr/local/sbin/guacd /usr/local/lib/libguac*.so > /out/runtime-packages
 
 
-FROM ubuntu:24.04 AS cape-build
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS cape-build
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential ca-certificates curl git libfuzzy-dev libjansson-dev libmagic-dev libre2-dev \
         libssl-dev libvirt-dev pkg-config python3 python3-dev unzip
-COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a /uv /usr/local/bin/uv
 COPY --from=cape-source /opt/CAPEv2 /opt/CAPEv2
 WORKDIR /opt/CAPEv2
 ENV UV_PYTHON=/usr/bin/python3.12 \
@@ -82,7 +82,7 @@ COPY cape/build/runtime-packages.sh /build/
 RUN find .venv -name '*.so*' -type f -print0 | xargs -0 /build/runtime-packages.sh > /build/venv-runtime-packages
 
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1
 COPY --from=qemu-build /out/qemu.deb /out/runtime-packages /tmp/qemu/

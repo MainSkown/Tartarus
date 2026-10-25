@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: tartarus-postgres
-    image: postgres:16
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
     restart: "no"
     environment:
       TZ: ${TZ:-UTC}
@@ -27,7 +27,7 @@ services:
 
   opensearch:
     container_name: tartarus-opensearch
-    image: opensearchproject/opensearch:3.9.0
+    image: opensearchproject/opensearch:3.9.0@sha256:adfa61f85025d06b4aeb562e7e74fde7e31c437039c93c3862c17e9acebd6c7c
     restart: "no"
     environment:
       TZ: ${TZ:-UTC}
