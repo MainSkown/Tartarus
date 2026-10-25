@@ -1,5 +1,5 @@
 """The runner's path for an imported memory image: the control service's Volatility3 reads the
-upload in place, with no guest and no CAPE task (docs/plans/m9-spikes/P2-findings.md).
+upload in place, with no guest and no CAPE task (docs/history/m9-spikes/P2-findings.md).
 
 The findings land where a run's do, in `<cape storage>/analyses/<task id>/memory/`; an image has
 no task, so it gets an id CAPE will never hand out.

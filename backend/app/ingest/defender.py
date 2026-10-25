@@ -42,7 +42,7 @@ ALERTING_SCOPES = frozenset({Scope.SAMPLE, Scope.DROPPED})
 class DefenderNormalizer:
     """Defender's detections become alerts; their actions become events linked to them.
 
-    Time and clock rules: docs/plans/m8-spikes/S4-findings.md, "Normaliser mapping".
+    Time and clock rules: docs/history/m8-spikes/S4-findings.md, "Normaliser mapping".
 
     `export` is what the last `normalise` call read, kept so the analysis verdict comes from the
     same read; like `ignored_tooling_detections` it belongs to one ingest at a time.

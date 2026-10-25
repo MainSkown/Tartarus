@@ -8,7 +8,7 @@ executables, not a plugin: nothing is loaded dynamically, the directory is copie
 image (`cape/Dockerfile`) and read when the control service starts.
 
 Windows is the only profile that ships and the only one that has been built and run. A Linux profile
-exists on paper only ([S0e](../plans/m6-spikes/S0e-findings.md)); its findings are the checklist for
+exists on paper only ([S0e](../history/m6-spikes/S0e-findings.md)); its findings are the checklist for
 the first non-Windows profile, [below](#checklist-for-a-new-os). How the pieces run is in
 [cape-integration](cape-integration.md#guest-vm-build-wizard); the API they are served through is in the
 [backend spec](backend.md#guests).
@@ -249,7 +249,7 @@ file for each choice from `guest/domain/fragments/` (`boot`, `secure_boot`, `tpm
 the SMBIOS strings, the NIC's vendor prefix and the disk and board serial formats. The CPU hides the
 hypervisor bit and KVM's state. The template's optical drives are `${install_drives}`: install mode fills them,
 run mode leaves them out. `hardware` has no display field, because the display adapter is the QEMU standard VGA
-fixed in the template: the [S2 spike](../plans/m7-spikes/S2-findings.md) found no candidate that Windows names
+fixed in the template: the [S2 spike](../history/m7-spikes/S2-findings.md) found no candidate that Windows names
 differently. New hardware is a new fragment file, not a template per profile, and the
 generic steps read the disk target, nvram and TPM from the domain, never from a constant.
 
@@ -280,7 +280,7 @@ Work through these in order; each line either is a file in the profile or a deci
 
 ### What CAPE's Linux support requires
 
-From [S0e](../plans/m6-spikes/S0e-findings.md), read from the CAPE commit this repo pins and not run. It is
+From [S0e](../history/m6-spikes/S0e-findings.md), read from the CAPE commit this repo pins and not run. It is
 the starting list for the first Linux profile.
 
 - **CAPE says so itself:** "Linux guests don't have official CAPE support", and the switch that allows

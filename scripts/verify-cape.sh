@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Proves the M0a acceptance checks of docs/plans/m0-cape-spike.md against the real cape container,
+# Proves the M0a acceptance checks of docs/history/m0-cape-spike.md against the real cape container,
 # with a throwaway Cirros guest standing in for Windows. Starts postgres, (re)starts cape, and
 # leaves cape stopped: check 7 compares the host before cape started with the host after it stopped.
 # Check 8 (M6) proves the control service answers the backend and nobody else.

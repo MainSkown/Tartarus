@@ -1,5 +1,5 @@
 """The runner's path for an imported packet capture: CAPE's own `pcap` task does the network
-processing, with no guest and no machine (docs/plans/m9-spikes/P1-findings.md).
+processing, with no guest and no machine (docs/history/m9-spikes/P1-findings.md).
 """
 
 import asyncio

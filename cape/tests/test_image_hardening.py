@@ -12,7 +12,7 @@ DOCKERFILE = (CAPE / "Dockerfile").read_text()
 
 
 def runtime_stage() -> str:
-    return DOCKERFILE[DOCKERFILE.rindex("FROM ubuntu:24.04\n") :]
+    return DOCKERFILE[DOCKERFILE.rindex("FROM ubuntu:24.04@sha256:") :]
 
 
 def test_cape_leaves_the_suricata_group_the_installer_adds():

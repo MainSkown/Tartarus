@@ -6,7 +6,7 @@ from pathlib import Path
 from app.ingest.ingester import ReportIngester
 from tests.ingest.fake_index import FakeIndex
 
-FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "plans" / "m9-spikes" / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "history" / "m9-spikes" / "fixtures"
 FIRST_PACKET = datetime(2026, 10, 21, 12, 52, 52, 871033, tzinfo=UTC)
 IMPORT_MOMENT = "2026-10-22 08:00:00"
 

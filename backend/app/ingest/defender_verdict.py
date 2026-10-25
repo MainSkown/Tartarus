@@ -1,7 +1,8 @@
 """What Defender did to an analysis's sample, from its export: the `defender` summary object.
 
 Built on the same classification as the normaliser (`app.ingest.defender_export`), so the summary
-and the events always agree. Definition: docs/plans/m8-spikes/S4-findings.md, "Verdict definition".
+and the events always agree. Definition: docs/history/m8-spikes/S4-findings.md,
+"Verdict definition".
 """
 
 from collections.abc import Iterable, Mapping

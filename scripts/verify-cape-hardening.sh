@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Proves, against the running cape container, what docs/plans/m11-notes/G2-notes.md fixed:
+# Proves, against the running cape container, what docs/history/m11-notes/G2-notes.md fixed:
 # the `cape` user cannot open the host's block devices or run anything as root, no program holds a secret it
 # does not read, CAPE's web process serves the REST API only, and root-run code is not writable by `cape`.
 #

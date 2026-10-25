@@ -819,7 +819,8 @@ class TestDesktopOnPausableSteps:
 
 
 class TestSymbolsStep:
-    """The step that makes the guest's Volatility3 symbol file (docs/plans/m8-spikes/Y-notes.md)."""
+    """The step that makes the guest's Volatility3 symbol file
+    (docs/history/m8-spikes/Y-notes.md)."""
 
     def test_it_runs_just_before_the_snapshot_in_every_pipeline_while_the_agent_still_answers(self):
         profile = json.loads((PROFILE_DIR / "profile.json").read_text())

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Proves acceptance checks 8-12 of docs/plans/m0-cape-spike.md against the Windows guest that
+# Proves acceptance checks 8-12 of docs/history/m0-cape-spike.md against the Windows guest that
 # scripts/build-guest.sh produced and registered. Assumes the guest exists; it does not build it.
 # Submits a benign sample (built here with mingw-w64) through apiv2, routes it to INetSim, and
 # confirms capemon's live logs, the final report and the callback. Leaves the guest powered off.

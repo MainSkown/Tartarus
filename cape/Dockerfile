@@ -73,7 +73,7 @@ RUN uv sync --frozen --no-dev
 # cape2.sh installs libvirt-python separately, pinned to the libvirt it runs against.
 RUN uv pip install --python .venv/bin/python "libvirt-python==$(pkg-config --modversion libvirt)"
 RUN .venv/bin/python utils/community.py -waf -cr
-# Run by the control service, not by CAPE's own memory module (see docs/plans/m8-spikes/S3-findings.md).
+# Run by the control service, not by CAPE's own memory module (see docs/history/m8-spikes/S3-findings.md).
 # `vol --help` imports every plugin, so a wheel the venv cannot run fails the build, not the first analysis.
 COPY cape/build/volatility3.requirements /build/
 RUN uv pip install --python .venv/bin/python --no-deps --require-hashes -r /build/volatility3.requirements

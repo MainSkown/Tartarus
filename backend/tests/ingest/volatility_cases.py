@@ -9,7 +9,7 @@ from app.ingest.protocol import IngestContext
 from tests.ingest.reports import call, process, report_of
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "volatility"
-P9_FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "plans" / "m9-spikes" / "fixtures"
+P9_FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "history" / "m9-spikes" / "fixtures"
 ANALYSIS_ID = 41
 STARTED = datetime(2026, 10, 18, 22, 15, 0, tzinfo=UTC)
 ENDED = "2026-10-18 22:16:10"

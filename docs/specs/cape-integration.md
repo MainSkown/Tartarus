@@ -4,7 +4,7 @@ How Tartarus runs, configures and drives CAPEv2, and how guests are built, clone
 
 ## `cape` container
 
-Built and proven by milestone M0a ([plan](../plans/m0-cape-spike.md)): all seven acceptance checks
+Built and proven by milestone M0a ([plan](../history/m0-cape-spike.md)): all seven acceptance checks
 pass with a throwaway Linux guest on KVM, so the host-libvirt fallback is not needed. Rerun them
 with `make verify-cape`.
 
@@ -42,7 +42,7 @@ the entrypoint exports.
 | `routing.conf` | `route = inetsim`; `no_local_routing = no` (`yes` needs a VRF and the host's `vrf` module); `internet = eth0`; RFC1918 and Docker `reject_segments` (CAPE's own copy; the guest firewall enforces the same list, plus the container's networks, ahead of it). `inetsim` and `internet` are both exercised by `make verify-isolation`, and a real analysis ran on each. |
 | `api.conf` | Token auth on; `cuckoostatus` and `machinelist` enabled (both ship off); `[taskdelete] enabled = yes`, because `tasks/delete` answers "Task Deletion API is Disabled" by default; `ratelimit = no`, since token auth otherwise throttles the backend to 5 requests a minute. |
 | `web.conf` | `[guacamole] enabled = yes` so CAPE records each guest's VNC port. `guacd` binds the internal address only. The backend uses `cape:4822` itself; CAPE's own Guacamole view is unused. |
-| `auxiliary.conf` | `[sniffer] interface = tt-guest`, and `[event_logs] enabled = yes` for the host-side [event logs module](#event-logs-module). The guest-side `[auxiliary_modules]` list and `sysmon_windows = no` are left alone: Sysmon's log is exported by the module, not by CAPE's own `sysmon` auxiliary (which clears the log before it installs). The ETW modules are dropped from v1 ([M8 plan](../plans/m8-event-sources.md)); `QemuScreenshots` is unchanged. Sysmon's events are a final-phase source with no live forwarder (decided 2026-10-17, [v1 open question 3](../features/tartarus-v1.md#open-questions)). |
+| `auxiliary.conf` | `[sniffer] interface = tt-guest`, and `[event_logs] enabled = yes` for the host-side [event logs module](#event-logs-module). The guest-side `[auxiliary_modules]` list and `sysmon_windows = no` are left alone: Sysmon's log is exported by the module, not by CAPE's own `sysmon` auxiliary (which clears the log before it installs). The ETW modules are dropped from v1 ([M8 plan](../history/m8-event-sources.md)); `QemuScreenshots` is unchanged. Sysmon's events are a final-phase source with no live forwarder (decided 2026-10-17, [v1 open question 3](../features/tartarus-v1.md#open-questions)). |
 | `processing.conf`, `memory.conf` | CAPE's own memory module stays off; Volatility3 is installed in CAPE's venv and run by the [control service](#the-control-service) instead ("Memory analysis"). `virustotal` stays off (no sample data leaves the host); the one outbound request is the symbol fetch, which sends only a PDB id ("Symbols"). |
 | `reporting.conf` | `jsondump` on (its default), `mongodb` off, and the `callback` module enabled with `url = http://backend:8000/internal/cape/callback`. The module runs after the report is written, sets the task to `reported` itself, and catches its own failures: an unreachable backend is logged and changes neither the task nor the report (checked with the backend stopped and with a 404). `scripts/verify-guest.sh` layers a temporary listener over it through `reporting.conf.d/callback.conf`; CAPE loads that later, and the script removes only that file. |
 
@@ -113,7 +113,7 @@ registered guest), the `/dev/kvm` group-alignment code, and any Ubuntu or AppArm
 
 ## Findings from M0b: the Windows 11 guest
 
-Built and proven by milestone M0b ([plan](../plans/m0-cape-spike.md)): checks 8 to 12 pass with
+Built and proven by milestone M0b ([plan](../history/m0-cape-spike.md)): checks 8 to 12 pass with
 the user's `Win11_25H2_Polish_x64_v2.iso` (Windows 11 Pro, build 26200, pl-PL). **capemon works on
 build 26200**: a benign sample ran to a finished report with 249 and 224 hooked API calls in its two
 processes, its file write, registry write and command line, a DNS lookup answered by INetSim,
@@ -183,10 +183,10 @@ should set the backend's URL in `reporting.conf`).
 
 | Need | Mechanism |
 |---|---|
-| Submit | `POST apiv2/tasks/create/file/` with `file`, `timeout`, `route`, `package`, `options` (the profile's interactive options), `machine=<guest label>`, always sent, and further form fields from the guest's profile (`enforce_timeout` for Linux) and from the analysis (`memory=1` when it asked for a memory dump). `memory=1` is a **form field, never part of the `options` string**: `options=memory=1` was measured to take no dump ([S3](../plans/m8-spikes/S3-findings.md)). CAPE answers an unknown machine with HTTP 200 and `{"error": true, "error_value": "Machine 'x' does not exist..."}` and creates no task, so the backend reads `error`, not the status |
+| Submit | `POST apiv2/tasks/create/file/` with `file`, `timeout`, `route`, `package`, `options` (the profile's interactive options), `machine=<guest label>`, always sent, and further form fields from the guest's profile (`enforce_timeout` for Linux) and from the analysis (`memory=1` when it asked for a memory dump). `memory=1` is a **form field, never part of the `options` string**: `options=memory=1` was measured to take no dump ([S3](../history/m8-spikes/S3-findings.md)). CAPE answers an unknown machine with HTTP 200 and `{"error": true, "error_value": "Machine 'x' does not exist..."}` and creates no task, so the backend reads `error`, not the status |
 | Status | `GET apiv2/tasks/status/{id}/`, polled every 2 s while active, plus the callback when reporting finishes |
 | Stop early | `POST http://cape-control:8002/tasks/{id}/finish` with `{"guest": "<name>"}` to the guest control service (bearer token, `tartarus-control` network). The guest network exists only inside the `cape` container, so the service does what the backend cannot: it looks up that guest's address, agent port and finish folder in its own record and profile (the backend never supplies an address, so there is nothing to validate and no path to inject) and asks the guest agent (`POST /mkdir`) to create `<finish folder>/<md5("cape-<task id>")>` (`C:\Windows\Temp` for Windows). CAPE's analyzer (`analyzer.py`, `analysis_loop`) ends the analysis as soon as a folder of that name exists in `%TMP%` or `%SystemRoot%\Temp`, then uploads its results as for a timeout; the agent's `mkdir` is `os.makedirs(exist_ok=True)`, so asking twice is harmless. It answers `200 {"finished": true}`, `502 {"error"}` when the agent is unreachable or refuses, `422` for a bad guest name, `400` for a task id that is not digits, `404` for an unknown guest. |
-| Extend | Interactive runs only, and not a CAPE feature. **Built in M7** ([M7 plan](../plans/m7-foundations.md), decision 5): the task is submitted with CAPE's maximum timeout (1200 s), and the backend ends the run at the analyst's deadline through the finish call. The deadline is the oldest `logs/*.bson` modification time plus the analyst's timeout, set once the monitor has started, and is capped at `started_at` + 1200 s, which keeps the backend ahead of CAPE's own timer (measured in S1: no earlier than `started_at` + 1222 s). `POST /analyses/{id}/extend` moves it later by up to 600 s at a time. |
+| Extend | Interactive runs only, and not a CAPE feature. **Built in M7** ([M7 plan](../history/m7-foundations.md), decision 5): the task is submitted with CAPE's maximum timeout (1200 s), and the backend ends the run at the analyst's deadline through the finish call. The deadline is the oldest `logs/*.bson` modification time plus the analyst's timeout, set once the monitor has started, and is capped at `started_at` + 1200 s, which keeps the backend ahead of CAPE's own timer (measured in S1: no earlier than `started_at` + 1222 s). `POST /analyses/{id}/extend` moves it later by up to 600 s at a time. |
 | Live data | Files in `storage/analyses/{id}/` (shared volume): `logs/*.bson`, `aux/*.json` |
 | Final data | `storage/analyses/{id}/reports/report.json`, `files/`, `CAPE/`, `procdump/`, `memory.dmp`, `dump.pcap`, `shots/`, `sysmon/`, `evtx/` |
 | File access | The backend mounts the storage read-only as another user. CAPE saves uploaded files (`files/`, `procdump/`, `shots/`) through Python's temporary-file API, always mode `0600`, so `cape/bin/share-storage` (a supervisord program in the `cape` container) adds read and directory-search bits for others within seconds of a file appearing. Found on the real stack by `make e2e`: before it, artifact downloads answered 500 and screenshots broke mid-response. |
@@ -196,7 +196,7 @@ should set the backend's URL in `reporting.conf`).
 
 ## Guest VM build wizard
 
-Built and run for real in M6 ([plan](../plans/m6-guest-wizard.md), including what each wave proved and what
+Built and run for real in M6 ([plan](../history/m6-guest-wizard.md), including what each wave proved and what
 is still open). The analyst builds, clones, checks and deletes guests from the GUI with no shell on the host;
 there can be several guests, and the analyst picks one for every detonation. **What is Windows-specific is a
 guest profile**; everything else on this page is generic and driven by it. How to add an operating system is
@@ -262,7 +262,7 @@ leaves one `<plugin>.json` per plugin and a `run.json` in `storage/analyses/<id>
 missing symbols, is an entry in `errors`, never a download); `404` no dump, `409` already running, `502`
 `vol` cannot be started, `500` the results cannot be written. `DELETE /memory/{task_id}/dump` removes the dump
 (`204`, `404`, `409` while it is being read): the backend has the storage read-only, so only this service can.
-Why Volatility runs here and not in CAPE's own memory module: [S3 findings](../plans/m8-spikes/S3-findings.md).
+Why Volatility runs here and not in CAPE's own memory module: [S3 findings](../history/m8-spikes/S3-findings.md).
 When `windows.info` fails because no ISF matches the dump's kernel, `analyse` also reads the kernel's PDB id from
 Volatility's INFO log (`windows.info` is the only plugin run with `-v`; with `--offline` the line is the URL of the
 PDB it declined to fetch, `.../symbols/ntkrnlmp.pdb/<GUID><age>/ntkrnlmp.pdb`, as seen in the M8 real run) and adds `"missing_symbols": {"guid": "...", "age": n}` to the
@@ -395,7 +395,7 @@ beyond the edition name the media gave. What differs on Windows 10, found by bui
   fake page, an Edge window (a captive-portal check). Nothing answers them and neither blocks provisioning.
 - Windows' own English service names contain "Antivirus", which the giveaway scan allows (see Names and giveaways).
 - Not verified: a PowerShell sample on Windows 10 stalls the guest agent after the analyzer ends and the run loses
-  its Sysmon and Defender events (see [M10 findings](../plans/m10-guest-proofs.md)). The CAPE tag follows the
+  its Sysmon and Defender events (see [M10 findings](../history/m10-guest-proofs.md)). The CAPE tag follows the
   media: the profile's `cape.tag_rules` map the media's build to `win10` (from 10240) or `win11` (from 22000)
   next to the always-on `windows`, so a Windows 10 guest registers as `windows,win10`.
 

@@ -1,7 +1,7 @@
 """Tests of `bin/symbols_logic.py`: making the Windows kernel's symbol file (ISF) for Volatility3.
 
 The symbol server and the converter are injected fakes, so nothing here touches the network or needs
-Volatility3 installed. The identifier is the S3 guest's (docs/plans/m8-spikes/S3-findings.md).
+Volatility3 installed. The identifier is the S3 guest's (docs/history/m8-spikes/S3-findings.md).
 """
 
 import io

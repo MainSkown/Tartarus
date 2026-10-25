@@ -19,7 +19,7 @@ from tests.test_analysis_repository import SHA_B, make_sample
 
 type Factory = async_sessionmaker[AsyncSession]
 
-FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "plans" / "m9-spikes" / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "history" / "m9-spikes" / "fixtures"
 FIXTURE_PCAP = FIXTURES / "p9-run-370-dump.pcap"
 FIRST_PACKET = datetime(2026, 10, 21, 12, 52, 52, 871033, tzinfo=UTC)
 OUTCOME = ReportOutcome(score=0.0, max_severity=None, detected_families=[], summary={})

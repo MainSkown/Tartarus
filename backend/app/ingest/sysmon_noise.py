@@ -1,6 +1,6 @@
 """Which Sysmon events describe the sample, and which are Windows' or CAPE's own.
 
-Windows background is 85 to 99% of a log (docs/plans/m8-spikes/S1-findings.md, "Noise"), so the
+Windows background is 85 to 99% of a log (docs/history/m8-spikes/S1-findings.md, "Noise"), so the
 analysis keeps what the sample did. An event is kept when
 
 1. its acting process is in the sample's tree: a process capemon monitored (matched by pid and

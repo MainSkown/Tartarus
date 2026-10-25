@@ -6,7 +6,7 @@ import pytest
 
 from app.imports.packet_capture import MAX_LEADING_BLOCKS, UnreadableCaptureError, first_packet_time
 
-FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "plans" / "m9-spikes" / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "history" / "m9-spikes" / "fixtures"
 FIXTURE_FIRST_PACKET = datetime(2026, 10, 21, 12, 52, 52, 871033, tzinfo=UTC)
 MOMENT = datetime(2026, 10, 21, 12, 52, 52, 871033, tzinfo=UTC)
 EPOCH_SECONDS = int(MOMENT.timestamp())

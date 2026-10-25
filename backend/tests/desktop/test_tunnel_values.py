@@ -8,7 +8,7 @@ from app.desktop.tunnel import (
 )
 from tests.desktop.fake_guacd import OBSERVED_ARGS
 
-# Copied from the D1 transcript in docs/plans/m2-live.md, section 4.
+# Copied from the D1 transcript in docs/history/m2-live.md, section 4.
 OBSERVED_CONNECT = (
     "connect,VERSION_1_5_0,127.0.0.1,5900,false,,,,,,24,remote,0,,,,,,,,,,,,,true,true,,,,,,,,,"
 )

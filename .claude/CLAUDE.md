@@ -69,7 +69,7 @@ If you're about to write logic that already exists elsewhere, extend or call tha
 - **Shared Vue pieces are components or composables, not copy-pasted templates.** The severity
   badge, lane icon, query bar, and the "filter on / filter out" action used across Events,
   Network, Artifacts and the detail drawer are each written once
-  ([gui spec](../docs/specs/gui.md#frontend-structure)).
+  ([gui spec](../docs/specs/gui.md#frontend-structure-frontendsrc)).
   - If the same markup or logic appears in two places, extract it before the third copy.
 - **One source of truth per concept.** The field catalog behind the query compiler, the
   autocomplete endpoint, and the Sigma ECS pipeline all read the same field-definition table —

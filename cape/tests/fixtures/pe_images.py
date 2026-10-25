@@ -2,7 +2,7 @@
 
 One section and a debug directory with the entries a kernel has, the CodeView one being the one
 that matters. The real `ntoskrnl.exe` of the S3 guest has ntkrnlmp.pdb, GUID
-24DE61DB3A27C5B383DFF181CB51F7E1, age 1 (read with pefile in docs/plans/m8-spikes/S3-findings.md).
+24DE61DB3A27C5B383DFF181CB51F7E1, age 1 (read with pefile in docs/history/m8-spikes/S3-findings.md).
 """
 
 import struct

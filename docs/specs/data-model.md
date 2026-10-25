@@ -425,7 +425,7 @@ streaming parse per pass, never the whole log in memory. `event.module: sysmon`,
 #### `defender` (host-collected export)
 
 Reads `aux/defender.xml`: the Defender Operational events that the host-side auxiliary module exports
-after the run (S4 spike, `docs/plans/m8-spikes/S4-findings.md`). Final phase, `event.module: defender`,
+after the run (S4 spike, `docs/history/m8-spikes/S4-findings.md`). Final phase, `event.module: defender`,
 `event.dataset: defender.operational`, `event.category: [malware, file]`, lane `file`.
 
 - Only 1116 (malware detected) and 1117, 1118, 1119 (action taken, failed) are events. Every other id
@@ -460,7 +460,7 @@ status_code, clock}`.
 Reads the folder the memory step leaves in the analysis directory (`backend/app/ingest/volatility*.py`):
 `memory/run.json` (`{volatility, dump_bytes, pids, plugins: {<plugin>: {rows, seconds, error}}, symbols}`) and one
 `<plugin>.json` per plugin that worked, each the JSON array Volatility3 prints with `-r json` (S3 spike,
-`docs/plans/m8-spikes/S3-findings.md`). No `memory/run.json` is no memory step: no events, no error. A plugin
+`docs/history/m8-spikes/S3-findings.md`). No `memory/run.json` is no memory step: no events, no error. A plugin
 entry with an `error`, a missing file, a file that is not a JSON array, or a row that is not an object naming a
 `PID` is skipped; the rest is used. At most 5000 rows per plugin are read, the overflow counted.
 Final phase, `event.module: volatility`, `event.dataset: volatility.<plugin>` (`volatility.malfind`), lane `memory`.

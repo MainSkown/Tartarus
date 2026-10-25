@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.imports.sniff import ImportKind, sniff_import
 
-FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "plans" / "m9-spikes" / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[3] / "docs" / "history" / "m9-spikes" / "fixtures"
 
 
 def test_classic_pcap_fixture_is_pcap() -> None:

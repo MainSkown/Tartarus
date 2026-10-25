@@ -27,10 +27,10 @@ query bar, and export IOCs and reports.
 | [Guest profiles](docs/specs/guest-profiles.md) | How to add an operating system: the profile directory, `profile.json`, the step contract, the self-test |
 | [Design system](docs/design/design-system.md) | Ice-blue cyberpunk theme: tokens, components, data-viz rules |
 | [Theme CSS](frontend/src/css/app.css) | The theme stylesheet, single source of the design tokens |
-| [Plan: foundation](docs/plans/foundation.md) | Compose stack, backend and frontend skeletons: subtasks, model tiers, dependencies |
-| [Plan: M0 CAPE spike](docs/plans/m0-cape-spike.md) | The privileged CAPE container and the Windows 11 guest: checks, results, findings |
-| [Plan: M1a](docs/plans/m1a-submit-and-report.md) | Submit a sample from the UI and see its result: decisions, contracts, subtasks |
-| [Plan: M6](docs/plans/m6-guest-wizard.md) | The guest wizard and several guests: decisions, what each wave proved, what is open |
+| [Plan: foundation](docs/history/foundation.md) | Compose stack, backend and frontend skeletons: subtasks, model tiers, dependencies |
+| [Plan: M0 CAPE spike](docs/history/m0-cape-spike.md) | The privileged CAPE container and the Windows 11 guest: checks, results, findings |
+| [Plan: M1a](docs/history/m1a-submit-and-report.md) | Submit a sample from the UI and see its result: decisions, contracts, subtasks |
+| [Plan: M6](docs/history/m6-guest-wizard.md) | The guest wizard and several guests: decisions, what each wave proved, what is open |
 
 ## Quick start
 
