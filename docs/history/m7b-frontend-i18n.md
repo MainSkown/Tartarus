@@ -89,7 +89,7 @@ Sonnet.
 
 | ID | Task | Model | Deliverables |
 |---|---|---|---|
-| **S0** | Decide and prove the conventions on three files: a component with template text, `services/guest-build.ts` (pluralised, concatenated messages), `composables/use-end-run.ts` (toasts) | Sonnet, **care** | The library installed and wired; `src/i18n/` with the shared `t` and the typed `en-US` schema; the three files migrated with their tests still green; the vitest `setupFiles` entry proven on `guest-card.test.ts`; a new "Internationalisation" section in [gui.md](../specs/gui.md) saying the library, the key scheme, the single source of the key list, how code outside a component translates, plurals, number and date formatting (UTC stays UTC), and how tests get the catalogue; `docs/plans/m7b-notes/S0-findings.md` with what was tried and rejected |
+| **S0** | Decide and prove the conventions on three files: a component with template text, `services/guest-build.ts` (pluralised, concatenated messages), `composables/use-end-run.ts` (toasts) | Sonnet, **care** | The library installed and wired; `src/i18n/` with the shared `t` and the typed `en-US` schema; the three files migrated with their tests still green; the vitest `setupFiles` entry proven on `guest-card.test.ts`; a new "Internationalisation" section in [gui.md](../specs/gui.md) saying the library, the key scheme, the single source of the key list, how code outside a component translates, plurals, number and date formatting (UTC stays UTC), and how tests get the catalogue; `docs/history/m7b-notes/S0-findings.md` with what was tried and rejected |
 
 ### Wave 2: infrastructure (after S0)
 

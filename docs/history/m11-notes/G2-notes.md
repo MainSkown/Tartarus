@@ -44,7 +44,7 @@ Working tree (git status --short; HEAD 3030b8a otherwise clean):
   web.tartarus_urls, siteauth.sqlite moved to /var/lib/cape-web)
 - ?? cape/web/tartarus_urls.py (apiv2 only)
 - ?? cape/tests/test_image_hardening.py, cape/tests/test_web_settings.py
-- ?? docs/plans/m11-notes/G2-notes.md (this file)
+- ?? docs/history/m11-notes/G2-notes.md (this file)
 Not yet edited: supervisord.conf, entrypoint.sh, docker-compose.yml, cape/bin/*, scripts/*, Makefile.
 
 Stack state at the pause: all five containers healthy; `nft list tables` shows `inet tartarus_guest` and `bridge tartarus_guest`;

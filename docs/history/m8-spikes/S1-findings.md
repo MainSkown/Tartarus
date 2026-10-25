@@ -3,7 +3,7 @@
 Spike on the real stack, 2026-10-18/19. Sysmon 15.22 (schema 4.91, the pinned `Sysmon64.exe`), CAPE at the
 pinned `CAPE_REF`, guests built from `Win11_25H2_Polish_x64_v2.iso`. No product code was committed and nothing
 was staged. Every change made in the cape container was reverted (list at the end); the repo tree only gained
-`docs/plans/m8-spikes/` (this file and `S1-notes.md`). All 39 analyses the spike created and both throwaway
+`docs/history/m8-spikes/` (this file and `S1-notes.md`). All 39 analyses the spike created and both throwaway
 guests were deleted; the stack was left stopped, as found.
 
 Guests used: `m8-s1`, a clone of `lab3` (Sysmon installed at build time, Defender off); `m8-s1n`, a fresh small

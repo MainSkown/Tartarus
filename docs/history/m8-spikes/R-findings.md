@@ -127,7 +127,7 @@ one).
 - **CAPE `analyses/latest`** is a symlink to the newest task; after the cleanup it points at a deleted task (357) until the
   next analysis rewrites it.
 - **Docs to update**: `docs/specs/cape-integration.md` still says the symbols step and `POST /symbols` are "Not tested
-  against a real guest yet"; they now were (not the route's `created: true`). `docs/plans/m8-spikes/Y-notes.md` and
+  against a real guest yet"; they now were (not the route's `created: true`). `docs/history/m8-spikes/Y-notes.md` and
   `V-notes.md` "not done" lists are now done except as listed here.
 - **Not run**: R1e, R5l, R6c's backend half, an interactive run, a 1200 s run, the HTTP download of a kept dump, the Memory
   sub-tab, Sigma double-fire against a rule that really matches both Sysmon and capemon events.
@@ -160,5 +160,5 @@ one).
 `backend/app/ingest/{defender,sysmon_noise,sysmon_processes}.py`, `backend/tests/ingest/{test_defender,test_sysmon,test_sysmon_noise}.py`,
 `cape/bin/{memory_logic,volatility}.py`, `cape/tests/{test_memory_logic,test_volatility,test_windows_profile}.py`,
 `cape/tests/fixtures/volatility_output.py`, `guest/profiles/windows/sysmon-config.xml`,
-`docs/specs/{cape-integration,data-model}.md`, `docs/plans/m8-spikes/R-notes.md`, this file. Scratch (not in the repo):
+`docs/specs/{cape-integration,data-model}.md`, `docs/history/m8-spikes/R-notes.md`, this file. Scratch (not in the repo):
 `.../scratchpad/m8-proof/` (api.py, shots.mjs, replay.py, screenshots, event dumps).

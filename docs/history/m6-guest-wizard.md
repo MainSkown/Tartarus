@@ -6,7 +6,7 @@ ISO in `data/iso` builds, checks and deletes guests **from the GUI**, with the b
 shell on the host. **There can be several guests** (for example Windows 11 with Defender on and the same
 with it off), and **the analyst chooses one for every detonation**. It builds what the
 [CAPE integration spec](../specs/cape-integration.md#guest-vm-build-wizard) (the wizard, the health checks),
-the [backend spec](../specs/backend.md#guest) and the [GUI spec](../specs/gui.md) (the Guest VM page, the
+the [backend spec](../specs/backend.md#guests) and the [GUI spec](../specs/gui.md) (the Guest VM page, the
 Submit dialog) describe, and changes them where they assume one guest (decision 5). **Guest creation is
 OS-independent**: Windows is the first of several possible *guest profiles*, so a Linux guest later is a new
 profile, not a rewrite (decision 17).

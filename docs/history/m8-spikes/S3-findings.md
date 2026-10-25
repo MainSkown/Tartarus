@@ -4,7 +4,7 @@ Spike on the real stack, 2026-10-19. Guest `m8-s3` (a throwaway clone of `lab3`,
 2 vCPU, 4096 MB RAM, `memballoon` none), CAPE at the pinned `CAPE_REF`, Volatility3 2.28.2. No product code was
 committed and nothing was staged. Every change inside the `cape` container was reverted (list at the end), the guest,
 all analyses and all dumps were deleted, and free space on `/` is back to 398 GB. The repo tree only gained
-`docs/plans/m8-spikes/S3-notes.md` and this file.
+`docs/history/m8-spikes/S3-notes.md` and this file.
 
 ## Verdict
 

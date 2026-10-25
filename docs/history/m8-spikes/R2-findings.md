@@ -87,7 +87,7 @@ Observations, not defects:
 
 ## Files changed in this pass
 
-`backend/app/ingest/sysmon_noise.py`, `backend/tests/ingest/test_sysmon_noise.py` (D8), `docs/plans/m8-spikes/R2-notes.md`, this file.
+`backend/app/ingest/sysmon_noise.py`, `backend/tests/ingest/test_sysmon_noise.py` (D8), `docs/history/m8-spikes/R2-notes.md`, this file.
 Screenshots and scripts: `/tmp/claude-1000/-home-mainskown-Pulpit-Coding-Tartarus/ce3dfae3-2a04-4e47-b56f-490d4379808e/scratchpad/m8-proof2/`
 (`eicar-*`, `memory-kept-*`, `memory-deleted-*`, `unavailable-overview`, `win-*`, `benign-overview`, `submit-dialog-memory`; `benign-processes.png`
 is a 404 page of an already deleted analysis, ignore).

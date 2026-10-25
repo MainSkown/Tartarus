@@ -267,7 +267,7 @@ and **a Haiku task that fails its tests twice is handed to Sonnet** instead of a
 | **R1** | Resume race (decision 2). `reconfigure` and its `windows.sh` helpers | Sonnet, **care** | `test_clone_reconfigure_script.py` with the fake agent: (a) a log of an earlier apply present and the guest mid-reboot, so the step waits and applies nothing; (b) a log present and the guest back with a new GUID, so the step verifies against the saved "before" and passes; (c) no log, as today; (d) the "before" file survives a second run. A failing test for (b) first, to confirm the hypothesis |
 | **D1** | Remove `finish-run` (decision 3): `cape/bin/finish-run`, its supervisord program and comments, `GUEST_IP` in `entrypoint.sh` and its comment, `scripts/tests/test_finish_run.sh`, the Makefile lint paths, `verify-cape.sh`'s listener check, the e2e function and the docs mentions (architecture tree, compose comment, `control_http.py` and `finish_logic.py` docstrings) | Haiku | `test_control_http.py` and `test_guest_control_finish.py` stay green with `wrong_method_status` removed; `verify-cape.sh`'s port check no longer lists the finish port, and a grep test finds no `finish-run` left outside `docs/plans` and `docs/history` |
 
-### Wave 2: spikes (one at a time on the real stack; findings in `docs/plans/m7-spikes/`)
+### Wave 2: spikes (one at a time on the real stack; findings in `docs/history/m7-spikes/`)
 
 Start from a rebuilt `cape` image with wave 1 in it. Check `df` on the guest volume first: a spike clone is
 22 GB, and the host already holds `win`, `win2` and several `lab*` guests; delete the spare ones.

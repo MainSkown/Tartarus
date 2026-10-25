@@ -2,7 +2,7 @@
 
 Spike on the real stack, 2026-10-19. Guest `m8-s2`, a throwaway clone of `lab3` (Windows 11 25H2, build 10.0.26200,
 Defender off, Sysmon on, pl-PL); two runs on `lab5` (Defender on) for AMSI. CAPE at the pinned `CAPE_REF`.
-No product code was committed and nothing was staged; the repo only gained `docs/plans/m8-spikes/S2-notes.md` and
+No product code was committed and nothing was staged; the repo only gained `docs/history/m8-spikes/S2-notes.md` and
 this file. Every change in the `cape` container was reverted (list at the end), the 15 analyses (ids 337 to 351) and
 the guest were deleted, and the stack was stopped as found.
 
@@ -107,7 +107,7 @@ same snapshot state. `run` = agent start to finish; `p+i` = processing plus inge
   run (the list after a stop had none). `dns_etw` and `wmi_etw` each create an empty `C:\<5-10 random letters>`
   folder with their log in it (`network_etw` removes its own); gone with the revert. No driver and no process is
   left. The names are CAPE's defaults; renaming them is a one-line patch per module but they would still be extra
-  sessions. The anti-VM surface of `docs/plans/m7-spikes/S2-findings.md` (drives, display adapter) is untouched.
+  sessions. The anti-VM surface of `docs/history/m7-spikes/S2-findings.md` (drives, display adapter) is untouched.
 - **Clock:** ETW `EventHeader.TimeStamp` is a FILETIME in the **guest clock**, which is 2 h behind real UTC (the
   analyzer logs "Date set to 20261019T00:54:09" into a UTC+2 guest; the first WMI record of a run CAPE started at
   00:46:44 real UTC reads 22:46:51.996). The calibrated `guest_clock_offset` applies exactly as for Sysmon.

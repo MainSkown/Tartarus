@@ -150,5 +150,5 @@ builds and analyses exclude each other first, so it is still alone), the sample 
 
 ## Rewritten wave 3
 
-The table now in [the plan](../m9-beyond-one-run.md#wave-3-parallel-analyses-after-spike-p3) replaces the old 3.0 to 3.6;
+The table now in [the plan](../m9-beyond-one-run.md#wave-3-parallel-analyses-rewritten-from-spike-p3) replaces the old 3.0 to 3.6;
 tiers follow rule 5 (the extreme tier is Sonnet with a notes file and a check the planner re-runs).

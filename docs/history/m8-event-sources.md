@@ -63,7 +63,7 @@ in the backend.
 ## Spikes first (Sonnet, one at a time on the real stack)
 
 CAPE runs one analysis at a time and a build or clone blocks it, so the spikes run in sequence, each with a notes
-file under `docs/plans/m8-spikes/` (done, running, next) and a findings file. The planner re-runs every check and
+file under `docs/history/m8-spikes/` (done, running, next) and a findings file. The planner re-runs every check and
 reads the diff before anything is committed (CLAUDE.md rule 5).
 
 | Spike | Question | Check that can fail | Go / no-go |
