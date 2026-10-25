@@ -25,6 +25,7 @@ import type {
   SettingsBody,
   SystemHealth,
   TagUsageRead,
+  VersionInfo,
 } from '../../src/api/types.gen'
 
 // An /api request no scenario mocked would fall through to the dev server's proxy (no backend
@@ -66,6 +67,9 @@ const HEALTH_URL = atPath('/api/system/health')
 const SETTINGS_URL = atPath('/api/settings')
 const WS_SYSTEM_URL = atPath('/ws/system')
 const QUEUE_URL = atPath('/api/system/queue')
+const VERSION_URL = atPath('/api/version')
+
+export const RELEASE_VERSION: VersionInfo = { version: '1.0.0', commit: 'a1b2c3d', license: 'GPL-3.0-only' }
 
 export const EMPTY_QUEUE: QueueSnapshot = { running: [], queued_count: 0, queued: [] }
 
@@ -123,6 +127,21 @@ export async function mockShell(page: Page, health: SystemHealth = HEALTHY_SYSTE
   await mockHealthGet(page, health)
   await mockQueueGet(page, queue)
   await mockHealthWebSocket(page, { health, queue })
+  await mockVersionGet(page)
+}
+
+/**
+ * Serves `GET /api/version`, which the Settings page's About card requests. A later call on the
+ * same page takes precedence, so a spec can replace the default with a loading or failed state.
+ */
+export async function mockVersionGet(
+  page: Page,
+  options: { body?: VersionInfo | ErrorEnvelope; status?: number; delayMs?: number } = {},
+): Promise<void> {
+  await page.route(VERSION_URL, async (route) => {
+    if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs))
+    await route.fulfill({ status: options.status ?? 200, json: options.body ?? RELEASE_VERSION })
+  })
 }
 
 /**

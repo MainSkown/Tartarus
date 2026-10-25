@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     runner_unreachable_grace_seconds: float = 120.0
     live_poll_interval_seconds: float = 0.25
     tartarus_allowed_hosts: Annotated[tuple[str, ...], NoDecode] = ()
+    tartarus_commit: str | None = None
 
     @field_validator("log_level", mode="before")
     @classmethod

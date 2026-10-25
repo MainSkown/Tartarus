@@ -16,4 +16,15 @@ export default {
   diskBlock: 'DISK BLOCK (GB)',
   save: '[SAVE]',
   saved: 'Settings saved',
+  about: {
+    title: 'ABOUT',
+    loading: 'Loading version',
+    loadFailed: '> failed to load version',
+    name: 'Tartarus',
+    version: 'VERSION',
+    commit: 'COMMIT',
+    license: 'LICENSE',
+    viewLicense: 'VIEW LICENSE',
+    thirdParty: 'THIRD-PARTY NOTICES',
+  },
 }

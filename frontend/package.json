@@ -1,7 +1,8 @@
 {
   "name": "tartarus-frontend",
   "productName": "Tartarus",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "license": "GPL-3.0-only",
   "private": true,
   "description": "Tartarus malware analysis GUI",
   "type": "module",

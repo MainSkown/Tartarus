@@ -3315,6 +3315,15 @@ export type ValueCount = {
     count: number;
 };
 
+/**
+ * VersionInfo
+ */
+export type VersionInfo = {
+    version: string;
+    commit: string | null;
+    license: string;
+};
+
 export type SystemHealthData = {
     body?: never;
     path?: never;
@@ -3364,6 +3373,31 @@ export type SystemQueueResponses = {
 };
 
 export type SystemQueueResponse = SystemQueueResponses[keyof SystemQueueResponses];
+
+export type SystemVersionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/version';
+};
+
+export type SystemVersionErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type SystemVersionError = SystemVersionErrors[keyof SystemVersionErrors];
+
+export type SystemVersionResponses = {
+    /**
+     * Successful Response
+     */
+    200: VersionInfo;
+};
+
+export type SystemVersionResponse = SystemVersionResponses[keyof SystemVersionResponses];
 
 export type SettingsReadData = {
     body?: never;

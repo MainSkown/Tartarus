@@ -13,12 +13,14 @@ from app.api import (
     search,
     settings,
     system,
+    version,
     views_events,
     views_findings,
 )
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(system.router)
+api_router.include_router(version.router)
 api_router.include_router(settings.router)
 api_router.include_router(guests.router)
 api_router.include_router(analyses.router)

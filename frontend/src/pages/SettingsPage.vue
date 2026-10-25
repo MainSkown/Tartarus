@@ -3,6 +3,7 @@ import { onMounted, reactive, ref, toRef } from 'vue'
 import { Notify } from 'quasar'
 import { settingsRead, settingsReplace } from '@/api'
 import type { SettingsBody } from '@/api'
+import AboutCard from '@/components/AboutCard.vue'
 import NumberInput from '@/components/NumberInput.vue'
 import { t } from '@/i18n'
 import { useDefaultGuestField } from '@/composables/use-default-guest-field'
@@ -210,9 +211,10 @@ onMounted(() => {
       </div>
     </form>
 
-    <!-- Network routes (read-only list, how to add a tunnel in .env) and About (versions,
-         doc links, safety reminder) are deferred: they need backend data this phase does not
-         expose yet. Like the header's deferred items, they are not faked here. -->
+    <!-- Network routes (read-only list, how to add a tunnel in .env) are deferred: they need
+         backend data this phase does not expose yet. Like the header's deferred items, they
+         are not faked here. -->
+    <AboutCard class="about-section" />
   </div>
 </template>
 
@@ -237,6 +239,10 @@ onMounted(() => {
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-xl) 0;
+}
+
+.about-section {
+  margin-top: var(--spacing-xl);
 }
 
 .settings-form {

@@ -2,7 +2,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { Notify, Quasar, QInput, QSelect } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { guestsList, settingsRead, settingsReplace, type ErrorEnvelope, type Guest, type SettingsBody } from '@/api'
+import { guestsList, settingsRead, settingsReplace, systemVersion, type ErrorEnvelope, type Guest, type SettingsBody } from '@/api'
 import SettingsPage from '@/pages/SettingsPage.vue'
 import { BUILT_ROUTES } from '@/services/routes'
 
@@ -11,6 +11,7 @@ vi.mock('@/api', () => ({
   settingsReplace: vi.fn(),
   guestsList: vi.fn(),
   guestsProfiles: vi.fn(),
+  systemVersion: vi.fn(),
 }))
 
 type ReadResult = Awaited<ReturnType<typeof settingsRead>>
@@ -70,11 +71,15 @@ const GUESTS = [
   { name: 'lab3', state: 'building' },
 ] as Guest[]
 
+const VERSION = { version: '1.0.0', commit: null, license: 'GPL-3.0-only' }
+
 beforeEach(() => {
   vi.clearAllMocks()
   Notify.create = vi.fn()
   vi.mocked(guestsList).mockResolvedValue({ data: GUESTS, error: undefined } as unknown as Awaited<ReturnType<typeof guestsList>>)
+  vi.mocked(systemVersion).mockResolvedValue({ data: VERSION, error: undefined } as unknown as Awaited<ReturnType<typeof systemVersion>>)
 })
+
 
 function guestSelect(wrapper: VueWrapper) {
   const select = wrapper.findAllComponents(QSelect).find((component) => component.props('label') === 'DEFAULT GUEST')
@@ -102,6 +107,13 @@ describe('SettingsPage', () => {
     expect(numberInput(wrapper, 'DISK BLOCK (GB)').find('input').element.value).toBe('20')
     expect(wrapper.find<HTMLInputElement>('input[value="inetsim"]').element.checked).toBe(true)
     expect(wrapper.find<HTMLInputElement>('.checkbox-input').element.checked).toBe(true)
+  })
+
+  it('shows the About card with the release the backend reports', async () => {
+    const wrapper = await mountLoaded()
+
+    expect(wrapper.find('.about-card').exists()).toBe(true)
+    expect(wrapper.find('.about-version').text()).toBe('1.0.0')
   })
 
   it('offers only the built routes as default route', async () => {

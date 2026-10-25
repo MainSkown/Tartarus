@@ -1,7 +1,8 @@
 [project]
 name = "tartarus-backend"
-version = "0.1.0"
+version = "1.0.0"
 description = "Tartarus backend API"
+license = "GPL-3.0-only"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20.0",
