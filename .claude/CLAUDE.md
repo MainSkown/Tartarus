@@ -144,9 +144,9 @@ independent subtasks together, in one message, rather than one at a time.
 
 ## Enforcement
 
-- **Backend:** `ruff` (lint + format), `mypy` on `app/`, `pytest --cov=app` in CI. Ruff's
+- **Backend:** `ruff` (lint + format), `mypy` on `app/`, `pytest` in CI (`pytest --cov=app` locally for the coverage smell check). Ruff's
   complexity and duplicate-code-adjacent lints (e.g. `PLR0912`, `C901`) are on.
-- **Frontend:** `eslint` + `vue-tsc`, `vitest --coverage`.
+- **Frontend:** `eslint` + `vue-tsc`, `vitest run` in CI (`vitest --coverage` locally).
 - **Pre-commit:** ruff, eslint and the fast unit-test suites run on changed files before commit.
 - **CI gate:** no merge with failing tests or lint. A PR that adds code without a preceding test
   commit (or in the same commit, test-then-implementation visible in the diff) gets flagged in
