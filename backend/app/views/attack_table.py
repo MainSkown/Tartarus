@@ -4,6 +4,11 @@ from functools import lru_cache
 from pathlib import Path
 
 DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "attack_techniques.json"
+ATTACK_COPYRIGHT = (
+    "© 2026 The MITRE Corporation. This work is reproduced and distributed with the permission "
+    "of The MITRE Corporation."
+)
+ATTACK_TERMS_URL = "https://attack.mitre.org/resources/legal-and-branding/terms-of-use/"
 UNKNOWN_TACTIC = "unknown"
 UNKNOWN_TACTIC_NAME = "Unknown"
 

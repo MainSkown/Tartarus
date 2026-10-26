@@ -60,6 +60,19 @@ describe('AboutCard', () => {
     }
   })
 
+  it('credits MITRE ATT&CK with its copyright line and links the terms of use', async () => {
+    const wrapper = mountCard()
+    await flushPromises()
+
+    expect(wrapper.find('.about-attribution').text()).toContain(
+      'MITRE ATT&CK® data: © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.',
+    )
+    const terms = wrapper.find('a.about-attribution-link')
+    expect(terms.attributes('href')).toBe('https://attack.mitre.org/resources/legal-and-branding/terms-of-use/')
+    expect(terms.attributes('target')).toBe('_blank')
+    expect(terms.attributes('rel')).toBe('noopener noreferrer')
+  })
+
   it('says the version failed to load and retries on the button', async () => {
     systemVersion.mockResolvedValueOnce({ error: { error: { code: 'x', message: 'boom' } }, response: { status: 500 } })
     const wrapper = mountCard()

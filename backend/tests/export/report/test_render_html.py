@@ -99,6 +99,26 @@ def test_the_detection_block_says_how_many_cited_events_it_does_not_list() -> No
     assert "3 more cited events" in Page(html_of()).text
 
 
+def test_a_detection_names_the_rule_author_and_one_without_prints_nothing() -> None:
+    text = Page(html_of()).text
+
+    assert text.count("Rule author:") == 1
+    assert "Rule author: Florian Roth" in text
+
+
+@pytest.mark.parametrize("variant", list(ReportVariant))
+def test_the_footer_credits_mitre_attack_with_its_copyright_and_terms(
+    variant: ReportVariant,
+) -> None:
+    text = Page(render_document(model_of(), variant)).text
+
+    assert (
+        "© 2026 The MITRE Corporation. This work is reproduced and distributed with the "
+        "permission of The MITRE Corporation." in text
+    )
+    assert "https://attack.mitre.org/resources/legal-and-branding/terms-of-use/" in text
+
+
 def test_the_key_events_table_says_why_each_event_is_listed() -> None:
     text = Page(html_of()).text
 

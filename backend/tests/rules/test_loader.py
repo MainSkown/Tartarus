@@ -251,6 +251,19 @@ def test_references_and_the_condition_text_are_kept(tmp_path: Path) -> None:
     assert rule.condition == "selection"
 
 
+def test_the_author_is_kept_as_the_rule_names_it(tmp_path: Path) -> None:
+    text = rule_yaml(SELECTION, extra="author: Florian Roth, Nasreddine Bencherchali")
+    rule = load_rule_file(write(tmp_path, "r.yml", text))
+
+    assert rule.author == "Florian Roth, Nasreddine Bencherchali"
+
+
+def test_a_rule_without_an_author_has_none(tmp_path: Path) -> None:
+    rule = load_rule_file(write(tmp_path, "r.yml", rule_yaml(SELECTION)))
+
+    assert rule.author is None
+
+
 def test_a_list_of_conditions_is_joined(tmp_path: Path) -> None:
     detection = "a:\n  Image: x\nb:\n  Image: y\ncondition:\n  - a\n  - b"
     rule = load_rule_file(write(tmp_path, "r.yml", rule_yaml(detection)))

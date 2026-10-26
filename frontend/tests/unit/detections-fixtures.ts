@@ -32,6 +32,7 @@ export function detectionFixture(overrides: Partial<Detection> = {}): Detection 
     techniques: [],
     match: null,
     references: [],
+    author: null,
     time: '2026-10-13T15:39:50.753000Z',
     process: BENIGN,
     related_events: [],

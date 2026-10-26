@@ -789,6 +789,10 @@ export type Detection = {
      */
     references: Array<string>;
     /**
+     * Author
+     */
+    author: string | null;
+    /**
      * Time
      */
     time: string;

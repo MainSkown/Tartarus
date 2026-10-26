@@ -21,7 +21,7 @@ a container image or a guest disk image. The sections below say what changes if 
 | **Volatility3** 2.28.2 | [Volatility Software License 1.0](https://www.volatilityfoundation.org/license/vsl-v1.0) (VSL). **Not an OSI license** and not the GPL: it is a source-available copyleft written by the Volatility Foundation | **No.** Not in the repo. [cape/build/volatility3.requirements](cape/build/volatility3.requirements) pins the PyPI wheel by sha256; the `cape` image build installs it into CAPE's virtualenv on the user's machine | The `cape` image includes Volatility3 under the VSL, which is not the GPL. See the VSL paragraph below |
 | **Sysmon** (Sysinternals) | [Sysinternals Software License Terms](https://learn.microsoft.com/sysinternals/license-terms) (Microsoft EULA, proprietary) | **No.** Downloaded from `live.sysinternals.com` into the build cache (sha256-pinned in [guest/profiles/windows/manifest.sha256](guest/profiles/windows/manifest.sha256)) and installed in the user's own guest | Building a guest with the Sysmon option on installs Sysmon and runs it with `-accepteula`, which **accepts Microsoft's license terms on the user's behalf**. Do not copy or share a built guest disk: the terms forbid publishing the software for others to copy |
 | **Emerging Threats Open rules** | Per rule: GPL-2.0 for sids 1 to 3464 and 100000000 to 100000908; BSD-3-Clause for sids 2000000 to 2799999 (verified from `rules/LICENSE` in the ruleset archive) | **No.** `suricata-update` downloads them into the `cape` image at build time, as a snapshot (nothing in the container runs the updater afterwards) | Nothing blocks use. Keep the rules' `LICENSE` if you pass the ruleset on; the Pro range (sids 2800000 to 2900000) is not in the Open feed |
-| **SigmaHQ rules** (61 files) | [Detection Rule License 1.1](rules/sigma/default/LICENSE.Detection.Rules.md) (DRL), permissive with attribution | **Yes, in the repo** under [rules/sigma/default](rules/sigma/default), copied unmodified at SigmaHQ commit `7d8b152a5fc062ebd309f62ae4d8276aca2786af` | Rules keep their `author` field and the DRL text sits beside them ([ATTRIBUTION.md](rules/sigma/default/ATTRIBUTION.md)). The DRL also says messages built from a rule match must keep the rule's author; see "Open gap" below |
+| **SigmaHQ rules** (61 files) | [Detection Rule License 1.1](rules/sigma/default/LICENSE.Detection.Rules.md) (DRL), permissive with attribution | **Yes, in the repo** under [rules/sigma/default](rules/sigma/default), copied unmodified at SigmaHQ commit `7d8b152a5fc062ebd309f62ae4d8276aca2786af` | Rules keep their `author` field and the DRL text sits beside them ([ATTRIBUTION.md](rules/sigma/default/ATTRIBUTION.md)). The DRL also says messages built from a rule match must keep the rule's author; see "DRL author retention" below |
 | **MITRE ATT&CK** data (v19.2) | MITRE ATT&CK Terms of Use: free license for research, development and commercial use, provided MITRE's copyright and license are reproduced in any copy | **Yes, in the repo**, as the derived table [backend/app/data/attack_techniques.json](backend/app/data/attack_techniques.json) | The notice in [Notices](#notices) must stay with the table. It had been missing; it is added here |
 | **Windows** (guest OS) | Microsoft's own license for the user's copy | **No.** The user supplies the ISO; Tartarus never bundles or downloads Windows | The user needs a valid Windows license and ISO. A built guest disk contains Windows and must not be shared |
 | **kevoreilly/community** repo and **capa rules** | `community`: **no license file** in the repository, a mix of authors and vendored binaries (unverified). capa-rules and capa signatures: Apache-2.0 | **No.** `utils/community.py -waf -cr` downloads both from their `master` branches while the `cape` image builds | They are unpinned and arrive as the day's `master`. Auditing is the user's job if they redistribute the image |
@@ -40,11 +40,13 @@ code stays GPL-3.0-only and public; anyone who distributes a modified or closed 
 read by a lawyer first. The VSL text is not in this repository because Volatility is not; it comes with the
 wheel and is at the URL above.
 
-**Open gap: DRL author retention.** The backend's `Rule` dataclass ([backend/app/rules/rule.py](backend/app/rules/rule.py))
-has no `author` field, so a detection built from a SigmaHQ rule does not show who wrote the rule in the
-Detections view, the report or the exports. The DRL asks that messages based on matches retain the author
-when the rule supplies one. This is a small code change (read `author` in the loader, carry it to the
-finding) and is not made here.
+**DRL author retention (resolved).** The DRL asks that messages based on a rule match retain the rule's
+author when the rule supplies one. The loader ([backend/app/rules/loader.py](backend/app/rules/loader.py))
+reads the rule's `author` into `Rule.author`; the Sigma alert it raises carries it as the ECS field
+`rule.author`; the Detections view returns it as `author` and the detail pane prints "Rule author:
+...". The HTML and PDF reports print the same line under each detection that has one. A rule without an
+author shows nothing. The STIX, MISP and CSV exports do not print a rule's name or description, so there
+is no rule-derived text in them that could carry the author.
 
 **Why GPL-3.0 sits well with CAPE.** The `cape/` directory adds Python modules that CAPE imports (the
 `event_logs` auxiliary) and patches CAPE's analyzer. Those are derivative of CAPEv2 (GPL-3.0), so the
@@ -185,9 +187,9 @@ MITRE ATT&CK®. MITRE's terms ask that this designation and license are reproduc
 >
 > "© 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation."
 
-Terms of use: https://attack.mitre.org/resources/legal-and-branding/terms-of-use/. Reports and the STIX and
-MISP exports that name ATT&CK techniques are copies in this sense; adding the sentence in quotes to the
-report footer and the About card is a sensible follow-up.
+Terms of use: https://attack.mitre.org/resources/legal-and-branding/terms-of-use/. The sentence in quotes
+is printed in the footer of the HTML and PDF reports and on the Settings page's About card, with a link
+to the terms. The STIX and MISP exports, which also name ATT&CK techniques, do not carry it yet.
 
 **SigmaHQ rules.** The files in `rules/sigma/default` come from https://github.com/SigmaHQ/sigma
 (`rules/windows/`), licensed under the [Detection Rule License 1.1](rules/sigma/default/LICENSE.Detection.Rules.md);

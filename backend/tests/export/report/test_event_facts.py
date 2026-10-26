@@ -69,6 +69,7 @@ def test_a_detection_stands_for_its_alert_event_under_its_rule_name() -> None:
         techniques=[],
         match=None,
         references=[],
+        author=None,
         time=MOMENT,
         process=ProcessRef(pid=5, name="x.exe"),
         related_events=[],

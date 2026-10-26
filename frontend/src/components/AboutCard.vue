@@ -5,6 +5,7 @@ import { t } from '@/i18n'
 const REPOSITORY_FILES_URL = 'https://github.com/MainSkown/Tartarus/blob/master'
 const LICENSE_URL = `${REPOSITORY_FILES_URL}/LICENSE`
 const THIRD_PARTY_URL = `${REPOSITORY_FILES_URL}/THIRD_PARTY.md`
+const ATTACK_TERMS_URL = 'https://attack.mitre.org/resources/legal-and-branding/terms-of-use/'
 
 const { state, reload } = useAppVersion()
 </script>
@@ -83,6 +84,15 @@ const { state, reload } = useAppVersion()
         target="_blank"
         rel="noopener noreferrer"
       >{{ t('settings.about.thirdParty') }}</a>
+      <p class="about-attribution text-mono text-gray">
+        {{ t('settings.about.attribution') }}
+        <a
+          :href="ATTACK_TERMS_URL"
+          class="about-attribution-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >{{ t('settings.about.attackTerms') }}</a>
+      </p>
     </div>
   </q-card>
 </template>
@@ -146,6 +156,20 @@ const { state, reload } = useAppVersion()
   display: block;
   margin-top: var(--spacing-xs);
   color: var(--blue-primary);
+}
+
+.about-attribution {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.about-attribution-link {
+  display: block;
+  margin-top: var(--spacing-xs);
+  color: var(--blue-primary);
+  letter-spacing: 1px;
 }
 
 .about-third-party-link {

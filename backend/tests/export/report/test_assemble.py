@@ -166,6 +166,13 @@ def test_a_detection_lists_five_cited_events_and_how_many_more_it_cites() -> Non
     assert recon.more_events == 0
 
 
+def test_a_detection_keeps_the_author_of_its_rule() -> None:
+    run_key, recon = (detection for group in build().detections for detection in group.detections)
+
+    assert run_key.author == "Florian Roth"
+    assert recon.author is None
+
+
 def test_detections_stay_grouped_by_ruleset_in_the_views_order() -> None:
     groups = build().detections
 

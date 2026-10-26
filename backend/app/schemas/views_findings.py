@@ -25,6 +25,7 @@ class Detection(ApiModel):
     techniques: list[str]
     match: str | None
     references: list[str]
+    author: str | None
     time: datetime
     process: ProcessRef | None
     related_events: list[RelatedEvent]

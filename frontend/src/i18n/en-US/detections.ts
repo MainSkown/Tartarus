@@ -25,6 +25,7 @@ export default {
     heading: 'DESCRIPTION',
     filterOnRule: '[FILTER ON RULE]',
     noDescription: 'no description',
+    author: 'Rule author: {names}',
     ruleset: 'RULESET',
     process: 'PROCESS',
     time: 'TIME',

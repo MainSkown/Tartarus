@@ -118,6 +118,7 @@
 <article class="detection">
 <h4>{{ sev(detection.severity) }} {{ detection.name }}</h4>
 <p class="meta">{{ detection.ruleset }}{% if detection.process %} &middot; {{ process_name(detection.process.name, detection.process.pid) }}{% endif %} &middot; {{ detection.time|clock }}</p>
+{%- if detection.author %}<p class="meta">Rule author: {{ detection.author }}</p>{% endif %}
 {%- if detection.description %}<p>{{ detection.description }}</p>{% endif %}
 {%- if detection.match %}<div class="match">{{ detection.match }}</div>{% endif %}
 {%- if detection.techniques %}<p class="meta">techniques: {{ detection.techniques|join(", ") }}</p>{% endif %}
@@ -243,7 +244,7 @@
 </section>
 {%- endif %}
 
-<p class="footer">Generated {{ model.header.generated_at|stamp }} by Tartarus &middot; analysis #{{ model.header.analysis_id }}</p>
+<p class="footer">Generated {{ model.header.generated_at|stamp }} by Tartarus &middot; analysis #{{ model.header.analysis_id }}<br>MITRE ATT&amp;CK&reg; data: {{ attack_copyright }} Terms of use: {{ attack_terms_url }}</p>
 </main>
 </body>
 </html>

@@ -53,6 +53,7 @@ def hostile_model(include: ReportInclude | None = None) -> ReportModel:
     detections = inputs.detections.model_copy(deep=True)
     detections.groups[0].detections[0].name = f"{SCRIPT} detection"
     detections.groups[0].detections[0].description = BREAKOUT
+    detections.groups[0].detections[0].author = f"{SCRIPT}{BREAKOUT}"
     notes = (
         ExportNote(f"note {SCRIPT} {BREAKOUT}", TargetType.ANALYSIS, None),
         ExportNote(BREAKOUT, TargetType.PROCESS, "4242"),

@@ -44,6 +44,12 @@ const triggeringEventsQuery = computed(() => eventIdQuery(props.detection.relate
     <p class="detection-detail__description">
       {{ detection.description ?? t('detections.detail.noDescription') }}
     </p>
+    <p
+      v-if="detection.author"
+      class="detection-detail__author text-mono text-gray"
+    >
+      {{ t('detections.detail.author', { names: detection.author }) }}
+    </p>
 
     <dl class="detection-detail__facts">
       <dt class="text-mono">
@@ -200,6 +206,12 @@ const triggeringEventsQuery = computed(() => eventIdQuery(props.detection.relate
 
 .detection-detail__description {
   margin: 0 0 var(--spacing-md);
+  overflow-wrap: anywhere;
+}
+
+.detection-detail__author {
+  margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-md);
+  font-size: 0.75rem;
   overflow-wrap: anywhere;
 }
 

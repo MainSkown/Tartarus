@@ -59,6 +59,7 @@ function synthetic(overrides: Partial<Detection> & Pick<Detection, 'id' | 'name'
     techniques: [],
     match: null,
     references: [],
+    author: null,
     time: '2026-10-13T15:39:50.753000Z',
     process: BENIGN,
     related_events: [],
@@ -133,6 +134,7 @@ const SIGMA_REAL_SHAPE: DetectionsView = {
           description: 'Detects a remote thread created in a process that rarely receives one, such as winlogon or lsass',
           techniques: ['T1055', 'T1055.003'],
           match: 'selection_target and not 1 of filter_main_*',
+          author: 'Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems), oscd.community',
           references: ['https://attack.mitre.org/techniques/T1055/'],
           related_events: [
             { id: 're1', time: '2026-10-13T15:39:55.210000Z', lane: 'process', action: 'inject-thread', summary: 'powershell.exe created a remote thread in pid 4410', process: { pid: 5012, name: 'powershell.exe' } },
@@ -194,6 +196,7 @@ const LONG_TEXT: DetectionsView = {
           techniques: Array.from({ length: 14 }, (_, index) => `T1${String(index * 7 + 100).padStart(3, '0')}.00${index % 9}`),
           match: `CommandLine|contains: '${'A'.repeat(220)}'\ncondition: selection`,
           references: [LONG_REFERENCE, `not a web address ${LONG_PATH}`],
+          author: `${'Someone With A Very Long Name, '.repeat(6)}${LONG_NAME}`,
           process: { pid: 31337, name: `${'a_process_with_a_really_long_image_name_'.repeat(3)}.exe` },
           related_events: relatedEvents(3),
           related_event_total: 3,
@@ -268,6 +271,22 @@ test('detections-sigma-group-real-alert-shape', async ({ page }) => {
   await expect(page.locator('.detection-group .pane-heading').first()).toHaveText('SIGMA')
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: screenshotPath('detections-sigma-group-real-alert-shape'), fullPage: true })
+})
+
+test('detections-sigma-rule-author', async ({ page }) => {
+  await openDetections(page, { detections: { body: SIGMA_REAL_SHAPE } })
+  await expect(page.locator('.detection-detail__author')).toHaveText(
+    'Rule author: Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems), oscd.community',
+  )
+  await page.screenshot({ path: screenshotPath('detections-sigma-rule-author'), fullPage: true })
+})
+
+test('a rule without an author shows no author line', async ({ page }) => {
+  await openDetections(page, { detections: { body: SIGMA_REAL_SHAPE } })
+  await page.locator('.detection-entry', { hasText: 'Registry Persistence Via Run Key' }).click()
+  await expect(page.locator('.detection-detail__name')).toHaveText('Registry Persistence Via Run Key Written By PowerShell')
+  await expect(page.locator('.detection-detail__author')).toHaveCount(0)
+  await page.screenshot({ path: screenshotPath('detections-sigma-no-author'), fullPage: true })
 })
 
 test('detections-sigma-info-alert-selected', async ({ page }) => {

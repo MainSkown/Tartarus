@@ -147,6 +147,7 @@ def _rule(
         validity=problem.validity if problem else Validity.VALID,
         error=problem.reason if problem else None,
         references=_texts(document.get("references")),
+        author=_text(document.get("author")),
         condition=_condition_text(document.get("detection")),
         predicate=compiled[0] if compiled else None,
         explain=compiled[1] if compiled else None,

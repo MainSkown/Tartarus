@@ -224,6 +224,7 @@ def _report_detection(detection: Detection, citation: Citation) -> ReportDetecti
         techniques=tuple(detection.techniques),
         match=detection.match,
         references=tuple(detection.references),
+        author=detection.author,
         time=detection.time,
         process=detection.process,
         cited_events=citation.shown,

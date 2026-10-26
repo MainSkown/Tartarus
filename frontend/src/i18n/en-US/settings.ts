@@ -26,5 +26,8 @@ export default {
     license: 'LICENSE',
     viewLicense: 'VIEW LICENSE',
     thirdParty: 'THIRD-PARTY NOTICES',
+    attribution:
+      'MITRE ATT&CK® data: © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.',
+    attackTerms: 'ATT&CK TERMS OF USE',
   },
 }

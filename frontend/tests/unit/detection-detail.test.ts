@@ -38,6 +38,21 @@ describe('DetectionDetail filter on rule', () => {
   })
 })
 
+describe('DetectionDetail rule author', () => {
+  it('names the author of the rule as plain text', () => {
+    const wrapper = mountDetail({ author: 'Florian Roth, <b>Nasreddine</b>' })
+    const line = wrapper.get('.detection-detail__author')
+    expect(line.text()).toBe('Rule author: Florian Roth, <b>Nasreddine</b>')
+    expect(line.find('b').exists()).toBe(false)
+  })
+
+  it('shows nothing when the rule names no author', () => {
+    const wrapper = mountDetail({ author: null })
+    expect(wrapper.find('.detection-detail__author').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Rule author')
+  })
+})
+
 describe('DetectionDetail show these events', () => {
   it('has no such button when the detection has no triggering events', () => {
     expect(mountDetail().find('.detection-detail__show-events').exists()).toBe(false)

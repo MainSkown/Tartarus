@@ -137,6 +137,24 @@ async def test_references_and_the_match_text_are_returned(stack: ViewStack) -> N
     assert found["match"] == "CommandLine contains 'x'"
 
 
+async def test_a_detection_names_the_rule_author_and_one_without_has_none(
+    stack: ViewStack,
+) -> None:
+    await index_extra_events(
+        stack,
+        [
+            alert("au-1", "signed rule", 2, rule={"ruleset": "sigma", "author": ["Jane Doe"]}),
+            alert("au-2", "anonymous rule", 2, rule={"ruleset": "sigma"}),
+        ],
+    )
+
+    view = await get_view(stack, "detections")
+
+    by_name = {d["name"]: d for g in view["groups"] for d in g["detections"]}
+    assert by_name["signed rule"]["author"] == "Jane Doe"
+    assert by_name["anonymous rule"]["author"] is None
+
+
 async def test_an_unknown_analysis_is_a_404_in_the_error_envelope(stack: ViewStack) -> None:
     response = await stack.client.get("/api/analyses/99999/detections")
 

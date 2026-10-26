@@ -31,6 +31,8 @@ test('about-card-loaded', async ({ page }) => {
   await page.goto('/settings')
   await expect(page.locator('.about-version')).toHaveText(RELEASE_VERSION.version)
   await expect(page.locator('.about-commit')).toHaveText(RELEASE_VERSION.commit!)
+  await expect(page.locator('.about-attribution')).toContainText('© 2026 The MITRE Corporation')
+  await expect(page.locator('.about-attribution-link')).toBeVisible()
   await page.screenshot({ path: screenshotPath('about-card-loaded') })
 })
 
@@ -58,5 +60,6 @@ test('about-card-long-commit-narrow', async ({ page }) => {
   await expect(page.locator('.about-commit')).toHaveText(LONG_COMMIT)
   const overflows = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   expect(overflows, 'the About card must not scroll the page sideways').toBe(false)
+  await expect(page.locator('.about-attribution')).toBeVisible()
   await page.screenshot({ path: screenshotPath('about-card-long-commit-narrow') })
 })

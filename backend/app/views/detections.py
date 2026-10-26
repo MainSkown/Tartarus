@@ -102,6 +102,7 @@ def _detection(alert: _Alert, related: Mapping[str, RelatedEvent]) -> Detection:
         techniques=texts_at(source, "threat", "technique", "id"),
         match=text_at(source, "tartarus", "detection", "match"),
         references=texts_at(source, "rule", "reference"),
+        author=", ".join(texts_at(source, "rule", "author")) or None,
         time=event_time(source),
         process=process_ref(source) or next((e.process for e in events if e.process), None),
         related_events=events,

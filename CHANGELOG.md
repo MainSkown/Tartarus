@@ -13,6 +13,9 @@ analysis in its own index and reports on it.
 
 ### Added
 
+- Licence credit for what Tartarus shows from other projects: a Sigma rule's author on the detection
+  (Detections detail, HTML and PDF reports), and MITRE's ATT&CK copyright notice on the About card
+  and in the report footer.
 - Submission of a file from the Submit dialog, a queue of analyses, and a cancel for a queued or
   running analysis (M1a, M7).
 - Analysis pages for a finished run: an overview with score, highest severity and ATT&CK ids; a

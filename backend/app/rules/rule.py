@@ -46,6 +46,7 @@ class Rule:
     validity: Validity
     error: str | None = None
     references: tuple[str, ...] = ()
+    author: str | None = None
     condition: str | None = None
     predicate: Predicate | None = field(default=None, repr=False, compare=False)
     explain: Explainer | None = field(default=None, repr=False, compare=False)

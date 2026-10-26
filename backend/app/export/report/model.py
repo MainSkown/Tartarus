@@ -74,6 +74,7 @@ class ReportDetection(ReportModelBase):
     techniques: tuple[str, ...]
     match: str | None
     references: tuple[str, ...]
+    author: str | None
     time: datetime
     process: ProcessRef | None
     cited_events: tuple[EventFacts, ...]

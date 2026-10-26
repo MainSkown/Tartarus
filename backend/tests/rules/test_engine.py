@@ -26,6 +26,7 @@ def make_rule(  # noqa: PLR0913 - one keyword per field a test may vary
     tags: tuple[str, ...] = (),
     needle: str = "evil",
     name: str = "rule.yml",
+    author: str | None = None,
 ) -> Rule:
     text = rule_yaml(
         simple_detection(f"CommandLine|contains: {needle}"),
@@ -33,6 +34,7 @@ def make_rule(  # noqa: PLR0913 - one keyword per field a test may vary
         level=level,
         tags=tags,
         title="Evil command line",
+        extra=f"author: {author}" if author else "",
     )
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
@@ -77,6 +79,20 @@ class TestTheEmittedAlert:
         assert alert["related"] == {"events": ["evt-1"]}
         assert alert["tartarus"]["analysis_id"] == 7
         assert alert["tartarus"]["detection"]["match"] == "process.command_line: run evil.exe"
+
+    def test_the_rule_author_travels_with_the_alert(self, tmp_path: Path) -> None:
+        rule = make_rule(tmp_path, author="Florian Roth")
+
+        [outcome] = engine_for(rule).process(hit("evt-1", 0))
+
+        assert isinstance(outcome, Emit)
+        assert outcome.detection["rule"]["author"] == ["Florian Roth"]
+
+    def test_a_rule_without_an_author_leaves_the_field_out(self, tmp_path: Path) -> None:
+        [outcome] = engine_for(make_rule(tmp_path)).process(hit("evt-1", 0))
+
+        assert isinstance(outcome, Emit)
+        assert "author" not in outcome.detection["rule"]
 
     @pytest.mark.parametrize(
         ("level", "severity"),

@@ -121,6 +121,8 @@ def _rule_section(rule: Rule) -> dict[str, Any]:
         section["description"] = rule.description
     if rule.references:
         section["reference"] = list(rule.references)
+    if rule.author:
+        section["author"] = [rule.author]
     return section
 
 

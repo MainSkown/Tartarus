@@ -23,6 +23,7 @@ from app.export.report.process_tree_svg import (
 )
 from app.export.report.theme import PRINT_FONTS, SCREEN_FONTS, SEVERITY_COLOURS, FontStacks
 from app.schemas.views_findings import IocType
+from app.views.attack_table import ATTACK_COPYRIGHT, ATTACK_TERMS_URL
 
 TEMPLATE_DIRECTORY = Path(__file__).parent / "templates"
 TEMPLATE_NAME = "report.html.j2"
@@ -91,6 +92,8 @@ def render_document(model: ReportModel, variant: ReportVariant) -> str:
             max_tree_depth=MAX_DEPTH,
             max_key_events=MAX_KEY_EVENTS,
             ioc_sample=IOC_SAMPLE_PER_TYPE,
+            attack_copyright=ATTACK_COPYRIGHT,
+            attack_terms_url=ATTACK_TERMS_URL,
             ioc_labels={type_.value: label for type_, label in IOC_LABELS.items()},
         )
     )
