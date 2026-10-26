@@ -134,6 +134,15 @@ describe('MainLayout', () => {
     ])
   })
 
+  it('shows the logo mark beside the wordmark, hidden from assistive tech', async () => {
+    const { wrapper } = await mountShellAt('/')
+    const mark = wrapper.find('.wordmark-mark')
+    expect(mark.attributes('src')).toBe('/icons/icon.svg')
+    expect(mark.attributes('alt')).toBe('')
+    expect(mark.attributes('aria-hidden')).toBe('true')
+    expect(wrapper.find('.wordmark').element.previousElementSibling).toBe(mark.element)
+  })
+
   describe('guest health popover', () => {
     afterEach(() => {
       document.body.innerHTML = ''

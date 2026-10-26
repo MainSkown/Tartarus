@@ -1,5 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#000000"/>
-  <polygon points="96,140 416,140 256,420" fill="none" stroke="#38bdf8" stroke-width="28" stroke-linejoin="miter"/>
-  <polygon points="196,196 316,196 256,300" fill="#38bdf8"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <rect width="300" height="300" rx="40" fill="#0a0a0a"/>
+  <g fill="none" stroke="#38bdf8" stroke-linejoin="round" stroke-linecap="round">
+    <!-- the tower: battlements, flared neck, shaft, two-step plinth -->
+    <path d="M62,34 H108 V62 H128 V34 H172 V62 H192 V34 H238 V90 L220,106 V204 L240,222 V240 H258 V264 H42 V240 H60 V222 L80,204 V106 L62,90 Z" stroke-width="13"/>
+    <!-- the cornice under the battlements -->
+    <path d="M62,90 H238" stroke-width="7"/>
+    <!-- the eye: upper lid a little heavier than the lower -->
+    <path d="M106,160 Q150,112 194,160" stroke-width="9"/>
+    <path d="M112,164 Q150,200 188,164" stroke-width="7"/>
+    <path d="M126,164 A24,24 0 0 1 174,164" stroke-width="7"/>
+  </g>
+  <circle cx="150" cy="158" r="10" fill="#38bdf8"/>
 </svg>

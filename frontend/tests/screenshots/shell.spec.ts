@@ -58,3 +58,23 @@ test('shell-narrow-1024', async ({ page }) => {
   await expect(page.getByRole('status', { name: storeDotName(HEALTHY_SYSTEM), exact: true })).toBeVisible()
   await page.screenshot({ path: screenshotPath('shell-narrow-1024') })
 })
+
+test('shell-header-1280', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await mockShell(page, HEALTHY_SYSTEM)
+  await mockAnalyses(page, { items: [] })
+  await page.goto('/')
+  await expect(page.getByRole('status', { name: storeDotName(HEALTHY_SYSTEM), exact: true })).toBeVisible()
+  await expect(page.locator('.wordmark-mark')).toBeVisible()
+  await page.locator('.app-header').screenshot({ path: screenshotPath('shell-header-1280') })
+})
+
+test('shell-header-360', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 })
+  await mockShell(page, HEALTHY_SYSTEM)
+  await mockAnalyses(page, { items: [] })
+  await page.goto('/')
+  await expect(page.getByRole('status', { name: storeDotName(HEALTHY_SYSTEM), exact: true })).toBeVisible()
+  await expect(page.locator('.wordmark-mark')).toBeVisible()
+  await page.locator('.app-header').screenshot({ path: screenshotPath('shell-header-360') })
+})

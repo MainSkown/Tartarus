@@ -34,6 +34,8 @@ const guests = useGuestsStore()
 const queue = useQueueStore()
 const route = useRoute()
 const drawerExpanded = ref(false)
+// Bound, not literal: a literal src in a template is rewritten to an asset import (and inlined as a data URI).
+const markUrl = '/icons/icon.svg'
 
 function isActive(path: string): boolean {
   return path === '/' ? route.path === '/' : route.path.startsWith(path)
@@ -72,6 +74,12 @@ useReportNotices()
         {{ t('shell.header.reconnecting') }}
       </div>
       <q-toolbar class="app-toolbar">
+        <img
+          class="wordmark-mark"
+          :src="markUrl"
+          alt=""
+          aria-hidden="true"
+        >
         <div class="wordmark text-mono">
           {{ t('shell.header.wordmark') }}
         </div>
@@ -203,6 +211,12 @@ useReportNotices()
   padding-right: var(--spacing-lg);
 }
 
+.wordmark-mark {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
 .wordmark {
   color: var(--blue-primary);
   letter-spacing: 4px;
@@ -250,9 +264,19 @@ useReportNotices()
   white-space: nowrap;
 }
 
-/* Below 640 px the queue count goes; the live chip and the health dots keep their room. */
+/* Below 640 px the queue count and the dot labels go, so the mark, wordmark, dots and Submit
+   fit a phone-width header. Each dot keeps its aria-label, and the wordmark keeps its text. */
 @media (max-width: 640px) {
+  .app-toolbar {
+    gap: var(--spacing-sm);
+    padding-right: var(--spacing-sm);
+  }
+
   .header-queue {
+    display: none;
+  }
+
+  .health-dots :deep(.health-dot__label) {
     display: none;
   }
 }
