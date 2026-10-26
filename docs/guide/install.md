@@ -64,7 +64,7 @@ Your user must be able to run Docker. If `make preflight` says the daemon is unr
    make up
    ```
 
-   The first run builds the images. The CAPE image (about 4 GB) installs and builds QEMU, libvirt, CAPE and its tools, and can take 20 minutes or more on a first run; later runs reuse the cache.
+   The first run builds the images. The CAPE image is about 4 GB and holds QEMU, libvirt, CAPE and its tools. On a machine with a fast connection and 30 GiB of RAM a first run from nothing took about 4 minutes; allow longer on a slow connection. Later runs reuse the cache.
 
 6. Open http://localhost:8080 in a browser.
 
