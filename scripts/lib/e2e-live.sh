@@ -58,13 +58,13 @@ live_assert() { # summary-file; stdin: the Python block
 summary_with_index_ids() { # summary-file id
     local ids
     ids=$(opensearch_curl -XPOST -H 'content-type: application/json' \
-        -d "{\"size\":$LIVE_FINAL_ID_LIMIT,\"_source\":[\"process.pid\",\"@timestamp\",\"event.action\",\"event.module\",\"event.kind\",\"api.name\",\"rule.id\",\"rule.ruleset\",\"related.events\"],\"query\":{\"bool\":{\"minimum_should_match\":1,\"should\":[{\"term\":{\"event.module\":\"capemon\"}},{\"bool\":{\"filter\":[{\"term\":{\"event.kind\":\"alert\"}},{\"term\":{\"rule.ruleset\":\"sigma\"}}]}}]}}}" \
+        -d "{\"size\":$LIVE_FINAL_ID_LIMIT,\"_source\":[\"process.pid\",\"@timestamp\",\"event.action\",\"event.module\",\"event.kind\",\"api.name\",\"rule.id\",\"rule.ruleset\",\"related.events\"],\"query\":{\"bool\":{\"minimum_should_match\":1,\"should\":[{\"terms\":{\"event.module\":[\"capemon\",\"sysmon\",\"defender\",\"volatility\"]}},{\"bool\":{\"filter\":[{\"term\":{\"event.kind\":\"alert\"}},{\"term\":{\"rule.ruleset\":\"sigma\"}}]}}]}}}" \
         "localhost:9200/$(index_name "$2")/_search") || return 1
     python3 -I -c '
 import json, sys
 with open(sys.argv[1]) as summary:
     live = json.load(summary)
-answer = json.loads(sys.argv[2])
+answer = json.load(sys.stdin)  # on stdin: thousands of events overflow the argument limit
 if "hits" not in answer:
     sys.exit(f"OpenSearch answered {str(answer)[:200]}")
 def call_key(source):
@@ -77,8 +77,18 @@ call_by_id = {hit["_id"]: call_key(hit["_source"]) for hit in calls}
 def alert_of(source):
     related_ids = source["related"]["events"]
     return {"rule_id": source["rule"]["id"], "related_ids": related_ids, "related_calls": [call_by_id[i] for i in related_ids if i in call_by_id]}
+# Sysmon, Defender and Volatility events arrive only with the final report (M8 decision 2): an alert that names only
+# such events cannot have been seen live, so it is not compared with the live feed. An alert that names an event the
+# index does not hold at all, or a capemon call, still has to resolve.
+final_only_ids = {hit["_id"] for hit in hits if hit["_source"]["event"]["kind"] == "event" and hit["_source"]["event"]["module"] != "capemon"}
 alerts = [alert_of(hit["_source"]) for hit in hits if hit["_source"]["event"]["kind"] == "alert"]
-print(json.dumps({"live": live, "final": [hit["_id"] for hit in calls], "final_calls": list(call_by_id.values()), "final_alerts": alerts}))' "$1" "$ids" >"$RESPONSE_FILE"
+def on_final_only_events(alert):
+    return bool(alert["related_ids"]) and all(i in final_only_ids for i in alert["related_ids"])
+# The engine keeps one alert per rule and process in a 60 s window, the earliest event first: with Sysmon the earliest
+# event of a write is Sysmon'"'"'s, so the final alert of a rule can name a Sysmon event where the live one named a capemon call.
+final_only_alert_rules = sorted({alert["rule_id"] for alert in alerts if on_final_only_events(alert)})
+alerts = [alert for alert in alerts if not on_final_only_events(alert)]
+print(json.dumps({"live": live, "final": [hit["_id"] for hit in calls], "final_calls": list(call_by_id.values()), "final_alerts": alerts, "final_only_alert_rules": final_only_alert_rules}))' "$1" <<<"$ids" >"$RESPONSE_FILE"
 }
 
 # --- (h) the live feed of an analysis followed from submit to done -----------------------------
@@ -188,7 +198,9 @@ for side, alerts, where in (("live", live_alerts, "its batch"), ("final", final_
 def alert_calls(alerts):
     return times_by_call(f"{alert['rule_id'].lower()}/{call}" for alert in alerts for call in alert["related_calls"])
 
-live_alert_times, final_alert_times = alert_calls(live_alerts), alert_calls(final_alerts)
+final_only_rules = {rule.lower() for rule in v.get("final_only_alert_rules", [])}
+live_alert_times = alert_calls([alert for alert in live_alerts if alert["rule_id"].lower() not in final_only_rules])
+final_alert_times = alert_calls(final_alerts)
 unmatched_live = live_without_final(live_alert_times, final_alert_times)
 assert not unmatched_live, f"{len(unmatched_live)} Sigma alerts seen live have no match in the final index, e.g. {unmatched_live[:2]}"
 unmatched_final = final_without_live(final_alert_times, live_alert_times)

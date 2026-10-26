@@ -108,8 +108,8 @@ test_an_alert_without_its_trigger_in_the_batch_is_caught() {
 
 # --- the index side of the summary ---
 
-# OpenSearch's answer for the capemon calls and the Sigma alerts of an index: two calls, an alert naming the first, and an alert whose
-# trigger is not among the calls.
+# OpenSearch's answer for the capemon calls, the final-phase events and the Sigma alerts of an index: two calls, one Sysmon event,
+# an alert naming the first call, an alert whose trigger is not in the index, and an alert naming the Sysmon event.
 canned_answer() {
     python3 -I - <<'PY'
 import json
@@ -117,7 +117,11 @@ def call(identifier, action, api):
     return {"_id": identifier, "_source": {"@timestamp": "2026-10-14T15:49:01.250Z", "process": {"pid": 180}, "event": {"id": identifier, "action": action, "module": "capemon", "kind": "event"}, "api": {"name": api}}}
 def alert(identifier, rule, related):
     return {"_id": identifier, "_source": {"@timestamp": "2026-10-14T15:49:01.250Z", "event": {"id": identifier, "action": "rule-matched", "module": "sigma", "kind": "alert"}, "rule": {"id": rule, "ruleset": "sigma"}, "related": {"events": related}}}
-hits = [call("c1", "reg-value-set", "NtSetValueKey"), call("c2", "file-write", "NtWriteFile"), alert("a1", "rule-one", ["c1"]), alert("a2", "rule-two", ["gone"])]
+def final_only(identifier, module):
+    return {"_id": identifier, "_source": {"@timestamp": "2026-10-14T15:49:01.250Z", "process": {"pid": 180}, "event": {"id": identifier, "action": "reg-value-set", "module": module, "kind": "event"}}}
+import os
+extra = [final_only(f"v{n}", "volatility") for n in range(int(os.environ.get("EXTRA_FINAL_EVENTS", "0")))]
+hits = extra + [call("c1", "reg-value-set", "NtSetValueKey"), call("c2", "file-write", "NtWriteFile"), final_only("s1", "sysmon"), alert("a1", "rule-one", ["c1"]), alert("a2", "rule-two", ["gone"]), alert("a3", "rule-three", ["s1"])]
 print(json.dumps({"hits": {"hits": hits}}))
 PY
 }
@@ -146,6 +150,32 @@ summary = json.load(open(sys.argv[1]))
 by_rule = {alert["rule_id"]: alert for alert in summary["final_alerts"]}
 assert by_rule["rule-one"]["related_calls"] == [summary["final_calls"][0]], by_rule["rule-one"]
 assert by_rule["rule-two"]["related_ids"] == ["gone"] and by_rule["rule-two"]["related_calls"] == [], by_rule["rule-two"]
+PY
+}
+
+test_an_alert_on_a_final_phase_event_is_not_compared_with_the_live_feed() {
+    echo '{"messages": []}' >"$WORK_DIR/live.json"
+    index_summary && python3 -I - "$WORK_DIR/index-summary.json" <<'PY'
+import json, sys
+rules = {alert["rule_id"] for alert in json.load(open(sys.argv[1]))["final_alerts"]}
+assert rules == {"rule-one", "rule-two"}, rules
+PY
+}
+
+test_the_rules_whose_final_alert_names_only_final_phase_events_are_listed() {
+    echo '{"messages": []}' >"$WORK_DIR/live.json"
+    index_summary && python3 -I - "$WORK_DIR/index-summary.json" <<'PY'
+import json, sys
+rules = json.load(open(sys.argv[1]))["final_only_alert_rules"]
+assert rules == ["rule-three"], rules
+PY
+}
+
+test_an_answer_too_big_for_one_command_line_argument_is_still_read() {
+    echo '{"messages": []}' >"$WORK_DIR/live.json"
+    EXTRA_FINAL_EVENTS=3000 index_summary && python3 -I - "$WORK_DIR/index-summary.json" <<'PY'
+import json, sys
+assert json.load(open(sys.argv[1]))["final"] == ["c1", "c2"]
 PY
 }
 
