@@ -5,7 +5,7 @@ All notable changes to Tartarus are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The working record of how each
 milestone was built is in [docs/history](docs/history/README.md).
 
-## [1.0.0] - unreleased
+## [1.0.0] - 2026-10-26
 
 First release: a local malware-analysis workbench for one analyst on a Linux host with KVM and
 Docker. CAPEv2 detonates a file in a Windows guest; Tartarus shows the run live, keeps every

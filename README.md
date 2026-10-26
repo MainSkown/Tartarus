@@ -7,7 +7,7 @@ You submit a Windows file, it runs inside an isolated, hardened Windows VM under
 and you then explore what it did in a web UI: processes, events, timeline, network, artifacts and
 detections.
 
-**Status:** v1 release candidate. The v1.0.0 tag is not cut yet. See the [changelog](CHANGELOG.md) when it lands.
+**Status:** v1.0.0. See the [changelog](CHANGELOG.md) for what it contains and the known issues.
 
 ## What you can do
 
