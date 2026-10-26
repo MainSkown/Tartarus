@@ -35,7 +35,7 @@ git clone https://github.com/MainSkown/Tartarus.git
 cd Tartarus
 make init-env     # writes .env with random secrets (mode 600); never overwrites an existing .env
 make preflight    # checks the host and the secrets in .env; fix every FAIL
-make up           # builds and starts the stack
+make up           # builds and starts the stack (the first build takes 20 minutes or more)
 ```
 
 Then open http://localhost:8080. The app listens on `127.0.0.1` only.
