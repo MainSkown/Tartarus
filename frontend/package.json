@@ -47,7 +47,7 @@
     "globals": "^17.13.0",
     "happy-dom": "^21.0.1",
     "sass-embedded": "^1.105.1",
-    "typescript": "~6.0.3",
+    "typescript": "~7.0.2",
     "typescript-eslint": "^8.71.2",
     "vitest": "^5.0.4",
     "vue-tsc": "^3.3.13",
