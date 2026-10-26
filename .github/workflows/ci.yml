@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
       - run: cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
       - run: make test-cape
