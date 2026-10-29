@@ -13,6 +13,9 @@ Scope: the **production** dependency tree only.
   tools (`vite`, `terser`, `lightningcss`, `typescript`); those run at build time and are not in the
   bundle the browser downloads.
 - The project's own packages (`tartarus-backend`, `tartarus-frontend`) are left out; both are GPL-3.0-only.
+- Not packages, so not listed: the 7-Zip console build the `cape` image installs in the analyzer (7-Zip 26.03,
+  LGPL-2.1-or-later, no RAR code). It is in the `cape` image table of [THIRD_PARTY.md](../THIRD_PARTY.md), with
+  its pinned hash and a link to its [license text](https://www.7-zip.org/license.txt).
 
 The license column is what each package declares, so one license can appear under several spellings
 (`MIT` and `MIT License`; `BSD License` and `BSD-3-Clause`). `guacamole-common-js` shows `BSD*` because
