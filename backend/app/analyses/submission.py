@@ -7,6 +7,7 @@ from typing import Any, Protocol
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analyses.archive_check import require_runnable_archive
 from app.analyses.guest_choice import (
     AUTO_PACKAGE,
     GuestRefusedError,
@@ -111,9 +112,11 @@ class AnalysisSubmitter:
         (the named guest must still exist and be registered), and with `tags=["self-test"]`.
 
         Raises `GuestRefusedError` (the guest cannot run it), `PackageNotAcceptedError`,
-        `MemoryDumpRefusedError` (too little free disk for the dump), `ValueError` (a bad tag
-        name), the sample store's `EmptySampleError` and `SampleTooLargeError`, and
-        `GuestControlError` when the control service cannot be asked.
+        `MemoryDumpRefusedError` (too little free disk for the dump), `ArchiveRefusedError` (the
+        archive fields name a zip that cannot be run: not a zip, no such member, a member that
+        cannot be chosen, or a password that does not open it), `ValueError` (a bad tag name),
+        the sample store's `EmptySampleError` and `SampleTooLargeError`, and `GuestControlError`
+        when the control service cannot be asked.
         Nothing is stored when any of them is raised.
         """
         tag_names = [normalise_tag_name(tag) for tag in tags]
@@ -122,7 +125,10 @@ class AnalysisSubmitter:
         name = safe_file_name(filename)
         stored = await self._store.save(stream, name)
         try:
-            analysis = await queue_analysis(session, stored, name, resolved.options.model_dump())
+            await self._require_runnable_archive(stored, resolved.options)
+            analysis = await queue_analysis(
+                session, stored, name, resolved.options.model_dump(exclude_none=True)
+            )
             for tag in tag_names:
                 await add_tag(session, analysis.id, Target(TargetType.ANALYSIS), tag)
         except Exception:
@@ -131,6 +137,15 @@ class AnalysisSubmitter:
             raise
         self._runner.nudge()
         return Submitted(analysis, warnings)
+
+    async def _require_runnable_archive(
+        self, stored: StoredSample, options: AnalysisOptions
+    ) -> None:
+        if options.archive_password is None or options.archive_entry is None:
+            return
+        await require_runnable_archive(
+            self._store, stored.sha256, options.archive_password, options.archive_entry
+        )
 
     async def _resolve(
         self, session: AsyncSession, options: AnalysisOptions, *, gate: bool

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from app.analyses.defender import DefenderVerdict
+from app.analyses.entry_hash import entry_sha256
 from app.analyses.ports import IngestFailedError, IngestResult, ReportUnreadableError
 from app.analyses.summary import SEVERITY_ORDER, load_report, process_count_of
 from app.db.models.analysis import Severity
@@ -27,6 +28,8 @@ from app.ingest.defender_verdict import verdict_of_export
 from app.ingest.protocol import IngestContext, Normalizer
 from app.ingest.sigma import RulesProvider, can_match_a_rule, final_detections, no_rules
 from app.ingest.sysmon import SysmonNormalizer
+from app.ingest.sysmon_mapping import DATASET as SYSMON_DATASET
+from app.ingest.sysmon_mapping import PROCESS_CREATED
 from app.ingest.volatility import VolatilityNormalizer
 from app.rules.rule import Rule
 from app.search.index import IndexingError
@@ -93,9 +96,18 @@ class ReportIngester:
         self._rules = rules
 
     async def ingest(
-        self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
+        self,
+        analysis_id: int,
+        report_path: Path,
+        *,
+        started_at: datetime | None = None,
+        archive_entry: str | None = None,
     ) -> IngestResult:
-        return await self._ingest(analysis_id, partial(_read, analysis_id, report_path, started_at))
+        return await self._ingest(
+            analysis_id,
+            partial(_read, analysis_id, report_path, started_at),
+            archive_entry=archive_entry,
+        )
 
     async def ingest_memory_image(
         self, analysis_id: int, analysis_dir: Path, *, started_at: datetime
@@ -107,34 +119,48 @@ class ReportIngester:
             analysis_id, partial(_image_without_report, analysis_id, analysis_dir, started_at)
         )
 
-    async def _ingest(self, analysis_id: int, read: Reading) -> IngestResult:
+    async def _ingest(
+        self, analysis_id: int, read: Reading, *, archive_entry: str | None = None
+    ) -> IngestResult:
         try:
-            return await self._rebuild(analysis_id, read)
+            return await self._rebuild(analysis_id, read, archive_entry)
         except IngestFailedError:
             raise
         except Exception as error:
             raise IngestFailedError(_reason(error)) from error
 
-    async def _rebuild(self, analysis_id: int, read: Reading) -> IngestResult:
+    async def _rebuild(
+        self, analysis_id: int, read: Reading, archive_entry: str | None
+    ) -> IngestResult:
         await self._index.ensure_template()
         await self._index.drop(analysis_id)
         context, report = await asyncio.to_thread(read)
         try:
             await self._index.create(analysis_id)
-            return await self._fill(analysis_id, report, context)
+            return await self._fill(analysis_id, report, context, archive_entry)
         except BaseException:
             await self._discard_partial_index(analysis_id)
             raise
 
     async def _fill(
-        self, analysis_id: int, report: dict[str, Any], context: IngestContext
+        self,
+        analysis_id: int,
+        report: dict[str, Any],
+        context: IngestContext,
+        archive_entry: str | None,
     ) -> IngestResult:
         injected = self._injected_normalizers
         normalizers = injected if injected is not None else default_normalizers()
         lane_counts: Counter[str] = Counter()
         alert_severities: set[int] = set()
+        sysmon_starts: list[dict[str, Any]] = []
         events = self._numbered(
-            self._with_detections(normalizers, report, context), lane_counts, alert_severities
+            _noting_sysmon_starts(
+                self._with_detections(normalizers, report, context),
+                sysmon_starts if archive_entry is not None else None,
+            ),
+            lane_counts,
+            alert_severities,
         )
         event_count = await self._index.bulk_index(analysis_id, events)
         await self._index.set_refresh_interval(analysis_id, SETTLED_REFRESH_INTERVAL)
@@ -145,6 +171,9 @@ class ReportIngester:
             defender=_defender_verdict(normalizers, report),
             hidden_events=_hidden_events(normalizers),
             max_alert_severity=_severity_of_level(max(alert_severities, default=None)),
+            entry_sha256=(
+                None if archive_entry is None else entry_sha256(sysmon_starts, archive_entry)
+            ),
         )
 
     def _with_detections(
@@ -209,6 +238,20 @@ def _remembering(
         if can_match_a_rule(event):
             matchable.append(event)
         yield event
+
+
+def _noting_sysmon_starts(
+    events: Iterable[dict[str, Any]], starts: list[dict[str, Any]] | None
+) -> Iterator[dict[str, Any]]:
+    for event in events:
+        if starts is not None and _is_sysmon_process_start(event):
+            starts.append(event)
+        yield event
+
+
+def _is_sysmon_process_start(event: dict[str, Any]) -> bool:
+    meta: dict[str, str] = event["event"]
+    return meta["dataset"] == SYSMON_DATASET and meta["action"] == PROCESS_CREATED.action
 
 
 def _detections(

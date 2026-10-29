@@ -87,6 +87,28 @@ def make_analysis(**changes: Any) -> Analysis:
     return Analysis(**{**fields, **changes})
 
 
+ARCHIVE_NAME = "invoice.zip"
+ARCHIVE_ENTRY = "bin/invoice.exe"
+ARCHIVE_PASSWORD = "Tartarus-Canary-7f3a"  # noqa: S105 -- a distinctive marker, not a credential
+ENTRY_SHA256 = "e" * 64
+
+
+def make_archive_analysis(entry_sha256: str | None = ENTRY_SHA256, **changes: Any) -> Analysis:
+    summary = {**SUMMARY, "sample": {**SUMMARY["sample"], "entry_sha256": entry_sha256}}
+    options = {
+        "route": "inetsim",
+        "package": "zip",
+        "archive_entry": ARCHIVE_ENTRY,
+        "archive_password": ARCHIVE_PASSWORD,
+    }
+    return make_analysis(
+        filename=ARCHIVE_NAME,
+        options=options,
+        summary=summary,
+        **changes,
+    )
+
+
 def make_sample() -> Sample:
     return Sample(
         sha256=SAMPLE_SHA256,

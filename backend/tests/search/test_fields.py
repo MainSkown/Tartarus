@@ -42,6 +42,7 @@ PROCESS = [
     "process.entity_id",
     "process.start",
     "process.integrity_level",
+    "process.hash.sha256",
 ]
 FILE = [
     "file.path",

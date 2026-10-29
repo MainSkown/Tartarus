@@ -21,12 +21,12 @@ from app.ingest.sysmon_processes import (
     REMOTE_THREAD,
     EventFields,
     Subject,
+    sha256_of,
     subject_of,
 )
 
 DATASET = "sysmon.evtx"
 SERVICE_EVENTS = frozenset({4, 16})  # Sysmon's own service state and configuration change
-SHA256 = re.compile(r"SHA256=([0-9A-Fa-f]{64})")
 DWORD_OR_QWORD = re.compile(r"^(DWORD|QWORD) \(")
 BINARY_DATA = "Binary Data"
 
@@ -79,14 +79,9 @@ def _label(fields: EventFields, prefix: str = "") -> str:
     return f"pid {subject.pid}" if subject.pid is not None else "a process"
 
 
-def _sha256(fields: EventFields) -> str | None:
-    match = SHA256.search(fields.get("Hashes") or "")
-    return match[1].lower() if match else None
-
-
 def _file_section(path: str, fields: EventFields) -> dict[str, Any]:
     section = file_fields(path)
-    if sha256 := _sha256(fields):
+    if sha256 := sha256_of(fields):
         section["hash"] = {"sha256": sha256}
     return {"file": section}
 

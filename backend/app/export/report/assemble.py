@@ -25,6 +25,7 @@ from app.export.report.model import (
     IocGroup,
     NetworkSection,
     NoteGroup,
+    ReportArchive,
     ReportCounts,
     ReportDetection,
     ReportDetectionGroup,
@@ -134,6 +135,7 @@ def _header(inputs: ReportInputs, summary: ReportSummary) -> ReportHeader:
         sha256=analysis.sample_sha256,
         md5=sample.md5 if sample else None,
         sha1=sample.sha1 if sample else None,
+        archive=_archive(analysis, summary),
         status=analysis.status,
         route=analysis.options.get("route"),
         guest=recorded_guest(analysis.options),
@@ -143,6 +145,13 @@ def _header(inputs: ReportInputs, summary: ReportSummary) -> ReportHeader:
         duration_s=summary.duration_s,
         generated_at=inputs.generated_at,
     )
+
+
+def _archive(analysis: Analysis, summary: ReportSummary) -> ReportArchive | None:
+    entry = analysis.options.get("archive_entry")
+    if not isinstance(entry, str):
+        return None
+    return ReportArchive(entry_name=entry, entry_sha256=summary.sample.entry_sha256)
 
 
 def _counts(inputs: ReportInputs, summary: ReportSummary) -> ReportCounts:

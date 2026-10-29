@@ -26,13 +26,23 @@ class ReportInclude(ReportModelBase):
     raw_iocs: bool = True
 
 
+class ReportArchive(ReportModelBase):
+    """The file of a submitted zip that the guest ran; `entry_sha256` is None when unrecorded."""
+
+    entry_name: str
+    entry_sha256: str | None
+
+
 class ReportHeader(ReportModelBase):
+    """For an archive, `sample_name` and `sha256` are the zip's; `archive` holds the file run."""
+
     analysis_id: int
     sample_name: str
     sample_type: str | None
     sha256: str
     md5: str | None
     sha1: str | None
+    archive: ReportArchive | None
     status: AnalysisStatus
     route: str | None
     guest: str | None

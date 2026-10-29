@@ -9,9 +9,14 @@ from app.schemas.views_events import ProcessTree
 from app.schemas.views_findings import AttackMatrix, DetectionsView, IocsView, IocType
 from tests.export.conftest import make_ioc
 from tests.export.report.fixtures import (
+    ARCHIVE_ENTRY,
+    ARCHIVE_NAME,
+    ARCHIVE_PASSWORD,
+    ENTRY_SHA256,
     SAMPLE_NAME,
     SAMPLE_SHA256,
     make_analysis,
+    make_archive_analysis,
     make_inputs,
     make_network,
     process,
@@ -76,6 +81,34 @@ def test_the_header_and_every_section_carry_their_content() -> None:
         "13178",
     ]:
         assert expected in text, expected
+
+
+def test_an_archive_report_names_the_zip_and_the_file_run_with_both_hashes() -> None:
+    text = Page(html_of(analysis=make_archive_analysis())).text
+
+    assert f"archive {ARCHIVE_NAME} archive sha256 {SAMPLE_SHA256}" in text
+    assert f"file run {ARCHIVE_ENTRY} file run sha256 {ENTRY_SHA256}" in text
+
+
+def test_an_archive_report_says_not_recorded_when_the_file_run_hash_is_missing() -> None:
+    text = Page(html_of(analysis=make_archive_analysis(entry_sha256=None))).text
+
+    assert f"file run {ARCHIVE_ENTRY} file run sha256 not recorded" in text
+
+
+def test_a_plain_report_has_no_archive_or_file_run_lines() -> None:
+    html = html_of()
+
+    assert "archive" not in html
+    assert "file run" not in html
+    assert f'<dt>sha256</dt><dd class="mono">{SAMPLE_SHA256}</dd>' in html
+
+
+def test_the_archive_password_is_absent_from_the_html_and_the_print_document() -> None:
+    model = model_of(analysis=make_archive_analysis())
+
+    for variant in ReportVariant:
+        assert ARCHIVE_PASSWORD not in render_document(model, variant)
 
 
 def test_the_header_says_which_guest_the_sample_was_analysed_on() -> None:

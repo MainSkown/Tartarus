@@ -51,7 +51,8 @@ class IngestResult:
     normaliser; with one it is always a verdict, `no_export` when the guest left no export.
     `hidden_events` counts the Sysmon events left out as background, by reason; empty when
     there was no Sysmon file. `max_alert_severity` is the highest severity among the indexed
-    detections (alert events), None when there are none.
+    detections (alert events), None when there are none. `entry_sha256` is the hash of the file
+    a zip analysis ran, None unless it was asked for and a Sysmon process-created event gives it.
     """
 
     event_count: int
@@ -59,18 +60,25 @@ class IngestResult:
     defender: DefenderVerdict | None = None
     hidden_events: dict[str, int] = field(default_factory=dict)
     max_alert_severity: Severity | None = None
+    entry_sha256: str | None = None
 
 
 class EventIngester(Protocol):
     """Indexes a finished report's events for one analysis, replacing any earlier index."""
 
     async def ingest(
-        self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
+        self,
+        analysis_id: int,
+        report_path: Path,
+        *,
+        started_at: datetime | None = None,
+        archive_entry: str | None = None,
     ) -> IngestResult:
         """Raises `IngestFailedError`, leaving no index behind, when the events cannot be stored.
 
         `started_at` replaces the report's own start, for a capture imported long after it was
-        taken.
+        taken. `archive_entry` is the member of a submitted zip the run was told to start; it
+        asks for `IngestResult.entry_sha256`.
         """
 
     async def ingest_memory_image(

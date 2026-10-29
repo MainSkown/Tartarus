@@ -12,6 +12,7 @@ from app.samples.store import (
     EmptySampleError,
     SampleStore,
     SampleTooLargeError,
+    copy_capped,
     write_encrypted_zip,
 )
 
@@ -162,6 +163,29 @@ async def test_an_upload_over_the_limit_is_refused_and_stops_being_read(tmp_path
 
     assert upload.offset <= CHUNK_SIZE * 2
     assert [path for path in everything_under(tmp_path / "samples") if path.is_file()] == []
+
+
+async def test_copy_capped_writes_every_chunk_and_reports_the_count(tmp_path: Path) -> None:
+    destination = tmp_path / "copy.bin"
+    seen: list[bytes] = []
+
+    with destination.open("xb") as file:
+        copied = await copy_capped(ChunkedUpload(CONTENT), file, len(CONTENT), seen.append)
+
+    assert destination.read_bytes() == CONTENT
+    assert copied == len(CONTENT)
+    assert b"".join(seen) == CONTENT
+
+
+async def test_copy_capped_stops_before_writing_past_the_cap(tmp_path: Path) -> None:
+    destination = tmp_path / "copy.bin"
+    upload = ChunkedUpload(CONTENT)
+
+    with destination.open("xb") as file, pytest.raises(SampleTooLargeError):
+        await copy_capped(upload, file, CHUNK_SIZE)
+
+    assert destination.stat().st_size == CHUNK_SIZE
+    assert upload.offset <= CHUNK_SIZE * 2
 
 
 async def test_open_plain_yields_the_original_content(store: SampleStore) -> None:

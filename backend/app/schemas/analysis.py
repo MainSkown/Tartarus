@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 
 from app.analyses.summary import ReportSummary
 from app.db.models.analysis import AnalysisKind, AnalysisPhase, AnalysisStatus, Severity
@@ -21,7 +21,9 @@ class AnalysisRead(ApiModel):
     )
     status: AnalysisStatus
     phase: AnalysisPhase
-    options: dict[str, Any]
+    options: dict[str, Any] = Field(
+        description="The options of the submission, but for the archive password."
+    )
     score: float | None
     max_severity: Severity | None
     detected_families: list[str]
@@ -50,3 +52,10 @@ class AnalysisRead(ApiModel):
     queue_position: int | None = Field(
         default=None, description="1 for the analysis served next; null unless `queued`."
     )
+
+    @field_validator("options")
+    @classmethod
+    def without_the_archive_password(cls, options: dict[str, Any]) -> dict[str, Any]:
+        # The one place every route that returns an analysis passes through. The stored row keeps
+        # the password on purpose: the runner reads it from the queue when it uploads to CAPE.
+        return {key: value for key, value in options.items() if key != "archive_password"}

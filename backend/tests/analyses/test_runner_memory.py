@@ -32,10 +32,17 @@ class JournalIngester(FakeIngester):
         self._guests = guests
 
     async def ingest(
-        self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
+        self,
+        analysis_id: int,
+        report_path: Path,
+        *,
+        started_at: datetime | None = None,
+        archive_entry: str | None = None,
     ) -> IngestResult:
         self._guests.calls.append(("ingest", analysis_id))
-        return await super().ingest(analysis_id, report_path, started_at=started_at)
+        return await super().ingest(
+            analysis_id, report_path, started_at=started_at, archive_entry=archive_entry
+        )
 
 
 @pytest.fixture

@@ -114,6 +114,7 @@ Process context (on every event that has one):
 | `process.entity_id` | keyword (`<analysis>:<pid>@<start_ts>`) |
 | `process.start` | date |
 | `process.integrity_level` | keyword (custom) |
+| `process.hash.sha256` | keyword: SHA-256 of the process image, lowercase; on Sysmon `process-created` events only, and only when the event's `Hashes` holds one. Sysmon arrives with the final report, so the live stream never has it |
 | `tartarus.inject.target_pid` | long: the process an `inject-*` event acts on, when the call names it (lane `process`) |
 | `tartarus.inject.target_name` | keyword: that process's image file name, when the run has seen it (lane `process`) |
 | `tartarus.inject.target_executable`, `tartarus.inject.target_command_line` | keyword + text subfield: its path and command line, when the run has seen them (lane `process`) |
@@ -383,7 +384,11 @@ streaming parse per pass, never the whole log in memory. `event.module: sysmon`,
   Sigma `create_remote_thread` rule reads EID 8 like a capemon `inject-thread`. EID 3 keeps Sysmon's source and
   destination as logged: for an inbound connection (`Initiated` false) the source is the remote end. EID 13's
   `Details` is `registry.data.strings` verbatim (`DWORD (0x00000001)`, what Sigma rules match), with the type
-  read from its prefix. `User` is `user.name`/`user.domain`. The WMI events name no process.
+  read from its prefix. `User` is `user.name`/`user.domain`. The WMI events name no process. EID 1 also puts the
+  SHA256 of `Hashes` (written in uppercase) in `process.hash.sha256`, lowercased, and leaves the field out without one.
+  A zip analysis reads its entry file's hash from it: the earliest EID 1 whose `Image` is `%TEMP%\<entry>` gives
+  `summary.sample.entry_sha256`; an entry that is not run as a process of its own (a dll, bat or js) has none, so it
+  stays `null`.
 - **Time.** `UtcTime` (not `TimeCreated`, the log write time) on the guest clock, except EID 3 and 22, which take
   `TimeCreated`: they are built from ETW timestamps that do not follow the clock step CAPE makes at the start of a
   run (the M8 real run saw a DNS query two minutes before the sample started; the write time is 1 to 2 s late).

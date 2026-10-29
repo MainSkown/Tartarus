@@ -1549,6 +1549,7 @@ def test_the_operation_ids_are_tag_and_function_name_and_unique() -> None:
         ("post", "/api/analyses"): "analyses_create",
         ("post", "/api/analyses/import"): "analyses_import_capture",
         ("post", "/api/analyses/import/memory-image"): "analyses_import_memory_image",
+        ("post", "/api/analyses/archive-members"): "analyses_archive_members",
         ("get", "/api/analyses"): "analyses_list",
         ("get", "/api/analyses/{analysis_id}"): "analyses_read",
         ("post", "/api/analyses/{analysis_id}/cancel"): "analyses_cancel",
