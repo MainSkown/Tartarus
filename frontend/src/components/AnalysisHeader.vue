@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AnalysisRead } from '@/api'
-import CopyButton from '@/components/CopyButton.vue'
 import ExportMenu from '@/components/ExportMenu.vue'
 import GuestChip from '@/components/GuestChip.vue'
+import HashRow from '@/components/HashRow.vue'
 import RunCountdown from '@/components/RunCountdown.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagInput from '@/components/TagInput.vue'
 import { type Reading, useTickingSeconds } from '@/composables/use-ticking-seconds'
 import { t, type MessageKey } from '@/i18n'
-import { isActiveStatus } from '@/services/analysis-status'
+import { archiveOf } from '@/services/archive-analysis'
+import { isActiveStatus, isTerminalStatus } from '@/services/analysis-status'
 import { formatDuration, secondsBetween } from '@/services/format-duration'
 import { formatTimestamp } from '@/services/format-time'
 import { ANALYSIS_TARGET } from '@/stores/annotations'
@@ -29,6 +30,11 @@ const failureTitle = computed(() => {
   const key = FAILURE_TITLE_KEYS[props.analysis.status]
   return key ? t(key) : undefined
 })
+const archive = computed(() => archiveOf(props.analysis))
+const sampleHashLabel = computed(() => t(archive.value ? 'analysis.header.archiveSha256' : 'analysis.header.sha256'))
+const entryHashHint = computed(() =>
+  t(isTerminalStatus(props.analysis.status) ? 'analysis.header.fileHashMissing' : 'analysis.header.fileHashPending'),
+)
 const duration = computed(() => {
   const { started_at, finished_at } = props.analysis
   return started_at && finished_at ? formatDuration(secondsBetween(started_at, finished_at)) : undefined
@@ -86,17 +92,28 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
       </div>
     </div>
 
-    <div class="analysis-header__hash-row">
-      <span class="analysis-header__label text-mono">{{ t('analysis.header.sha256') }}</span>
-      <code
-        class="analysis-header__hash text-mono"
-        :title="analysis.sample_sha256"
-      >{{ analysis.sample_sha256 }}</code>
-      <CopyButton
-        class="analysis-header__copy"
-        :text="analysis.sample_sha256"
-        :what="t('analysis.header.sha256')"
+    <div
+      class="analysis-header__hashes"
+      :class="{ 'analysis-header__hashes--archive': archive }"
+    >
+      <HashRow
+        :label="sampleHashLabel"
+        :hash="analysis.sample_sha256"
       />
+      <template v-if="archive">
+        <div class="analysis-header__entry-row">
+          <span class="analysis-header__entry-label text-mono">{{ t('analysis.header.fileRun') }}</span>
+          <span
+            class="analysis-header__entry text-mono"
+            :title="archive.entry"
+          >{{ archive.entry }}</span>
+        </div>
+        <HashRow
+          :label="t('analysis.header.fileSha256')"
+          :hash="archive.entrySha256"
+          :absent-hint="entryHashHint"
+        />
+      </template>
     </div>
 
     <dl class="analysis-header__timing text-mono">
@@ -204,30 +221,62 @@ function remainingUntil(deadlineAt: string | null): Reading | undefined {
   color: var(--status-critical);
 }
 
-.analysis-header__hash-row {
+.analysis-header__hashes {
   display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* Lines the three rows of a zip up on one value column, one row height (the copy button's) apart. */
+.analysis-header__hashes--archive {
+  --hash-row-label-width: 7.5rem;
+  --hash-row-height: 1.5625rem;
+  --hash-row-text-offset: 0.3125rem;
+}
+
+.analysis-header__entry-row {
+  display: flex;
+  flex-wrap: var(--hash-row-wrap, nowrap);
   align-items: baseline;
+  min-height: var(--hash-row-height);
+  padding-top: var(--hash-row-text-offset, 0);
   gap: var(--spacing-sm);
 }
 
-.analysis-header__label {
+.analysis-header__entry-label {
   flex: none;
+  flex-basis: var(--hash-row-label-basis, auto);
+  min-width: var(--hash-row-label-width);
   color: var(--blue-primary);
   font-size: 0.65rem;
   font-weight: bold;
   letter-spacing: 1px;
 }
 
+.analysis-header__entry {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-gray-light);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The value column is too narrow to share with a label this wide: the label takes its own line. */
+@media (max-width: 600px) {
+  .analysis-header__hashes--archive {
+    --hash-row-label-width: 0;
+    --hash-row-label-basis: 100%;
+    --hash-row-wrap: wrap;
+    --hash-row-hash-flex: 1 1 8rem;
+    --hash-row-text-offset: 0;
+    --hash-row-height: 0;
+  }
+}
+
 .analysis-header__tags {
   flex: 1 1 12rem;
   min-width: 0;
-}
-
-.analysis-header__hash {
-  min-width: 0;
-  color: var(--text-gray);
-  font-size: 0.8rem;
-  overflow-wrap: anywhere;
 }
 
 .analysis-header__timing {

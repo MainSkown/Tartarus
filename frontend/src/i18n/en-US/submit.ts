@@ -49,8 +49,30 @@ export default {
       helper: 'Kept dumps stay on disk until the analysis is deleted.',
     },
   },
+  archive: {
+    password: {
+      label: 'ARCHIVE PASSWORD',
+      optionalLabel: 'ARCHIVE PASSWORD (OPTIONAL)',
+      wrong: 'The password does not open the archive',
+    },
+    entry: {
+      title: 'FILE TO RUN',
+      group: 'Files in the archive',
+      loading: 'Reading the archive…',
+      empty: 'This archive holds no files.',
+      unsafe: 'UNSAFE',
+      unsafeHint: 'The name points outside the guest folder, so it cannot be run.',
+      unsupported: 'NOT SUPPORTED',
+      unsupportedHint: 'The name holds a comma or starts or ends with a space, which the analysis options cannot carry.',
+    },
+    packageLocked: 'A zip is unpacked in the guest, so it always runs as a zip.',
+  },
   blocked: {
     chooseSample: 'Choose a sample to analyse',
+    archiveLoading: 'Reading the archive…',
+    archiveUnreadable: 'The archive could not be read',
+    archivePassword: 'Enter the password that opens the archive',
+    archiveEntry: 'Choose the file to run from the archive',
   },
   error: {
     unreachable: 'Could not reach the backend.',

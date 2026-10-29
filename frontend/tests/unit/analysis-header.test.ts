@@ -2,9 +2,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { Notify, Quasar } from 'quasar'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AnalysisStatus } from '@/api'
+import type { AnalysisRead, AnalysisStatus } from '@/api'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import ExportMenu from '@/components/ExportMenu.vue'
+import HashRow from '@/components/HashRow.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import TagInput from '@/components/TagInput.vue'
 import { ANALYSIS_TARGET } from '@/stores/annotations'
@@ -28,7 +29,7 @@ describe('AnalysisHeader identity', () => {
     const wrapper = mountHeader()
     expect(wrapper.text()).toContain('#42')
     expect(wrapper.find('.analysis-header__filename').text()).toBe('invoice.exe')
-    expect(wrapper.find('.analysis-header__hash').text()).toContain(SHA256)
+    expect(wrapper.find('.hash-row__hash').text()).toContain(SHA256)
     expect(wrapper.findComponent(StatusBadge).props('status')).toBe('done')
   })
 
@@ -36,15 +37,83 @@ describe('AnalysisHeader identity', () => {
     const filename = `${'long-name-'.repeat(20)}.exe`
     const wrapper = mountHeader(analysisFixture({ filename }))
     expect(wrapper.find('.analysis-header__filename').attributes('title')).toBe(filename)
-    expect(wrapper.find('.analysis-header__hash').attributes('title')).toBe(SHA256)
+    expect(wrapper.find('.hash-row__hash').attributes('title')).toBe(SHA256)
   })
 
   it('copies the full SHA-256 and confirms with a toast', async () => {
     const wrapper = mountHeader()
-    await wrapper.find('.analysis-header__copy').trigger('click')
+    await wrapper.find('.copy-button').trigger('click')
     await flushPromises()
     expect(writeText).toHaveBeenCalledWith(SHA256)
     expect(Notify.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'tt-success' }))
+  })
+})
+
+const ENTRY_SHA256 = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90'
+
+function archiveAnalysis(entrySha256?: string | null, overrides: Partial<AnalysisRead> = {}) {
+  return analysisFixture({
+    filename: 'bundle.zip',
+    options: { archive_entry: 'payload/loader.exe', package: 'zip' },
+    summary: entrySha256 === undefined ? null : { sample: { entry_sha256: entrySha256 } },
+    ...overrides,
+  })
+}
+
+const hashRows = (wrapper: ReturnType<typeof mountHeader>) => wrapper.findAllComponents(HashRow)
+
+describe('AnalysisHeader of a plain sample', () => {
+  it('has one hash row, labelled SHA-256, and no file-run row', () => {
+    const wrapper = mountHeader()
+    expect(hashRows(wrapper)).toHaveLength(1)
+    expect(hashRows(wrapper)[0]!.props()).toMatchObject({ label: 'SHA-256', hash: SHA256 })
+    expect(wrapper.text()).not.toContain('FILE RUN')
+    expect(wrapper.text()).not.toContain('ARCHIVE')
+  })
+})
+
+describe('AnalysisHeader of a submitted zip', () => {
+  it('labels the zip hash as the archive hash and follows it with the file run and its hash', () => {
+    const wrapper = mountHeader(archiveAnalysis(ENTRY_SHA256))
+    const rows = hashRows(wrapper)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.props()).toMatchObject({ label: 'ARCHIVE SHA-256', hash: SHA256 })
+    expect(rows[1]!.props()).toMatchObject({ label: 'FILE SHA-256', hash: ENTRY_SHA256 })
+    expect(wrapper.find('.analysis-header__entry-label').text()).toBe('FILE RUN')
+    expect(wrapper.find('.analysis-header__entry').text()).toBe('payload/loader.exe')
+  })
+
+  it('copies the hash of the file run, not the one of the zip', async () => {
+    const wrapper = mountHeader(archiveAnalysis(ENTRY_SHA256))
+    await hashRows(wrapper)[1]!.find('.copy-button').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(ENTRY_SHA256)
+  })
+
+  it('keeps a long nested path reachable through its title', () => {
+    const entry = `${'nested_directory/'.repeat(12)}loader.exe`
+    const wrapper = mountHeader(archiveAnalysis(ENTRY_SHA256, { options: { archive_entry: entry } }))
+    expect(wrapper.find('.analysis-header__entry').attributes('title')).toBe(entry)
+  })
+
+  it('says the hash appears when the run is finished while the analysis is not in a final status', () => {
+    for (const status of ['queued', 'starting', 'running', 'processing', 'ingesting'] as const) {
+      const row = hashRows(mountHeader(archiveAnalysis(null, { status })))[1]!
+      expect(row.props('hash'), status).toBeNull()
+      expect(row.props('absentHint'), status).toBe('The hash appears when the run is finished.')
+    }
+  })
+
+  it('says why there is no hash once the analysis is in a final status', () => {
+    for (const status of ['done', 'failed', 'report_failed', 'cancelled'] as const) {
+      const row = hashRows(mountHeader(archiveAnalysis(null, { status })))[1]!
+      expect(row.props('hash'), status).toBeNull()
+      expect(row.props('absentHint'), status).toBe('The file started no process of its own, or the guest log was not available.')
+    }
+  })
+
+  it('treats a summary without the entry hash as not recorded', () => {
+    expect(hashRows(mountHeader(archiveAnalysis(undefined)))[1]!.props('hash')).toBeNull()
   })
 })
 
