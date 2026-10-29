@@ -40,6 +40,12 @@ Keep the default route, `INETSIM`, unless you have a reason to pick another. The
 - **It is not a place to keep your data.** Each analysis starts from a clean snapshot, so a previous sample does not carry over, but the guest still runs real Windows code.
 - **Clipboard is not shared.** There is no clipboard sync between the host and the guest.
 
+## Password-protected zips
+
+When you submit a zip, the guest unpacks it when the run starts, with the tools inside the guest. Your machine does not unpack the sample, and neither does the Tartarus backend. The backend only reads the zip's list of files and checks the password against the zip's header. It decrypts and extracts nothing.
+
+The archive password is not a secret. Malware zips are shared with a password that everyone knows, and `infected` is the usual one. Tartarus keeps the password with the analysis and in CAPE's record of the task. The guest's 7-Zip command line shows it too, so it can appear in the events and the report. The API does not return it in an analysis's options.
+
 ## Accepted risks
 
 The security review fixed what it could. These risks remain by design. The full table is in [the security doc](../security.md#accepted-risks).

@@ -35,7 +35,7 @@ and the [specs](../specs/) and [design system](../design/design-system.md). This
 - Tunnel routes: Tor, VPN, WireGuard and SOCKS5. Planned after v1. The API accepts them as a `Route`, but no
   tunnel is built, so Settings and the submit dialog offer only INetSim, none, drop and internet until the
   rooter can send an analysis through a configured tunnel ([architecture](../architecture.md)).
-- URL and archive submission. (PCAP and memory-image import moved into v1 and were built in M9.)
+- URL submission. (PCAP and memory-image import moved into v1 and were built in M9.)
 - Parallel analyses on one guest. Since M9 several guests run an analysis each at the same time
   ([backend](../specs/backend.md#queue-and-runner-m9)).
 - Comparing analyses and searching across analyses.

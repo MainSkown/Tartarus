@@ -5,6 +5,21 @@ All notable changes to Tartarus are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The working record of how each
 milestone was built is in [docs/history](docs/history/README.md).
 
+## [Unreleased]
+
+### Added
+
+- Submission of a password-protected zip from the Submit dialog: the archive password (prefilled with
+  `infected`), a pick of the file to run from the zip's list, and the zip unpacked inside the guest
+  only. `POST /api/analyses/archive-members` lists a zip's files without extracting them, and
+  `POST /api/analyses` takes `archive_password` and `archive_entry`.
+- A pinned 7-Zip console build in the `cape` image, so CAPE's `zip` package can open AES-encrypted
+  zips in the guest. Before this, every AES zip failed in the guest; ZipCrypto zips already worked.
+- The analysis header and the exported report show, for a zip, the archive and the file that ran with
+  their SHA256s. The file's hash comes from Sysmon's process-creation event, which now carries
+  `process.hash.sha256` (queryable in the event search); it is "not recorded" for an entry that runs
+  through another program, such as a DLL or a script.
+
 ## [1.0.0] - 2026-10-26
 
 First release: a local malware-analysis workbench for one analyst on a Linux host with KVM and
