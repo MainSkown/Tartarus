@@ -378,7 +378,7 @@ class Runner:
                 # The backend ends interactive runs at their deadline; CAPE only backstops them.
                 timeout=MAX_RUN_S if is_interactive else options["timeout"],
                 package=options.get("package", "auto"),
-                options=interactive.options,
+                options=_task_options(options, interactive),
                 task_fields=_task_fields(options, interactive),
             )
         return Submitted(task_id)
@@ -597,7 +597,10 @@ class Runner:
         memory = await self._memory.run(analysis, task_id)
         try:
             indexed = await self._ingester.ingest(
-                analysis_id, report_file, started_at=_capture_start(analysis)
+                analysis_id,
+                report_file,
+                started_at=_capture_start(analysis),
+                archive_entry=analysis.options.get("archive_entry"),
             )
         except IngestFailedError as failure:
             # The ingester removes a half-built index, so no events are left to count.
@@ -629,7 +632,7 @@ class Runner:
             max_severity=_highest(outcome.max_severity, indexed.max_alert_severity),
             detected_families=outcome.detected_families,
             summary={
-                **outcome.summary,
+                **_with_entry_sha256(outcome.summary, indexed.entry_sha256),
                 "lane_counts": indexed.lane_counts,
                 "defender": _dumped(indexed.defender),
                 "hidden_events": indexed.hidden_events,
@@ -728,6 +731,24 @@ def _highest(*severities: Severity | None) -> Severity | None:
 
 def _dumped(verdict: DefenderVerdict | None) -> dict[str, Any] | None:
     return None if verdict is None else verdict.model_dump(mode="json")
+
+
+def _with_entry_sha256(summary: dict[str, Any], sha256: str | None) -> dict[str, Any]:
+    if sha256 is None:
+        return summary
+    return {**summary, "sample": {**summary.get("sample", {}), "entry_sha256": sha256}}
+
+
+def _task_options(options: Mapping[str, Any], interactive: InteractiveOptions) -> str:
+    parts = (_archive_options(options), interactive.options)
+    return ",".join(part for part in parts if part)
+
+
+def _archive_options(options: Mapping[str, Any]) -> str:
+    password, entry = options.get("archive_password"), options.get("archive_entry")
+    if password is None or entry is None:
+        return ""
+    return f"password={password},file={entry}"
 
 
 def _task_fields(

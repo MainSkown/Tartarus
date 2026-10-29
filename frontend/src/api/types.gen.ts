@@ -50,6 +50,8 @@ export type AnalysisCreated = {
     phase: AnalysisPhase;
     /**
      * Options
+     *
+     * The options of the submission, but for the archive password.
      */
     options: {
         [key: string]: unknown;
@@ -192,6 +194,8 @@ export type AnalysisRead = {
     phase: AnalysisPhase;
     /**
      * Options
+     *
+     * The options of the submission, but for the archive password.
      */
     options: {
         [key: string]: unknown;
@@ -293,6 +297,60 @@ export type ApiCount = {
      * Count
      */
     count: number;
+};
+
+/**
+ * ArchiveMemberRead
+ */
+export type ArchiveMemberRead = {
+    /**
+     * Name
+     *
+     * The member's path inside the zip, as the archive writes it.
+     */
+    name: string;
+    /**
+     * Size
+     *
+     * The uncompressed size the central directory declares. The data is not read.
+     */
+    size: number;
+    /**
+     * Encrypted
+     *
+     * The member is encrypted, so the password is needed.
+     */
+    encrypted: boolean;
+    /**
+     * Unsafe
+     *
+     * The name escapes the guest's directory: `..`, an absolute path, a drive letter or a NUL byte. Shown, but it cannot be chosen to run.
+     */
+    unsafe: boolean;
+    /**
+     * Unsupported
+     *
+     * The name holds a comma or leading or trailing whitespace, which the CAPE option string cannot carry. Shown, but it cannot be chosen to run.
+     */
+    unsupported: boolean;
+};
+
+/**
+ * ArchiveMembersRead
+ */
+export type ArchiveMembersRead = {
+    /**
+     * Members
+     *
+     * In the archive's order.
+     */
+    members: Array<ArchiveMemberRead>;
+    /**
+     * Password Ok
+     *
+     * Whether the password opens the encrypted members. `null` when there is no verdict: no member is encrypted, or every encrypted member is unsafe, so none is checked.
+     */
+    password_ok: boolean | null;
 };
 
 /**
@@ -460,6 +518,24 @@ export type BadgeRule = {
 };
 
 /**
+ * Body_analyses_archive_members
+ */
+export type BodyAnalysesArchiveMembers = {
+    /**
+     * File
+     *
+     * The zip to list.
+     */
+    file: Blob | File;
+    /**
+     * Password
+     *
+     * The archive's password, `infected` by default.
+     */
+    password?: string;
+};
+
+/**
  * Body_analyses_create
  */
 export type BodyAnalysesCreate = {
@@ -472,7 +548,7 @@ export type BodyAnalysesCreate = {
     /**
      * Options
      *
-     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's profile lists), `interactive` (a desktop to drive; the run then lasts the whole timeout), `memory_dump` (dump the guest's RAM and read it; needs free disk), `keep_memory_dump` (keep the dump afterwards; only with `memory_dump`) and `guest` (a ready guest; the default guest when omitted).
+     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's profile lists), `interactive` (a desktop to drive; the run then lasts the whole timeout), `memory_dump` (dump the guest's RAM and read it; needs free disk), `keep_memory_dump` (keep the dump afterwards; only with `memory_dump`) and `guest` (a ready guest; the default guest when omitted), `archive_password` and `archive_entry` (the file of the submitted zip to run; set together, the zip is unpacked in the guest and `package` becomes `zip`).
      */
     options?: string;
 };
@@ -1299,10 +1375,6 @@ export type Guest = {
      * Snapshot
      */
     snapshot?: string | null;
-    /**
-     * Disk Path
-     */
-    disk_path?: string | null;
     /**
      * Selftest
      */
@@ -3064,6 +3136,10 @@ export type SampleSummary = {
      * Type
      */
     type?: string | null;
+    /**
+     * Entry Sha256
+     */
+    entry_sha256?: string | null;
 };
 
 /**
@@ -3323,8 +3399,17 @@ export type ValueCount = {
  * VersionInfo
  */
 export type VersionInfo = {
+    /**
+     * Version
+     */
     version: string;
+    /**
+     * Commit
+     */
     commit: string | null;
+    /**
+     * License
+     */
     license: string;
 };
 
@@ -4021,6 +4106,31 @@ export type AnalysesImportMemoryImageResponses = {
 };
 
 export type AnalysesImportMemoryImageResponse = AnalysesImportMemoryImageResponses[keyof AnalysesImportMemoryImageResponses];
+
+export type AnalysesArchiveMembersData = {
+    body: BodyAnalysesArchiveMembers;
+    path?: never;
+    query?: never;
+    url: '/api/analyses/archive-members';
+};
+
+export type AnalysesArchiveMembersErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type AnalysesArchiveMembersError = AnalysesArchiveMembersErrors[keyof AnalysesArchiveMembersErrors];
+
+export type AnalysesArchiveMembersResponses = {
+    /**
+     * Successful Response
+     */
+    200: ArchiveMembersRead;
+};
+
+export type AnalysesArchiveMembersResponse = AnalysesArchiveMembersResponses[keyof AnalysesArchiveMembersResponses];
 
 export type AnalysesDeleteData = {
     body?: never;

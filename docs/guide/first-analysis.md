@@ -23,6 +23,18 @@ The default network route and timeout come from **Settings**.
 
 The app opens the analysis. If the guest is busy, the page says `Queued, position N`.
 
+## Submit a password-protected zip
+
+Malware is often shared as a zip with a password, usually `infected`. Tartarus unpacks it inside the guest, so you never unpack it on your machine.
+
+1. On the **Sample** tab, drop the `.zip` file. Tartarus reads the list of files in the archive. It does not unpack anything.
+2. Check **ARCHIVE PASSWORD**. It is prefilled with `infected`. Change it if the archive uses another password.
+3. Under **FILE TO RUN**, pick the file to run. An archive with one file selects it for you. With several files, you must pick one. A file marked **UNSAFE** (its name points outside the guest folder) or **NOT SUPPORTED** (its name has a comma, or starts or ends with a space) cannot be picked. Hover over the mark to see why.
+
+The **PACKAGE** field then shows `zip` and is locked, because a zip is unpacked in the guest and always runs as a zip. Set the other fields as usual and press `▶ DETONATE`. The zip is limited to 512 MiB, like any sample.
+
+If the password does not open the archive, the dialog says so under the password field and does not let you detonate. The API refuses the same submission too, so no analysis is queued. See [safety](safety.md#password-protected-zips).
+
 ## Full memory dump
 
 Turn on **FULL MEMORY DUMP + VOLATILITY** to save the guest's RAM after the run and have Volatility 3 read it. The findings appear under **ARTIFACTS > Memory**.

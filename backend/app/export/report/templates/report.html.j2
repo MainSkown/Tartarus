@@ -33,7 +33,14 @@
 <p class="meta">Analysed on {{ model.header.guest }}</p>
 {%- endif %}
 <dl class="facts">
+{% if model.header.archive -%}
+<dt>archive</dt><dd>{{ model.header.sample_name }}</dd>
+<dt>archive sha256</dt><dd class="mono">{{ model.header.sha256 }}</dd>
+<dt>file run</dt><dd>{{ model.header.archive.entry_name }}</dd>
+<dt>file run sha256</dt>{% if model.header.archive.entry_sha256 %}<dd class="mono">{{ model.header.archive.entry_sha256 }}</dd>{% else %}<dd>not recorded</dd>{% endif %}
+{%- else -%}
 <dt>sha256</dt><dd class="mono">{{ model.header.sha256 }}</dd>
+{%- endif %}
 {%- if model.header.md5 %}<dt>md5</dt><dd class="mono">{{ model.header.md5 }}</dd>{% endif %}
 {%- if model.header.sha1 %}<dt>sha1</dt><dd class="mono">{{ model.header.sha1 }}</dd>{% endif %}
 {%- if model.header.sample_type %}<dt>type</dt><dd>{{ model.header.sample_type }}</dd>{% endif %}

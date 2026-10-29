@@ -114,6 +114,7 @@ def test_eid_1_process_created(fixture_events: dict[int, Event]) -> None:
         "command_line": command_line,
         "start": "2026-10-18T22:46:38.000Z",
         "integrity_level": "AppContainer",
+        "hash": {"sha256": "8662d1661b6261ad2d7081bc1ee54429e806b14b5fea4a777ba546e3c4a8352d"},
         "parent": {
             "pid": 924,
             "name": "svchost.exe",
@@ -140,7 +141,7 @@ CHILD_STARTED_AT = "2026-10-18 20:43:50.000"
 CHILD_START_ON_UTC = "2026-10-18T22:43:50.000Z"
 
 
-def process_created_eid1(pid: int, process_guid: str) -> str:
+def process_created_eid1(pid: int, process_guid: str, **extra: str) -> str:
     return event_xml(
         1,
         pid,
@@ -155,8 +156,50 @@ def process_created_eid1(pid: int, process_guid: str) -> str:
             "ParentProcessId": 500,
             "ParentImage": BENIGN,
             "ParentCommandLine": BENIGN,
+            **extra,
         },
     )
+
+
+def test_a_process_created_event_carries_the_lowercase_sha256_of_its_image(
+    tmp_path: Path,
+) -> None:
+    hashes = "SHA1=AAAA,MD5=BBBB,SHA256=" + "4B322B00" * 8 + ",IMPHASH=CCCC"
+
+    events = hand_written(tmp_path, process_created_eid1(CHILD_PID, guid(2), Hashes=hashes))
+
+    assert only(events)["process"]["hash"] == {"sha256": "4b322b00" * 8}
+
+
+@pytest.mark.parametrize("hashes", ["SHA1=AAAA,MD5=BBBB", "-", ""])
+def test_a_process_created_event_without_a_sha256_has_no_process_hash(
+    tmp_path: Path, hashes: str
+) -> None:
+    events = hand_written(tmp_path, process_created_eid1(CHILD_PID, guid(2), Hashes=hashes))
+
+    assert "hash" not in only(events)["process"]
+
+
+def test_a_process_created_event_without_a_hashes_field_has_no_process_hash(
+    tmp_path: Path,
+) -> None:
+    events = hand_written(tmp_path, process_created_eid1(CHILD_PID, guid(2)))
+
+    assert "hash" not in only(events)["process"]
+
+
+def test_a_hash_on_another_event_does_not_become_a_process_hash(tmp_path: Path) -> None:
+    deleted = schema_event(
+        23,
+        User=USER,
+        TargetFilename="C:\\Users\\Megan\\Desktop\\notes.txt",
+        Hashes="SHA256=" + "AB" * 32,
+        **acting(),
+    )
+
+    events = hand_written(tmp_path, deleted)
+
+    assert "hash" not in only(events)["process"]
 
 
 def sample_calling(api: str, child_pid: int, **fields: Any) -> dict[str, Any]:

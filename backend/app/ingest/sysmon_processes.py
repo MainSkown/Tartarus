@@ -1,5 +1,6 @@
 """The processes behind Sysmon events: who an event is about, and which of them are the sample's."""
 
+import re
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ ETW_TIMED_EVENTS = frozenset({3, 22})
 ACTING_PROCESS_EVENTS = frozenset({1, 3, 5, 7, 11, 12, 13, 14, 22, 23, 26})
 UNKNOWN_IMAGE = "<unknown process>"
 NULL_GUID = "{00000000-0000-0000-0000-000000000000}"
+SHA256 = re.compile(r"SHA256=([0-9A-Fa-f]{64})")
 
 
 class EventFields:
@@ -41,6 +43,12 @@ class EventFields:
 
     def integer(self, name: str) -> int | None:
         return to_int(self.get(name))
+
+
+def sha256_of(fields: EventFields) -> str | None:
+    """The lowercase SHA256 in the `Hashes` field, when the Sysmon configuration logs one."""
+    match = SHA256.search(fields.get("Hashes") or "")
+    return match[1].lower() if match else None
 
 
 @dataclass(frozen=True)
@@ -262,6 +270,8 @@ class ProcessResolver:
         )
         if created is not None and (level := fields.get("IntegrityLevel")):
             section["integrity_level"] = level
+        if created is not None and (sha256 := sha256_of(created)):
+            section["hash"] = {"sha256": sha256}
         return section
 
     def _identity(

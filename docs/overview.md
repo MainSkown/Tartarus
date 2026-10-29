@@ -84,7 +84,7 @@ Open questions are closed there too (see the [v1 open questions](features/tartar
   the edition and build from `sources/install.wim` and, for evaluation ISOs, compare the SHA256
   against Microsoft's published hashes. Until then the wizard lists `data/iso` and explains where
   to put the file. Windows itself is never bundled or downloaded for the user (licence).
-- URL and archive submission. (PCAP and memory-image import are M9.)
+- URL submission. (PCAP and memory-image import are M9.)
 - Compare two analyses (behaviour diff).
 - **A Linux profile and the normaliser that reads Linux runs.** The profile is a new directory under
   `guest/profiles/` ([guest profiles](specs/guest-profiles.md), with the checklist from S0e); CAPE's

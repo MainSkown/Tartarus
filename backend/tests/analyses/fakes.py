@@ -138,13 +138,20 @@ class FakeIngester:
         self.result: IngestResult | IngestFailedError | Exception = IngestResult(0, {})
         self.requests: list[tuple[int, Path]] = []
         self.started_at: dict[int, datetime | None] = {}
+        self.archive_entries: dict[int, str | None] = {}
         self.image_requests: list[tuple[int, Path, datetime]] = []
 
     async def ingest(
-        self, analysis_id: int, report_path: Path, *, started_at: datetime | None = None
+        self,
+        analysis_id: int,
+        report_path: Path,
+        *,
+        started_at: datetime | None = None,
+        archive_entry: str | None = None,
     ) -> IngestResult:
         self.requests.append((analysis_id, report_path))
         self.started_at[analysis_id] = started_at
+        self.archive_entries[analysis_id] = archive_entry
         if isinstance(self.result, Exception):
             raise self.result
         return self.result

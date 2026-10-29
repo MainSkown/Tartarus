@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db import analysis_repository as repository
@@ -52,3 +53,17 @@ async def adopt_by_cape(
 def as_utc(moment: datetime | None) -> datetime | None:
     """SQLite hands timestamps back naive; Postgres keeps the zone."""
     return moment.replace(tzinfo=UTC) if moment is not None and moment.tzinfo is None else moment
+
+
+# The test database drivers log bound parameters at DEBUG; production sets only the `app` logger's
+# level (`configure_logging`), so they never do there.
+_DRIVER_LOGGERS = ("aiosqlite", "sqlalchemy")
+
+
+def app_log_text(caplog: pytest.LogCaptureFixture) -> str:
+    """Every captured line, but for the test database drivers' own."""
+    return "\n".join(
+        record.getMessage() + (record.exc_text or "")
+        for record in caplog.records
+        if not record.name.startswith(_DRIVER_LOGGERS)
+    )

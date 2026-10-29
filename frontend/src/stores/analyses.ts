@@ -21,6 +21,8 @@ export interface SubmitOptions {
   keep_memory_dump?: boolean
   guest?: string
   package?: string
+  archive_password?: string
+  archive_entry?: string
 }
 
 /** Thrown by `submit` when the backend refuses the upload; `issues` holds a 422's per-field messages. */

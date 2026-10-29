@@ -44,11 +44,20 @@ def test_a_real_report_summary_describes_the_run() -> None:
     assert summary.process_count == 2
     assert summary.sample.name == "benign.exe"
     assert summary.sample.type == "PE32+ executable (console) x86-64, for MS Windows"
+    assert summary.sample.entry_sha256 is None
     assert summary.files_written == 1
     assert summary.registry_keys_written == 2
     assert summary.network.dns == 5
     assert summary.network.tcp == 20
     assert summary.network.hosts == 0
+
+
+def test_the_summary_keeps_the_entry_hash_of_an_archive_sample() -> None:
+    stored = {"sample": {"name": "samples.zip", "entry_sha256": "ab" * 32}}
+
+    summary = ReportSummary.model_validate(stored)
+
+    assert summary.model_dump(mode="json")["sample"]["entry_sha256"] == "ab" * 32
 
 
 def test_signatures_list_the_most_severe_first_with_the_design_systems_scale() -> None:

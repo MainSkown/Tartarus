@@ -15,16 +15,21 @@ from app.export.report.assemble import (
     build_report_model,
 )
 from app.export.report.key_events import KeyEventReason
-from app.export.report.model import ReportInclude
+from app.export.report.model import ReportArchive, ReportInclude
 from app.schemas.views_findings import Ioc, IocsView, IocType
 from tests.export.conftest import EVERY_TYPE, SAMPLE_MD5, SAMPLE_SHA1, SAMPLE_SHA256, make_ioc
 from tests.export.report.fixtures import (
+    ARCHIVE_ENTRY,
+    ARCHIVE_NAME,
+    ARCHIVE_PASSWORD,
+    ENTRY_SHA256,
     JPEG_BYTES,
     PNG_BYTES,
     SAMPLE_NAME,
     at,
     facts,
     make_analysis,
+    make_archive_analysis,
     make_inputs,
     make_network,
 )
@@ -61,6 +66,29 @@ def test_the_header_names_the_sample_and_the_run() -> None:
         at(185),
     )
     assert header.generated_at == at(3600)
+
+
+def test_an_archive_analysis_keeps_the_zip_as_the_sample_and_names_the_file_run() -> None:
+    header = build(analysis=make_archive_analysis()).header
+
+    assert (header.sample_name, header.sha256) == (ARCHIVE_NAME, SAMPLE_SHA256)
+    assert header.archive == ReportArchive(entry_name=ARCHIVE_ENTRY, entry_sha256=ENTRY_SHA256)
+
+
+def test_an_archive_whose_file_run_hash_was_not_recorded_has_none_for_it() -> None:
+    archive = build(analysis=make_archive_analysis(entry_sha256=None)).header.archive
+
+    assert archive == ReportArchive(entry_name=ARCHIVE_ENTRY, entry_sha256=None)
+
+
+def test_a_plain_analysis_has_no_archive_section() -> None:
+    assert build().header.archive is None
+
+
+def test_the_archive_password_is_not_part_of_the_model() -> None:
+    model = build(analysis=make_archive_analysis())
+
+    assert ARCHIVE_PASSWORD not in model.model_dump_json()
 
 
 def test_the_header_names_the_guest_the_analysis_ran_on() -> None:

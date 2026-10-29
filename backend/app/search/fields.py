@@ -133,6 +133,12 @@ _PROCESS = (
     FieldDefinition("process.start", FieldType.DATE, "Process start time", "2026-10-13T10:12:41Z"),
     FieldDefinition("process.integrity_level", _K, "Windows integrity level", "High"),
     FieldDefinition(
+        "process.hash.sha256",
+        _K,
+        "SHA-256 of the process image, on Sysmon process-created events",
+        "4b322b00346035d752e2cced1d6936d151c7edc341004c3aaa36ac4025aeec37",
+    ),
+    FieldDefinition(
         "tartarus.inject.target_pid",
         _LONG,
         "Pid of the process an injection call acts on",

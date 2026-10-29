@@ -39,6 +39,7 @@ class NetworkCounts(BaseModel):
 class SampleSummary(BaseModel):
     name: str | None = None
     type: str | None = None
+    entry_sha256: str | None = None
 
 
 class ReportSummary(BaseModel):

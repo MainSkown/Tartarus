@@ -7,8 +7,11 @@ import type { Route } from '@/api'
 import GuestOptionRow from '@/components/GuestOptionRow.vue'
 import ImportPane from '@/components/ImportPane.vue'
 import NumberInput from '@/components/NumberInput.vue'
+import SubmitArchiveFields from '@/components/SubmitArchiveFields.vue'
+import { useArchiveMembers } from '@/composables/use-archive-members'
 import { useGuestChoice } from '@/composables/use-guest-choice'
 import { t } from '@/i18n'
+import { DEFAULT_ARCHIVE_PASSWORD, hasEncryptedMember } from '@/services/archive-file'
 import { sha256Hex } from '@/services/file-hash'
 import { formatFileSize } from '@/services/file-size'
 import { isMemoryDumpRefusal, memoryDumpDiskGb } from '@/services/memory-dump'
@@ -24,7 +27,17 @@ const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginC
 const TIMEOUT_MIN_SECONDS = 60
 const TIMEOUT_MAX_SECONDS = 1200
 const SECONDS_PER_MINUTE = 60
-const FORM_FIELDS = ['file', 'route', 'timeout', 'guest', 'package', 'interactive'] as const
+const ARCHIVE_PACKAGE = 'zip'
+const FORM_FIELDS = [
+  'file',
+  'route',
+  'timeout',
+  'guest',
+  'package',
+  'interactive',
+  'archive_password',
+  'archive_entry',
+] as const
 type FormField = (typeof FORM_FIELDS)[number]
 
 function formatMinutes(seconds: number): string {
@@ -41,6 +54,9 @@ const route = ref<Route>('inetsim')
 const timeoutText = ref('180')
 const defaultGuestSetting = ref<string | null>()
 const guestChoice = useGuestChoice(defaultGuestSetting)
+const archivePassword = ref(DEFAULT_ARCHIVE_PASSWORD)
+const archiveEntry = ref('')
+const archive = useArchiveMembers(file, archivePassword)
 const interactive = ref(false)
 const memoryDump = ref(false)
 const keepMemoryDump = ref(false)
@@ -85,13 +101,42 @@ const emptyGuestText = computed(() =>
   guestChoice.noGuestReason.value ? t('submit.guest.none') : t('submit.guest.loading'),
 )
 
+const packageShown = computed({
+  get: () => (archive.isArchive.value ? ARCHIVE_PACKAGE : guestChoice.packageName.value),
+  set: (name) => {
+    guestChoice.packageName.value = name
+  },
+})
+
+const archiveBlockReason = computed(() => {
+  if (!archive.isArchive.value) return undefined
+  if (archive.loading.value) return t('submit.blocked.archiveLoading')
+  if (archive.error.value) return t('submit.blocked.archiveUnreadable')
+  if (archive.passwordOk.value === false) return t('submit.blocked.archivePassword')
+  if (!archiveEntry.value) return t('submit.blocked.archiveEntry')
+  return undefined
+})
+
 const blockReason = computed(
   () =>
     guestChoice.noGuestReason.value ??
     guestBlockReason.value ??
-    (file.value ? undefined : t('submit.blocked.chooseSample')),
+    (file.value ? archiveBlockReason.value : t('submit.blocked.chooseSample')),
 )
 const canSubmit = computed(() => !blockReason.value && !timeoutError.value && !submitting.value)
+
+// The backend insists on a password with an entry, though a zip with nothing encrypted ignores it.
+const archivePasswordToSend = computed(() =>
+  archivePassword.value === '' && !hasEncryptedMember(archive.members.value)
+    ? DEFAULT_ARCHIVE_PASSWORD
+    : archivePassword.value,
+)
+
+const archiveOptions = computed(() =>
+  archive.isArchive.value
+    ? { package: ARCHIVE_PACKAGE, archive_password: archivePasswordToSend.value, archive_entry: archiveEntry.value }
+    : {},
+)
 
 const submitOptions = computed<SubmitOptions>(() => ({
   route: route.value,
@@ -100,6 +145,7 @@ const submitOptions = computed<SubmitOptions>(() => ({
   memory_dump: memoryDump.value,
   ...(keepMemoryDump.value ? { keep_memory_dump: true } : {}),
   ...guestChoice.optionPayload.value,
+  ...archiveOptions.value,
 }))
 
 async function applySettingsDefaults(): Promise<void> {
@@ -280,7 +326,26 @@ onMounted(() => {
               >
                 {{ fieldErrors.file }}
               </p>
+              <p
+                v-if="archive.error.value"
+                class="field-error archive-error"
+                role="alert"
+              >
+                {{ archive.error.value }}
+              </p>
             </div>
+
+            <SubmitArchiveFields
+              v-if="archive.isArchive.value && !archive.error.value"
+              v-model:password="archivePassword"
+              v-model:entry="archiveEntry"
+              :members="archive.members.value"
+              :loading="archive.loading.value"
+              :password-ok="archive.passwordOk.value"
+              :password-error="fieldErrors.archive_password"
+              :entry-error="fieldErrors.archive_entry"
+              :disable="submitting"
+            />
 
             <div class="form-field">
               <q-select
@@ -372,28 +437,36 @@ onMounted(() => {
               </p>
             </div>
 
-            <div class="option-row">
-              <number-input
-                v-model="timeoutText"
-                :label="t('submit.timeout.label')"
-                :suffix="t('submit.timeout.unit')"
-                :disable="submitting"
-                :error="Boolean(timeoutError ?? fieldErrors.timeout)"
-                :error-message="timeoutError ?? fieldErrors.timeout"
-                class="timeout-input"
-              />
-              <q-select
-                v-model="guestChoice.packageName.value"
-                :options="guestChoice.packageOptions.value"
-                outlined
-                dense
-                hide-bottom-space
-                :label="t('submit.package.label')"
-                :disable="submitting"
-                :error="Boolean(fieldErrors.package)"
-                :error-message="fieldErrors.package"
-                class="package-input text-mono"
-              />
+            <div class="form-field">
+              <div class="option-row">
+                <number-input
+                  v-model="timeoutText"
+                  :label="t('submit.timeout.label')"
+                  :suffix="t('submit.timeout.unit')"
+                  :disable="submitting"
+                  :error="Boolean(timeoutError ?? fieldErrors.timeout)"
+                  :error-message="timeoutError ?? fieldErrors.timeout"
+                  class="timeout-input"
+                />
+                <q-select
+                  v-model="packageShown"
+                  :options="guestChoice.packageOptions.value"
+                  outlined
+                  dense
+                  hide-bottom-space
+                  :label="t('submit.package.label')"
+                  :disable="submitting || archive.isArchive.value"
+                  :error="Boolean(fieldErrors.package)"
+                  :error-message="fieldErrors.package"
+                  class="package-input text-mono"
+                />
+              </div>
+              <p
+                v-if="archive.isArchive.value"
+                class="package-hint text-gray"
+              >
+                {{ t('submit.archive.packageLocked') }}
+              </p>
             </div>
 
             <div class="form-field">
@@ -635,6 +708,7 @@ onMounted(() => {
 
 .option-row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-md);
 }
 
@@ -643,8 +717,13 @@ onMounted(() => {
 }
 
 .package-input {
-  flex: 1 1 auto;
+  flex: 1 1 9rem;
   min-width: 0;
+}
+
+.package-hint {
+  margin: 0;
+  font-size: 0.75rem;
 }
 
 .interactive-toggle,

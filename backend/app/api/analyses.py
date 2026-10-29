@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import shutil
+import tempfile
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ from opensearchpy.exceptions import OpenSearchException
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analyses.archive_check import ArchiveRefusedError
 from app.analyses.deadline import MAX_RUN_S, at_the_latest, extended_deadline
 from app.analyses.guest_badges import badges_by_guest
 from app.analyses.guest_choice import GuestRefusedError, PackageNotAcceptedError, recorded_guest
@@ -75,10 +77,13 @@ from app.imports.upload import (
     import_directory,
 )
 from app.jobs.exports import remove_analysis_exports
+from app.samples.archive import ArchiveError, ArchiveListing, read_archive
 from app.samples.store import (
+    ZIP_PASSWORD,
     EmptySampleError,
     SampleStore,
     SampleTooLargeError,
+    copy_capped,
 )
 from app.schemas.analysis import AnalysisRead
 from app.schemas.analysis_requests import (
@@ -87,6 +92,7 @@ from app.schemas.analysis_requests import (
     AnalysisPage,
     ExtendRequest,
 )
+from app.schemas.archive_members import ArchiveMemberRead, ArchiveMembersRead
 from app.search.index import EventIndex
 
 logger = logging.getLogger(__name__)
@@ -106,7 +112,9 @@ def parse_options(
                 "profile lists), `interactive` (a desktop to drive; the run then lasts the whole "
                 "timeout), `memory_dump` (dump the guest's RAM and read it; needs free disk), "
                 "`keep_memory_dump` (keep the dump afterwards; only with `memory_dump`) and "
-                "`guest` (a ready guest; the default guest when omitted)."
+                "`guest` (a ready guest; the default guest when omitted), `archive_password` and "
+                "`archive_entry` (the file of the submitted zip to run; set together, the zip is "
+                "unpacked in the guest and `package` becomes `zip`)."
             )
         ),
     ] = DEFAULT_OPTIONS_JSON,
@@ -117,7 +125,9 @@ def parse_options(
         raise RequestValidationError(
             [
                 {**error, "loc": ("body", "options", *error["loc"])}
-                for error in invalid.errors(include_url=False, include_context=False)
+                for error in invalid.errors(
+                    include_url=False, include_context=False, include_input=False
+                )
             ]
         ) from None
 
@@ -137,8 +147,10 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
     `409` when the guest does not exist or is not ready, when no guest has been built or is ready,
     and while any guest is being built or tested, and for a memory dump when the CAPE storage has
     less free disk than the dump needs (the message gives both numbers); `422` for a package the
-    guest does not accept; `502` when the guest control service cannot be asked. `warnings` is
-    filled when the submission was accepted with little free disk left.
+    guest does not accept, and for an archive (`archive_password` with `archive_entry`) that is not
+    a zip, has no such member, or is not opened by the password; `502` when the guest control
+    service cannot be asked. `warnings` is filled when the submission was accepted with little free
+    disk left.
     """
     try:
         submitted = await AnalysisSubmitter(store, guests, runner, free_space).submit_with_warnings(
@@ -149,6 +161,16 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
     except PackageNotAcceptedError as refused:
         raise RequestValidationError(
             [{"loc": ("body", "options", "package"), "msg": str(refused), "type": "value_error"}]
+        ) from None
+    except ArchiveRefusedError as refused:
+        raise RequestValidationError(
+            [
+                {
+                    "loc": ("body", *refused.field.split(".")),
+                    "msg": str(refused),
+                    "type": "value_error.archive",
+                }
+            ]
         ) from None
     except EmptySampleError:
         raise _rejected_file("The uploaded file is empty", "value_error.empty") from None
@@ -187,18 +209,51 @@ async def import_memory_image(
     return await _import(importer, session, guests, file, accept_memory_image=True)
 
 
+async def archive_members(
+    file: Annotated[UploadFile, File(description="The zip to list.")],
+    store: Annotated[SampleStore, Depends(get_sample_store)],
+    password: Annotated[
+        str,
+        Form(max_length=256, description="The archive's password, `infected` by default."),
+    ] = ZIP_PASSWORD.decode(),
+) -> ArchiveMembersRead:
+    """Lists the members of a zip and checks the password, without keeping the zip or running it.
+
+    The zip is copied to a temporary file that is removed when the request ends; it is not stored
+    and no analysis is made. Only the zip's directory is read: no member is decrypted or extracted.
+    `413` over the sample size limit; `422` for an empty file, a file that is not a zip, a zip over
+    its member or size limits, or a password longer than 256 characters.
+    """
+    try:
+        listing = await _list_uploaded_archive(file, password, store.max_bytes)
+    except EmptySampleError:
+        raise _rejected_file("The uploaded file is empty", "value_error.empty") from None
+    except SampleTooLargeError as too_large:
+        raise HTTPException(413, f"The file is larger than {too_large.max_bytes} bytes") from None
+    except ArchiveError as invalid:
+        raise _rejected_file(str(invalid), "value_error.archive") from None
+    return ArchiveMembersRead(
+        members=[
+            ArchiveMemberRead.model_validate(member, from_attributes=True)
+            for member in listing.members
+        ],
+        password_ok=listing.password_ok,
+    )
+
+
 # Upload routes are registered by hand: `router.post` cannot take a route class, and these must
 # turn an oversized body away before Starlette reads it.
-for _path, _endpoint, _limit in (
-    ("", create, sample_limit),
-    ("/import", import_capture, pcap_limit),
-    ("/import/memory-image", import_memory_image, memory_image_limit),
+for _path, _endpoint, _limit, _status in (
+    ("", create, sample_limit, 201),
+    ("/import", import_capture, pcap_limit, 201),
+    ("/import/memory-image", import_memory_image, memory_image_limit, 201),
+    ("/archive-members", archive_members, sample_limit, 200),
 ):
     router.add_api_route(
         _path,
         _endpoint,
         methods=["POST"],
-        status_code=201,
+        status_code=_status,
         route_class_override=refusing_oversized_bodies(_limit),
     )
 
@@ -425,6 +480,14 @@ async def _read_one(
 
 def _rejected_file(message: str, error_type: str) -> RequestValidationError:
     return RequestValidationError([{"loc": ("body", "file"), "msg": message, "type": error_type}])
+
+
+async def _list_uploaded_archive(file: UploadFile, password: str, max_bytes: int) -> ArchiveListing:
+    with tempfile.TemporaryDirectory(prefix="archive-") as directory:
+        copy_path = Path(directory) / "upload.zip"
+        with copy_path.open("xb") as copy:
+            await copy_capped(file, copy, max_bytes)
+        return await asyncio.to_thread(read_archive, copy_path, password)
 
 
 async def _delete_cape_task(cape: CapeClient, task_id: int) -> None:

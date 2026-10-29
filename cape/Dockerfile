@@ -165,6 +165,25 @@ RUN python3 /tmp/leave-dcom-launch-alone.py /opt/CAPEv2/analyzer/windows/analyze
     && grep -q 'self.MONITORED_DCOM = True' /opt/CAPEv2/analyzer/windows/analyzer.py \
     && rm /tmp/leave-dcom-launch-alone.py
 
+# Python's zipfile cannot read AES zips, and CAPE's `zip` package then falls back to a 7z.exe the guest does
+# not have. The analyzer's bin directory is where CAPE keeps the tools it uploads (autoit3.exe, loader.exe),
+# so the standalone x86 console build goes there (the guest's Python is 32-bit; x86 runs on 64-bit Windows),
+# named 7z.exe because CAPE's lookup matches that name. The "extra" package is LZMA2, which this image's 7z
+# unpacks. 26.03 is the newest release that was a month old when this was pinned (26.04 came out 2026-10-05).
+ARG SEVEN_ZIP_VERSION=2603
+ARG SEVEN_ZIP_SHA256=191894e6acb3647ffb69ce630479ff318523b2e2b9890aa7f05c1127c2e59b8f
+COPY cape/patches/zip-bundled-7zip.py /tmp/zip-bundled-7zip.py
+RUN curl -fsSLo /tmp/7z-extra.7z "https://www.7-zip.org/a/7z${SEVEN_ZIP_VERSION}-extra.7z" \
+    && echo "${SEVEN_ZIP_SHA256}  /tmp/7z-extra.7z" | sha256sum -c - \
+    && 7z x -o/tmp/7z-extra /tmp/7z-extra.7z 7za.exe License.txt \
+    && install -m 0644 /tmp/7z-extra/7za.exe /opt/CAPEv2/analyzer/windows/bin/7z.exe \
+    && install -m 0644 /tmp/7z-extra/License.txt /opt/CAPEv2/analyzer/windows/bin/7-Zip-License.txt \
+    && rm -rf /tmp/7z-extra /tmp/7z-extra.7z \
+    && python3 /tmp/zip-bundled-7zip.py /opt/CAPEv2/analyzer/windows/modules/packages/zip.py \
+    && python3 -c "import ast; ast.parse(open('/opt/CAPEv2/analyzer/windows/modules/packages/zip.py').read())" \
+    && grep -q '"bin", "7z.exe"' /opt/CAPEv2/analyzer/windows/modules/packages/zip.py \
+    && rm /tmp/zip-bundled-7zip.py
+
 # Host-side auxiliary that exports the guest's Sysmon and Defender logs through the agent at the end of
 # a run. CAPE imports every module in this directory; auxiliary.conf enables it by file name. It reads
 # the Sysmon config from the profiles copied below.

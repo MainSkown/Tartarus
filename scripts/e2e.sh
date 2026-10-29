@@ -27,6 +27,10 @@
 # frontend/tests/e2e/desktop-flow.spec.ts): it holds the guest for the whole timeout of two
 # interactive runs, about 10 minutes. `E2E_WIZARD=0` skips the guest wizard's browser test
 # (frontend/tests/e2e/wizard-flow.spec.ts), which builds, cancels and deletes a guest named e2e-wizard.
+# Step (z) submits an AES zip built in the backend container and checks the member list, the
+# submission from a zip (the password in no answer and no log, only the chosen entry running, the
+# refusals leaving nothing behind: scripts/lib/e2e-zip.sh). `E2E_ONLY=zip` runs the preconditions
+# and step (z) alone, about 3 minutes.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -46,6 +50,7 @@ SKIP_UI=${E2E_SKIP_UI:-0}
 DESKTOP=${E2E_DESKTOP:-0}
 WIZARD=${E2E_WIZARD:-1}
 WIZARD_SECONDS=${E2E_WIZARD_SECONDS:-300}
+ONLY=${E2E_ONLY:-}
 
 source "$REPO/scripts/lib/benign-sample.sh"
 source "$REPO/scripts/lib/e2e-api.sh"
@@ -56,6 +61,7 @@ source "$REPO/scripts/lib/e2e-annotations.sh"
 source "$REPO/scripts/lib/e2e-exports.sh"
 source "$REPO/scripts/lib/e2e-live.sh"
 source "$REPO/scripts/lib/e2e-finish.sh"
+source "$REPO/scripts/lib/e2e-zip.sh"
 
 WORK_DIR=$(mktemp -d)
 CREATED_IDS=()
@@ -535,6 +541,11 @@ main() {
     echo "== preconditions"
     check_preconditions || exit 1
     build_sample || { fail "could not build benign.exe with mingw-w64"; exit 1; }
+    if [[ $ONLY == zip ]]; then
+        echo "== (z) submission from a password-protected zip"
+        check_zip_submission
+        return
+    fi
     echo "== (a) a submitted sample runs to done"
     step_a_sample_runs_to_done
     echo "== (h) the live feed of step (a)"
@@ -563,6 +574,8 @@ main() {
         echo "== (w) the guest wizard"
         step_w_guest_wizard
     fi
+    echo "== (z) submission from a password-protected zip"
+    check_zip_submission
     echo "== (j) ending a run early"
     finishing_a_run_ends_it
     if [[ $DESKTOP == 1 ]]; then

@@ -54,11 +54,18 @@ class GatedIngester(FakeIngester):
         self.release = asyncio.Event()
 
     async def ingest(
-        self, analysis_id: int, report_path: object, *, started_at: datetime | None = None
+        self,
+        analysis_id: int,
+        report_path: object,
+        *,
+        started_at: datetime | None = None,
+        archive_entry: str | None = None,
     ) -> IngestResult:
         self.began.set()
         await self.release.wait()
-        return await super().ingest(analysis_id, report_path, started_at=started_at)  # type: ignore[arg-type]
+        return await super().ingest(  # type: ignore[arg-type]
+            analysis_id, report_path, started_at=started_at, archive_entry=archive_entry
+        )
 
 
 class AnnouncingGuestControl(ScriptedGuestControl):

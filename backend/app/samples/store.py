@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 import tempfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -86,6 +86,36 @@ class Digests:
         )
 
 
+async def copy_capped(
+    stream: ByteSource,
+    destination: BinaryIO,
+    max_bytes: int,
+    observe: Callable[[bytes], None] | None = None,
+) -> int:
+    """Copies an upload to `destination` one chunk at a time and returns the byte count.
+
+    `observe` sees each chunk in the worker thread that writes it, so a hash costs no second pass.
+    Raises `SampleTooLargeError` past `max_bytes` and `EmptySampleError` when nothing arrives.
+    """
+    copied = 0
+    while chunk := await stream.read(CHUNK_SIZE):
+        if copied + len(chunk) > max_bytes:
+            raise SampleTooLargeError(max_bytes)
+        await asyncio.to_thread(_write_chunk, chunk, destination, observe)
+        copied += len(chunk)
+    if copied == 0:
+        raise EmptySampleError
+    return copied
+
+
+def _write_chunk(
+    chunk: bytes, destination: BinaryIO, observe: Callable[[bytes], None] | None
+) -> None:
+    if observe is not None:
+        observe(chunk)
+    destination.write(chunk)
+
+
 class SampleStore:
     """Keeps samples as AES-encrypted zips (password `infected`) named after their SHA256."""
 
@@ -132,18 +162,8 @@ class SampleStore:
     async def _receive(self, stream: ByteSource, destination: Path) -> Digests:
         digests = Digests()
         with destination.open("xb") as plain:
-            while chunk := await stream.read(CHUNK_SIZE):
-                if digests.size + len(chunk) > self.max_bytes:
-                    raise SampleTooLargeError(self.max_bytes)
-                await asyncio.to_thread(self._absorb, chunk, digests, plain)
-        if digests.size == 0:
-            raise EmptySampleError
+            await copy_capped(stream, plain, self.max_bytes, digests.update)
         return digests
-
-    @staticmethod
-    def _absorb(chunk: bytes, digests: Digests, plain: BinaryIO) -> None:
-        digests.update(chunk)
-        plain.write(chunk)
 
     def _zip_path(self, sha256: str) -> Path:
         if not _SHA256.fullmatch(sha256):

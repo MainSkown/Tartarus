@@ -4,7 +4,8 @@ import { Notify, Quasar, QBtn, QInput, QSelect, QToggle } from 'quasar'
 import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AnalysisCreated, ErrorEnvelope, Guest, GuestProfile, SystemHealth } from '@/api'
+import type { AnalysisCreated, ArchiveMemberRead, ErrorEnvelope, Guest, GuestProfile, SystemHealth } from '@/api'
+import { failed, succeeded } from './annotation-fixtures'
 import { isQuietFailure } from '@/services/quiet-statuses'
 import { BUILT_ROUTES } from '@/services/routes'
 
@@ -20,6 +21,7 @@ const CREATED = { id: 7, filename: 'invoice.exe', status: 'queued', warnings: []
 vi.mock('@/api', () => ({
   systemQueue: () => Promise.resolve({ data: undefined }),
   analysesCreate: vi.fn(),
+  analysesArchiveMembers: vi.fn(),
   analysesList: vi.fn(),
   settingsRead: vi.fn(),
   guestsList: vi.fn(),
@@ -37,7 +39,7 @@ vi.mock('@/services/ws', () => ({
   }),
 }))
 
-const { analysesCreate, guestsList, guestsProfiles, settingsRead } = await import('@/api')
+const { analysesArchiveMembers, analysesCreate, guestsList, guestsProfiles, settingsRead } = await import('@/api')
 const SubmitDialog = (await import('@/components/SubmitDialog.vue')).default
 const { useSystemStore } = await import('@/stores/system')
 
@@ -775,6 +777,295 @@ describe('SubmitDialog', () => {
         await submit(wrapper)
         expect(sentOptions()).toEqual({ route: 'inetsim', timeout: 180, interactive: false, memory_dump: false })
       })
+    })
+  })
+
+  describe('a zip', () => {
+    const ZIP = new File(['PK-bytes'], 'bundle.zip')
+    const PASSWORD_PAUSE_MS = 400
+
+    function member(name: string, overrides: Partial<ArchiveMemberRead> = {}): ArchiveMemberRead {
+      return { name, size: 4096, encrypted: true, unsafe: false, unsupported: false, ...overrides }
+    }
+
+    function listing(members: ArchiveMemberRead[], passwordOk: boolean | null = true) {
+      vi.mocked(analysesArchiveMembers).mockResolvedValue(
+        succeeded({ members, password_ok: passwordOk }) as unknown as Awaited<ReturnType<typeof analysesArchiveMembers>>,
+      )
+    }
+
+    function packageSelect(wrapper: VueWrapper) {
+      return selectLabelled(wrapper, 'PACKAGE')
+    }
+
+    function pick(wrapper: VueWrapper, name: string) {
+      return wrapper.find(`input[name="archive-entry"][value="${name}"]`).setValue(true)
+    }
+
+    it('shows the archive fields, with the password prefilled infected', async () => {
+      listing([member('a.exe'), member('b.exe')])
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper, ZIP)
+
+      expect(wrapper.find('.archive-fields').exists()).toBe(true)
+      expect(textInput(wrapper, 'ARCHIVE PASSWORD').find('input').element.value).toBe('infected')
+      expect(wrapper.findAll('.member-name').map((row) => row.text())).toEqual(['a.exe', 'b.exe'])
+    })
+
+    it('asks the backend for the members with the file and the password', async () => {
+      listing([member('a.exe')])
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper, ZIP)
+
+      const [{ body }] = vi.mocked(analysesArchiveMembers).mock.calls[0]!
+      expect(body).toEqual({ file: ZIP, password: 'infected' })
+    })
+
+    it('recognises a zip by its first bytes when the name does not say so', async () => {
+      listing([member('a.exe')])
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper, new File([new Uint8Array([0x50, 0x4b, 3, 4])], 'invoice.bin'))
+
+      expect(wrapper.find('.archive-fields').exists()).toBe(true)
+    })
+
+    it('locks the package picker to zip and says why', async () => {
+      listing([member('a.exe')])
+      const { wrapper } = await mountDialog()
+      selectLabelled(wrapper, 'PACKAGE').vm.$emit('update:modelValue', 'doc')
+      await flushPromises()
+
+      await chooseFile(wrapper, ZIP)
+
+      expect(packageSelect(wrapper).props('modelValue')).toBe('zip')
+      expect(packageSelect(wrapper).props('disable')).toBe(true)
+      expect(wrapper.find('.package-hint').text()).toContain('unpacked in the guest')
+    })
+
+    describe('the submit button', () => {
+      it('waits while the member list loads', async () => {
+        vi.mocked(analysesArchiveMembers).mockReturnValue(new Promise(() => undefined) as ReturnType<typeof analysesArchiveMembers>)
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
+        expect(wrapper.find('.submit-reason').text()).toBe('Reading the archive…')
+      })
+
+      it('stays disabled until an entry is chosen from several', async () => {
+        listing([member('a.exe'), member('b.exe')])
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
+        expect(wrapper.find('.submit-reason').text()).toBe('Choose the file to run from the archive')
+
+        await pick(wrapper, 'b.exe')
+
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
+        expect(wrapper.find('.submit-reason').exists()).toBe(false)
+      })
+
+      it('is enabled at once when the archive holds one file', async () => {
+        listing([member('only.exe')])
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        expect(wrapper.find<HTMLInputElement>('input[name="archive-entry"]').element.checked).toBe(true)
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
+      })
+
+      it('is disabled while the password does not open the archive', async () => {
+        listing([member('only.exe')], false)
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
+        expect(wrapper.find('.submit-reason').text()).toBe('Enter the password that opens the archive')
+        expect(textInput(wrapper, 'ARCHIVE PASSWORD').props('errorMessage')).toBe('The password does not open the archive')
+      })
+
+      it('is disabled when the list cannot be read, and the reason sits under the drop zone', async () => {
+        vi.mocked(analysesArchiveMembers).mockResolvedValue(
+          failed('The file is not a zip archive', 422) as unknown as Awaited<ReturnType<typeof analysesArchiveMembers>>,
+        )
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        expect(wrapper.find('.archive-error').text()).toBe('The file is not a zip archive')
+        expect(wrapper.find('.archive-fields').exists()).toBe(false)
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
+        expect(wrapper.find('.submit-reason').text()).toBe('The archive could not be read')
+        await submit(wrapper)
+        expect(analysesCreate).not.toHaveBeenCalled()
+      })
+
+      it('waits for the answer to a new password before it lets the analyst submit', async () => {
+        listing([member('only.exe')])
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        await textInput(wrapper, 'ARCHIVE PASSWORD').find('input').setValue('hunter2')
+
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
+        await vi.waitFor(() => expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined(), {
+          timeout: PASSWORD_PAUSE_MS * 5,
+        })
+      })
+    })
+
+    describe('submitting', () => {
+      it('sends the password, the chosen entry and the zip package', async () => {
+        listing([member('a.exe'), member('b.exe')])
+        vi.mocked(analysesCreate).mockResolvedValue(created())
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+        await pick(wrapper, 'b.exe')
+
+        await submit(wrapper)
+
+        expect(vi.mocked(analysesCreate).mock.calls[0]![0].body.file).toBe(ZIP)
+        expect(sentOptions()).toEqual({
+          route: 'inetsim',
+          timeout: 180,
+          interactive: false,
+          memory_dump: false,
+          guest: 'win',
+          package: 'zip',
+          archive_password: 'infected',
+          archive_entry: 'b.exe',
+        })
+      })
+
+      it('sends the password the analyst typed', async () => {
+        listing([member('only.exe')])
+        vi.mocked(analysesCreate).mockResolvedValue(created())
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+        await textInput(wrapper, 'ARCHIVE PASSWORD').find('input').setValue('hunter2')
+        await vi.waitFor(() => expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined())
+
+        await submit(wrapper)
+
+        expect(sentOptions().archive_password).toBe('hunter2')
+      })
+
+      it('sends infected when the field is empty and nothing in the zip is encrypted', async () => {
+        listing([member('plain.exe', { encrypted: false })], null)
+        vi.mocked(analysesCreate).mockResolvedValue(created())
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+        await textInput(wrapper, 'ARCHIVE PASSWORD (OPTIONAL)').find('input').setValue('')
+        await vi.waitFor(() => expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined())
+
+        await submit(wrapper)
+
+        expect(sentOptions().archive_password).toBe('infected')
+      })
+
+      it('shows a refusal of the password under the password field', async () => {
+        listing([member('only.exe')])
+        vi.mocked(analysesCreate).mockResolvedValue(
+          failedValidation([{ location: ['body', 'options', 'archive_password'], message: 'does not open the archive' }]),
+        )
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        await submit(wrapper)
+
+        expect(textInput(wrapper, 'ARCHIVE PASSWORD').props('errorMessage')).toBe('does not open the archive')
+        expect(wrapper.find('.error-banner').exists()).toBe(false)
+      })
+
+      it('shows a refusal of the entry under the list', async () => {
+        listing([member('only.exe')])
+        vi.mocked(analysesCreate).mockResolvedValue(
+          failedValidation([{ location: ['body', 'options', 'archive_entry'], message: 'is not a member of the archive' }]),
+        )
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        await submit(wrapper)
+
+        expect(wrapper.find('.archive-entry-error').text()).toBe('is not a member of the archive')
+        expect(wrapper.find('.error-banner').exists()).toBe(false)
+      })
+    })
+
+    describe('when a file that is not a zip replaces it', () => {
+      it('takes the archive fields away, unlocks the package and sends nothing about an archive', async () => {
+        listing([member('a.exe'), member('b.exe')])
+        vi.mocked(analysesCreate).mockResolvedValue(created())
+        const { wrapper } = await mountDialog()
+        selectLabelled(wrapper, 'PACKAGE').vm.$emit('update:modelValue', 'doc')
+        await chooseFile(wrapper, ZIP)
+        await pick(wrapper, 'b.exe')
+
+        await chooseFile(wrapper)
+
+        expect(wrapper.find('.archive-fields').exists()).toBe(false)
+        expect(wrapper.find('.package-hint').exists()).toBe(false)
+        expect(packageSelect(wrapper).props('disable')).toBe(false)
+        expect(packageSelect(wrapper).props('modelValue')).toBe('doc')
+        expect(wrapper.find('.archive-error').exists()).toBe(false)
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
+
+        await submit(wrapper)
+
+        expect(sentOptions()).toEqual({
+          route: 'inetsim',
+          timeout: 180,
+          interactive: false,
+          memory_dump: false,
+          guest: 'win',
+          package: 'doc',
+        })
+      })
+
+      it('clears the error of an unreadable zip', async () => {
+        vi.mocked(analysesArchiveMembers).mockResolvedValue(
+          failed('The file is not a zip archive', 422) as unknown as Awaited<ReturnType<typeof analysesArchiveMembers>>,
+        )
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+
+        await chooseFile(wrapper)
+
+        expect(wrapper.find('.archive-error').exists()).toBe(false)
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
+      })
+
+      it('forgets the entry chosen in the earlier zip', async () => {
+        listing([member('a.exe'), member('b.exe')])
+        const { wrapper } = await mountDialog()
+        await chooseFile(wrapper, ZIP)
+        await pick(wrapper, 'b.exe')
+
+        await chooseFile(wrapper, new File(['PK'], 'second.zip'))
+
+        expect(wrapper.findAll<HTMLInputElement>('input[name="archive-entry"]').some((radio) => radio.element.checked)).toBe(false)
+        expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
+      })
+    })
+  })
+
+  describe('a file that is not a zip', () => {
+    it('shows no archive fields, never asks for members, and leaves the package picker open', async () => {
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      expect(wrapper.find('.archive-fields').exists()).toBe(false)
+      expect(analysesArchiveMembers).not.toHaveBeenCalled()
+      expect(selectLabelled(wrapper, 'PACKAGE').props('disable')).toBe(false)
+      expect(wrapper.find('.package-hint').exists()).toBe(false)
+    })
+
+    it('shows no archive fields for a dropped file either', async () => {
+      const { wrapper } = await mountDialog()
+      await wrapper.find('.drop-zone').trigger('drop', { dataTransfer: { files: [SAMPLE] } })
+      await flushPromises()
+
+      expect(wrapper.find('.archive-fields').exists()).toBe(false)
     })
   })
 })
