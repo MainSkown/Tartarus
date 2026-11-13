@@ -22,6 +22,12 @@
 # Then the tricks a hostile guest has: sending from an address it invented (the rooter's rules are keyed
 # on the registered one), from the other guest's address, and to the other guest through the gateway
 # (a neighbour entry for the gateway's MAC on both guests, so that routing, not the bridge, carries it).
+#
+# Last, the GUEST_BLOCKED_ADDRESSES setting: the guest firewall is applied again with one internet address
+# added to the setting, and a guest on the `internet` route must lose that address and keep its neighbour.
+# Applying the firewall binds no port, so both guests are powered off for it and one is started again; that
+# is why this part runs only when the script started both guests itself, and only where the internet
+# answers. The firewall is applied as configured again afterwards, also when the script is interrupted.
 # Exit 0 when all hold, 1 otherwise, 2 on bad usage.
 #
 # The negative proof, that the check can fail: while the guests run,
@@ -45,6 +51,8 @@ CANARY_TEXT=tartarus-canary
 ROUTES=(raw none inetsim internet)
 INVENTED_HOST=250
 INTERNET_ADDRESS=1.1.1.1
+INTERNET_CONTROL_ADDRESS=1.0.0.1
+APPLY_FIREWALL=(python3 -I /usr/local/lib/tartarus/guest-firewall init)
 GUEST_NETMASK=255.255.255.0
 
 failed=0
@@ -71,6 +79,7 @@ ADDED_ADDRESSES=()
 ADDED_NEIGHBORS=()
 CANARY_PID=""
 CANARY_DIR=""
+TEST_ADDRESS_BLOCKED=""
 
 cleanup() {
     local entry
@@ -80,6 +89,7 @@ cleanup() {
     [[ -z $CANARY_PID ]] || kill "$CANARY_PID" 2>/dev/null
     [[ -z $CANARY_DIR ]] || rm -rf "$CANARY_DIR"
     for entry in "${STARTED[@]}"; do virsh_cape destroy "$entry" >/dev/null 2>&1; done
+    [[ -z $TEST_ADDRESS_BLOCKED ]] || apply_firewall_as_configured
 }
 
 # --- what the stack looks like ----------------------------------------------------------------------
@@ -131,8 +141,8 @@ payload_for() {
 
 # name;target;port;payload kind;marker (extended regex);scenarios in which the target is reachable
 # A scenario is a route (raw none inetsim internet), `invented` (a guest sending from an address of its own
-# invention) or `claimed` (a guest that took the other guest's address, which is then its own: it reaches
-# itself). The gateway services are the only thing a guest reaches whatever it does: they run on the
+# invention), `claimed` (a guest that took the other guest's address, which is then its own: it reaches
+# itself) or `blocked` (the internet route with $INTERNET_ADDRESS in GUEST_BLOCKED_ADDRESSES). The gateway services are the only thing a guest reaches whatever it does: they run on the
 # address it is given, and INetSim's DNS and HTTP are what the inetsim route is for.
 catalogue() { # other-guest-address
     cat <<EOF
@@ -148,6 +158,7 @@ opensearch;$OPENSEARCH_IP;9200;get;cluster_name;
 docker-host;$DOCKER_HOST_IP;$CANARY_PORT;get;$CANARY_TEXT;
 lan-host;$LAN_IP;$CANARY_PORT;get;$CANARY_TEXT;
 internet;$INTERNET_ADDRESS;80;get;HTTP/1\.[01] (301|400|403);internet
+internet-control;$INTERNET_CONTROL_ADDRESS;80;get;HTTP/1\.[01] (301|400|403);internet blocked
 other-guest-agent;$1;8000;get;CAPE Agent;claimed
 other-guest-ping;$1;icmp;;;claimed
 EOF
@@ -395,6 +406,48 @@ verify_hairpins() { # a a-ip b b-ip
     done
 }
 
+# --- GUEST_BLOCKED_ADDRESSES ------------------------------------------------------------------------------
+
+apply_firewall_as_configured() { in_cape "${APPLY_FIREWALL[@]}"; }
+
+apply_firewall_blocking() { # address
+    local configured
+    configured=$(in_cape printenv GUEST_BLOCKED_ADDRESSES)
+    compose exec -T -e "GUEST_BLOCKED_ADDRESSES=${configured:+$configured,}$1" cape "${APPLY_FIREWALL[@]}" </dev/null
+}
+
+probe_blocked_address() { # label ip other-ip
+    local label=$1 ip=$2 other_ip=$3 output
+    check "$label starts again and its agent answers at $ip:8000" start_guest "$label" "$ip" || return 1
+    check "the probe is stored on $label again" store_probe_on "$ip" || return 1
+    open_route "$ip" internet
+    output=$(probe_from "$ip" "$other_ip" "" internet internet-control)
+    check "$label on route internet with $INTERNET_ADDRESS in GUEST_BLOCKED_ADDRESSES: every probe answers as expected" \
+        verdict "$output" blocked "$other_ip" internet internet-control
+    close_route "$ip" internet
+}
+
+verify_blocked_setting() { # a a-ip b b-ip
+    local a=$1 a_ip=$2 b=$3 b_ip=$4
+    if is_skipped internet || is_skipped internet-control; then
+        info "GUEST_BLOCKED_ADDRESSES is not probed: the internet does not answer here"
+        return
+    fi
+    if [[ " ${STARTED[*]} " != *" $a "* || " ${STARTED[*]} " != *" $b "* ]]; then
+        info "GUEST_BLOCKED_ADDRESSES is not probed: a guest was running before, and applying the firewall again would cut it off"
+        return
+    fi
+    virsh_cape destroy "$a" >/dev/null 2>&1
+    virsh_cape destroy "$b" >/dev/null 2>&1
+    # Set here, not inside the check: `check` runs its command in a subshell.
+    TEST_ADDRESS_BLOCKED=yes
+    if check "the guest firewall is applied with $INTERNET_ADDRESS in GUEST_BLOCKED_ADDRESSES" apply_firewall_blocking "$INTERNET_ADDRESS"; then
+        probe_blocked_address "$a" "$a_ip" "$b_ip"
+        virsh_cape destroy "$a" >/dev/null 2>&1
+    fi
+    check "the guest firewall is applied as configured again" apply_firewall_as_configured && TEST_ADDRESS_BLOCKED=""
+}
+
 main() {
     local a=$1 b=$2 a_ip b_ip route
     trap cleanup EXIT
@@ -425,6 +478,7 @@ main() {
     verify_claimed_address "$a" "$a_ip" "$b" "$b_ip"
     verify_claimed_address "$b" "$b_ip" "$a" "$a_ip"
     verify_hairpins "$a" "$a_ip" "$b" "$b_ip"
+    verify_blocked_setting "$a" "$a_ip" "$b" "$b_ip"
 }
 
 [[ $# -eq 2 && $1 != "$2" ]] || { echo "usage: verify-isolation.sh GUEST_A GUEST_B   (two different ready guests)" >&2; exit 2; }

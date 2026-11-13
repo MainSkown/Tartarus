@@ -75,7 +75,7 @@ verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; nee
 verify-cape-hardening: ## Prove the cape container's privilege and secret hardening (cape cannot open the host's disks or run anything as root, per-program secrets, API-only web, root-run code not writable by cape, libvirt refuses cape what it does not need: defining or editing domains, pools, networks; starts no guest)
 	scripts/verify-cape-hardening.sh
 
-verify-isolation: ## Prove a guest reaches only what its route allows (not the compose networks, the LAN, guacd, the control service, the other guest, even from an address it invented or through the gateway) on every route: make verify-isolation GUESTS="lab1 lab5" (needs the stack up and two ready guests; starts them by snapshot revert)
+verify-isolation: ## Prove a guest reaches only what its route allows (not the compose networks, the LAN, guacd, the control service, the other guest, even from an address it invented or through the gateway) on every route, and that an address in GUEST_BLOCKED_ADDRESSES is refused: make verify-isolation GUESTS="lab1 lab5" (needs the stack up and two ready guests; starts them by snapshot revert)
 	scripts/verify-isolation.sh $${GUESTS:?GUESTS="labelA labelB"}
 
 verify-wizard: ## Prove the guest wizard's path through the public API: clone a ready guest, check the gates, run an analysis on it, delete it (about 6 minutes; needs the stack up and a ready guest)

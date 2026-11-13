@@ -38,6 +38,7 @@ scenario_of() { # from-ip spec-file
     if [[ -n $source ]]; then
         [[ $source == "$A_IP" || $source == "$B_IP" ]] && echo impersonating || echo alternate
     elif [[ -e $f/neighbor-$from ]]; then echo hairpin
+    elif [[ $(cat "$f/route-$from" 2>/dev/null) == internet && ,$(cat "$f/blocked" 2>/dev/null), == *,1.1.1.1,* ]]; then echo blocked
     else cat "$f/route-$from" 2>/dev/null || echo raw
     fi
 }
@@ -48,7 +49,7 @@ answer_probe() { # from-ip
     scenario=$(scenario_of "$from" "$spec")
     while IFS=$'\t' read -r name _; do
         [[ -n $name ]] || continue
-        if grep -qw -- "$name" "$f/allow-$scenario" 2>/dev/null; then text+="REACH $name yes\\r\\n"; else text+="REACH $name no\\r\\n"; fi
+        if tr ' ' '\n' <"$f/allow-$scenario" 2>/dev/null | grep -qx -- "$name"; then text+="REACH $name yes\\r\\n"; else text+="REACH $name no\\r\\n"; fi
     done <"$spec"
     guest_json "${text}DONE\\r\\n"
 }
@@ -56,6 +57,12 @@ answer_probe() { # from-ip
 case "$args" in
     *"printenv CAPE_API_TOKEN"*) echo test-token ;;
     *"printenv GUEST_SUBNET"*) ;;
+    *"printenv GUEST_BLOCKED_ADDRESSES"*) cat "$f/configured-blocked" 2>/dev/null ;;
+    *"guest-firewall init"*)
+        [[ -e $f/firewall-refuses ]] && exit 1
+        if [[ $args == *"-e GUEST_BLOCKED_ADDRESSES="* ]]; then
+            setting=${args#*-e GUEST_BLOCKED_ADDRESSES=}; echo "${setting%% *}" >"$f/blocked"
+        else rm -f "$f/blocked"; fi ;;
     *"machines/list"*) cat "$f/machines" ;;
     *"cat /sys/class/net/tt-guest/address"*) echo 52:54:00:5a:01:53 ;;
     *"getent ahostsv4 cape-internal"*) echo "172.19.0.2 STREAM cape-internal" ;;
@@ -105,7 +112,8 @@ healthy_fixtures() {
     fixture allow-raw "$GATEWAY_ONLY"
     fixture allow-none "gateway-resultserver"
     fixture allow-inetsim "$GATEWAY_ONLY"
-    fixture allow-internet "$GATEWAY_ONLY internet"
+    fixture allow-internet "$GATEWAY_ONLY internet internet-control"
+    fixture allow-blocked "$GATEWAY_ONLY internet-control"
     fixture allow-alternate "$GATEWAY_ONLY"
     fixture allow-impersonating "other-guest-agent other-guest-ping"
     fixture allow-hairpin ""
@@ -292,9 +300,89 @@ test_a_target_outside_the_container_is_tried_from_beside_it_because_its_own_prog
 
 test_without_the_internet_the_internet_route_is_not_asked_to_reach_it() {
     : >"$STUB_DIR/f/no-control-1.1.1.1"
+    : >"$STUB_DIR/f/no-control-1.0.0.1"
     fixture allow-internet "$GATEWAY_ONLY"
     run_verify lab1 lab5
     expect_status 0 && expect_line "[INFO] internet does not answer outside a guest either"
+}
+
+# --- GUEST_BLOCKED_ADDRESSES ------------------------------------------------------------------------
+
+BLOCKING_INIT='exec -T -e GUEST_BLOCKED_ADDRESSES=[^ ]* cape python3 -I /usr/local/lib/tartarus/guest-firewall init'
+PLAIN_INIT='exec -T cape python3 -I /usr/local/lib/tartarus/guest-firewall init'
+
+test_an_address_in_the_blocked_setting_is_refused_on_the_internet_route_and_its_neighbour_is_not() {
+    run_verify lab1 lab5
+    expect_status 0 && expect_no_failure &&
+        expect_line "[ OK ] lab1 on route internet with 1.1.1.1 in GUEST_BLOCKED_ADDRESSES: every probe answers as expected (2 probes)"
+}
+
+test_fails_when_a_guest_still_reaches_the_blocked_address() {
+    fixture allow-blocked "$GATEWAY_ONLY internet internet-control"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "in GUEST_BLOCKED_ADDRESSES: every probe answers as expected (internet -> yes, expected no"
+}
+
+test_fails_when_the_block_takes_more_than_the_address_it_names() {
+    fixture allow-blocked "$GATEWAY_ONLY"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "internet-control -> no, expected yes"
+}
+
+test_the_test_address_is_added_to_what_the_setting_already_blocks() {
+    fixture configured-blocked "203.0.113.7,198.51.100.0/24"
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    grep -q -- '-e GUEST_BLOCKED_ADDRESSES=203.0.113.7,198.51.100.0/24,1.1.1.1 cape' "$STUB_DIR/calls" ||
+        { echo "  the configured addresses were not kept"; grep init "$STUB_DIR/calls"; return 1; }
+}
+
+test_the_guests_are_down_while_the_firewall_is_applied_because_that_binds_no_port() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    local blocking first_destroy
+    blocking=$(grep -n -- "$BLOCKING_INIT" "$STUB_DIR/calls" | head -n1 | cut -d: -f1)
+    first_destroy=$(grep -n -- "destroy lab5" "$STUB_DIR/calls" | head -n1 | cut -d: -f1)
+    [[ -n $blocking && -n $first_destroy && $first_destroy -lt $blocking ]] ||
+        { echo "  lab5 was not powered off before the firewall was applied"; return 1; }
+    sed -n "$blocking,\$p" "$STUB_DIR/calls" | grep -q "snapshot-revert lab1 tartarus-clean" ||
+        { echo "  lab1 was not started again after the firewall was applied"; return 1; }
+}
+
+test_the_firewall_is_applied_again_as_configured_when_the_probe_is_done() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    [[ $(calls_matching "$BLOCKING_INIT") -eq 1 && $(calls_matching "$PLAIN_INIT") -ge 1 && ! -e $STUB_DIR/f/blocked ]] ||
+        { echo "  the test address was left blocked"; grep init "$STUB_DIR/calls"; return 1; }
+}
+
+test_the_firewall_is_applied_again_as_configured_when_the_blocked_probe_fails() {
+    fixture allow-blocked "$GATEWAY_ONLY internet internet-control"
+    run_verify lab1 lab5
+    expect_status 1 || return 1
+    [[ ! -e $STUB_DIR/f/blocked ]] || { echo "  the test address was left blocked"; return 1; }
+}
+
+test_fails_when_the_firewall_refuses_the_setting() {
+    : >"$STUB_DIR/f/firewall-refuses"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] the guest firewall is applied with 1.1.1.1 in GUEST_BLOCKED_ADDRESSES"
+}
+
+test_without_the_internet_no_address_is_blocked() {
+    : >"$STUB_DIR/f/no-control-1.1.1.1"
+    : >"$STUB_DIR/f/no-control-1.0.0.1"
+    fixture allow-internet "$GATEWAY_ONLY"
+    run_verify lab1 lab5
+    expect_status 0 && expect_line "[INFO] GUEST_BLOCKED_ADDRESSES is not probed: the internet does not answer here" &&
+        [[ $(calls_matching "guest-firewall init") -eq 0 ]]
+}
+
+test_a_guest_that_was_running_before_is_not_cut_off_to_probe_the_blocked_setting() {
+    : >"$STUB_DIR/f/running-lab5"
+    run_verify lab1 lab5
+    expect_status 0 && expect_line "[INFO] GUEST_BLOCKED_ADDRESSES is not probed: a guest was running before" &&
+        [[ $(calls_matching "guest-firewall init") -eq 0 ]]
 }
 
 # --- setup, teardown ------------------------------------------------------------------------------
