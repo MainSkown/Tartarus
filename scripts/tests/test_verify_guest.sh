@@ -39,10 +39,8 @@ case "$args" in
     *"logs/*.bson"*) [[ $(cat "$STUB_DIR/polls" 2>/dev/null) -ge ${BSON_FROM_POLL:-2} ]] && [[ ! -e $f/no-bson ]] ;;
     *"reports/report.json"*" | head -n1"*) show report-domain ;;
     *"test -f"*"report.json"*) [[ ! -e $f/no-report ]] ;;
-    *"logs tt-callback"*) show callback-log ;;
     *"8000/execute"*) show agent-execute ;;
     *"8000/retrieve"*) show agent-provision-log ;;
-    *"run -d --name tt-callback"* | *"rm -f tt-callback"*) ;;
     *"exec -T cape"* | *"compose"*) ;;
     *) echo "unstubbed docker call: $args" >&2; exit 99 ;;
 esac
@@ -59,7 +57,6 @@ healthy_fixtures() {
     fixture submit '{"error": false, "data": {"task_ids": [7]}}'
     printf 'pending\nrunning\nrunning\nrunning\ncompleted\nreported\n' >"$STUB_DIR/f/status-sequence"
     fixture report-domain 'tartarus-selftest.example'
-    fixture callback-log 'CALLBACK {"task_id": 7}'
     fixture agent-execute '{"message": "ok", "stdout": "FACT system.manufacturer=Dell Inc.\r\nFACT cpu.hypervisor_present=False\r\n"}'
     fixture agent-provision-log $'2026-10-13 03:50:00  STEP disable Windows Update\r\n2026-10-13 03:50:01    ok'
     mkdir -p "$STUB_DIR/tmp/tt-guest-verify"
@@ -160,35 +157,15 @@ test_check10_fails_without_a_report() {
     expect_fail_mentioning "10 final"
 }
 
-test_check10_fails_when_the_callback_never_arrives() {
-    fixture callback-log ''
-    run_verify
-    expect_fail_mentioning "10 callback"
-}
-
 test_check10_submits_without_free_mode() {
     run_verify
     ! grep -q 'free=' "$STUB_DIR/calls" || { echo "  submission disables capemon with free="; return 1; }
 }
 
-test_removes_only_its_own_override_and_never_the_permanent_reporting_config() {
+test_never_writes_a_cape_config_file() {
     run_verify
     expect_pass || return 1
-    local removals call
-    removals=$(grep -E 'exec -T cape rm ' "$STUB_DIR/calls")
-    [[ -n $removals ]] || { echo "  expected the temporary callback.conf to be removed"; return 1; }
-    while read -r call; do
-        [[ $call == *"rm -f /opt/CAPEv2/custom/conf/reporting.conf.d/callback.conf" ]] ||
-            { echo "  removes something other than the temporary override: $call"; return 1; }
-    done <<<"$removals"
-    ! grep -qE '> */opt/CAPEv2/custom/conf/reporting\.conf( |$)' "$STUB_DIR/calls" ||
-        { echo "  writes over the permanent reporting.conf"; return 1; }
-}
-
-test_writes_its_override_into_the_directory_that_layers_over_reporting_conf() {
-    run_verify
-    grep -q '> /opt/CAPEv2/custom/conf/reporting.conf.d/callback.conf' "$STUB_DIR/calls" ||
-        { echo "  override is not written to reporting.conf.d/callback.conf"; return 1; }
+    ! grep -qE '> */opt/CAPEv2/custom/conf/' "$STUB_DIR/calls" || { echo "  writes into CAPE's configuration"; return 1; }
 }
 
 test_does_not_need_the_cape_compose_profile() {

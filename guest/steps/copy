@@ -2,7 +2,10 @@
 # Copies the source guest's disk and firmware for a clone. The source's base disk is found through
 # the backing chain of its current disk (a revert leaves a new overlay on top of the base, and the
 # snapshot's memory image can only be restored on the hardware it was taken on), converted into the
-# clone's own sparse qcow2, and the nvram is copied beside it. Nothing of the source is written.
+# clone's own sparse qcow2. The firmware is the source's pristine copy from its clean snapshot, so
+# variables a sample wrote on the source never reach the clone; a source snapshotted before that
+# copy existed is reverted once to its clean snapshot to make it. The source's base disk and
+# snapshot are never written.
 # Idempotent: an earlier copy is replaced, and an interrupted one is never left looking complete.
 set -uo pipefail
 # shellcheck source=lib/common.sh
@@ -79,21 +82,46 @@ copy_disk() {
     disk_made=yes
 }
 
-# cp keeps the source file's mode, which is the one libvirt expects of the firmware file.
+# A source whose snapshot predates the pristine copies has only its live firmware file, which a sample
+# may have written to. QEMU writes the snapshot's firmware back to that file the moment a reverted
+# guest resumes (a paused revert does not), so right after a revert the file is the clean one.
+keep_pristine_firmware_of_source() {
+    local pristine=$1 reverted_at
+    log "$SOURCE_NAME has no pristine firmware copy; reverting it to $SNAPSHOT_NAME to restore its firmware"
+    reverted_at=$(date +%s)
+    vsh snapshot-revert "$SOURCE_NAME" "$SNAPSHOT_NAME" >/dev/null || fail "could not revert $SOURCE_NAME to $SNAPSHOT_NAME to restore its firmware"
+    vsh destroy "$SOURCE_NAME" >/dev/null 2>&1
+    [[ -e $SOURCE_NVRAM ]] && (($(stat -c %Y "$SOURCE_NVRAM") >= reverted_at)) ||
+        fail "the firmware file $SOURCE_NVRAM was not rewritten by the revert of $SOURCE_NAME"
+    copy_firmware_file "$SOURCE_NVRAM" "$pristine"
+    # The revert put the source on a new overlay and removed the one read before it.
+    read_source_domain
+}
+
+# Sets FIRMWARE_SOURCE: the source's pristine firmware, kept by its clean snapshot or made here.
+choose_firmware_source() {
+    FIRMWARE_SOURCE=$NVRAM_DIR/${SOURCE_NAME}_VARS.clean.fd
+    [[ -e $FIRMWARE_SOURCE ]] || keep_pristine_firmware_of_source "$FIRMWARE_SOURCE"
+}
+
 copy_nvram() {
-    cp "$SOURCE_NVRAM" "$NVRAM_PATH.part" || fail "could not copy $SOURCE_NVRAM"
-    mv -f "$NVRAM_PATH.part" "$NVRAM_PATH" || fail "could not move the finished copy to $NVRAM_PATH"
+    copy_firmware_file "$FIRMWARE_SOURCE" "$NVRAM_PATH"
+    cmp -s "$FIRMWARE_SOURCE" "$NVRAM_PATH" || {
+        rm -f "$NVRAM_PATH"
+        fail "the firmware copy $NVRAM_PATH is not identical to $FIRMWARE_SOURCE"
+    }
 }
 
 step "Copying the disk and firmware of $SOURCE_NAME"
 progress 0
 require_powered_off_source
 read_source_domain
-[[ -r $SOURCE_NVRAM ]] || fail "the firmware file $SOURCE_NVRAM of $SOURCE_NAME is not readable"
+mkdir -p "$IMAGES_DIR" "$NVRAM_DIR"
+choose_firmware_source
+[[ -r $FIRMWARE_SOURCE ]] || fail "the firmware file $FIRMWARE_SOURCE of $SOURCE_NAME is not readable"
 resolve_base_disk
 require_the_recorded_size
 log "copying $BASE_DISK, the base of $SOURCE_DISK; the snapshot memory file is not copied"
-mkdir -p "$IMAGES_DIR" "$NVRAM_DIR"
 progress 10
 copy_disk
 progress 90

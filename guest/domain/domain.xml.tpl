@@ -70,7 +70,6 @@
       <mac address='${mac}'/>
       <source network='tt-guest'/>
       ${nic_model}
-      <port isolated='yes'/>
     </interface>
     ${tpm}
     <input type='tablet' bus='usb'/>

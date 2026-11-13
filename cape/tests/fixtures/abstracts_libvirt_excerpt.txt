@@ -1,0 +1,404 @@
+# encoding: utf-8
+# Copyright (C) 2010-2015 Cuckoo Foundation, Optiv, Inc. (brad.spengler@optiv.com).
+# This file is part of Cuckoo Sandbox - http://www.cuckoosandbox.org
+# See the file 'docs/LICENSE' for copying permission.
+
+import datetime
+import io
+import logging
+import os
+import socket
+import threading
+import time
+import timeit
+import xml.etree.ElementTree as ET
+from builtins import NotImplementedError
+from contextlib import suppress
+from pathlib import Path
+from typing import Dict, List
+
+try:
+    import dns.resolver
+except ImportError:
+    logging.error("Missed dependency -> poetry install")
+
+import PIL
+import requests
+
+from data.dnsbl import dnsbl_servers
+from lib.cuckoo.common.config import Config
+from lib.cuckoo.common.constants import CUCKOO_ROOT
+from lib.cuckoo.common.dictionary import Dictionary
+from lib.cuckoo.common.exceptions import (
+    CuckooCriticalError,
+    CuckooDependencyError,
+    CuckooMachineError,
+    CuckooOperationalError,
+    CuckooReportError,
+)
+from lib.cuckoo.common.integrations.mitre import mitre_load
+from lib.cuckoo.common.path_utils import path_exists, path_mkdir
+from lib.cuckoo.common.url_validate import url as url_validator
+from lib.cuckoo.common.utils import create_folder, get_memdump_path, load_categories
+from lib.cuckoo.core.database import Database, _Database
+from lib.cuckoo.core.data.task import Task
+from lib.cuckoo.core.data.machines import Machine
+
+try:
+    import re2 as re
+except ImportError:
+    import re
+
+try:
+    import libvirt
+
+    HAVE_LIBVIRT = True
+except ImportError:
+    HAVE_LIBVIRT = False
+
+try:
+    from tldextract import TLDExtract
+
+    HAVE_TLDEXTRACT = True
+    logging.getLogger("filelock").setLevel("WARNING")
+except ImportError:
+    HAVE_TLDEXTRACT = False
+
+repconf = Config("reporting")
+integrations_conf = Config("integrations")
+
+
+class LibVirtMachinery(Machinery):
+    """Libvirt based machine manager.
+
+    If you want to write a custom module for a virtualization software
+    supported by libvirt you have just to inherit this machine manager and
+    change the connection string.
+    """
+
+    # VM states.
+    RUNNING = "running"
+    PAUSED = "paused"
+    POWEROFF = "poweroff"
+    ERROR = "machete"
+    ABORTED = "abort"
+
+    def __init__(self):
+        if not HAVE_LIBVIRT:
+            raise CuckooDependencyError(
+                "Unable to import libvirt. Ensure cape is being run from the same python environment configured by the installer script."
+            )
+
+        super().__init__()
+        self.conn = None
+        self.conn_lock = threading.Lock()
+
+    def _initialize_check(self):
+        """Runs all checks when a machine manager is initialized.
+        @raise CuckooMachineError: if libvirt version is not supported.
+        """
+        # Version checks.
+        if not self._version_check():
+            raise CuckooMachineError("Libvirt version is not supported, please get an updated version")
+
+        # Base checks. Also attempts to shutdown any machines which are
+        # currently still active.
+        super()._initialize_check()
+
+    def start(self, label=None):
+        """Starts a virtual machine.
+        @param label: virtual machine name.
+        @raise CuckooMachineError: if unable to start virtual machine.
+        """
+        if not label:
+            raise CuckooMachineError("Machine label required")
+
+        log.debug("Starting machine %s", label)
+
+        vm_info = self.db.view_machine_by_label(label)
+        if vm_info is None:
+            msg = f"Unable to find machine with label {label} in database."
+            raise CuckooMachineError(msg)
+
+        if self._status(label) != self.POWEROFF:
+            msg = f"Trying to start a virtual machine that has not been turned off {label}"
+            raise CuckooMachineError(msg)
+
+        conn = self._connect(label)
+
+        try:
+            vm = conn.lookupByName(label)
+        except libvirt.libvirtError as e:
+            raise CuckooMachineError(f"Cannot find machine {label}") from e
+
+        snapshot = None
+        try:
+            snapshot_list = vm.snapshotListNames(flags=0)
+
+            # If a snapshot is configured try to use it.
+            if vm_info.snapshot and vm_info.snapshot in snapshot_list:
+                log.debug("Using snapshot %s for virtual machine %s", vm_info.snapshot, label)
+                snapshot = vm.snapshotLookupByName(vm_info.snapshot, flags=0)
+            else:
+                snapshot = self._get_snapshot(label, vm)
+        except libvirt.libvirtError:
+            log.warning("Unable to fetch snapshot for virtual machine %s", label)
+
+        if not snapshot:
+            raise CuckooMachineError(f"No snapshot found for virtual machine {label}")
+
+        log.debug("Using snapshot %s for virtual machine %s", snapshot.getName(), label)
+        try:
+            vm.revertToSnapshot(snapshot, flags=0)
+        except libvirt.libvirtError as e:
+            raise CuckooMachineError(f"Unable to restore snapshot on virtual machine {label}. Your snapshot MUST BE in running state!") from e
+
+        # Check state.
+        self._wait_status(label, self.RUNNING)
+
+    def stop(self, label=None):
+        """Stops a virtual machine. Kill them all.
+        @param label: virtual machine name.
+        @raise CuckooMachineError: if unable to stop virtual machine.
+        """
+        if not label:
+            raise CuckooMachineError("Machine label required")
+
+        log.debug("Stopping machine %s", label)
+
+        if self._status(label) == self.POWEROFF:
+            raise CuckooMachineError(f"Trying to stop an already stopped machine {label}")
+
+        # Force virtual machine shutdown.
+        conn = self._connect(label)
+        try:
+            vm = conn.lookupByName(label)
+            if not vm.isActive():
+                log.debug("Trying to stop an already stopped machine %s, skipping", label)
+            else:
+                vm.destroy()  # Machete's way!
+        except libvirt.libvirtError as e:
+            raise CuckooMachineError(f"Error stopping virtual machine {label}: {e}") from e
+
+        # Check state.
+        self._wait_status(label, self.POWEROFF)
+
+    def shutdown(self):
+        """Override shutdown to free libvirt handlers - they print errors."""
+        for machine in self.machines():
+            # If the machine is already shutdown, move on
+            if self._status(machine.label) in (self.POWEROFF, self.ABORTED):
+                continue
+            try:
+                log.info("Shutting down machine '%s'", machine.label)
+                self.stop(machine.label)
+            except CuckooMachineError as e:
+                log.warning("Unable to shutdown machine %s, please check manually. Error: %s", machine.label, e)
+
+        # Close connection
+        with self.conn_lock:
+            if self.conn:
+                try:
+                    self.conn.close()
+                except libvirt.libvirtError:
+                    pass
+                self.conn = None
+
+    def screenshot(self, label, path):
+        """Screenshot a running virtual machine.
+        @param label: machine name
+        @param path: where to store the screenshot
+        """
+        conn = self._connect()
+        try:
+            vm = conn.lookupByName(label)
+        except libvirt.libvirtError as e:
+            raise CuckooMachineError(f"Error screenshotting virtual machine {label}: {e}") from e
+        stream0, screen = conn.newStream(), 0
+        # ignore the mime type returned by the call to screenshot()
+        _ = vm.screenshot(stream0, screen)
+
+        buffer = io.BytesIO()
+
+        def stream_handler(_, data, buffer):
+            buffer.write(data)
+
+        folder_name, _ = path.rsplit("/", 1)
+        if not path_exists(folder_name):
+            path_mkdir(folder_name, parent=True, exist_ok=True)
+
+        stream0.recvAll(stream_handler, buffer)
+        stream0.finish()
+        streamed_img = PIL.Image.open(buffer)
+        streamed_img.convert(mode="RGB").save(path)
+
+    def dump_memory(self, label, path):
+        """Takes a memory dump.
+        @param path: path to where to store the memory dump.
+        """
+        log.debug("Dumping memory for machine %s", label)
+
+        conn = self._connect(label)
+        try:
+            # create the memory dump file ourselves first so it doesn't end up root/root 0600
+            # it'll still be owned by root, so we can't delete it, but at least we can read it
+            fd = open(path, "w")
+            fd.close()
+            vm = conn.lookupByName(label)
+            vm.coreDump(path, flags=libvirt.VIR_DUMP_MEMORY_ONLY)
+        except libvirt.libvirtError as e:
+            raise CuckooMachineError(f"Error dumping memory virtual machine {label}: {e}") from e
+
+    def _status(self, label):
+        """Gets current status of a vm.
+        @param label: virtual machine name.
+        @return: status string.
+        """
+        log.debug("Getting status for %s", label)
+
+        # Stetes mapping of python-libvirt.
+        # virDomainState
+        # VIR_DOMAIN_NOSTATE = 0
+        # VIR_DOMAIN_RUNNING = 1
+        # VIR_DOMAIN_BLOCKED = 2
+        # VIR_DOMAIN_PAUSED = 3
+        # VIR_DOMAIN_SHUTDOWN = 4
+        # VIR_DOMAIN_SHUTOFF = 5
+        # VIR_DOMAIN_CRASHED = 6
+        # VIR_DOMAIN_PMSUSPENDED = 7
+
+        conn = self._connect(label)
+        try:
+            vm = conn.lookupByName(label)
+            state = vm.state(flags=0)
+        except libvirt.libvirtError as e:
+            raise CuckooMachineError(f"Error getting status for virtual machine {label}: {e}") from e
+
+        if state:
+            if state[0] == 1:
+                status = self.RUNNING
+            elif state[0] == 3:
+                status = self.PAUSED
+            elif state[0] in {4, 5}:
+                status = self.POWEROFF
+            else:
+                status = self.ERROR
+
+        # Report back status.
+        if status:
+            self.set_status(label, status)
+            return status
+        else:
+            raise CuckooMachineError(f"Unable to get status for {label}")
+
+    def _connect(self, label=None):
+        """Connects to libvirt subsystem.
+        @raise CuckooMachineError: when unable to connect to libvirt.
+        """
+        # Check if a connection string is available.
+        if not self.dsn:
+            raise CuckooMachineError("You must provide a proper connection string")
+
+        with self.conn_lock:
+            if self.conn:
+                try:
+                    if self.conn.isAlive():
+                        return self.conn
+                except libvirt.libvirtError:
+                    pass
+
+                # Connection is dead
+                try:
+                    self.conn.close()
+                except libvirt.libvirtError:
+                    pass
+                self.conn = None
+
+            try:
+                self.conn = libvirt.open(self.dsn)
+            except libvirt.libvirtError as e:
+                raise CuckooMachineError("Cannot connect to libvirt") from e
+
+        return self.conn
+
+    def _disconnect(self, _conn):
+        """Disconnects to libvirt subsystem.
+        @raise CuckooMachineError: if cannot disconnect from libvirt.
+        """
+        # Do nothing, keep connection open for reuse
+        pass
+
+    def _lookup(self, label):
+        """Search for a virtual machine.
+        @param label: virtual machine name.
+        @raise CuckooMachineError: if virtual machine is not found.
+        """
+        conn = self._connect(label)
+        try:
+            vm = conn.lookupByName(label)
+        except libvirt.libvirtError as e:
+            raise CuckooMachineError(f"Cannot find machine {label}") from e
+        return vm
+
+    def _list(self):
+        """List available virtual machines.
+        @raise CuckooMachineError: if unable to list virtual machines.
+        """
+        conn = self._connect()
+        try:
+            if hasattr(conn, "listAllDomains"):
+                # flags=0 returns all domains (active and inactive)
+                return [dom.name() for dom in conn.listAllDomains(0)]
+
+            # Fallback for older libvirt versions
+            names = conn.listDefinedDomains()
+            for vid in conn.listDomainsID():
+                try:
+                    dom = conn.lookupByID(vid)
+                    names.append(dom.name())
+                except libvirt.libvirtError:
+                        continue
+            return names
+        except libvirt.libvirtError as e:
+            raise CuckooMachineError("Cannot list domains") from e
+    def _version_check(self):
+        """Check if libvirt release supports snapshots.
+        @return: True or false.
+        """
+        return libvirt.getVersion() >= 8000
+
+    def _get_snapshot(self, label, vm):
+        """Get current snapshot for virtual machine
+        @param label: virtual machine name
+        @param vm: virtual machine handle
+        @return None or current snapshot
+        @raise CuckooMachineError: if cannot find current snapshot or
+            when there are too many snapshots available
+        """
+
+        def _extract_creation_time(node):
+            """Extracts creation time from a KVM vm config file.
+            @param node: config file node
+            @return: extracted creation time
+            """
+            xml = ET.fromstring(node.getXMLDesc(flags=0))
+            return xml.findtext("./creationTime")
+
+        snapshot = None
+        try:
+            # Try to get the currrent snapshot, otherwise fallback on the latest
+            # from config file.
+            if vm.hasCurrentSnapshot(flags=0):
+                snapshot = vm.snapshotCurrent(flags=0)
+            else:
+                log.debug("No current snapshot, using latest snapshot")
+
+                # No current snapshot, try to get the last one from config file.
+                all_snapshots = vm.listAllSnapshots(flags=0)
+                if all_snapshots:
+                    snapshot = sorted(all_snapshots, key=_extract_creation_time, reverse=True)[0]
+        except libvirt.libvirtError:
+            raise CuckooMachineError(f"Unable to get snapshot for virtual machine {label}")
+
+        return snapshot
+

@@ -948,12 +948,19 @@ def files_a_build_lays_down(lab, name):
         images / f"{name}-clean.mem",
         images / f"{name}-clean.qcow2",
         nvram / f"{name}_VARS.fd",
+        nvram / f"{name}_VARS.clean.fd",
     ]
+
+
+def write_pristine_nvram(lab, name):
+    (lab.libvirt_dir / "nvram").mkdir(parents=True, exist_ok=True)
+    (lab.libvirt_dir / "nvram" / f"{name}_VARS.clean.fd").write_text("pristine")
 
 
 def test_the_files_a_build_left_are_removed_when_its_domain_is_already_gone(lab):
     lab.build("alpha")
     lab.host.create_files("alpha")
+    write_pristine_nvram(lab, "alpha")
     (lab.dir() / "defined").unlink()  # a restart's preflight undefines the domain before define
 
     lab.engine.delete_guest("alpha")
@@ -967,6 +974,7 @@ def test_deleting_a_guest_never_removes_the_files_of_a_guest_whose_name_it_start
     lab.build("alpha")
     lab.build("alpha2")
     lab.host.create_files("alpha2")
+    write_pristine_nvram(lab, "alpha2")
     (lab.dir("alpha") / "defined").unlink()
 
     lab.engine.delete_guest("alpha")

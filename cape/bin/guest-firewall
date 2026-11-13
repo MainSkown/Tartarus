@@ -24,14 +24,17 @@ sys.path[:0] = [SCRIPT_DIRECTORY, os.path.dirname(SCRIPT_DIRECTORY)]
 
 from guest_engine.config import DEFAULT_SUBNET, EngineConfig  # noqa: E402
 from guest_engine.firewall import (  # noqa: E402
+    STARTED_OPERATIONS,
     FirewallPolicy,
     GuestFirewall,
     PortLedger,
     load_policy,
     policy_for,
+    ports_in,
     store_policy,
 )
 from guest_engine.media import Runner, run_command  # noqa: E402
+from guest_engine.port_isolation import isolate_ports  # noqa: E402
 from guest_engine.registry import Registry  # noqa: E402
 
 BRIDGE = "tt-guest"
@@ -89,6 +92,10 @@ def _initialise(container: Container) -> None:
 def _handle_hook(arguments: Sequence[str], domain_xml: str, container: Container) -> None:
     domain, event = arguments[0], arguments[1]
     policy = load_policy(container.paths.state)
+    if event in STARTED_OPERATIONS:
+        # Before the firewall records the ports: a port that is not isolated stays unbound, and
+        # an unbound port has no connectivity at all.
+        isolate_ports(ports_in(domain_xml, policy.bridge), container.runner)
     _firewall(policy, container).hook(domain, event, domain_xml)
 
 

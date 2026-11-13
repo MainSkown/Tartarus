@@ -657,6 +657,7 @@ snapshot_world() {
     ctx_set profile.timeouts.agent_s 1
     ctx_set profile.agent.pre_snapshot '[]'
     run_step define
+    echo firmware >"$WORLD/libvirt/nvram/alpha_VARS.fd"
     touch "$WORLD/state/running"
     : >"$LOG"
 }
@@ -729,6 +730,29 @@ test_snapshot_is_skipped_when_it_already_exists() {
     run_step snapshot
     assert_status 0 && assert_not_logged "snapshot-create-as" && assert_not_logged "shutdown" &&
         assert_not_logged "define" && assert_not_logged "start alpha" && assert_logged "destroy alpha"
+}
+
+test_snapshot_keeps_a_pristine_copy_of_the_nvram_it_snapshotted() {
+    snapshot_world
+    printf 'firmware at snapshot' >"$WORLD/libvirt/nvram/alpha_VARS.fd"
+    run_step snapshot
+    assert_status 0 &&
+        [[ $(cat "$WORLD/libvirt/nvram/alpha_VARS.clean.fd") == "firmware at snapshot" ]] &&
+        [[ $(stat -c %a "$WORLD/libvirt/nvram/alpha_VARS.clean.fd") == 600 ]]
+}
+
+test_snapshot_keeps_no_pristine_copy_when_the_snapshot_already_exists() {
+    snapshot_world
+    echo tartarus-clean >"$WORLD/state/snapshots"
+    run_step snapshot
+    assert_status 0 && [[ ! -e $WORLD/libvirt/nvram/alpha_VARS.clean.fd ]]
+}
+
+test_snapshot_fails_when_the_nvram_cannot_be_kept_as_its_pristine_copy() {
+    snapshot_world
+    rm "$WORLD/libvirt/nvram/alpha_VARS.fd"
+    run_step snapshot
+    assert_status 1 && assert_contains "alpha_VARS.fd" && [[ ! -e $WORLD/libvirt/nvram/alpha_VARS.clean.fd.part ]]
 }
 
 test_snapshot_fails_when_the_agent_never_answers() {

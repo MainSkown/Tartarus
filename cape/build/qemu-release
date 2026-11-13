@@ -1,0 +1,4 @@
+# Upstream release date of the QEMU pinned by ARG QEMU_VERSION in cape/Dockerfile (the tarball's
+# publication date on https://download.qemu.org/). scripts/check-qemu-age.py reads it; bump it with the ARG.
+version=9.2.4
+released=2025-05-28

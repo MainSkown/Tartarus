@@ -149,8 +149,8 @@ elif check == "cape-iso-readonly":
         problems = ["cape does not mount /data/iso"]
     else:
         problems = ["cape mounts /data/iso read-write" for v in iso_mounts if not v.get("read_only")]
-elif check == "only-cape-privileged":
-    problems = [f"{name} is privileged" for name, svc in services.items() if svc.get("privileged") and name != "cape"]
+elif check == "nothing-privileged":
+    problems = [f"{name} is privileged" for name, svc in services.items() if svc.get("privileged")]
 elif check == "no-host-network":
     problems = [f"{name} uses the host network" for name, svc in services.items() if svc.get("network_mode") == "host"]
 elif check == "no-docker-socket":
@@ -207,7 +207,7 @@ check_static() {
         check "$mode: no service mounts the Docker socket" policy_violations no-docker-socket "$config"
         check "$mode: cape publishes no ports" policy_violations cape-no-ports "$config"
         check "$mode: cape mounts ./data/iso read-only" policy_violations cape-iso-readonly "$config"
-        check "$mode: no service other than cape is privileged" policy_violations only-cape-privileged "$config"
+        check "$mode: no service is privileged" policy_violations nothing-privileged "$config"
         check "$mode: no service uses the host network" policy_violations no-host-network "$config"
         check "$mode: backend mounts cape-storage read-only" policy_violations cape-storage-read-only-in-backend "$config"
         check "$mode: only backend and cape mount cape-storage" policy_violations cape-storage-only-in-backend-and-cape "$config"

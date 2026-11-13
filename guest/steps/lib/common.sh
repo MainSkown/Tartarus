@@ -57,6 +57,7 @@ NVRAM_DIR=$LIBVIRT_DIR/nvram
 CACHE_DIR=$LIBVIRT_DIR/tartarus/cache
 DISK_PATH=$IMAGES_DIR/$GUEST_NAME.qcow2
 NVRAM_PATH=$NVRAM_DIR/${GUEST_NAME}_VARS.fd
+CLEAN_NVRAM=$NVRAM_DIR/${GUEST_NAME}_VARS.clean.fd
 CLEAN_MEMORY=$IMAGES_DIR/$GUEST_NAME-clean.mem
 CLEAN_OVERLAY=$IMAGES_DIR/$GUEST_NAME-clean.qcow2
 MEDIA_PATH=${MEDIA_FILE:+$MEDIA_DIR/$MEDIA_FILE}
@@ -105,6 +106,15 @@ define_domain() {
 }
 
 json_string() { python3 -I -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$1"; }
+
+# A firmware file is copied whole and never seen half-written under its final name. cp keeps no
+# mode of its own: the file is always 0600, as libvirt expects of a guest's firmware.
+copy_firmware_file() {
+    local from=$1 to=$2
+    cp "$from" "$to.part" || { rm -f "$to.part"; fail "could not copy $from"; }
+    chmod 600 "$to.part" || { rm -f "$to.part"; fail "could not set the mode of $to.part"; }
+    mv -f "$to.part" "$to" || fail "could not move the finished copy to $to"
+}
 
 # What kind of medium the guest is built from: the engine records it (installer | disk_image) from
 # the media scan. A context that predates the field is told by the file: an ISO is installed from,

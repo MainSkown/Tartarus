@@ -50,6 +50,7 @@ def guest_files(libvirt_dir: Path, name: str) -> list[Path]:
         images / f"{name}-clean.mem",
         images / f"{name}-clean.qcow2",
         nvram / f"{name}_VARS.fd",
+        nvram / f"{name}_VARS.clean.fd",
     ]
 
 

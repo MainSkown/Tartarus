@@ -39,7 +39,7 @@ doesn't have:
 | GUI | Vue 3 + Quasar web app, installable PWA | [specs/gui.md](specs/gui.md) |
 | Backend | Python/FastAPI: API, live collector, ingester, Sigma, query, export | [specs/backend.md](specs/backend.md) |
 | Database | OpenSearch (events, ECS) + PostgreSQL (metadata) | [specs/data-model.md](specs/data-model.md) |
-| Sandbox | CAPEv2 + KVM in a privileged Ubuntu container; Windows guests, built from profiles ([specs/guest-profiles.md](specs/guest-profiles.md)) | [specs/cape-integration.md](specs/cape-integration.md) |
+| Sandbox | CAPEv2 + KVM in an Ubuntu container; Windows guests, built from profiles ([specs/guest-profiles.md](specs/guest-profiles.md)) | [specs/cape-integration.md](specs/cape-integration.md) |
 | Look & feel | Ice-blue cyberpunk design system | [design/design-system.md](design/design-system.md) |
 
 [architecture.md](architecture.md) explains how they fit together. The v1 scope, decisions and

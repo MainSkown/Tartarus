@@ -9,7 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /opt/CAPEv2/.git
 
 
-# QEMU and SeaBIOS rebuild only when kvm-qemu.sh or the anti-VM strings change, not on every CAPE_REF bump.
+# QEMU and SeaBIOS rebuild only when kvm-qemu.sh, the anti-VM strings or the QEMU version change, not on
+# every CAPE_REF bump. To bump QEMU see "Updating QEMU" in docs/specs/cape-integration.md.
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS qemu-build
 ARG ANTIVM_TABLET_VENDOR=Wacom
 ARG ANTIVM_SCSI_VENDOR=ATA
@@ -22,9 +23,17 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         aptitude build-essential ca-certificates gpg lsb-release python3-pip sudo wget
 WORKDIR /build
+ARG QEMU_VERSION=9.2.4
+ARG QEMU_SHA256=f3cc1c4eabfdb288218ac3e33763dbe9e276d8bc890b867a2335d58de2ddd39a
+# kvm-qemu.sh downloads the tarball without a checksum, and only when /tmp does not already hold it:
+# fetching it here first makes the pinned hash the check and stops the script from downloading its own.
+RUN wget -q -O "/tmp/qemu-${QEMU_VERSION}.tar.xz" "https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz" \
+    && echo "${QEMU_SHA256}  /tmp/qemu-${QEMU_VERSION}.tar.xz" | sha256sum -c -
 COPY --from=cape-source /opt/CAPEv2/installer/kvm-qemu.sh ./
 COPY cape/build/kvm-config.sh ./
-RUN bash kvm-qemu.sh qemu
+# The script logs a failed compile or install and carries on, so assert the QEMU it installed is the pinned one.
+RUN bash kvm-qemu.sh qemu \
+    && qemu-system-x86_64 --version | grep -qF "version ${QEMU_VERSION}"
 RUN bash kvm-qemu.sh seabios
 COPY cape/build/runtime-packages.sh ./
 RUN mkdir /out \
@@ -120,6 +129,16 @@ RUN groupadd --system cape \
     && useradd --system --gid cape --home-dir /home/cape --create-home --shell /bin/bash cape \
     && (getent group kvm || groupadd --system kvm) \
     && usermod -aG libvirt,kvm cape
+# A device node keeps its host gid inside the container, so an image group with the same number opens
+# that device: cape's 995 was a host's `audio` group (the microphone). Every group a program here runs
+# with moves into Debian's reserved 64xxx block, as pcap does below, and its files follow it.
+RUN gid=64020; for group in cape libvirt kvm libvirt-dnsmasq inetsim swtpm polkitd messagebus tcpdump; do \
+        old=$(getent group "$group" | cut -d: -f3) \
+        && groupmod --gid "$gid" "$group" \
+        && find / -xdev -gid "$old" -exec chgrp -h "$group" {} + \
+        || exit 1; \
+        gid=$((gid + 1)); \
+    done
 
 # Root-owned: the rooter runs as root and imports this tree, so the `cape` user that parses hostile
 # data must not be able to rewrite it. What cape writes while running is listed further down.
@@ -184,6 +203,18 @@ RUN curl -fsSLo /tmp/7z-extra.7z "https://www.7-zip.org/a/7z${SEVEN_ZIP_VERSION}
     && grep -q '"bin", "7z.exe"' /opt/CAPEv2/analyzer/windows/modules/packages/zip.py \
     && rm /tmp/zip-bundled-7zip.py
 
+# The cape user has no libvirt write permission (cape/libvirt/polkit): reverting a guest, powering it off
+# and dumping its memory go through the root machine broker, so CAPE's machinery is patched to ask it.
+# The checks fail the build if CAPE_REF moved the code and one of the three writes is still there.
+COPY cape/bin/machine_broker_client.py /opt/CAPEv2/lib/cuckoo/common/
+COPY cape/patches/machinery-through-broker.py /tmp/machinery-through-broker.py
+RUN python3 /tmp/machinery-through-broker.py /opt/CAPEv2/lib/cuckoo/common/abstracts.py \
+    && python3 -c "import ast; ast.parse(open('/opt/CAPEv2/lib/cuckoo/common/abstracts.py').read())" \
+    && ! grep -qF 'revertToSnapshot(' /opt/CAPEv2/lib/cuckoo/common/abstracts.py \
+    && ! grep -qF 'vm.destroy()' /opt/CAPEv2/lib/cuckoo/common/abstracts.py \
+    && ! grep -qF 'coreDump(' /opt/CAPEv2/lib/cuckoo/common/abstracts.py \
+    && rm /tmp/machinery-through-broker.py
+
 # Host-side auxiliary that exports the guest's Sysmon and Defender logs through the agent at the end of
 # a run. CAPE imports every module in this directory; auxiliary.conf enables it by file name. It reads
 # the Sysmon config from the profiles copied below.
@@ -203,6 +234,11 @@ COPY cape/libvirt/qemu.conf /etc/libvirt/qemu.conf
 # libvirt reads its hooks directory once, at start; the hook binds each started guest's port (guest-firewall).
 COPY cape/libvirt/qemu-hook /etc/libvirt/hooks/qemu
 RUN chmod 0755 /etc/libvirt/hooks/qemu
+# What the `cape` user may ask libvirtd (libvirtd.conf turns the polkit access driver on). polkitd reads
+# /etc/polkit-1/rules.d as its own user, so the file must be world-readable whatever the checkout's mode.
+COPY cape/libvirt/polkit/50-tartarus-libvirt.rules /etc/polkit-1/rules.d/
+COPY cape/libvirt/dbus-system.conf /etc/dbus-1/tartarus-system.conf
+RUN chmod 0644 /etc/polkit-1/rules.d/50-tartarus-libvirt.rules /etc/dbus-1/tartarus-system.conf
 COPY cape/supervisord.conf /etc/supervisor/conf.d/cape.conf
 COPY cape/templates/ /usr/local/lib/tartarus/templates/
 COPY cape/bin/ /usr/local/lib/tartarus/

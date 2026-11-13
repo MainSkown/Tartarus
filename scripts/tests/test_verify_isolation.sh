@@ -278,14 +278,23 @@ test_a_probe_that_never_ran_is_not_taken_for_a_blocked_one() {
 test_a_target_the_cape_container_cannot_reach_either_is_not_counted_as_blocked() {
     : >"$STUB_DIR/f/no-control-172.22.0.2"
     run_verify lab1 lab5
-    expect_status 0 && expect_line "[INFO] opensearch does not answer from the cape container either: not probed from the guests"
+    expect_status 0 && expect_line "[INFO] opensearch does not answer outside a guest either: not probed from the guests"
+}
+
+test_a_target_outside_the_container_is_tried_from_beside_it_because_its_own_programs_have_no_route_out() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    grep -q 'run --rm -i --network tartarus-internal --network tartarus-cape-db .*/dev/tcp/.* 1\.1\.1\.1 80 ' "$STUB_DIR/calls" ||
+        { echo "  the internet is not tried from a container beside cape"; return 1; }
+    grep -q 'exec -T cape .*/dev/tcp/.* 4822 ' "$STUB_DIR/calls" ||
+        { echo "  guacd, a listener of the container itself, is not tried from inside it"; return 1; }
 }
 
 test_without_the_internet_the_internet_route_is_not_asked_to_reach_it() {
     : >"$STUB_DIR/f/no-control-1.1.1.1"
     fixture allow-internet "$GATEWAY_ONLY"
     run_verify lab1 lab5
-    expect_status 0 && expect_line "[INFO] internet does not answer from the cape container either"
+    expect_status 0 && expect_line "[INFO] internet does not answer outside a guest either"
 }
 
 # --- setup, teardown ------------------------------------------------------------------------------

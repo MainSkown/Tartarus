@@ -23,7 +23,7 @@ isolation and the tech stack. The details of each part are in the [specs](specs/
  │  │  └──┬────────────┬───────────────────┬────────────────────────┬───────────────┘          │  │
  │  │     │ SQL        │ HTTP              │ apiv2 · guacd · control  │ read-only              │  │
  │  │     ▼            ▼                   ▼                        ▼ storage volume           │  │
- │  │  ┌──────────┐ ┌────────────┐      ┌─ cape (privileged Ubuntu 24.04) ──────────────┐      │  │
+ │  │  ┌──────────┐ ┌────────────┐      ┌─ cape (Ubuntu 24.04, capability list) ────────┐      │  │
  │  │  │ postgres │ │ opensearch │      │ cape · cape-processor · cape-web (apiv2)      │      │  │
  │  │  │ tartarus │ │ events     │      │ rooter · suricata · inetsim · guacd           │      │  │
  │  │  │ + cape DB│ │            │      │ libvirtd + QEMU · guest-control · /dev/kvm    │      │  │
@@ -90,7 +90,7 @@ touch CAPE's SQL task DB, and the final report is read from `report.json` (writt
   is not used, and the Docker socket is **never** mounted into any container: it is root on the host, and the
   backend handles malware artefacts and untrusted report data. `make verify-cape` enforces all of it: the
   token is required, the service is unreachable from `frontend`, `opensearch` and `postgres`, and nothing
-  listens on `16509`. The container is privileged, so the service is root-equivalent there; a compromised
+  listens on `16509`. The service runs as root in the container, so it is root-equivalent there; a compromised
   backend can build and delete guests, not run anything else. The design and the routes are in
   [CAPE integration](specs/cape-integration.md#the-control-service); what differs between operating
   systems is a guest profile, described in [guest profiles](specs/guest-profiles.md). The guest build runs in the control
@@ -175,7 +175,7 @@ the task.
 ### 3. Final phase (after the guest stops)
 1. CAPE processes the task (behaviour, network, Suricata, CAPE payloads/configs, YARA,
    signatures, ATT&CK, optional Volatility3) and writes `reports/report.json`.
-2. CAPE's `callback` reporting module calls `POST /internal/cape/callback` with `{task_id}`.
+2. The runner, which polls the task's status every 2 s, sees it reach `reported`. (CAPE's `callback` module is off: the `cape` user may not open connections to the backend.)
 3. Before the ingest, the runner drains the live collector, so any BSON bytes not yet read are
    read. The **report ingester** then reads `report.json` from the shared volume and indexes the *enrichment*:
    signatures, TTPs, network (DNS/HTTP/TLS/flows with process attribution), Suricata alerts,
@@ -216,7 +216,7 @@ aggregate events and report data.
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Sandbox | CAPEv2 (pinned commit), KVM/QEMU patched by `kvm-qemu.sh`, libvirt | Inside privileged `cape` container |
+| Sandbox | CAPEv2 (pinned commit), KVM/QEMU patched by `kvm-qemu.sh`, libvirt | Inside the `cape` container (not privileged; a capability and device list) |
 | Backend | Python 3.12, FastAPI, Pydantic v2, Uvicorn (1 worker; collector and pub/sub run in-process) | |
 | Backend libs | SQLAlchemy 2 + asyncpg + Alembic; opensearch-py (async); watchfiles; pySigma (rule parsing + ECS pipeline); lark (query grammar); stix2; Jinja2 + WeasyPrint (reports); pyguacamole-style tunnel | |
 | API client | `@hey-api/openapi-ts`, generated from the running backend's `/openapi.json` into `frontend/src/api` | Same setup as Momos. Regenerate with `npm run api:sync` (or `make api-sync`); the output is committed |

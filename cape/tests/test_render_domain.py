@@ -124,10 +124,8 @@ def test_virtio_disk_and_nic(linux_domain):
 
 
 @pytest.mark.parametrize("mode", ["install", "run"])
-def test_the_nic_is_an_isolated_bridge_port_so_guests_cannot_reach_each_other(mode):
-    port = rendered(context(), mode).find("devices/interface/port")
-    assert port is not None
-    assert port.get("isolated") == "yes"
+def test_the_nic_has_no_port_element_because_the_qemu_hook_isolates_the_port(mode):
+    assert rendered(context(), mode).find("devices/interface/port") is None
 
 
 def test_utc_clock(linux_domain):

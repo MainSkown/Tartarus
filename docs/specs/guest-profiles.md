@@ -117,7 +117,7 @@ process group of its own and never through a shell.
 | `preflight` | `/dev/kvm` and the CPU flags, free disk, the media readable, an earlier attempt's leftover domain, the address not held by another guest |
 | `fetch` | Downloads what `manifest.sha256` pins (`<sha256> <name> <url>`) into the cache, hash-checked before use |
 | `define` | Creates the disk (blank for an installer, a resized copy for a disk image; a clone arrives with its disk) and defines the libvirt domain |
-| `copy` | Clone only: copies the source's base disk and nvram |
+| `copy` | Clone only: copies the source's base disk and the pristine firmware its clean snapshot kept |
 | `snapshot` | Clean ACPI shutdown, boot from disk, wait for the agent, idle, run `agent.pre_snapshot`, take the external snapshot `tartarus-clean`, power off |
 | `register` | A placeholder so a pipeline reads build, snapshot, register: the engine registers the guest with CAPE itself when the last step succeeds |
 
@@ -253,10 +253,13 @@ fixed in the template: the [S2 spike](../history/m7-spikes/S2-findings.md) found
 differently. New hardware is a new fragment file, not a template per profile, and the
 generic steps read the disk target, nvram and TPM from the domain, never from a constant.
 
-**Isolation between guests.** Every guest NIC in the template carries `<port isolated='yes'/>`, so the guests on
-`tt-guest` cannot reach each other's agent, SMB or ping, while the gateway's ResultServer and INetSim stay
-reachable. `isolate_guest` adds the flag to the domain and snapshots of guests built before it, when the control
-service starts. `scripts/verify-isolation.sh` probes it through the guest agents.
+**Isolation between guests.** Every guest's port on `tt-guest` is an isolated bridge port, so the guests cannot reach
+each other's agent, SMB or ping, while the gateway's ResultServer and INetSim stay reachable. The qemu hook sets the
+flag (`bridge link set dev <tap> isolated on` over netlink, then reads it back) on every `started` event, before the
+firewall records the port; if that fails the port stays unbound and the hook exits non-zero. The template has no
+`<port isolated>` element, because libvirt would write sysfs, which is read-only without `privileged`; the control
+service strips the element from the domain and snapshots of guests built before that, when it starts.
+`scripts/verify-isolation.sh` probes it through the guest agents.
 
 ## Checklist for a new OS
 

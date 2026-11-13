@@ -1,0 +1,66 @@
+#!/usr/bin/python3
+"""Applies the egress firewall (guest_engine/egress.py) inside the cape container.
+
+    container-egress init    entrypoint: find the database network, confine every program's output
+
+A failure exits non-zero: the entrypoint then stops the container instead of starting programs
+that can reach the LAN, the host, the internet or the backend.
+"""
+
+import ipaddress
+import os
+import sys
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+# `python3 -I` does not put the script's directory on the path. The image lays guest_engine/ next
+# to the scripts; in the repository it sits one level up, beside bin/.
+SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+sys.path[:0] = [SCRIPT_DIRECTORY, os.path.dirname(SCRIPT_DIRECTORY)]
+
+from guest_engine.egress import apply_egress, policy_for  # noqa: E402
+from guest_engine.media import Runner, run_command  # noqa: E402
+
+BRIDGE = "tt-guest"
+CAPE_USER = "cape"
+FAILED = 1
+USAGE_ERROR = 2
+DEFAULT_RULES = Path("/run/tartarus/egress.nft")
+
+
+@dataclass(frozen=True)
+class Container:
+    """What the command reads from the container it runs in, so a test can stand in for it."""
+
+    rules: Path
+    runner: Runner
+    routes: Callable[[], str]
+    environ: Mapping[str, str]
+
+
+def _routes_of_this_container() -> str:
+    return run_command(["ip", "-4", "-o", "route", "show"]).stdout
+
+
+def main(arguments: Sequence[str], container: Container) -> int:
+    if list(arguments) != ["init"]:
+        sys.stderr.write(__doc__ or "")
+        return USAGE_ERROR
+    try:
+        policy = policy_for(container.environ, container.routes(), BRIDGE, CAPE_USER)
+        apply_egress(policy, container.runner, container.rules)
+    except (OSError, ValueError, RuntimeError, ipaddress.AddressValueError) as error:
+        sys.stderr.write(f"container-egress: {error}\n")
+        return FAILED
+    return 0
+
+
+if __name__ == "__main__":
+    this_container = Container(
+        rules=DEFAULT_RULES,
+        runner=run_command,
+        routes=_routes_of_this_container,
+        environ=os.environ,
+    )
+    sys.exit(main(sys.argv[1:], this_container))

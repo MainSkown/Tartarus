@@ -1,0 +1,24 @@
+name: QEMU age
+
+# Separate from ci.yml: a date-based check goes red by itself, so it must not turn unrelated PRs red.
+# Leave it out of the required checks; it still shows on every push and the weekly run emails the owner.
+on:
+  push:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: qemu-age-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qemu-age:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: make check-qemu-age ONLINE=${{ github.event_name == 'schedule' && '1' || '' }}

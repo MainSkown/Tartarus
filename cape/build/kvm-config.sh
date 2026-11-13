@@ -1,5 +1,6 @@
 # Sourced by CAPE's installer/kvm-qemu.sh (it reads ./kvm-config.sh when present) to fill its
 # <WOOT> anti-VM placeholders. Values come from the ANTIVM_* build args in cape/Dockerfile.
+# It is sourced after the script sets its own qemu_version, so the QEMU_VERSION build arg wins.
 # shellcheck disable=SC2034
 PEN_REPLACER=$ANTIVM_TABLET_VENDOR
 SCSI_REPLACER=$ANTIVM_SCSI_VENDOR
@@ -11,3 +12,4 @@ BOCHS_BLOCK_REPLACER3=$ANTIVM_SCSI_VENDOR
 BXPC_REPLACER=$ANTIVM_ACPI_TABLE_ID
 BOCHS_SEABIOS_BLOCK_REPLACER=$ANTIVM_ACPI_OEM_ID
 MASK_APT_DAILY_UPGRADE=0
+qemu_version="${QEMU_VERSION:?QEMU_VERSION build arg is not set}"

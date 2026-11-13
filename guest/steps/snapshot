@@ -2,6 +2,7 @@
 # Takes the guest's clean baseline: shut it down cleanly, boot it from its disk, wait until the agent
 # answers, let it idle, then take the external disk-and-memory snapshot CAPE reverts to for every
 # task. The guest is left powered off (CAPE powers a running registered machine off anyway).
+# The firmware is kept as it was at the clean baseline, for clones to copy instead of the live file.
 # Idempotent: once the snapshot exists, a re-run only makes sure the guest is off and recorded.
 set -uo pipefail
 # shellcheck source=lib/common.sh
@@ -72,6 +73,8 @@ power_off_and_record() {
     guest_record set snapshot "$(json_string "$SNAPSHOT_NAME")" || fail "could not record the snapshot in the guest record"
 }
 
+keep_pristine_nvram() { copy_firmware_file "$NVRAM_PATH" "$CLEAN_NVRAM"; }
+
 step "Taking the clean snapshot"
 if snapshot_exists; then
     log "the snapshot $SNAPSHOT_NAME already exists"
@@ -97,4 +100,5 @@ step "Taking the snapshot"
 take_clean_snapshot
 # The snapshot holds the running state; nothing after it needs to reach the disk.
 power_off_and_record
+keep_pristine_nvram
 progress 100

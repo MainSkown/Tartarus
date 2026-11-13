@@ -1,0 +1,173 @@
+#!/usr/bin/python3
+"""Does the libvirt writes CAPE needs for the unprivileged `cape` user, as root (audit finding 1).
+
+    machine-broker      listens on /run/tartarus/machine-broker.sock until stopped
+
+`cape` has no libvirt write permission: libvirt's access control cannot allow a revert, a power-off
+or a memory dump without also allowing a root-equivalent write (cape/libvirt/polkit). This does
+those three for a guest registered with CAPE, and nothing else. The protocol is in
+`machine_broker_client`, the decisions in `machine_broker_logic`; this file is the socket.
+"""
+
+import os
+import pwd
+import signal
+import socket
+import sys
+import threading
+from collections.abc import Callable, Collection
+from contextlib import suppress
+from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
+
+# `python3 -I` does not put the script's directory on the path. The image lays guest_engine/ next
+# to the scripts; in the repository it sits one level up, beside bin/.
+SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+sys.path[:0] = [SCRIPT_DIRECTORY, os.path.dirname(SCRIPT_DIRECTORY)]
+
+from analysis_files import STORAGE_DIRECTORY  # noqa: E402
+from machine_broker_client import SOCKET_PATH  # noqa: E402
+from machine_broker_logic import (  # noqa: E402
+    MachineBroker,
+    Machines,
+    serve_connection,
+    turn_away,
+)
+
+from guest_engine.config import EngineConfig  # noqa: E402
+from guest_engine.media import run_command  # noqa: E402
+from guest_engine.registry import Registry  # noqa: E402
+
+CAPE_USER = "cape"
+ROOT_UID = 0
+# Where libvirtd dumps a guest's memory before it is placed in an analysis folder: on the
+# volume that holds the guests' disks, not in /run (a tmpfs, so a dump there would use the RAM).
+DUMP_STAGING = Path("/var/lib/libvirt/tartarus/dump-staging")
+MAX_CONNECTIONS = 32
+ACCEPT_POLL_S = 0.5
+SHUTDOWN_GRACE_S = 25.0
+
+
+@dataclass(frozen=True)
+class Container:
+    """What the broker reads from the container it runs in, so a test can stand in for it."""
+
+    socket_path: Path
+    machines: Machines
+    allowed_uids: Collection[int]
+    group: int
+    log: Callable[[str], None]
+
+
+def cape_and_root(lookup: Callable[[str], tuple[int, int]]) -> tuple[set[int], int]:
+    """The uids that may use the broker (root and `cape`) and the group that owns its socket."""
+    try:
+        uid, gid = lookup(CAPE_USER)
+    except KeyError:
+        raise SystemExit(f"machine-broker: there is no user {CAPE_USER}") from None
+    return {ROOT_UID, uid}, gid
+
+
+def listen(path: Path, group: int) -> socket.socket:
+    """Binds the socket so that only root and `group` can connect to it, never anyone else."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+    listener = socket.socket(socket.AF_UNIX)
+    previous = os.umask(0o177)
+    try:
+        listener.bind(str(path))
+    finally:
+        os.umask(previous)
+    os.chown(path, -1, group)
+    os.chmod(path, 0o660)
+    listener.listen(socket.SOMAXCONN)
+    return listener
+
+
+def serve(
+    listener: socket.socket,
+    handle: Callable[[socket.socket], None],
+    *,
+    stop: threading.Event,
+    capacity: int = MAX_CONNECTIONS,
+) -> None:
+    """Runs `handle` for each client in a thread of its own until `stop`, then lets them finish."""
+    path = listener.getsockname()
+    free_slots = threading.BoundedSemaphore(capacity)
+    running: list[threading.Thread] = []
+    listener.settimeout(ACCEPT_POLL_S)
+    try:
+        while not stop.is_set():
+            try:
+                connection, _ = listener.accept()
+            except TimeoutError:
+                continue
+            if not free_slots.acquire(blocking=False):
+                turn_away(connection)
+                continue
+            thread = threading.Thread(target=_serve_one, args=(connection, handle, free_slots))
+            thread.start()
+            running = [alive for alive in running if alive.is_alive()] + [thread]
+    finally:
+        listener.close()
+        with suppress(FileNotFoundError):
+            os.unlink(path)
+        for thread in running:
+            thread.join(SHUTDOWN_GRACE_S)
+
+
+def _serve_one(
+    connection: socket.socket,
+    handle: Callable[[socket.socket], None],
+    free_slots: threading.BoundedSemaphore,
+) -> None:
+    try:
+        handle(connection)
+    finally:
+        free_slots.release()
+
+
+def main(container: Container, stop: threading.Event) -> int:
+    container.machines.prepare_staging()
+    listener = listen(container.socket_path, container.group)
+    container.log(f"machine-broker: listening on {container.socket_path}")
+    handle = partial(
+        serve_connection,
+        machines=container.machines,
+        allowed_uids=container.allowed_uids,
+        log=container.log,
+    )
+    serve(listener, handle, stop=stop)
+    container.log("machine-broker: stopped")
+    return 0
+
+
+def _account(name: str) -> tuple[int, int]:
+    entry = pwd.getpwnam(name)
+    return entry.pw_uid, entry.pw_gid
+
+
+def _log(message: str) -> None:
+    sys.stdout.write(message + "\n")
+    sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    allowed, cape_group = cape_and_root(_account)
+    stopping = threading.Event()
+    for stopping_signal in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(stopping_signal, lambda *_: stopping.set())
+    this_container = Container(
+        socket_path=Path(SOCKET_PATH),
+        machines=MachineBroker(
+            registry=Registry(EngineConfig().registry_root),
+            runner=run_command,
+            staging=DUMP_STAGING,
+            storage=STORAGE_DIRECTORY,
+        ),
+        allowed_uids=allowed,
+        group=cape_group,
+        log=_log,
+    )
+    sys.exit(main(this_container, stopping))

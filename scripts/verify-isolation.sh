@@ -16,8 +16,8 @@
 # the real service answers with, because INetSim accepts a connection to any address. Targets:
 # the gateway services, the CAPE web process (answers 404 to the probe: only its Server header counts), guacd and the control service on the cape container's own
 # addresses, the backend, Postgres and OpenSearch, a canary on the docker host and on its LAN address, the
-# internet, and the other guest. A probe whose target does not answer from the cape container either
-# proves nothing and is skipped with an [INFO] line.
+# internet, and the other guest. A probe whose target does not answer outside a guest either proves
+# nothing and is skipped with an [INFO] line.
 #
 # Then the tricks a hostile guest has: sending from an address it invented (the rooter's rules are keyed
 # on the registered one), from the other guest's address, and to the other guest through the gateway
@@ -156,20 +156,29 @@ EOF
 SKIPPED=" "
 is_skipped() { [[ $SKIPPED == *" $1 "* ]]; }
 
-answers_from_cape() { # target port payload-kind marker
-    in_cape bash -c 'exec 3<>"/dev/tcp/$0/$1" || exit 1; printf %s "$2" | base64 -d >&3; timeout 3 cat <&3 | head -c 4096' \
-        "$1" "$2" "$(payload_for "$3")" 2>/dev/null | grep -Eaq -- "$4"
+# The container's own programs have no route out (guest_engine/egress.py), so a target outside it is
+# tried from a throwaway container on the same two networks, which sees what cape's namespace forwards
+# to. The container's own listeners are tried from inside it.
+beside_cape() {
+    docker run --rm -i --network tartarus-internal --network tartarus-cape-db --entrypoint "" "$CAPE_IMAGE" "$@" </dev/null
 }
 
-# A target that the cape container cannot reach either would also look blocked to a guest for a reason
+answers_outside_a_guest() { # name target port payload-kind marker
+    local from=beside_cape
+    case $1 in cape-web | guacd | guest-control) from=in_cape ;; esac
+    "$from" bash -c 'exec 3<>"/dev/tcp/$0/$1" || exit 1; printf %s "$2" | base64 -d >&3; timeout 3 cat <&3 | head -c 4096' \
+        "$2" "$3" "$(payload_for "$4")" 2>/dev/null | grep -Eaq -- "$5"
+}
+
+# A target that nothing outside a guest reaches either would also look blocked to a guest for a reason
 # that has nothing to do with isolation.
 skip_what_nothing_reaches() {
     local name target port payload marker _
     while IFS=';' read -r name target port payload marker _; do
         case $name in gateway-* | other-guest-*) continue ;; esac
         if [[ -z $target ]]; then info "$name has no address here: not probed"; SKIPPED+="$name "
-        elif ! answers_from_cape "$target" "$port" "$payload" "$marker"; then
-            info "$name does not answer from the cape container either: not probed from the guests"
+        elif ! answers_outside_a_guest "$name" "$target" "$port" "$payload" "$marker"; then
+            info "$name does not answer outside a guest either: not probed from the guests"
             SKIPPED+="$name "
         fi
     done < <(catalogue "")

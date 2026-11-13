@@ -13,6 +13,7 @@ TEMPLATES=/usr/local/lib/tartarus/templates
 # carrying that address.
 INTERNAL_NETWORK_ALIAS=cape-internal
 CONTROL_NETWORK_ALIAS=cape-control
+DATABASE_NETWORK_ALIAS=cape-db
 
 address_on_network() {
     local alias=$1 address
@@ -71,6 +72,14 @@ render_cape_guest_network_overrides() {
     done
 }
 
+# Docker mounts /proc/sys read-only for a container that is not privileged, and libvirt writes
+# net.ipv6.conf.<bridge>.disable_ipv6 for the bridge it creates. Only the network subtree, which is
+# this container's own namespace, becomes writable; kernel.* stays read-only.
+make_network_sysctls_writable() {
+    mount --bind /proc/sys/net /proc/sys/net
+    mount -o remount,rw,bind /proc/sys/net
+}
+
 prepare_volumes() {
     mkdir -p /var/lib/libvirt/definitions /var/lib/libvirt/tartarus/kvm.conf.d
     install -d -o cape -g cape /opt/CAPEv2/storage /opt/CAPEv2/storage/analyses
@@ -83,15 +92,23 @@ create_cape_schema() {
         'from lib.cuckoo.core.database import init_database; init_database()')
 }
 
-export CAPE_INTERNAL_IP CAPE_INTERNAL_IFACE CAPE_CONTROL_IP
+export CAPE_INTERNAL_IP CAPE_INTERNAL_IFACE CAPE_CONTROL_IP CAPE_DB_IP CAPE_DB_IFACE
 CAPE_INTERNAL_IP=$(address_on_network "$INTERNAL_NETWORK_ALIAS")
 CAPE_INTERNAL_IFACE=$(interface_with_address "$CAPE_INTERNAL_IP")
 CAPE_CONTROL_IP=$(address_on_network "$CONTROL_NETWORK_ALIAS")
+CAPE_DB_IP=$(address_on_network "$DATABASE_NETWORK_ALIAS")
+CAPE_DB_IFACE=$(interface_with_address "$CAPE_DB_IP")
 derive_guest_addresses
+make_network_sysctls_writable
 # Before anything else starts: a guest must never run with only the rooter's rules between it and the
 # container. A failure here stops the container (set -e).
 python3 -I /usr/local/lib/tartarus/guest-firewall init
+# Likewise no program may start before its output is confined: the `cape` user parses hostile sample
+# output and must reach the CAPE database and nothing else.
+python3 -I /usr/local/lib/tartarus/container-egress init
 install -m 0644 "$TEMPLATES/libvirtd.conf" /etc/libvirt/libvirtd.conf
+# /run is a tmpfs, so the directory of the bus socket (see supervisord.conf) is gone at every start.
+install -d /run/dbus
 render_inetsim_config
 render_cape_guest_network_overrides
 grant_qemu_user_kvm_access

@@ -58,6 +58,8 @@ new_copy_world() {
     printf 'overlay bytes' >"$OVERLAY"
     printf 'memory image bytes' >"$MEMORY"
     printf 'nvram bytes' >"$SOURCE_NVRAM"
+    PRISTINE_NVRAM="$NVRAMS/beta_VARS.clean.fd"
+    printf 'nvram bytes' >"$PRISTINE_NVRAM"
     CLONE_DISK="$IMAGES/alpha.qcow2"
     CLONE_NVRAM="$NVRAMS/alpha_VARS.fd"
     write_copy_stubs
@@ -108,6 +110,18 @@ command=$1 domain=$2
 case $command in
     domstate) [[ -e $STUB_DIR/domain-$domain.xml ]] || exit 1; cat "$STUB_DIR/domstate-$domain" 2>/dev/null || echo "shut off" ;;
     dumpxml) cat "$STUB_DIR/domain-$domain.xml" 2>/dev/null || exit 1 ;;
+    # A revert to the running clean snapshot writes the snapshot's firmware back to the nvram file.
+    snapshot-revert)
+        [[ -e $STUB_DIR/revert-fails ]] && exit 1
+        nvram=$(sed -n 's|.*<nvram>\(.*\)</nvram>.*|\1|p' "$STUB_DIR/domain-$domain.xml")
+        [[ -e $STUB_DIR/revert-leaves-the-nvram ]] || printf 'clean nvram bytes' >"$nvram"
+        # ...and leaves the domain on a new overlay, removing the one it had.
+        overlay=$(sed -n "s|.*<source file='\(.*\)'/>.*|\1|p" "$STUB_DIR/domain-$domain.xml")
+        mv "$overlay" "$overlay.reverted"
+        mv "$STUB_DIR/chain-$(basename "$overlay").json" "$STUB_DIR/chain-$(basename "$overlay").reverted.json"
+        sed -i "s|$overlay|$overlay.reverted|" "$STUB_DIR/domain-$domain.xml"
+        echo running >"$STUB_DIR/domstate-$domain" ;;
+    destroy) rm -f "$STUB_DIR/domstate-$domain" ;;
     *) echo "unexpected virsh $command" >&2; exit 1 ;;
 esac
 STUB
@@ -132,6 +146,7 @@ STUB
 #!/bin/sh
 echo "cp $*" >>"$STUB_LOG"
 [ -e "$STUB_DIR/cp-fails" ] && { echo "cp: boom" >&2; exit 1; }
+[ -e "$STUB_DIR/cp-corrupts" ] && { /usr/bin/cp "$@" && echo x >>"${@: -1}"; exit $?; }
 exec /usr/bin/cp "$@"
 STUB
     printf '#!/usr/bin/env bash\necho "sleep $*" >>"$STUB_LOG"\n' >"$WORLD/bin/sleep"
@@ -242,12 +257,60 @@ PY
     assert_status 0 && assert_called "convert -O qcow2 $BASE " && assert_file_is "$CLONE_DISK" "base image bytes"
 }
 
-test_copy_copies_the_nvram_of_the_source_domain() {
+test_copy_copies_the_nvram_of_the_source_domain_with_mode_600_whatever_the_source_mode() {
     new_copy_world
-    chmod 640 "$SOURCE_NVRAM"
+    chmod 644 "$SOURCE_NVRAM"
     run_copy
     assert_status 0 && assert_file_is "$CLONE_NVRAM" "nvram bytes" &&
-        [[ $(stat -c %a "$CLONE_NVRAM") == 640 ]]
+        [[ $(stat -c %a "$CLONE_NVRAM") == 600 ]]
+}
+
+test_copy_copies_the_pristine_nvram_of_the_source_when_it_has_one() {
+    new_copy_world
+    printf 'pristine bytes' >"$PRISTINE_NVRAM"
+    printf 'written by a sample' >"$SOURCE_NVRAM"
+    run_copy
+    assert_status 0 && assert_file_is "$CLONE_NVRAM" "pristine bytes" && ! grep -q 'snapshot-revert' "$LOG"
+}
+
+test_copy_reverts_a_source_without_a_pristine_copy_and_keeps_the_firmware_the_revert_restored() {
+    new_copy_world
+    rm "$PRISTINE_NVRAM"
+    printf 'nvram bytes a sample changed' >"$SOURCE_NVRAM"
+    touch -d '2020-01-01' "$SOURCE_NVRAM"
+    run_copy
+    assert_status 0 && assert_file_is "$CLONE_NVRAM" "clean nvram bytes" &&
+        assert_file_is "$NVRAMS/beta_VARS.clean.fd" "clean nvram bytes" &&
+        grep -q '^virsh .* snapshot-revert beta tartarus-clean$' "$LOG" &&
+        [[ $(grep -n 'destroy beta' "$LOG" | cut -d: -f1) -gt $(grep -n 'snapshot-revert beta' "$LOG" | cut -d: -f1) ]] &&
+        assert_absent "$S/domstate-beta"
+}
+
+test_copy_fails_when_the_revert_did_not_rewrite_the_firmware_of_a_source_without_a_pristine_copy() {
+    new_copy_world
+    rm "$PRISTINE_NVRAM"
+    touch -d '2020-01-01' "$SOURCE_NVRAM"
+    touch "$S/revert-leaves-the-nvram"
+    run_copy
+    assert_status 1 && assert_contains "was not rewritten" && assert_absent "$NVRAMS/beta_VARS.clean.fd" &&
+        assert_absent "$CLONE_NVRAM" && assert_absent "$S/domstate-beta"
+}
+
+test_copy_fails_when_a_source_without_a_pristine_copy_cannot_be_reverted() {
+    new_copy_world
+    rm "$PRISTINE_NVRAM"
+    touch "$S/revert-fails"
+    run_copy
+    assert_status 1 && assert_contains "could not revert" && assert_absent "$NVRAMS/beta_VARS.clean.fd" &&
+        assert_absent "$CLONE_NVRAM"
+}
+
+test_copy_fails_when_the_clone_nvram_is_not_identical_to_what_it_was_copied_from() {
+    new_copy_world
+    touch "$S/cp-corrupts"
+    run_copy
+    assert_status 1 && assert_contains "identical" && assert_absent "$CLONE_NVRAM" &&
+        assert_absent "$CLONE_NVRAM.part" && assert_absent "$CLONE_DISK"
 }
 
 test_copy_creates_the_clones_directories_when_the_source_keeps_its_files_elsewhere() {
@@ -255,9 +318,10 @@ test_copy_creates_the_clones_directories_when_the_source_keeps_its_files_elsewhe
     mkdir -p "$WORLD/elsewhere"
     mv "$SOURCE_NVRAM" "$WORLD/elsewhere/beta_VARS.fd"
     describe_source_domain "$OVERLAY" "$WORLD/elsewhere/beta_VARS.fd"
+    rm "$PRISTINE_NVRAM"
     rmdir "$NVRAMS"
     run_copy
-    assert_status 0 && assert_file_is "$CLONE_NVRAM" "nvram bytes"
+    assert_status 0 && assert_file_is "$CLONE_NVRAM" "clean nvram bytes"
 }
 
 test_copy_says_that_no_tpm_state_is_copied() {
@@ -316,11 +380,11 @@ test_copy_fails_when_the_base_disk_is_not_the_size_the_clone_is_recorded_with() 
         assert_not_called "convert" && assert_absent "$CLONE_DISK"
 }
 
-test_copy_fails_before_the_long_convert_when_the_source_nvram_is_missing() {
+test_copy_fails_before_the_long_convert_when_the_pristine_nvram_is_not_readable() {
     new_copy_world
-    rm "$SOURCE_NVRAM"
+    chmod 000 "$PRISTINE_NVRAM"
     run_copy
-    assert_status 1 && assert_contains "$SOURCE_NVRAM" && assert_not_called "convert" && assert_absent "$CLONE_DISK"
+    assert_status 1 && assert_contains "$PRISTINE_NVRAM" && assert_not_called "convert" && assert_absent "$CLONE_DISK"
 }
 
 test_copy_never_leaves_the_clone_disk_in_place_before_the_copy_is_whole() {

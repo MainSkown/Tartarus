@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Usage: wait-then-exec <condition>... -- <command> [args...]
 # Blocks until every condition holds, then execs the command. Conditions:
+#   machine-broker    the machine broker listens (CAPE reverts and stops guests through it)
+#   dbus              the system bus answers (polkitd connects to it)
+#   polkit            polkitd owns its bus name (libvirtd refuses every client until it does)
 #   guest-network     tt-guest carries the guest gateway address (INetSim and the ResultServer bind it)
 #   rooter            CAPE's rooter socket exists (cuckoo.py exits at start without it)
 #   registered-guest  every machine in CAPE's kvm config is defined in libvirt
@@ -8,10 +11,20 @@
 set -euo pipefail
 
 ROOTER_SOCKET=/tmp/cuckoo-rooter
+MACHINE_BROKER_SOCKET=/run/tartarus/machine-broker.sock
+
+dbus_ready() { dbus-send --system --dest=org.freedesktop.DBus --print-reply /org/freedesktop/DBus org.freedesktop.DBus.GetId >/dev/null 2>&1; }
+
+polkit_ready() {
+    dbus-send --system --dest=org.freedesktop.DBus --print-reply /org/freedesktop/DBus \
+        org.freedesktop.DBus.NameHasOwner string:org.freedesktop.PolicyKit1 2>/dev/null | grep -q 'boolean true'
+}
 
 guest_network_ready() { ip -4 -o addr show dev tt-guest 2>/dev/null | grep -qF " ${GUEST_GATEWAY_IP}/"; }
 
 rooter_ready() { [[ -S $ROOTER_SOCKET ]]; }
+
+machine_broker_ready() { [[ -S $MACHINE_BROKER_SOCKET ]]; }
 
 registered_machines() {
     (cd /opt/CAPEv2 && .venv/bin/python -c \
@@ -23,7 +36,7 @@ registered_guest_ready() {
     machines=$(registered_machines)
     [[ -n ${machines// /} ]] || return 1
     for machine in $machines; do
-        virsh -q -c qemu:///system dominfo "$machine" >/dev/null 2>&1 || return 1
+        virsh -q -c qemu:///system domstate "$machine" >/dev/null 2>&1 || return 1
     done
 }
 

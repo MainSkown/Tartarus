@@ -10,7 +10,7 @@ isolation lives. The full component map, the network tables and the process mode
 |---|---|---|
 | `frontend` | `frontend/` (nginx in production, the Vite dev server in dev) | Serves the Quasar PWA and proxies `/api` and `/ws` to the backend. The only port published to the host: `127.0.0.1:8080` |
 | `backend` | `backend/` (FastAPI, uvicorn) | REST and WebSocket API, the live collector, the report ingester, the Sigma matcher, the query compiler, exports, the job runner and the queue runner. It is a client of the guest control service and has no libvirt and no Docker socket |
-| `cape` | the repo root, for `cape/` and `guest/` | CAPE, KVM and libvirt, the rooter, Suricata, INetSim, guacd and the guest control service. It is privileged |
+| `cape` | the repo root, for `cape/` and `guest/` | CAPE, KVM and libvirt, the rooter, Suricata, INetSim, guacd and the guest control service. It is not privileged: it has a capability and device list |
 | `postgres` | `postgres:16` | Two databases: `tartarus` (metadata) and `cape` (CAPE's task database) |
 | `opensearch` | `opensearchproject/opensearch:3.9.0` | One index per analysis, holding every event |
 
@@ -29,8 +29,8 @@ Source: `docker-compose.yml`. No MongoDB is used; the final report is read from 
    new bytes of each file. `LiveCapemon` (`backend/app/ingest/live_capemon.py`) turns each record
    into an ECS event with a deterministic id. Sigma runs in the stream. Batches go to OpenSearch and
    to the live WebSocket (`backend/app/ws/live.py`).
-5. **Finish.** CAPE writes `reports/report.json` and calls `POST /internal/cape/callback`
-   (`backend/app/api/internal.py`).
+5. **Finish.** CAPE writes `reports/report.json`; the runner's status poll sees the task reach
+   `reported` (CAPE's callback module is off, see [security](../security.md)).
 6. **Final ingest.** The runner drains the live collector first. The report ingester
    (`backend/app/ingest/ingester.py`) then runs the normalisers from `default_normalizers()` over
    `report.json` and the files beside it: signatures, network, Sysmon, Defender and Volatility. API
@@ -81,7 +81,7 @@ proves the rules on a real guest, and it needs the real stack; see [running the 
 Tartarus is a local tool for one analyst. It has no accounts, binds to `127.0.0.1` and has no
 authentication in v1. Three points shape most changes:
 
-- The `cape` container is privileged, so the control service is root-equivalent there. The backend
+- The control service runs as root in the `cape` container, so it is root-equivalent there. The backend
   is the only client, and it has neither the libvirt socket nor the Docker socket.
 - The backend parses data that malware produces. Samples are stored zipped at rest.
 - OpenSearch is unauthenticated, so only the backend may reach it.

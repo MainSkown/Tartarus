@@ -41,6 +41,42 @@ def test_the_pcap_group_has_a_gid_no_host_group_shares():
     assert re.search(r"groupmod --gid 640\d\d pcap", runtime_stage())
 
 
+SERVICE_GROUPS = (
+    "cape",
+    "libvirt",
+    "kvm",
+    "libvirt-dnsmasq",
+    "inetsim",
+    "swtpm",
+    "polkitd",
+    "messagebus",
+    "tcpdump",
+)
+
+
+def reserved_gids() -> dict[str, int]:
+    stage = runtime_stage().replace("\\\n", " ")
+    first, groups = re.search(r"gid=(640\d\d); for group in ([a-z -]+); do", stage).groups()
+    return {group: int(first) + offset for offset, group in enumerate(groups.split())}
+
+
+def test_every_group_a_program_runs_with_has_a_gid_no_host_group_shares():
+    # A device node keeps its host gid in the container: cape's gid 995 was the host's `audio`.
+    gids = reserved_gids()
+
+    assert set(gids) == set(SERVICE_GROUPS)
+    assert all(64000 <= gid < 65000 for gid in gids.values())
+    assert 64010 not in gids.values(), "64010 is pcap's"
+    assert 64055 not in gids.values(), "64055 is libvirt-qemu's, fixed by Debian"
+
+
+def test_files_of_a_moved_group_follow_it_to_its_new_gid():
+    stage = runtime_stage().replace("\\\n", " ")
+
+    assert re.search(r'groupmod --gid "\$gid" "\$group"\s*&& find / -xdev -gid "\$old"', stage)
+    assert 'chgrp -h "$group"' in stage
+
+
 def copies_into_cape_tree() -> list[str]:
     return [
         line

@@ -15,7 +15,7 @@ port_entry() { printf '{"mode":"ingress","host_ip":"%s","target":%s,"published":
 CAPE_STORAGE_VOLUME='{"type":"volume","source":"cape-storage","target":"/opt/CAPEv2/storage"}'
 ISO_MOUNT='{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":true}'
 CAPE_NETWORKS='{"tartarus-internal":null,"tartarus-control":null,"tartarus-cape-db":null}'
-DEFAULT_CAPE='{"image":"tartarus-cape:latest","build":{},"privileged":true,"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"volumes":['"$CAPE_STORAGE_VOLUME,$ISO_MOUNT"'],"networks":'"$CAPE_NETWORKS"'}'
+DEFAULT_CAPE='{"image":"tartarus-cape:latest","build":{},"devices":[{"source":"/dev/kvm","target":"/dev/kvm","permissions":"rwm"}],"volumes":['"$CAPE_STORAGE_VOLUME,$ISO_MOUNT"'],"networks":'"$CAPE_NETWORKS"'}'
 CAPE_STORAGE_READ_ONLY='{"type":"volume","source":"cape-storage","target":"/cape-storage","read_only":true}'
 SAMPLE_STORE='{"type":"volume","source":"sample-store","target":"/data/samples"}'
 DEFAULT_BACKEND_VOLUMES="$CAPE_STORAGE_READ_ONLY,$SAMPLE_STORE"
@@ -145,7 +145,7 @@ test_static_keeps_resolved_secrets_off_every_command_line() {
 }
 
 test_static_output_never_contains_resolved_secrets() {
-    write_prod_config 127.0.0.1 "" "" "" "" '"environment":{"CAPE_API_TOKEN":"SECRET-MARKER-123"},"privileged":true'
+    write_prod_config 127.0.0.1 "" "" "" "" '"environment":{"CAPE_API_TOKEN":"SECRET-MARKER-123"}'
     run_smoke static
     [[ $OUTPUT != *SECRET-MARKER-123* ]]
 }
@@ -281,31 +281,37 @@ test_static_rejects_dev_and_prod_sharing_an_image_tag() {
 }
 
 test_static_rejects_cape_publishing_a_port() {
-    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "" "" "" '{"privileged":true,"ports":['"$(port_entry 127.0.0.1 16509 16509)"']}'
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "" "" "" '{"ports":['"$(port_entry 127.0.0.1 16509 16509)"']}'
     run_smoke static
     expect_fail_mentioning "cape publishes"
 }
 
-test_static_rejects_a_privileged_service_other_than_cape() {
+test_static_rejects_a_privileged_service() {
     write_prod_config 127.0.0.1 "" "" "" "" '"privileged":true'
     run_smoke static
     expect_fail_mentioning "backend is privileged"
 }
 
+test_static_rejects_a_privileged_cape() {
+    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"volumes":['"$ISO_MOUNT"'],"networks":{"tartarus-internal":null}}'
+    run_smoke static
+    expect_fail_mentioning "cape is privileged"
+}
+
 test_static_rejects_cape_mounting_the_iso_read_write() {
-    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"volumes":[{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":false}],"networks":{"tartarus-internal":null}}'
+    write_prod_config 127.0.0.1 "" "" "" '{"volumes":[{"type":"bind","source":"/repo/data/iso","target":"/data/iso","read_only":false}],"networks":{"tartarus-internal":null}}'
     run_smoke static
     expect_fail_mentioning "read-write"
 }
 
 test_static_rejects_cape_not_mounting_the_iso() {
-    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"networks":{"tartarus-internal":null}}'
+    write_prod_config 127.0.0.1 "" "" "" '{"networks":{"tartarus-internal":null}}'
     run_smoke static
     expect_fail_mentioning "does not mount /data/iso"
 }
 
 test_static_rejects_host_networking() {
-    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"network_mode":"host"}'
+    write_prod_config 127.0.0.1 "" "" "" '{"network_mode":"host"}'
     run_smoke static
     expect_fail_mentioning "cape uses the host network"
 }
@@ -367,7 +373,7 @@ test_static_rejects_backend_not_mounting_sample_store() {
 }
 
 test_static_rejects_cape_mounting_sample_store() {
-    write_prod_config 127.0.0.1 "" "" "" '{"privileged":true,"volumes":['"$ISO_MOUNT,$SAMPLE_STORE"'],"networks":{"tartarus-internal":null}}'
+    write_prod_config 127.0.0.1 "" "" "" '{"volumes":['"$ISO_MOUNT,$SAMPLE_STORE"'],"networks":{"tartarus-internal":null}}'
     run_smoke static
     expect_fail_mentioning "cape mounts sample-store"
 }
@@ -379,7 +385,7 @@ test_static_rejects_a_pulled_image_pinned_differently_in_dev() {
 }
 
 test_static_rejects_cape_tagged_differently_in_dev() {
-    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "" "" "" '{"image":"tartarus-cape:dev","build":{},"privileged":true,"volumes":['"$ISO_MOUNT"']}'
+    write_dev_config 127.0.0.1 "$DEFAULT_BACKEND_VOLUMES" "" "" "" '{"image":"tartarus-cape:dev","build":{},"volumes":['"$ISO_MOUNT"']}'
     run_smoke static
     expect_fail_mentioning "cape"
 }

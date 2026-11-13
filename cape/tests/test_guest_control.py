@@ -808,6 +808,7 @@ def launch_script_without_engine(tmp_path) -> tuple[subprocess.Popen, Client]:
     )
     for name in [
         "guest-control",
+        "analysis_files.py",
         "control_http.py",
         "finish_logic.py",
         "memory_logic.py",

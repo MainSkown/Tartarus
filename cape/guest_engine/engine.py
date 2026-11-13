@@ -33,7 +33,7 @@ from guest_engine.errors import Conflict, GuestNotFound
 from guest_engine.health import CapeMachinesProbe, SnapshotAgentCheck, run_checks
 from guest_engine.host import Host, HostError, guest_files
 from guest_engine.inspectors import load_inspectors
-from guest_engine.isolation import isolate_guest
+from guest_engine.isolation import strip_guest
 from guest_engine.media import MediaProblem, cleanup_stale_mounts, scan_media
 from guest_engine.profile import PipelineStep, Profile, derive_badges, load_profiles
 from guest_engine.registrar import Registrar, RegistrationFailed
@@ -301,7 +301,7 @@ class Engine:
         for build in self._sequencer.recover_interrupted():
             self._mark_state(build.guest, "failed")
         self._adopt_existing_guests()
-        self._isolate_existing_guests()
+        self._strip_libvirt_port_isolation()
 
     def _clean_stale_mounts(self) -> None:
         try:
@@ -529,20 +529,25 @@ class Engine:
         except RegistrationFailed as error:
             log.warning("could not write the single registration file: %s", error)
 
-    def _isolate_existing_guests(self) -> None:
+    def _strip_libvirt_port_isolation(self) -> None:
         for guest in self._registry.list():
             if not self._host.domain_exists(guest.name):
                 continue
             if self._host.is_running(guest.name):
                 log.warning(
-                    "%s is running; it is isolated at the next start of the service", guest.name
+                    "%s is running; libvirt's port isolation is removed at the next start",
+                    guest.name,
                 )
                 continue
             try:
-                if isolate_guest(self._host, guest.name):
-                    log.info("isolated the network port of %s", guest.name)
+                if strip_guest(self._host, guest.name):
+                    log.info(
+                        "removed libvirt's port isolation from %s; the hook isolates it", guest.name
+                    )
             except HostError as error:
-                log.warning("could not isolate the network port of %s: %s", guest.name, error)
+                log.warning(
+                    "could not remove libvirt's port isolation from %s: %s", guest.name, error
+                )
 
     def _adopt(self, file: Path, profile: Profile | None) -> bool:
         """Adopt the guest `file` registers if there is one; True when the registry knows it now."""

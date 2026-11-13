@@ -20,6 +20,35 @@ milestone was built is in [docs/history](docs/history/README.md).
   `process.hash.sha256` (queryable in the event search); it is "not recorded" for an entry that runs
   through another program, such as a DLL or a script.
 
+### Security
+
+The fixes from the [2026-11-12 hardening review](docs/security-audit-2026-11-12.md):
+
+- The `cape` container is no longer privileged. It runs with a fixed capability and device list, so no
+  host device but KVM's, the tun and vhost nodes and loop devices exists in it. The bridge port flag
+  that keeps guests apart is set by the qemu hook; existing guests are migrated when `cape` starts.
+- The `cape` user, which parses what a sample sends back, may only read from libvirt. A root broker
+  reverts a registered guest to its recorded snapshot, powers it off and dumps its memory for CAPE.
+- Programs in the `cape` container may open only the connections they need: the `cape` user reaches the
+  CAPE database and nothing else.
+- The guest firewall owns its default-deny: only a running guest's own address is forwarded, the gateway
+  accepts only the ports that listen on it, and the bridge carries nothing between guest ports.
+- `GUEST_BLOCKED_ADDRESSES` in `.env` blocks extra addresses for guests, such as the host's public one.
+- A clone takes its firmware from a pristine copy kept with the source's clean snapshot, not from the
+  source's live file.
+- The QEMU version and its tarball hash are pinned by Tartarus (9.2.4), and `make check-qemu-age` flags
+  an aged or outdated pin. The 9.2 series has ended, so the check fails until a maintained series is adopted.
+- Every group a program in the `cape` image runs with has a reserved gid, so none matches a host device group.
+
+### Changed
+
+- CAPE's callback to the backend is off; the backend learns that a task finished from its 2-second
+  status poll. `scripts/verify-guest.sh` no longer checks the callback.
+- CAPE's VirusTotal and whois lookups are off. CAPE's defaults had them on, sending sample hashes and
+  URLs to third parties.
+- After updating, rebuild and recreate the `cape` container (`make up`): the service has new network
+  aliases, capabilities and devices.
+
 ## [1.0.0] - 2026-10-26
 
 First release: a local malware-analysis workbench for one analyst on a Linux host with KVM and

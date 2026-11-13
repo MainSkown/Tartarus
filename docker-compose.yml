@@ -141,11 +141,34 @@ services:
       args:
         CAPE_REF: ${CAPE_REF:-9f806acd24ae23ee9a52cf4f1e82657635f07659}
     restart: "no"
-    # libvirtd, the rooter's iptables, the tt-guest bridge and QEMU's tap devices all live in this
-    # container's own network namespace; privileged grants that, and never the host's namespace.
-    privileged: true
+    # Not privileged: libvirtd, the rooter's iptables, the tt-guest bridge and QEMU's tap devices live in
+    # this container's own network namespace, and these capabilities and devices are what they were
+    # measured to need. SYS_ADMIN and SYS_PTRACE are libvirt's mount namespace and the ISO scan's loop
+    # mount; MKNOD and the loop rule let the scan make the loop node it attaches (docs/security.md).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - MKNOD
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+      - NET_RAW
+      - SETGID
+      - SETPCAP
+      - SETUID
+      - SYS_ADMIN
+      - SYS_CHROOT
+      - SYS_PTRACE
     devices:
       - /dev/kvm:/dev/kvm
+      - /dev/net/tun:/dev/net/tun
+      - /dev/vhost-net:/dev/vhost-net
+      - /dev/loop-control:/dev/loop-control
+    device_cgroup_rules:
+      - "b 7:* rmw"
     environment:
       TZ: ${TZ:-UTC}
       CAPE_DB_USER: ${CAPE_DB_USER:-cape}
@@ -154,6 +177,7 @@ services:
       CAPE_API_TOKEN: ${CAPE_API_TOKEN:?CAPE_API_TOKEN must be set in .env (make init-env writes one)}
       GUEST_CONTROL_TOKEN: ${GUEST_CONTROL_TOKEN:?GUEST_CONTROL_TOKEN must be set in .env (make init-env writes one)}
       GUEST_SUBNET: ${GUEST_SUBNET:-192.168.150.0/24}
+      GUEST_BLOCKED_ADDRESSES: ${GUEST_BLOCKED_ADDRESSES:-}
     sysctls:
       net.ipv4.ip_forward: "1"
     tmpfs:
@@ -177,7 +201,9 @@ services:
       tartarus-control:
         aliases:
           - cape-control
-      tartarus-cape-db: {}
+      tartarus-cape-db:
+        aliases:
+          - cape-db
 
 # Each network joins only the services that talk to each other, and the ones that carry data have no
 # route out (internal: true). Docker publishes a port only from a network with a route out, which is

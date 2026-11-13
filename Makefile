@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help dev up down logs test test-cape test-scripts test-integration check-links lint check api-sync screenshots init-env preflight smoke verify-cape build-guest verify-guest verify-isolation verify-cape-hardening verify-wizard e2e hooks
+.PHONY: help dev up down logs test test-cape test-scripts test-integration check-links check-qemu-age lint check api-sync screenshots init-env preflight smoke verify-cape build-guest verify-guest verify-isolation verify-cape-hardening verify-wizard e2e hooks
 
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -34,12 +34,15 @@ test-integration: ## Run backend tests that need Docker
 check-links: ## Fail on a relative markdown link whose file or heading does not exist (stdlib only)
 	python3 -I scripts/check-links.py
 
+check-qemu-age: ## Fail when the pinned QEMU is over 180 days old; make check-qemu-age ONLINE=1 also compares with download.qemu.org (stdlib only)
+	python3 -I scripts/check-qemu-age.py $(if $(ONLINE),--online)
+
 lint: ## Run ruff, mypy, eslint and the TypeScript check
 	cd backend && uv run ruff check
 	cd backend && uv run ruff format --check
 	cd backend && uv run mypy app
-	cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
-	cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
+	cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/container-egress bin/machine-broker bin/machine_broker_logic.py bin/machine_broker_client.py bin/analysis_files.py bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
+	cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/container-egress bin/machine-broker bin/machine_broker_logic.py bin/machine_broker_client.py bin/analysis_files.py bin/control_http.py bin/finish_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
 	cd frontend && npm run lint
 	cd frontend && npm run typecheck
 
@@ -69,7 +72,7 @@ build-guest: ## Build the Windows analysis guest unattended and register it with
 verify-guest: ## Prove acceptance checks 8-12 against the built guest (slow; needs make build-guest first)
 	scripts/verify-guest.sh
 
-verify-cape-hardening: ## Prove the cape container's privilege and secret hardening (cape cannot open the host's disks or run anything as root, per-program secrets, API-only web, root-run code not writable by cape; starts no guest)
+verify-cape-hardening: ## Prove the cape container's privilege and secret hardening (cape cannot open the host's disks or run anything as root, per-program secrets, API-only web, root-run code not writable by cape, libvirt refuses cape what it does not need: defining or editing domains, pools, networks; starts no guest)
 	scripts/verify-cape-hardening.sh
 
 verify-isolation: ## Prove a guest reaches only what its route allows (not the compose networks, the LAN, guacd, the control service, the other guest, even from an address it invented or through the gateway) on every route: make verify-isolation GUESTS="lab1 lab5" (needs the stack up and two ready guests; starts them by snapshot revert)

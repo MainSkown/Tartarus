@@ -1,0 +1,25 @@
+// What CAPE's LibVirtMachinery reads about a registered guest, and nothing that writes (audit finding 1).
+// Root never reaches this file: polkitd authorises uid 0 before it reads any rule.
+//
+// libvirt's permissions are per object class, not per call: domain.snapshot reverts a guest but also
+// redefines a snapshot together with the domain inside it, and core-dump writes a file anywhere as
+// root. So the cape user gets neither; the root machine broker (cape/bin/machine-broker) reverts,
+// stops and dumps a registered guest for it.
+const CAPE_MAY = [
+    "org.libvirt.api.connect.getattr",
+    "org.libvirt.api.connect.search-domains",
+    "org.libvirt.api.domain.getattr",
+    "org.libvirt.api.domain.read",
+];
+
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.libvirt.api.") !== 0) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (subject.user === "cape" &&
+        action.lookup("connect_driver") === "QEMU" &&
+        CAPE_MAY.indexOf(action.id) !== -1) {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NO;
+});

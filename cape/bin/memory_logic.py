@@ -22,6 +22,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from analysis_files import (
+    ANALYSIS_DIRECTORY_MODE,
+    ANALYSIS_FILE_MODE,
+    CREATE_NEW_FILE,
+    DUMP_NAME,
+    STORAGE_DIRECTORY,
+    hand_over,
+    open_directory,
+)
 from finish_logic import TASK_ID_NOT_DIGITS, parse_task_id
 from volatility import (
     CAPE_ENVIRONMENT,
@@ -37,13 +46,9 @@ from volatility import (
     run_command,
 )
 
-STORAGE_DIRECTORY = Path("/opt/CAPEv2/storage")
 IMPORTS_DIRECTORY = Path("/imports")
 PLUGIN_TIMEOUT_SECONDS = 120.0
 OVERALL_TIMEOUT_SECONDS = 300.0
-ANALYSIS_FILE_MODE = 0o644
-ANALYSIS_DIRECTORY_MODE = 0o755
-DUMP_NAME = "memory.dmp"
 RESULTS_FOLDER = "memory"
 
 PROBE_PLUGIN = "windows.info"
@@ -199,7 +204,7 @@ class MemoryAnalyser:
             raise NotAnImageTaskError
         with self._claimed(task_id):
             try:
-                with _open_directory(self.storage / "analyses") as analyses:
+                with open_directory(self.storage / "analyses") as analyses:
                     shutil.rmtree(str(task_id), ignore_errors=True, dir_fd=analyses)
             except OSError:
                 return
@@ -222,10 +227,10 @@ class MemoryAnalyser:
         while this service runs as root: everything done to the folder goes through this descriptor.
         """
         name = str(task_id)
-        with _open_directory(self.storage / "analyses") as analyses:
+        with open_directory(self.storage / "analyses") as analyses:
             if create:
                 _make_directory(name, analyses)
-            with _open_directory(name, analyses) as analysis:
+            with open_directory(name, analyses) as analysis:
                 yield analysis
 
     def _dump_of(self, task_id: int) -> Path:
@@ -308,8 +313,8 @@ class MemoryAnalyser:
                 # A rerun must not leave the file of a plugin that fails this time.
                 _remove_results(analysis)
                 os.mkdir(RESULTS_FOLDER, ANALYSIS_DIRECTORY_MODE, dir_fd=analysis)
-                with _open_directory(RESULTS_FOLDER, analysis) as folder:
-                    _hand_over(folder, owner, ANALYSIS_DIRECTORY_MODE)
+                with open_directory(RESULTS_FOLDER, analysis) as folder:
+                    hand_over(folder, owner, ANALYSIS_DIRECTORY_MODE)
                     for plugin, run in scan.runs.items():
                         if run.rows is not None:
                             _write_readable(folder, f"{plugin}.json", run.rows, owner)
@@ -345,16 +350,6 @@ def _name_of(process: Path) -> str:
         return "?"
 
 
-@contextmanager
-def _open_directory(path: str | Path, parent: int | None = None) -> Iterator[int]:
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    descriptor = os.open(path, flags, dir_fd=parent)
-    try:
-        yield descriptor
-    finally:
-        os.close(descriptor)
-
-
 def _remove_results(analysis: int) -> None:
     try:
         replaced_by_link = stat.S_ISLNK(
@@ -371,23 +366,15 @@ def _remove_results(analysis: int) -> None:
 def _make_directory(name: str, parent: int) -> None:
     with suppress(FileExistsError):
         os.mkdir(name, ANALYSIS_DIRECTORY_MODE, dir_fd=parent)
-        with _open_directory(name, parent) as created:
+        with open_directory(name, parent) as created:
             os.fchmod(created, ANALYSIS_DIRECTORY_MODE)
 
 
-def _hand_over(descriptor: int, owner: os.stat_result, mode: int) -> None:
-    """The service runs as root; CAPE, as `cape`, deletes the whole task folder with the analysis
-    and cannot remove what root leaves in it, so each result belongs to the folder's owner."""
-    os.fchown(descriptor, owner.st_uid, owner.st_gid)
-    os.fchmod(descriptor, mode)
-
-
 def _write_readable(folder: int, name: str, content: Any, owner: os.stat_result) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
-    descriptor = os.open(name, flags, ANALYSIS_FILE_MODE, dir_fd=folder)
+    descriptor = os.open(name, CREATE_NEW_FILE, ANALYSIS_FILE_MODE, dir_fd=folder)
     with os.fdopen(descriptor, "w") as file:
         file.write(json.dumps(content))
-        _hand_over(file.fileno(), owner, ANALYSIS_FILE_MODE)
+        hand_over(file.fileno(), owner, ANALYSIS_FILE_MODE)
 
 
 def _plugin_entries(scan: Scan) -> dict[str, dict[str, Any]]:

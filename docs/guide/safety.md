@@ -32,6 +32,8 @@ Every packet is recorded in the PCAP, whichever route you use.
 
 Use a separate network or a VPN for the machine before you run live malware on this route. Tartarus does not offer a VPN route yet, so you must set it up at the network level.
 
+If this machine has a public IPv4 address, or your router answers on its WAN address, list those addresses in `GUEST_BLOCKED_ADDRESSES` in `.env` (comma separated, addresses or networks). Tartarus already blocks private and local ranges, but a guest on this route could otherwise reach services on this machine through its public address. A value that is not an IPv4 address or network, or that overlaps the guest subnet, stops the cape container from starting.
+
 Keep the default route, `INETSIM`, unless you have a reason to pick another. The default is set in **Settings**.
 
 ## What a guest is not
@@ -50,7 +52,7 @@ The archive password is not a secret. Malware zips are shared with a password th
 
 The security review fixed what it could. These risks remain by design. The full table is in [the security doc](../security.md#accepted-risks).
 
-- **The `cape` container runs privileged.** It needs the host's KVM device and some capabilities to run VMs. If a sample escaped the guest and then gained root inside `cape`, it would have more access than a normal container.
+- **The `cape` container holds more capabilities than a normal container.** It is not privileged and sees no host device but KVM's, but it needs some capabilities to run VMs. If a sample escaped the guest and then gained root inside `cape`, it would have more access than in a normal container.
 - **There is no login.** The app listens on `127.0.0.1`, over plain HTTP. Any user on this machine can open it.
 - **The Guest VM page shows the guest's password** so you can log into the guest desktop.
 - **The `INTERNET` route reaches the internet.** That is its purpose.

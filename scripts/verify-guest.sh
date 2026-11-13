@@ -2,7 +2,7 @@
 # Proves acceptance checks 8-12 of docs/history/m0-cape-spike.md against the Windows guest that
 # scripts/build-guest.sh produced and registered. Assumes the guest exists; it does not build it.
 # Submits a benign sample (built here with mingw-w64) through apiv2, routes it to INetSim, and
-# confirms capemon's live logs, the final report and the callback. Leaves the guest powered off.
+# confirms capemon's live logs and the final report. Leaves the guest powered off.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -11,8 +11,6 @@ REPO=$PWD
 LABEL=${GUEST_LABEL:-win}
 GUEST_IP="" GATEWAY_IP="" AGENT=""
 CAPE_IMAGE=tartarus-cape:latest
-CALLBACK=tt-callback
-CALLBACK_PORT=8080
 SAMPLE_SRC=$REPO/guest/profiles/windows/selftest/benign.c
 SAMPLE_DIR=${TMPDIR:-/tmp}/tt-guest-verify
 AGENT_TIMEOUT=${GUEST_AGENT_TIMEOUT:-300}
@@ -53,34 +51,7 @@ wait_until() {
     until "$@"; do ((SECONDS < deadline)) || return 1; sleep 5; done
 }
 
-# --- sample and callback listener -------------------------------------------
-
-start_callback_listener() {
-    docker rm -f "$CALLBACK" >/dev/null 2>&1
-    docker run -d --name "$CALLBACK" --network tartarus-internal --entrypoint "" "$CAPE_IMAGE" \
-        python3 -I -c '
-import http.server
-class H(http.server.BaseHTTPRequestHandler):
-    def do_POST(self):
-        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        print("CALLBACK " + body.decode("utf-8", "replace"), flush=True)
-        self.send_response(200); self.end_headers()
-    def log_message(self, *a): pass
-http.server.HTTPServer(("0.0.0.0", '"$CALLBACK_PORT"'), H).serve_forever()
-' >/dev/null
-}
-
-configure_callback() {
-    in_cape sh -c "mkdir -p /opt/CAPEv2/custom/conf/reporting.conf.d &&
-        printf '[callback]\nenabled = yes\nurl = http://%s:%s/callback\n' '$CALLBACK' '$CALLBACK_PORT' \
-        > /opt/CAPEv2/custom/conf/reporting.conf.d/callback.conf"
-    in_cape supervisorctl restart cape-processor >/dev/null
-}
-
 cleanup() {
-    docker rm -f "$CALLBACK" >/dev/null 2>&1
-    in_cape rm -f /opt/CAPEv2/custom/conf/reporting.conf.d/callback.conf >/dev/null 2>&1
-    in_cape supervisorctl restart cape-processor >/dev/null 2>&1
     virsh_cape destroy "$LABEL" >/dev/null 2>&1
 }
 
@@ -180,13 +151,6 @@ task_reported() {
 
 live_bson_was_seen() { [[ $LIVE_BSON_SEEN == yes ]] || { echo "no .bson appeared in logs/ while running"; return 1; }; }
 
-callback_was_received() {
-    local hits
-    hits=$(docker logs "$CALLBACK" 2>&1 | grep -c "CALLBACK")
-    ((hits > 0)) || { echo "listener received no callback"; return 1; }
-    echo "$(docker logs "$CALLBACK" 2>&1 | grep CALLBACK | tail -n1)"
-}
-
 inetsim_dns_in_report() {
     in_cape sh -c "grep -oiE 'tartarus-selftest\\.example|\"domain\"' /opt/CAPEv2/storage/analyses/$TASK_ID/reports/report.json | head -n1" |
         grep -qi tartarus-selftest || { echo "sample's DNS lookup not in the report"; return 1; }
@@ -219,8 +183,6 @@ main() {
 
     if build_sample; then
         ok "sample: benign.exe built with mingw-w64"
-        start_callback_listener
-        configure_callback
         submit_sample
         if check "10 submit: apiv2 accepted the sample" task_was_accepted; then
             follow_task
@@ -228,7 +190,6 @@ main() {
             check "10 live: capemon .bson logs appeared in logs/ while running" live_bson_was_seen
             check "10 final: report.json exists after the run" report_present
             check "10 inetsim: the sample's name resolution is in the report" inetsim_dns_in_report
-            check "10 callback: the reporting callback reached the internal listener" callback_was_received
         fi
     else
         fail "sample: could not build benign.exe with mingw-w64"

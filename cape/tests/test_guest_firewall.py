@@ -51,12 +51,68 @@ def rendered(ports=(LAB1, W10), addresses=ADDRESSES, policy=POLICY) -> str:
 # --- what a guest may reach on the container -----------------------------------------------------
 
 
-def test_a_guest_may_reach_the_gateway_and_nothing_else_on_the_container():
+INETSIM_TCP_PORTS = (
+    1,
+    7,
+    9,
+    13,
+    17,
+    19,
+    21,
+    25,
+    37,
+    53,
+    79,
+    80,
+    110,
+    113,
+    443,
+    465,
+    990,
+    995,
+    6667,
+)
+INETSIM_UDP_PORTS = (1, 7, 9, 13, 17, 19, 37, 53, 69, 123, 514)
+
+
+def ports_in_rule(chain: str, protocol: str) -> set[int]:
+    """The ports of the one accept rule `ip daddr <gateway> <protocol> dport { ... } accept`."""
+    (rule,) = [
+        line for line in chain.splitlines() if f"ip daddr {GATEWAY} {protocol} dport {{" in line
+    ]
+    listed = rule[rule.index("{") + 1 : rule.index("}")]
+    return {int(port) for port in listed.split(",")}
+
+
+def test_a_guest_reaches_the_tcp_ports_that_listen_on_the_gateway_and_no_other():
+    ports = ports_in_rule(section(rendered(), "chain input"), "tcp")
+
+    assert ports == {2042, *INETSIM_TCP_PORTS}
+
+
+def test_a_guest_reaches_the_udp_ports_that_listen_on_the_gateway_and_no_other():
+    ports = ports_in_rule(section(rendered(), "chain input"), "udp")
+
+    assert ports == {67, *INETSIM_UDP_PORTS}
+
+
+def test_a_guest_may_ping_the_gateway():
+    assert f"ip daddr {GATEWAY} icmp type echo-request accept" in section(rendered(), "chain input")
+
+
+def test_nothing_else_addressed_to_the_container_is_accepted_from_the_guest_bridge():
     chain = section(rendered(), "chain input")
 
-    assert f"ip daddr {GATEWAY} accept" in chain
-    assert chain.rstrip().endswith("drop")
-    assert chain.index(f"ip daddr {GATEWAY}") < chain.rindex("drop")
+    assert f"ip daddr {GATEWAY} accept" not in chain
+    assert chain.rstrip().endswith("counter drop")
+    assert chain.rindex("accept") < chain.rindex("counter drop")
+
+
+def test_replies_to_connections_the_container_opened_to_a_guest_are_accepted():
+    chain = section(rendered(), "chain input")
+
+    assert "ct state established,related accept" in chain
+    assert chain.index("ct state established,related") < chain.index("counter drop")
 
 
 def test_dhcp_discovery_reaches_dnsmasq_though_it_is_not_addressed_to_the_gateway():
@@ -101,6 +157,36 @@ def test_the_networks_the_container_is_on_are_unreachable_with_the_private_range
         "127.0.0.0/8",
     ):
         assert network in unreachable
+
+
+def test_traffic_forwarded_from_an_address_that_is_not_a_running_guest_is_dropped():
+    chain = section(rendered(), "chain forward")
+
+    assert "ip saddr != @guest_addresses counter drop" in chain
+    assert chain.index('iifname != "tt-guest" return') < chain.index("@guest_addresses")
+    assert chain.index("@guest_addresses") < chain.index("@unreachable")
+
+
+def test_the_addresses_of_running_guests_are_the_ones_that_may_be_forwarded():
+    addresses = section(rendered(), "set guest_addresses")
+
+    assert "type ipv4_addr" in addresses
+    listed = addresses[addresses.index("{ ", addresses.index("elements")) + 2 : -2].split(", ")
+    assert listed == ["192.168.150.11", "192.168.150.12"]
+
+
+def test_the_address_of_a_guest_that_is_not_running_is_not_forwarded():
+    addresses = section(rendered(ports=(LAB1,)), "set guest_addresses")
+
+    assert "192.168.150.11" in addresses
+    assert "192.168.150.12" not in addresses
+
+
+def test_with_no_guest_running_everything_forwarded_from_the_bridge_is_dropped():
+    ruleset = rendered(ports=())
+
+    assert "elements" not in section(ruleset, "set guest_addresses")
+    assert "ip saddr != @guest_addresses counter drop" in section(ruleset, "chain forward")
 
 
 def test_unreachable_destinations_are_refused_before_the_rooters_accept_can_see_them():
@@ -210,6 +296,14 @@ def test_a_port_that_is_not_an_interface_name_and_a_mac_never_reaches_the_rulese
 def test_an_address_that_is_not_ipv4_never_reaches_the_ruleset():
     with pytest.raises(ValueError, match="address"):
         rendered(addresses={"lab1": "1.1.1.1 } ; flush ruleset ; {"})
+
+
+def test_the_bridge_never_carries_a_frame_from_one_port_to_another():
+    # Only guest ports sit on the bridge, and the gateway is the bridge itself (input, not forward),
+    # so this also covers the moment between a guest's start and the hook isolating its port.
+    chain = section(rendered(), "chain between_guests")
+
+    assert "type filter hook forward priority -200; policy drop;" in chain
 
 
 # --- the networks the container is on ------------------------------------------------------------
@@ -364,7 +458,7 @@ def test_initialising_forgets_ports_of_a_previous_life_and_applies_the_ruleset(f
 
     assert ledger.ports() == []
     assert "vnet10" not in nft.rulesets[-1]
-    assert f"ip daddr {GATEWAY} accept" in nft.rulesets[-1]
+    assert f"ip daddr {GATEWAY} icmp type echo-request accept" in nft.rulesets[-1]
 
 
 def test_a_ruleset_nft_refuses_is_an_error_not_a_silent_open_door(firewall):
@@ -429,3 +523,61 @@ def test_the_gateway_the_entrypoint_derived_wins_over_the_first_address():
 def test_a_subnet_that_is_not_ipv4_is_refused():
     with pytest.raises(ValueError, match="IPv4"):
         policy_for({"GUEST_SUBNET": "fd00::/64"}, ROUTES, "tt-guest", "192.168.150.0/24")
+
+
+# --- addresses the operator blocks in addition ---------------------------------------------------
+
+
+def policy_with_blocked(value: str) -> FirewallPolicy:
+    return policy_for({"GUEST_BLOCKED_ADDRESSES": value}, ROUTES, "tt-guest", "192.168.150.0/24")
+
+
+def test_nothing_is_blocked_in_addition_when_the_setting_is_unset_or_empty():
+    unset = policy_for({}, ROUTES, "tt-guest", "192.168.150.0/24")
+
+    assert unset.blocked_addresses == ()
+    assert policy_with_blocked("").blocked_addresses == ()
+    assert policy_with_blocked(" , ").blocked_addresses == ()
+    assert unset.unreachable == policy_with_blocked("").unreachable
+
+
+def test_addresses_and_networks_the_operator_lists_are_unreachable_too():
+    policy = policy_with_blocked("203.0.113.7, 198.51.100.0/24")
+
+    assert policy.blocked_addresses == ("203.0.113.7/32", "198.51.100.0/24")
+    assert "203.0.113.7/32" in policy.unreachable
+    assert "198.51.100.0/24" in policy.unreachable
+    assert "10.0.0.0/8" in policy.unreachable
+    assert "203.0.113.7/32" in section(render_ruleset(policy, [LAB1], ADDRESSES), "set unreachable")
+
+
+@pytest.mark.parametrize(
+    "value", ["not-an-address", "2001:db8::1", "203.0.113.7,fd00::/8", "1.2.3"]
+)
+def test_a_blocked_address_that_is_not_ipv4_is_refused_naming_the_setting(value):
+    with pytest.raises(ValueError, match="GUEST_BLOCKED_ADDRESSES"):
+        policy_with_blocked(value)
+
+
+@pytest.mark.parametrize(
+    "value", ["192.168.150.1", "192.168.150.0/24", "192.168.0.0/16", "0.0.0.0/0"]
+)
+def test_a_blocked_address_that_overlaps_the_guest_subnet_is_refused(value):
+    with pytest.raises(ValueError, match=r"GUEST_BLOCKED_ADDRESSES.*subnet"):
+        policy_with_blocked(value)
+
+
+def test_the_blocked_addresses_are_stored_for_the_hook(tmp_path):
+    policy = policy_with_blocked("203.0.113.7")
+
+    store_policy(tmp_path, policy)
+
+    assert load_policy(tmp_path) == policy
+
+
+def test_a_policy_stored_before_the_setting_existed_still_loads(tmp_path):
+    (tmp_path / "policy.json").write_text(
+        json.dumps({"bridge": "tt-guest", "gateway": GATEWAY, "subnet": SUBNET, "networks": []})
+    )
+
+    assert load_policy(tmp_path).blocked_addresses == ()

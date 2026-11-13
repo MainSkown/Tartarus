@@ -7,13 +7,16 @@ container escapes them. The rules here are an nftables table of their own at a p
 iptables' chains, so the rooter's order and its cleanup (which only rewrites iptables) never touch
 them:
 
-- inet table, input: a guest reaches the gateway address and nothing else the container owns
-  (CAPE's web and API, guacd and the control service listen on other addresses of the container);
-- inet table, forward: a guest is never routed back onto the bridge, and never to a private,
-  loopback, link-local or multicast address nor to a network the container is on, whatever route
-  the rooter opened;
+- inet table, input: a guest reaches the services that listen on the gateway address, replies to
+  what the container itself opened, and nothing else the container owns (CAPE's web and API, guacd
+  and the control service listen on other addresses of the container);
+- inet table, forward: only a running guest's own address is forwarded, never back onto the
+  bridge, and never to a private, loopback, link-local or multicast address nor to a network the
+  container is on (nor to an address the operator listed), whatever route the rooter opened;
 - bridge table: a frame from a port must carry that port's MAC, and an address that belongs to a
-  running guest or to the gateway may only be used by the port that guest is on.
+  running guest or to the gateway may only be used by the port that guest is on, and
+  no frame is carried from one port to another (the hook also isolates each port; see
+  `port_isolation.py`).
 """
 
 import ipaddress
@@ -44,6 +47,39 @@ STOPPED_OPERATIONS = ("stopped", "release")
 INTERFACE_NAME = re.compile(r"[A-Za-z0-9_.-]{1,15}")
 MAC_ADDRESS = re.compile(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}")
 NFT_TIMEOUT_S = 30
+BLOCKED_ADDRESSES_SETTING = "GUEST_BLOCKED_ADDRESSES"
+
+# What listens on the gateway address. INetSim's service set is the packaged one (see
+# templates/inetsim.conf); CAPE's rooter DNATs a guest's traffic on the inetsim route to these
+# ports and everything else to port 1, and DNAT runs before the input chain, so this chain sees
+# the translated port.
+RESULTSERVER_PORT = 2042
+DHCP_SERVER_PORT = 67
+INETSIM_TCP_PORTS = (
+    1,
+    7,
+    9,
+    13,
+    17,
+    19,
+    21,
+    25,
+    37,
+    53,
+    79,
+    80,
+    110,
+    113,
+    443,
+    465,
+    990,
+    995,
+    6667,
+)
+INETSIM_UDP_PORTS = (1, 7, 9, 13, 17, 19, 37, 53, 69, 123, 514)
+GATEWAY_TCP_PORTS = (RESULTSERVER_PORT, *INETSIM_TCP_PORTS)
+# dnsmasq's unicast renewals arrive addressed to the gateway; broadcasts have a rule of their own.
+GATEWAY_UDP_PORTS = (*INETSIM_UDP_PORTS, DHCP_SERVER_PORT)
 
 
 @dataclass(frozen=True)
@@ -52,11 +88,13 @@ class FirewallPolicy:
     gateway: str
     subnet: str
     networks: tuple[str, ...] = ()
+    blocked_addresses: tuple[str, ...] = ()
 
     @property
     def unreachable(self) -> tuple[str, ...]:
-        """What a guest must never reach: the reserved ranges and the networks found at start."""
-        return tuple(dict.fromkeys((*RESERVED_NETWORKS, *self.networks)))
+        """What a guest must never reach: the reserved ranges, the networks found at start and
+        the addresses the operator listed."""
+        return tuple(dict.fromkeys((*RESERVED_NETWORKS, *self.networks, *self.blocked_addresses)))
 
 
 @dataclass(frozen=True)
@@ -126,7 +164,7 @@ def _checked_address(address: str) -> str:
         raise ValueError(f"not an IPv4 address: {address!r}") from None
 
 
-def _set(name: str, key_type: str, elements: Sequence[str], intervals: bool = False) -> str:
+def nft_set(name: str, key_type: str, elements: Sequence[str], intervals: bool = False) -> str:
     lines = [f"    set {name} {{", f"        type {key_type}"]
     if intervals:
         lines.extend(["        flags interval", "        auto-merge"])
@@ -136,7 +174,7 @@ def _set(name: str, key_type: str, elements: Sequence[str], intervals: bool = Fa
     return "\n".join(lines)
 
 
-def _chain(name: str, rules: Sequence[str], hook: str = "") -> str:
+def nft_chain(name: str, rules: Sequence[str], hook: str = "") -> str:
     lines = [f"    chain {name} {{"]
     if hook:
         lines.append(f"        {hook}")
@@ -145,35 +183,55 @@ def _chain(name: str, rules: Sequence[str], hook: str = "") -> str:
     return "\n".join(lines)
 
 
-def _inet_table(policy: FirewallPolicy) -> str:
+def _port_list(ports: Sequence[int]) -> str:
+    return ", ".join(str(port) for port in sorted(ports))
+
+
+def _owned_addresses(
+    ports: Sequence[GuestPort], addresses: Mapping[str, str]
+) -> list[tuple[GuestPort, str]]:
+    return [
+        (port, _checked_address(addresses[port.domain]))
+        for port in ports
+        if port.domain in addresses
+    ]
+
+
+def _inet_table(policy: FirewallPolicy, owned: Sequence[tuple[GuestPort, str]]) -> str:
     bridge, gateway = policy.bridge, policy.gateway
-    guest_input = _chain(
+    guest_input = nft_chain(
         "input",
         [
             f'iifname != "{bridge}" return',
-            f"ip daddr {gateway} accept",
+            "ct state established,related accept",
+            f"ip daddr {gateway} tcp dport {{ {_port_list(GATEWAY_TCP_PORTS)} }} accept",
+            f"ip daddr {gateway} udp dport {{ {_port_list(GATEWAY_UDP_PORTS)} }} accept",
+            f"ip daddr {gateway} icmp type echo-request accept",
             "ip daddr 255.255.255.255 udp dport 67 accept",
             "counter drop",
         ],
         "type filter hook input priority -10; policy accept;",
     )
-    guest_forward = _chain(
+    guest_forward = nft_chain(
         "forward",
         [
             f'iifname != "{bridge}" return',
+            "ip saddr != @guest_addresses counter drop",
             f'oifname "{bridge}" counter drop',
             "ip daddr @unreachable counter reject",
             "meta nfproto ipv6 counter drop",
         ],
         "type filter hook forward priority -10; policy accept;",
     )
-    unreachable = _set("unreachable", "ipv4_addr", policy.unreachable, intervals=True)
+    unreachable = nft_set("unreachable", "ipv4_addr", policy.unreachable, intervals=True)
+    guest_addresses = nft_set("guest_addresses", "ipv4_addr", [address for _, address in owned])
     return "\n".join(
         [
             f"table inet {TABLE}",
             f"delete table inet {TABLE}",
             f"table inet {TABLE} {{",
             unreachable,
+            guest_addresses,
             guest_input,
             guest_forward,
             "}",
@@ -182,26 +240,21 @@ def _inet_table(policy: FirewallPolicy) -> str:
 
 
 def _bridge_table(
-    policy: FirewallPolicy, ports: Sequence[GuestPort], addresses: Mapping[str, str]
+    policy: FirewallPolicy, ports: Sequence[GuestPort], owned: Sequence[tuple[GuestPort, str]]
 ) -> str:
     port_macs = [f'"{port.tap}" . {port.mac}' for port in ports]
-    owned = [
-        (port, _checked_address(addresses[port.domain]))
-        for port in ports
-        if port.domain in addresses
-    ]
     bound = [f'"{port.tap}" . {port.mac} . {address}' for port, address in owned]
     protected = [_checked_address(policy.gateway), *(address for _, address in owned)]
     subnet = policy.subnet
-    from_guest = _chain(
+    from_guest = nft_chain(
         "from_guest",
         ["iifname . ether saddr @port_macs jump checked"],
         "type filter hook prerouting priority -200; policy drop;",
     )
-    checked = _chain(
+    checked = nft_chain(
         "checked", ["ether type arp jump arp_from_guest", "ether type ip jump ip_from_guest"]
     )
-    arp_from_guest = _chain(
+    arp_from_guest = nft_chain(
         "arp_from_guest",
         [
             "iifname . arp saddr ether != @port_macs counter drop",
@@ -212,7 +265,7 @@ def _bridge_table(
             "accept",
         ],
     )
-    ip_from_guest = _chain(
+    ip_from_guest = nft_chain(
         "ip_from_guest",
         [
             "ip saddr 0.0.0.0 udp sport 68 udp dport 67 accept",
@@ -223,18 +276,22 @@ def _bridge_table(
             "accept",
         ],
     )
+    between_guests = nft_chain(
+        "between_guests", [], "type filter hook forward priority -200; policy drop;"
+    )
     return "\n".join(
         [
             f"table bridge {TABLE}",
             f"delete table bridge {TABLE}",
             f"table bridge {TABLE} {{",
-            _set("port_macs", "ifname . ether_addr", port_macs),
-            _set("protected", "ipv4_addr", protected),
-            _set("bound", "ifname . ether_addr . ipv4_addr", bound),
+            nft_set("port_macs", "ifname . ether_addr", port_macs),
+            nft_set("protected", "ipv4_addr", protected),
+            nft_set("bound", "ifname . ether_addr . ipv4_addr", bound),
             from_guest,
             checked,
             arp_from_guest,
             ip_from_guest,
+            between_guests,
             "}",
         ]
     )
@@ -251,7 +308,8 @@ def render_ruleset(
     checked = [_checked_port(port) for port in ports]
     for network in policy.unreachable:
         ipaddress.IPv4Network(network)
-    return _inet_table(policy) + "\n" + _bridge_table(policy, checked, addresses) + "\n"
+    owned = _owned_addresses(checked, addresses)
+    return _inet_table(policy, owned) + "\n" + _bridge_table(policy, checked, owned) + "\n"
 
 
 class PortLedger:
@@ -292,7 +350,31 @@ def store_policy(directory: Path, policy: FirewallPolicy) -> None:
 
 def load_policy(directory: Path) -> FirewallPolicy:
     data = json.loads((directory / "policy.json").read_text())
-    return FirewallPolicy(**{**data, "networks": tuple(data["networks"])})
+    return FirewallPolicy(
+        **{
+            **data,
+            "networks": tuple(data["networks"]),
+            "blocked_addresses": tuple(data.get("blocked_addresses", ())),
+        }
+    )
+
+
+def _blocked_addresses(setting: str, subnet: ipaddress.IPv4Network) -> tuple[str, ...]:
+    blocked = []
+    for item in filter(None, (part.strip() for part in setting.split(","))):
+        try:
+            network = ipaddress.IPv4Network(item, strict=False)
+        except ValueError:
+            raise ValueError(
+                f"{BLOCKED_ADDRESSES_SETTING} must list IPv4 addresses or networks, not {item!r}"
+            ) from None
+        if network.overlaps(subnet):
+            raise ValueError(
+                f"{BLOCKED_ADDRESSES_SETTING} entry {item!r} overlaps the guest subnet {subnet},"
+                " which would cut the guests off from their gateway"
+            )
+        blocked.append(str(network))
+    return tuple(blocked)
 
 
 def policy_for(
@@ -309,6 +391,7 @@ def policy_for(
         gateway=gateway,
         subnet=str(subnet),
         networks=tuple(networks_behind(route_table, bridge)),
+        blocked_addresses=_blocked_addresses(environ.get(BLOCKED_ADDRESSES_SETTING, ""), subnet),
     )
 
 
