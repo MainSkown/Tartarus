@@ -4,7 +4,9 @@
 programs, and the `cape` user parses hostile sample output. An nftables table of its own with an
 output hook, default deny, keyed on the process user, applied before supervisord starts anything:
 
-- loopback is open to everyone (CAPE's API, guacd's VNC, Docker's resolver at 127.0.0.11);
+- `cape` is refused Docker's resolver: a lookup leaves the host through the Docker daemon, and a
+  query name can carry data out. The entrypoint pins the one name CAPE needs (`bin/pin-host`);
+- loopback is otherwise open to everyone (CAPE's API, guacd's VNC, the resolver for root);
 - replies on connections other containers or guests opened to this one are accepted;
 - anything leaving through the guest bridge is accepted, whoever sends it;
 - `cape` reaches the CAPE database and nothing else;
@@ -32,6 +34,7 @@ from guest_engine.media import Runner
 from guest_engine.registry import write_atomically
 
 TABLE = "tartarus_egress"
+DOCKER_RESOLVER = "127.0.0.11"
 DATABASE_PORT = 5432
 HTTPS_PORT = 443
 ROOT_UID = 0
@@ -73,6 +76,7 @@ def render_egress_ruleset(policy: EgressPolicy) -> str:
     output = nft_chain(
         "output",
         [
+            f"meta skuid {checked.cape_user} ip daddr {DOCKER_RESOLVER} counter reject",
             'oifname "lo" accept',
             "ct state established,related accept",
             f'oifname "{checked.bridge}" accept',

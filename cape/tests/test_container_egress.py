@@ -47,6 +47,20 @@ def test_loopback_is_open_to_every_user():
     assert 'oifname "lo" accept' in output_rules(render_egress_ruleset(make_policy()))
 
 
+def test_cape_is_refused_dockers_resolver_before_loopback_opens_to_everyone():
+    # A lookup leaves the host through the Docker daemon, and a query name can carry data out.
+    rules = output_rules(render_egress_ruleset(make_policy(cape_user="sandbox")))
+    refusal = "meta skuid sandbox ip daddr 127.0.0.11 counter reject"
+
+    assert rules.index(refusal) < rules.index('oifname "lo" accept')
+
+
+def test_root_keeps_the_resolver_for_the_symbol_fetch():
+    rules = output_rules(render_egress_ruleset(make_policy()))
+
+    assert not any("skuid 0" in rule and "127.0.0.11" in rule for rule in rules)
+
+
 def test_replies_on_connections_others_opened_are_accepted():
     assert "ct state established,related accept" in output_rules(
         render_egress_ruleset(make_policy())
@@ -62,8 +76,8 @@ def test_anything_leaving_through_the_guest_bridge_is_accepted_for_every_user():
 def test_cape_reaches_the_database_port_of_the_database_network_and_nothing_else():
     rules = output_rules(render_egress_ruleset(make_policy()))
 
-    cape_rules = [rule for rule in rules if "skuid cape" in rule]
-    assert cape_rules == ["meta skuid cape ip daddr 172.20.0.0/16 tcp dport 5432 accept"]
+    let_out = [rule for rule in rules if "skuid cape" in rule and rule.endswith("accept")]
+    assert let_out == ["meta skuid cape ip daddr 172.20.0.0/16 tcp dport 5432 accept"]
 
 
 def test_root_reaches_https_on_public_addresses_only():

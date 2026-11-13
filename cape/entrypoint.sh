@@ -14,6 +14,8 @@ TEMPLATES=/usr/local/lib/tartarus/templates
 INTERNAL_NETWORK_ALIAS=cape-internal
 CONTROL_NETWORK_ALIAS=cape-control
 DATABASE_NETWORK_ALIAS=cape-db
+# The host in the connection of cape/conf/cuckoo.conf.
+DATABASE_HOST=postgres
 
 address_on_network() {
     local alias=$1 address
@@ -104,7 +106,9 @@ make_network_sysctls_writable
 # container. A failure here stops the container (set -e).
 python3 -I /usr/local/lib/tartarus/guest-firewall init
 # Likewise no program may start before its output is confined: the `cape` user parses hostile sample
-# output and must reach the CAPE database and nothing else.
+# output and must reach the CAPE database and nothing else, not even a resolver, so the database's
+# address is looked up here for it.
+/usr/local/lib/tartarus/pin-host "$DATABASE_HOST" /etc/hosts
 python3 -I /usr/local/lib/tartarus/container-egress init
 install -m 0644 "$TEMPLATES/libvirtd.conf" /etc/libvirt/libvirtd.conf
 # /run is a tmpfs, so the directory of the bus socket (see supervisord.conf) is gone at every start.

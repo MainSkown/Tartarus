@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# pin-host <name> <hosts-file>: resolves <name> and keeps its address in the hosts file.
+#
+# The `cape` user is refused Docker's resolver (guest_engine/egress.py), so the entrypoint resolves
+# the one name CAPE needs as root and pins it here. The line an earlier start pinned is removed
+# before asking: libc reads the hosts file first and would hand the old address back. Docker
+# bind-mounts /etc/hosts, so the file is written in place and never replaced.
+set -euo pipefail
+
+name=${1-}
+hosts=${2-}
+if [[ ! $name =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then
+    echo "pin-host: not a host name: '$name'" >&2
+    exit 2
+fi
+
+other_lines=$(awk -v name="$name" '!(NF == 2 && $2 == name)' "$hosts")
+printf '%s\n' "$other_lines" >"$hosts"
+
+address=$(getent ahostsv4 "$name" | awk 'NR == 1 {print $1}') || true
+if [[ -z $address ]]; then
+    echo "pin-host: the name $name does not resolve" >&2
+    exit 1
+fi
+printf '%s\t%s\n' "$address" "$name" >>"$hosts"

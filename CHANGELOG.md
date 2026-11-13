@@ -30,7 +30,7 @@ The fixes from the [2026-11-12 hardening review](docs/security-audit-2026-11-12.
 - The `cape` user, which parses what a sample sends back, may only read from libvirt. A root broker
   reverts a registered guest to its recorded snapshot, powers it off and dumps its memory for CAPE.
 - Programs in the `cape` container may open only the connections they need: the `cape` user reaches the
-  CAPE database and nothing else.
+  CAPE database and nothing else, and cannot ask Docker's resolver for a name.
 - The guest firewall owns its default-deny: only a running guest's own address is forwarded, the gateway
   accepts only the ports that listen on it, and the bridge carries nothing between guest ports.
 - `GUEST_BLOCKED_ADDRESSES` in `.env` blocks extra addresses for guests, such as the host's public one.

@@ -155,6 +155,14 @@ cape_reaches_only_its_database() {
     done
 }
 
+# `backend` is a name only Docker's resolver knows, so root resolving it is what makes cape's failure
+# mean something; `postgres` is the one name the entrypoint pinned for cape.
+cape_cannot_ask_the_resolver() {
+    in_cape getent ahostsv4 backend >/dev/null || { echo "root cannot resolve backend either: the probe proves nothing"; return 1; }
+    ! in_cape runuser -u cape -- timeout 20 getent ahostsv4 backend >/dev/null || { echo "cape resolved backend"; return 1; }
+    in_cape runuser -u cape -- timeout 20 getent ahostsv4 postgres >/dev/null || { echo "cape cannot find its database by name"; return 1; }
+}
+
 PROBE_FILE=/tmp/tt-acl-probe.xml
 PROBE_DOMAIN='<domain type="kvm"><name>tt-acl-probe</name><memory unit="MiB">16</memory><os><type arch="x86_64">hvm</type></os></domain>'
 PROBE_NETWORK='<network><name>tt-acl-probe</name><bridge name="tt-acl0"/></network>'
@@ -232,6 +240,7 @@ check "the cape container is not privileged and cannot write kernel.* sysctls" c
 check "cape and libvirt-qemu open no device beyond the ones a guest needs" unprivileged_users_open_only_the_devices_they_need
 check "no unprivileged program runs with a gid a host group could share" no_program_runs_with_a_gid_a_host_group_could_share
 check "cape opens connections to its database and nowhere else" cape_reaches_only_its_database
+check "cape cannot ask Docker's resolver, and still finds its database by name" cape_cannot_ask_the_resolver
 check "cape has no sudo rule" cape_has_no_sudo_rule
 check "tcpdump has file capabilities and is closed to other users" tcpdump_has_file_capabilities_and_no_world_access
 check "no program holds a secret it does not read" secrets_by_program
