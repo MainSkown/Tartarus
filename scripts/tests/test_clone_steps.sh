@@ -470,6 +470,7 @@ write_phase_agent() {
     cat >"$WORK/phase_agent.py" <<'PY'
 import re
 import sys
+import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -479,11 +480,14 @@ import fake_guest_agent as fake
 
 class Agent(fake.Agent):
     applied = False
+    applied_at = 0.0
     gets = 0
     retrievals = 0
     counts: dict = {}
 
     def alive(self):
+        if type(self).applied and time.monotonic() - self.applied_at < self.behaviour().get("reboot_seconds", 0):
+            return False
         listed = self.behaviour().get("alive_after_apply" if type(self).applied else "alive_before_apply")
         return listed is None or self.host() in listed
 
@@ -538,6 +542,7 @@ class Agent(fake.Agent):
                 target.write_text(written["content"].replace("{token}", token.group(1) if token else ""))
         if "-Phase 'Apply'" in driver:
             type(self).applied = True
+            type(self).applied_at = time.monotonic()
 
 
 port, root, log_path, behaviour_path = sys.argv[2:6]
@@ -603,7 +608,7 @@ new_sandbox() {
     BEFORE_NAME=DESKTOP-OLD BEFORE_IP=$LEASED_ADDRESS BEFORE_GUID=guid-before BEFORE_BOOT=boot-1
     AFTER_NAME=${CLONE_NAME^^} AFTER_IP=$GUEST_ADDRESS AFTER_GUID=guid-after AFTER_BOOT=boot-2
     OLD_BOOT_REPORTS=0 UNREADY_POLLS=0 SCENARIO_ALIVE_BEFORE="$LEASED_ADDRESS" APPLY_WRITES_LOG=yes REPORT_EXIT_CODE=0
-    REPORT_STARTS_AFTER=no LINE_APPEARS_AFTER=0
+    REPORT_STARTS_AFTER=no LINE_APPEARS_AFTER=0 REBOOT_SECONDS=0
     GUEST_LOG_TEXT="static address set"
     echo '{}' >"$SB/behaviour.json"
     : >"$SB/requests.jsonl"
@@ -661,6 +666,7 @@ behaviour = {
     "alive_after_apply": [env["GUEST_ADDRESS"]],
     "sequences": {"-Phase 'Report'": reports},
     "discard_removes": guest_log,
+    "reboot_seconds": float(env["REBOOT_SECONDS"]),
 }
 if int(env["LINE_APPEARS_AFTER"]):
     behaviour["line_appears_on_retrieve"] = {"path": guest_log, "after": int(env["LINE_APPEARS_AFTER"]), "line": "rebooting a-token-of-the-earlier-run\r\n"}
@@ -674,7 +680,7 @@ PY
 run_reconfigure() {
     export GUEST_ADDRESS TOKEN LEASES BEFORE_NAME BEFORE_IP BEFORE_GUID BEFORE_BOOT AFTER_NAME AFTER_IP AFTER_GUID AFTER_BOOT \
         OLD_BOOT_REPORTS UNREADY_POLLS SCENARIO_ALIVE_BEFORE APPLY_WRITES_LOG GUEST_LOG_TEXT REPORT_EXIT_CODE \
-        REPORT_STARTS_AFTER LINE_APPEARS_AFTER
+        REPORT_STARTS_AFTER LINE_APPEARS_AFTER REBOOT_SECONDS
     write_behaviour
     OUTPUT="$(env -i PATH="$SB/bin:$PATH" HOME="$SB" STUB_DIR="$STUB_DIR" \
         TT_GUEST_DIR="$SB/guestdir" TT_GUEST_JSON="$SB/ctx/guest.json" TT_PROFILE_DIR="$PROFILE" \
@@ -1010,7 +1016,7 @@ test_reconfigure_clears_the_log_of_an_apply_that_never_got_to_reboot_so_a_resume
     leave_a_log_on_the_guest "$APPLY_STARTED"
     save_the_identity_before "$BEFORE_GUID" "$BEFORE_BOOT"
     run_reconfigure
-    assert_status 1 && assert_contains "start its reboot" && assert_absent "$WORK_ON_DISK/$LOG_FILE" || return 1
+    assert_status 1 && assert_contains "announce its reboot" && assert_absent "$WORK_ON_DISK/$LOG_FILE" || return 1
     TOKEN=""
     run_reconfigure
     assert_status 0 && assert_contains "verified" &&
@@ -1104,6 +1110,15 @@ test_reconfigure_logs_what_it_verified() {
     new_sandbox
     run_reconfigure
     assert_status 0 && assert_contains "LOG " && assert_contains "$AFTER_GUID" && assert_contains "$AFTER_IP" && assert_contains "PROGRESS 100"
+}
+
+# The guest restarts moments after it writes the line, so a probe can miss it; the log is still there once
+# the guest is back, which is later than the time the script itself needs.
+test_reconfigure_reads_the_reboot_announcement_once_the_guest_is_back_when_no_probe_caught_it() {
+    new_sandbox
+    REBOOT_SECONDS=4
+    run_reconfigure
+    assert_status 0 && assert_contains "verified: hostname=$AFTER_NAME"
 }
 
 test_reconfigure_fails_when_the_report_script_fails() {

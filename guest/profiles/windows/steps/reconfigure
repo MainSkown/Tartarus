@@ -180,8 +180,11 @@ else
     ANNOUNCEMENT="rebooting $TOKEN"
 fi
 progress 55
-wait_for "$APPLY_WAIT_S" "$PROBE_S" guest_announced_the_reboot "$ANNOUNCEMENT" ||
-    fail_and_let_a_resume_apply_again "$AGENT_IP" "the guest did not start its reboot within ${APPLY_WAIT_S}s; its log, if it wrote one, is in the build directory"
+# The guest restarts moments after it writes the announcement, so a probe can miss it. The log is still
+# there once the guest is back, so the wait lasts as long as the script and a restart take together.
+ANNOUNCE_WAIT_S=$((APPLY_WAIT_S + REBOOT_WAIT_S))
+wait_for "$ANNOUNCE_WAIT_S" "$PROBE_S" guest_announced_the_reboot "$ANNOUNCEMENT" ||
+    fail_and_let_a_resume_apply_again "$AGENT_IP" "the guest did not announce its reboot within ${ANNOUNCE_WAIT_S}s; its log, if it wrote one, is in the build directory"
 log_guest_file "$GUEST_LOG"
 progress 70
 

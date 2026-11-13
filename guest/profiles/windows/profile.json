@@ -211,7 +211,7 @@
       {
         "step": "reconfigure",
         "desktop": true,
-        "timeout_s": 600,
+        "timeout_s": 720,
         "weight": 30,
         "description": "Starts the copy and gives it its own identity: a network address, a computer name and a fresh machine ID. Then it restarts the copy. Nothing is needed from you."
       },

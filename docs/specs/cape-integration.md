@@ -515,7 +515,10 @@ then the same self-test. `preflight`, `define`, `snapshot` and `register` are th
   32-bit and lacks `manage-bde` and the 64-bit registry view), sets the static address, the new computer name, a
   fresh `MachineGuid`, empties the event logs, adds the decoys if asked, and reboots; the IP-changing call is
   made asynchronously because it ends the agent's connection, and the host reads what it did from a log the
-  script writes. It then checks the hostname, address and `MachineGuid` at the final address.
+  script writes. The script restarts the guest moments after its last log line, so the host can miss that
+  line; it keeps looking until the guest is back, where the log still is (a 90 s wait that ended before the
+  guest returned failed about two clones in three). It then checks the hostname, address and `MachineGuid`
+  at the final address.
 - **What a clone shares with its source:** the machine SID, the install date and ProductId, and what lived in
   the disk (the account and its profile folder, which is why the username is inherited and a different one needs a
   build). The hardware identity, which sandbox checks read, is new.
