@@ -1,14 +1,15 @@
-"""Fail when the QEMU the cape image is built with has aged out.
+"""Fail when the QEMU or the libvirt the cape image is built from source with has aged out.
 
-The version is pinned in one place, the `ARG QEMU_VERSION=` default of the qemu-build stage in
-cape/Dockerfile. cape/build/qemu-release records that version's upstream release date, and the two
-must agree or the check stops with a configuration error.
+Each version is pinned in one place, the `ARG QEMU_VERSION=` and `ARG LIBVIRT_VERSION=` defaults in
+cape/Dockerfile. cape/build/qemu-release and cape/build/libvirt-release record those versions'
+upstream release dates, and pin and record must agree or the check stops with a configuration error.
 
 Offline (default): exit 1 when the pinned release is older than --max-age-days (180 by default: the
 maintained series ship a point release every one to two months, so half a year without one means the
 build missed several security rollups or its series has ended). Online (--online): also exit 1 when
 download.qemu.org has a newer point release of the pinned series, and warn when a newer series
-already has point releases.
+already has point releases. libvirt has no point releases (one release a month), so its age is the
+whole check.
 
 Exit codes: 0 fine (warnings allowed), 1 stale or behind upstream, 2 the pin or the record is
 unreadable or they disagree, 3 download.qemu.org could not be read.
@@ -41,9 +42,19 @@ MAX_INDEX_BYTES = 4 * 1024 * 1024
 
 Version = tuple[int, ...]
 
-PINNED_VERSION_ARG = re.compile(r"^ARG QEMU_VERSION=(\d+\.\d+\.\d+)\s*$", re.MULTILINE)
 TARBALL_LINK = re.compile(r'href="/?qemu-(\d+(?:\.\d+){2,3})\.tar\.xz"')
 VERSION = re.compile(r"\d+\.\d+\.\d+")
+
+
+@dataclass(frozen=True)
+class Source:
+    name: str
+    version_arg: str
+    record_file: str
+
+
+QEMU = Source("QEMU", "QEMU_VERSION", "qemu-release")
+LIBVIRT = Source("libvirt", "LIBVIRT_VERSION", "libvirt-release")
 
 
 @dataclass(frozen=True)
@@ -62,10 +73,12 @@ def version_tuple(version: str) -> Version:
     return tuple(int(part) for part in version.split("."))
 
 
-def pinned_version(dockerfile: str) -> str:
-    match = PINNED_VERSION_ARG.search(dockerfile)
+def pinned_version(dockerfile: str, source: Source = QEMU) -> str:
+    match = re.search(rf"^ARG {source.version_arg}=(\d+\.\d+\.\d+)\s*$", dockerfile, re.MULTILINE)
     if not match:
-        raise ValueError("cape/Dockerfile has no 'ARG QEMU_VERSION=<major.minor.patch>' line")
+        raise ValueError(
+            f"cape/Dockerfile has no 'ARG {source.version_arg}=<major.minor.patch>' line"
+        )
     return match.group(1)
 
 
@@ -84,27 +97,36 @@ def parse_release_record(text: str) -> Release:
     return Release(fields["version"], released)
 
 
-def require_matching(record: Release, pinned: str) -> None:
+def require_matching(record: Release, pinned: str, source: Source = QEMU) -> None:
     if record.version != pinned:
         raise ValueError(
-            f"cape/build/qemu-release records {record.version} but cape/Dockerfile pins {pinned}; "
-            "update them together"
+            f"cape/build/{source.record_file} records {record.version} but cape/Dockerfile pins "
+            f"{pinned}; update them together"
         )
+
+
+def pinned_release(root: Path, source: Source) -> Release:
+    pinned = pinned_version((root / "cape" / "Dockerfile").read_text(), source)
+    release = parse_release_record((root / "cape" / "build" / source.record_file).read_text())
+    require_matching(release, pinned, source)
+    return release
 
 
 def age_days(release: Release, today: date) -> int:
     return (today - release.released).days
 
 
-def offline_findings(release: Release, today: date, max_age_days: int) -> list[Finding]:
+def offline_findings(
+    release: Release, today: date, max_age_days: int, source: Source = QEMU
+) -> list[Finding]:
     age = age_days(release, today)
     if age <= max_age_days:
         return []
     return [
         Finding(
             "error",
-            f"QEMU {release.version} was released {release.released} ({age} days ago), over the "
-            f"{max_age_days} day limit: bump it (see 'Updating QEMU' in "
+            f"{source.name} {release.version} was released {release.released} ({age} days ago), "
+            f"over the {max_age_days} day limit: bump it (see 'Updating QEMU and libvirt' in "
             "docs/specs/cape-integration.md)",
         )
     ]
@@ -192,7 +214,9 @@ def tarball_exists(name: str) -> bool:
 
 
 def parse_arguments(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Fail when the pinned QEMU build is stale.")
+    parser = argparse.ArgumentParser(
+        description="Fail when the pinned QEMU or libvirt build is stale."
+    )
     parser.add_argument("--online", action="store_true", help=f"also compare with {INDEX_URL}")
     parser.add_argument("--max-age-days", type=int, default=DEFAULT_MAX_AGE_DAYS)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
@@ -211,21 +235,20 @@ def main(
     today = today or date.today()
     arguments = parse_arguments(argv)
     try:
-        pinned = pinned_version((arguments.root / "cape" / "Dockerfile").read_text())
-        release = parse_release_record(
-            (arguments.root / "cape" / "build" / "qemu-release").read_text()
-        )
-        require_matching(release, pinned)
+        releases = {source: pinned_release(arguments.root, source) for source in (QEMU, LIBVIRT)}
     except (OSError, ValueError) as error:
         print(f"error: {error}", file=out)
         return 2
 
-    print(
-        f"pinned QEMU {pinned}, released {release.released}, {age_days(release, today)} days old, "
-        f"limit {arguments.max_age_days} days",
-        file=out,
-    )
-    findings = offline_findings(release, today, arguments.max_age_days)
+    findings: list[Finding] = []
+    for source, release in releases.items():
+        print(
+            f"pinned {source.name} {release.version}, released {release.released}, "
+            f"{age_days(release, today)} days old, limit {arguments.max_age_days} days",
+            file=out,
+        )
+        findings += offline_findings(release, today, arguments.max_age_days, source)
+    pinned = releases[QEMU].version
     if arguments.online:
         try:
             probe = exists or tarball_exists

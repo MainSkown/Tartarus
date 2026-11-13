@@ -1,0 +1,4 @@
+# Upstream release date of the libvirt pinned by ARG LIBVIRT_VERSION in cape/Dockerfile (the tarball's
+# date on https://libvirt.org/sources/). scripts/check-qemu-age.py reads it; bump it with the ARG.
+version=12.9.0
+released=2026-11-02

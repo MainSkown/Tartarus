@@ -36,8 +36,12 @@ The fixes from the [2026-11-12 hardening review](docs/security-audit-2026-11-12.
 - `GUEST_BLOCKED_ADDRESSES` in `.env` blocks extra addresses for guests, such as the host's public one.
 - A clone takes its firmware from a pristine copy kept with the source's clean snapshot, not from the
   source's live file.
-- The QEMU version and its tarball hash are pinned by Tartarus (9.2.4), and `make check-qemu-age` flags
-  an aged or outdated pin. The 9.2 series has ended, so the check fails until a maintained series is adopted.
+- The QEMU version and its tarball hash are pinned by Tartarus, and `make check-qemu-age` flags an aged
+  or outdated pin.
+- QEMU moves from 9.2.4, whose series has ended, to 11.1.3. libvirt 12.9.0 is built from a pinned source
+  tarball in place of Ubuntu's 10.0, which cannot revert a snapshot or save memory on QEMU 11; the age
+  check covers its pin too. Existing guests keep their snapshots: one taken on QEMU 9.2.4 restores on the
+  new pair.
 - Every group a program in the `cape` image runs with has a reserved gid, so none matches a host device group.
 
 ### Changed

@@ -12,7 +12,7 @@ with `make verify-cape`.
 |---|---|
 | Base | `ubuntu:24.04` |
 | CAPE version | Pinned by `CAPE_REF` to a full commit SHA (default in `docker-compose.yml`, overridable in `.env`). CAPE has no releases and changes daily, so bump it deliberately and rerun `make verify-cape`. |
-| Install | QEMU and SeaBIOS 1.16.3 built by CAPE's `kvm-qemu.sh`, with the anti-VM strings and the QEMU version (default 9.2.4, pinned by sha256) passed as build args (`cape/build/kvm-config.sh`; see [Updating QEMU](#updating-qemu)). libvirt is Ubuntu's 10.0.0 package with matching libvirt-python, not built from source. CAPE itself is installed by hand with **uv** from its `uv.lock`; `cape2.sh` is used only for Suricata, because its `sandbox` step hardcodes a localhost database, cron, a libvirt-python version and systemd sudoers. |
+| Install | QEMU and SeaBIOS 1.16.3 built by CAPE's `kvm-qemu.sh`, with the anti-VM strings and the QEMU version (default 11.1.3, pinned by sha256) passed as build args (`cape/build/kvm-config.sh`). libvirt 12.9.0 is built from its source tarball (pinned by sha256) in a stage of its own, with only the QEMU and network drivers, the monolithic `libvirtd`, polkit and the directory storage pool, at the paths Ubuntu's package uses; libvirt-python is built against it at the same version. Ubuntu 24.04's libvirt 10.0 cannot drive QEMU 11 (see [Updating QEMU and libvirt](#updating-qemu-and-libvirt)). CAPE itself is installed by hand with **uv** from its `uv.lock`; `cape2.sh` is used only for Suricata, because its `sandbox` step hardcodes a localhost database, cron, a libvirt-python version and systemd sudoers. |
 | Privileges | Not privileged. `cap_drop: ALL` plus the capabilities libvirt, QEMU, the rooter and the ISO scan were measured to need (`docker-compose.yml` lists them), and the devices `/dev/kvm`, `/dev/net/tun`, `/dev/vhost-net` and loop devices. The entrypoint makes `/proc/sys/net` writable (libvirt sets a sysctl for the bridge it creates); `kernel.*` stays read-only. The `cape` user may only read from libvirt; the [machine broker](#the-machine-broker) does its three writes. |
 | Network namespace | Its own namespace, never the host's. `tt-guest` (192.168.150.1/24), the rooter's iptables rules and QEMU's tap devices all live inside it. A `net.ipv4.ip_forward=1` sysctl is set on the container. |
 | Process supervisor | supervisord, no systemd: `virtlogd`, `libvirtd`, `cape-rooter`, `cape` (scheduler and ResultServer), `cape-processor`, `cape-web` (gunicorn serving CAPE's whole Django app, reachable only on the internal network and loopback), `suricata`, `inetsim`, `guacd`, `guest-control` (the guest control service, control address only, which also ends runs early). |
@@ -115,13 +115,16 @@ stops (S0b), so a guest is registered only after its snapshot is taken and it is
 defines the domain, installs, provisions, snapshots, and only then registers it and restarts `cape`. The domain
 must exist before it is registered, and a guest is unregistered before it is undefined.
 
-### Updating QEMU
+### Updating QEMU and libvirt
 
-Tartarus owns the QEMU version: `kvm-qemu.sh` hard-codes one, and the `QEMU_VERSION` build arg overrides it through `cape/build/kvm-config.sh`. `make check-qemu-age` fails when the pinned release is over 180 days old (`ONLINE=1` also looks for a newer point release; the weekly `QEMU age` workflow does).
+Tartarus owns both versions. `kvm-qemu.sh` hard-codes a QEMU version, and the `QEMU_VERSION` build arg overrides it through `cape/build/kvm-config.sh`; libvirt is built by the `libvirt-build` stage of `cape/Dockerfile` from `LIBVIRT_VERSION`. `make check-qemu-age` fails when either pinned release is over 180 days old (`ONLINE=1` also looks for a newer QEMU point release; the weekly `QEMU age` workflow does). libvirt has one release a month and no point releases, so its age is the whole check.
 
-1. Pick a release of a series that still gets point releases (`https://wiki.qemu.org/Planning/<series>` says when its last one is due). A point release of the same series is a drop-in; a new series changes the device models, so existing guests' memory snapshots may not restore, and that needs the proofs below on a real guest first.
+The two move together. libvirt drives QEMU through migration commands that QEMU removes over time: QEMU 11.0 dropped the `fd:` migration to a file and the `detach` argument, so libvirt 10.0 could neither revert a snapshot nor save memory on it (libvirt stopped using both in 12.1.0). Before a QEMU series bump, read QEMU's removed-features page and libvirt's news for the releases in between.
+
+1. Pick a release of a series that still gets point releases (`https://wiki.qemu.org/Planning/<series>` says when its last one is due). A point release of the same series is a drop-in; a new series changes the device models, so existing guests' memory snapshots may not restore, and that needs the proofs below on a real guest first. A guest keeps the machine type it was defined with (`pc-q35-9.2` for one built on QEMU 9.2), which is what let a snapshot taken on 9.2.4 restore on 11.1.3; QEMU deletes a machine type about six years after its release.
 2. Set `ARG QEMU_VERSION` and `ARG QEMU_SHA256` (hash of `qemu-<version>.tar.xz`, checked against its `.sig` by hand) in the `qemu-build` stage of `cape/Dockerfile`, and `version` and `released` in `cape/build/qemu-release`. A unit test fails when the two disagree.
-3. Rebuild (the QEMU stage takes 10 to 25 minutes). `kvm-qemu.sh`'s anti-VM `sed` patches skip a missing file or a pattern that no longer matches without a word, so compare the strings of the new `/usr/bin/qemu-system-x86_64` with the old one (`QEMU HARDDISK`, `QEMU DVD-ROM`, `KVMKVMKVM`, `BXPC` must be gone), then run `make verify-guest`, `make verify-isolation GUESTS="..."` and `make e2e`.
+3. For libvirt: set `ARG LIBVIRT_VERSION` and `ARG LIBVIRT_SHA256` (hash of `libvirt-<version>.tar.xz` from `https://libvirt.org/sources/`, checked against its `.asc` by hand) in the `libvirt-build` stage, and `version` and `released` in `cape/build/libvirt-release`. The stage disables every driver and library the container does not use by name, so a new libvirt option defaults to its upstream value: read the `meson setup` summary of the build for anything newly enabled. libvirt is built with `firewall_backend_priority=iptables` because the rooter and the guest firewall are written beside libvirt's iptables chains.
+4. Rebuild (the QEMU stage takes 10 to 25 minutes). `kvm-qemu.sh`'s anti-VM `sed` patches skip a missing file or a pattern that no longer matches without a word, so compare the strings of the new `/usr/bin/qemu-system-x86_64` with the old one (`QEMU HARDDISK`, `QEMU DVD-ROM`, `KVMKVMKVM`, `BXPC` must be gone), then run `make verify-cape-hardening` (libvirt's access control for the `cape` user), `make verify-guest` (an existing guest's snapshot restores and an analysis completes), a clone through `POST /api/guests/<name>/clone` (a new snapshot is taken), `make verify-isolation GUESTS="..."` and `make e2e`. Keep the previous image tagged until they pass: a failed revert leaves the guest's files untouched, so going back is retagging the image.
 
 ### Findings that need action
 
@@ -158,17 +161,17 @@ timing around a forced VM exit. A pafish run outside a CAPE task found no identi
 **Image and domain changes it needed**
 - Secure Boot with Microsoft keys comes from only the two OVMF files of Ubuntu's `ovmf` package;
   installing the package conflicts with the custom `qemu.deb`. The OVMF files are not pinned.
-- libvirt 10.0 rejects every firmware lookup because of QEMU's loongarch64 descriptor, so only
-  x86_64 descriptors are kept. swtpm runs as user `swtpm`.
+- libvirt 10.0 rejected every firmware lookup because of QEMU's loongarch64 descriptor, so only
+  x86_64 descriptors were kept; libvirt 12 reads them all and nothing is deleted. swtpm runs as user `swtpm`.
 - The domain uses Q35 and UEFI, SATA disk, e1000e and VGA, so no virtio drivers are needed. Its two
   CD-ROMs are attached in install mode only: a run-mode domain has none (see [Self-test](#self-test)). The libvirt element is `<baseBoard>`; lowercase `<baseboard>` is silently dropped.
 
-**Snapshots are external.** libvirt 10.0 refuses internal snapshots of UEFI domains, so
+**Snapshots are external.** libvirt 10.0, which the guest design was built on, refused internal snapshots of UEFI domains, so
 `tartarus-clean` is an external disk-and-memory snapshot (`--memspec`/`--diskspec`): a memory file
 plus an overlay. Each revert replaces the overlay, so overlays don't pile up. Revert takes about
 1.6 seconds and the agent answers 1 second later. The CPU must be `migratable='on'`, or the exposed
 `invtsc` flag blocks any memory save. **The base `win.qcow2` becomes a backing file and must never
-be written directly.** libvirt 10.10 or later would allow internal snapshots.
+be written directly.** libvirt 10.10 and later allow internal snapshots; the image has had 12.9 since 2026-11-13, but existing guests and the clone and adoption code are built on the external layout, so it stays.
 
 **One registered guest at a time (lifted in M6).** M0b registered the guest in `kvm.conf.d/win.conf`;
 each file sets `[kvm] machines` and the last file read wins, so two files cannot list two guests. M6 replaced
@@ -197,7 +200,7 @@ that bypass Tamper Protection; M6 turns it off with a scripted click on its togg
 6. One API is not hooked on this build (`Unable to create trampoline for LockResource`).
 
 **Fragile points.** The 20-second key window depends on firmware timing. The external-snapshot
-setup assumes libvirt 10.0's revert behaviour. swtpm's state on the volume is owned by uid 102.
+setup assumes the revert behaviour of libvirt 10.0 (the same on 12.9: each revert replaces the overlay). swtpm's state on the volume is owned by uid 102.
 The M0b guest's password `Tartarus1!` is in the repo and in plain text for autologon; it is a
 throwaway account in an isolated guest. Guests the wizard builds get a random password (still in plain text
 for autologon), so only the adopted `win` has this one.

@@ -6,7 +6,9 @@
      the rooter's inetsim route DNATs the guest's unicast DHCP renewals away from dnsmasq. The range is a
      pool apart from the static addresses of registered guests (.10 to .99): a guest that cold-boots
      on DHCP must never compete with one of them. dnsmasq would otherwise run with Debian's group `dip`
-     (gid 30), a number a host group may share; libvirt-dnsmasq's gid is reserved in the image. -->
+     (gid 30), a number a host group may share; libvirt-dnsmasq's gid is reserved in the image. Its user is
+     named here too: only Debian's libvirt patch picks it, the libvirt built from source leaves dnsmasq
+     to `nobody`. -->
 <network xmlns:dnsmasq='http://libvirt.org/schemas/network/dnsmasq/1.0'>
   <name>tt-guest</name>
   <bridge name='tt-guest' stp='off' delay='0'/>
@@ -21,6 +23,7 @@
   <dnsmasq:options>
     <dnsmasq:option value='dhcp-option=option:router,${GUEST_GATEWAY_IP}'/>
     <dnsmasq:option value='dhcp-option=option:dns-server,${GUEST_GATEWAY_IP}'/>
+    <dnsmasq:option value='user=libvirt-dnsmasq'/>
     <dnsmasq:option value='group=libvirt-dnsmasq'/>
   </dnsmasq:options>
 </network>

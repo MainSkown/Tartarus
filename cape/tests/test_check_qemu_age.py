@@ -29,9 +29,12 @@ FROM ubuntu:24.04 AS qemu-build
 ARG ANTIVM_TABLET_VENDOR=Wacom
 ARG QEMU_VERSION=9.2.4
 ARG QEMU_SHA256=f3cc1c4eabfdb288218ac3e33763dbe9e276d8bc890b867a2335d58de2ddd39a
+FROM ubuntu:24.04 AS libvirt-build
+ARG LIBVIRT_VERSION=12.9.0
 """
 
 RELEASE_RECORD = "# comment\nversion=9.2.4\nreleased=2025-05-28\n"
+LIBVIRT_RELEASE_RECORD = "version=12.9.0\nreleased=2026-11-02\n"
 
 
 def listing(*names):
@@ -186,6 +189,7 @@ def repo(tmp_path):
     (tmp_path / "cape" / "build").mkdir(parents=True)
     (tmp_path / "cape" / "Dockerfile").write_text(DOCKERFILE)
     (tmp_path / "cape" / "build" / "qemu-release").write_text(RELEASE_RECORD)
+    (tmp_path / "cape" / "build" / "libvirt-release").write_text(LIBVIRT_RELEASE_RECORD)
     return tmp_path
 
 
@@ -226,6 +230,46 @@ def test_a_record_that_disagrees_with_the_dockerfile_is_a_configuration_error(re
 
     assert code == 2
     assert all(part in output for part in ("9.2.3", "9.2.4"))
+
+
+def test_a_stale_libvirt_fails_a_fresh_qemu_and_the_finding_names_libvirt(repo):
+    (repo / "cape" / "build" / "qemu-release").write_text("version=9.2.4\nreleased=2026-10-01\n")
+    (repo / "cape" / "build" / "libvirt-release").write_text(
+        "version=12.9.0\nreleased=2026-03-02\n"
+    )
+
+    code, output = run(repo)
+
+    assert code == 1
+    assert "error: libvirt 12.9.0 was released 2026-03-02 (255 days ago)" in output
+    assert "error: QEMU" not in output
+
+
+def test_both_pins_are_printed_with_their_age(repo):
+    _, output = run(repo)
+
+    assert "pinned libvirt 12.9.0, released 2026-11-02, 10 days old" in output
+    assert "pinned QEMU 9.2.4" in output
+
+
+def test_a_libvirt_record_that_disagrees_with_the_dockerfile_is_a_configuration_error(repo):
+    (repo / "cape" / "build" / "libvirt-release").write_text(
+        "version=12.8.0\nreleased=2026-10-01\n"
+    )
+
+    code, output = run(repo)
+
+    assert code == 2
+    assert all(part in output for part in ("libvirt-release", "12.8.0", "12.9.0"))
+
+
+def test_a_dockerfile_without_a_libvirt_pin_is_a_configuration_error(repo):
+    (repo / "cape" / "Dockerfile").write_text(DOCKERFILE.replace("LIBVIRT_VERSION", "OTHER"))
+
+    code, output = run(repo)
+
+    assert code == 2
+    assert "LIBVIRT_VERSION" in output
 
 
 def test_online_a_newer_point_release_fails_even_when_the_pin_is_young(repo):
@@ -284,6 +328,17 @@ def test_the_release_record_in_the_repo_matches_the_dockerfile_default():
     record = qemu_age.parse_release_record((REPO / "cape" / "build" / "qemu-release").read_text())
 
     qemu_age.require_matching(record, qemu_age.pinned_version(dockerfile))
+
+
+def test_the_libvirt_release_record_in_the_repo_matches_the_dockerfile_default():
+    dockerfile = (REPO / "cape" / "Dockerfile").read_text()
+    record = qemu_age.parse_release_record(
+        (REPO / "cape" / "build" / "libvirt-release").read_text()
+    )
+
+    pinned = qemu_age.pinned_version(dockerfile, qemu_age.LIBVIRT)
+
+    qemu_age.require_matching(record, pinned, qemu_age.LIBVIRT)
 
 
 def test_the_dockerfile_pins_a_sha256_for_the_tarball():

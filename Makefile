@@ -34,7 +34,7 @@ test-integration: ## Run backend tests that need Docker
 check-links: ## Fail on a relative markdown link whose file or heading does not exist (stdlib only)
 	python3 -I scripts/check-links.py
 
-check-qemu-age: ## Fail when the pinned QEMU is over 180 days old; make check-qemu-age ONLINE=1 also compares with download.qemu.org (stdlib only)
+check-qemu-age: ## Fail when the pinned QEMU or libvirt is over 180 days old; make check-qemu-age ONLINE=1 also compares with download.qemu.org (stdlib only)
 	python3 -I scripts/check-qemu-age.py $(if $(ONLINE),--online)
 
 lint: ## Run ruff, mypy, eslint and the TypeScript check

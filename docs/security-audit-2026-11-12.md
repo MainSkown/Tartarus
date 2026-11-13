@@ -219,7 +219,7 @@ the real `win` guest and a clone of it (`auditb`, built through the public API f
 | # | Finding | What changed | Proof |
 |---|---|---|---|
 | 1 | The `cape` user is as capable as container root | The container is no longer privileged: `cap_drop: ALL` plus a measured capability list, and only `/dev/kvm`, `/dev/net/tun`, `/dev/vhost-net` and loop devices. The bridge port flag `isolated` is set by the qemu hook over netlink, and no domain carries `<port isolated>`. libvirt's polkit access driver leaves `cape` four read actions. A root broker (`cape/bin/machine-broker`) reverts a registered guest to its recorded snapshot, powers it off and dumps its memory into the task's folder; CAPE's machinery is patched to ask it | `make verify-cape-hardening` (20 checks), `scripts/verify-guest.sh`, an analysis with a memory dump, `make verify-isolation` |
-| 2 | QEMU has no update path | Tartarus pins the QEMU version and the tarball's SHA256 (9.2.4, the last 9.2 release); `scripts/check-qemu-age.py`, `make check-qemu-age` and a workflow of its own flag an aged or outdated pin | Unit tests; the image builds and runs guests on 9.2.4. **Open:** the 9.2 series has ended, so the check is red until a maintained series is adopted (see below) |
+| 2 | QEMU has no update path | Tartarus pins the QEMU version and the tarball's SHA256 (9.2.4, the last 9.2 release); `scripts/check-qemu-age.py`, `make check-qemu-age` and a workflow of its own flag an aged or outdated pin | Unit tests; the image builds and runs guests on 9.2.4. The 9.2 series had ended, so the pin moved to 11.1.3 on 2026-11-13 (see below) |
 | 3 | Image group ids collide with host device groups | Every group a program runs with has a reserved gid (64020 and up); dnsmasq no longer runs with Debian's `dip`. The hardening check opens every node under `/dev` as `cape` and `libvirt-qemu` and reads every program's gids | `make verify-cape-hardening` |
 | 4 | Unrestricted egress from the container | An nftables output chain of its own, default deny, keyed on the process user: `cape` reaches the CAPE database and nothing else, root reaches https on public addresses (the symbol fetch). CAPE's callback to the backend, and its VirusTotal and whois lookups, are switched off | `make verify-cape-hardening`; analyses complete without the callback |
 | 5 | The `internet` route does not block the host's public address | `GUEST_BLOCKED_ADDRESSES` (optional) is folded into the blocked set; a bad value stops the container | Unit tests |
@@ -241,5 +241,8 @@ Still open:
 
 - Root inside the container keeps `SYS_ADMIN` (libvirt's mount namespace, the ISO scan's loop mount). See
   the accepted risks in [security.md](security.md#accepted-risks).
-- QEMU has to move to a maintained series. 10.0.x and 11.1.x are the candidates; 11.1.3 was built with
-  every anti-VM patch applying. What is missing is the proof that existing guests' memory snapshots restore.
+- ~~QEMU has to move to a maintained series.~~ Done on 2026-11-13: QEMU 11.1.3, with libvirt 12.9.0 built
+  from source because Ubuntu's libvirt 10.0 can neither revert a snapshot nor save memory on QEMU 11. The
+  snapshot `win` took on QEMU 9.2.4 restores and runs an analysis; `make verify-cape-hardening`,
+  `scripts/verify-guest.sh`, a clone, `make verify-isolation` and `make e2e` pass on the new pair. The age check now
+  covers the libvirt pin too.
