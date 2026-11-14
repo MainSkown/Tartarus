@@ -52,7 +52,7 @@ audit by an outside party yet. The files to audit first are `cape/guest_engine/f
 | **`diskcache` has an advisory with no upstream fix** | It is a transitive dependency of pySigma, caches ATT&CK data only, and hostile input cannot reach its pickle storage | An upstream release |
 | **CAPE and Django advisories at the pinned CAPE commit** | A bump of `CAPE_REF` risks the analyzer patches and needs a proof on real guests | The next CAPE bump, with `make verify-guest` and `make e2e` |
 | **The `internet` route reaches the internet** | It is the point of the route. Use a separate network or a VPN for live malware | The routes `none` and `inetsim` |
-| **Two Windows 10 limits:** `make e2e` fails two checks on a Windows 10 guest (a process-panel and a Sigma source check, test-side), and the self-test failed once on an open `WinStore.App` window after `quiet-desktop` | Test and flake issues, not exposure | Guest-aware e2e checks and a settle-and-recheck (follow-ups L1 and L2) |
+| **Two Windows 10 limits:** `make e2e` fails a Sigma source check on a Windows 10 guest (test-side; its process-panel check now picks the sample by name, proven on Windows 11 guests only), and the self-test failed once on an open `WinStore.App` window after `quiet-desktop` | Test and flake issues, not exposure | Guest-aware e2e checks and a settle-and-recheck (follow-ups L1 and L2) |
 | **`GET /apiv2/` redirects** to the status endpoint | The API index page needs routes the API-only web config removed | Nothing to close |
 
 ## Hardening checklist for a LAN or shared install

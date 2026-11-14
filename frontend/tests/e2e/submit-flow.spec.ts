@@ -4,6 +4,7 @@ import { deleteWhenOver } from './delete-when-over'
 import { expectEventsTab, expectTimelineTab } from './explore-tabs'
 
 const SAMPLE = process.env.E2E_SAMPLE
+const GUEST = process.env.E2E_GUEST
 const ANALYSIS_URL = /\/analyses\/(\d+)/
 // An analysis takes minutes of guest time, then the Events and Timeline tabs are exercised; scripts/e2e.sh bounds the whole run at 480 s.
 const TEST_TIMEOUT_MS = 450_000
@@ -24,9 +25,22 @@ async function expectOverviewContent(page: Page): Promise<void> {
     .toBeGreaterThan(0)
 }
 
+// The dialog offers the idle guest by default; scripts/e2e.sh pins its API runs with E2E_GUEST, and
+// the run submitted here must land on the same guest.
+async function chooseGuest(page: Page, name: string): Promise<void> {
+  const select = page.locator('.guest-select')
+  await select.click()
+  await page.locator('.guest-select-menu .guest-chip__name').getByText(name, { exact: true }).click()
+  await expect(select.locator('.guest-chip__name')).toHaveText(name)
+}
+
+// The panel opens on the first process, which is the sample only on a guest where nothing else
+// started before it, so the sample is picked from the tree by its name.
 async function expectProcessesContent(page: Page, processName: string): Promise<void> {
   await openTab(page, 'PROCESSES')
   await expect(page.locator('.process-graph__canvas')).toBeVisible()
+  await page.locator('.process-view-switch__toggle').getByRole('button', { name: 'TREE', exact: true }).click()
+  await page.locator('.process-tree-list .process-chip', { hasText: processName }).first().click()
   await expect(page.locator('.process-details__title')).toContainText(processName)
 }
 
@@ -76,6 +90,7 @@ test('submit a sample through the dialog and watch it finish', async ({ page, re
 
     await page.locator('input[type="file"]').setInputFiles(sample)
     await expect(page.locator('.file-name')).toHaveText(basename(sample))
+    if (GUEST) await chooseGuest(page, GUEST)
     // An interactive run lasts its whole timeout; the desktop flow covers those, this one wants the finished views.
     const interactive = page.getByRole('switch', { name: 'INTERACTIVE DESKTOP' })
     if ((await interactive.getAttribute('aria-checked')) === 'true') await interactive.click()

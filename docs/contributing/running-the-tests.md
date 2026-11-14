@@ -58,7 +58,7 @@ Options for `make e2e`:
 
 - `DRILLS=1` adds the failure drills: it stops `cape` or OpenSearch and restarts the backend mid-run.
 - `DESKTOP=1` adds the interactive desktop. It holds the guest for about ten minutes.
-- `E2E_GUEST=<name>` pins every run to one guest. The Makefile does not set it, so it is read from the environment.
+- `E2E_GUEST=<name>` pins every run to one guest, the one the browser flow submits through the dialog included. The Makefile does not set it, so it is read from the environment. Set it on a host with more than one ready guest: the default is the idle one, which changes from run to run.
 - `E2E_WIZARD=0` skips the wizard browser test, which builds, cancels and deletes a guest named `e2e-wizard`.
 - `E2E_SKIP_UI=1` skips the browser tests.
 
