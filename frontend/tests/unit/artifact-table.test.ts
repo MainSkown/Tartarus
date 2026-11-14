@@ -27,7 +27,7 @@ describe('ArtifactTable', () => {
     expect(cells.text()).toContain('33 B')
     expect(cells.text()).toContain('ASCII text, with CRLF line terminators')
     expect(cells.findComponent(ProcessChip).props('process')).toEqual({ pid: 9708, name: 'benign.exe' })
-    expect(cells.findComponent(CopyButton).props()).toEqual({ text: DROPPER_HASH, what: 'SHA-256' })
+    expect(cells.findComponent(CopyButton).props()).toMatchObject({ text: DROPPER_HASH, what: 'SHA-256' })
   })
 
   it('cuts the hash short but keeps the whole of it in the tooltip', () => {

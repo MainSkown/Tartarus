@@ -49,6 +49,25 @@ def test_a_guest_carries_everything_the_card_renders() -> None:
     assert lab1.giveaways == []
 
 
+def test_the_password_of_a_guest_is_read_but_never_serialised() -> None:
+    lab1 = GUESTS.validate_python(captured("guests.json"))[1]
+
+    assert lab1.identity is not None
+    assert lab1.identity.password == "fixture-pw-Xk3!"  # noqa: S105
+    assert "password" not in lab1.model_dump()["identity"]
+    assert "fixture-pw-Xk3!" not in lab1.model_dump_json()
+
+
+def test_the_giveaway_about_the_password_does_not_quote_it() -> None:
+    win = GUESTS.validate_python(captured("guests.json"))[0]
+
+    assert win.giveaways == [
+        "identity.account 'Analyst' contains 'analy'",
+        "identity.password '***' contains 'tartarus'",
+        "work_dir 'C:\\tartarus' contains 'tartarus'",
+    ]
+
+
 def test_the_giveaways_of_the_adopted_guest_are_kept() -> None:
     win = GUESTS.validate_python(captured("guests.json"))[0]
 

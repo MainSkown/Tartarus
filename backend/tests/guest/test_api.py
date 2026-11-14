@@ -10,8 +10,22 @@ from app.guest.errors import (
     GuestControlUnreachable,
 )
 from app.guest.schemas import Guest
-from tests.guest.fakes import FakeGuestControl
+from tests.guest.fakes import FakeGuestControl, real_guests
 from tests.guest.harness import UNREACHABLE_MESSAGE, Harness
+
+
+def keys_anywhere_in(value: object) -> set[str]:
+    if isinstance(value, dict):
+        return set(value) | {key for item in value.values() for key in keys_anywhere_in(item)}
+    if isinstance(value, list):
+        return {key for item in value for key in keys_anywhere_in(item)}
+    return set()
+
+
+def password_of(name: str) -> str:
+    guest = next(guest for guest in real_guests() if guest.name == name)
+    assert guest.identity is not None
+    return guest.identity.password
 
 
 def error_of(response: httpx.Response) -> dict[str, object]:
@@ -135,6 +149,93 @@ async def test_reading_a_missing_guest_is_a_404_with_the_services_message(
         "message": "no guest called nope",
         "details": {},
     }
+
+
+# --- the guest password never travels with a guest -----------------------------------------------
+
+
+async def test_the_listing_carries_no_password_in_any_object_or_in_its_text(
+    harness: Harness,
+) -> None:
+    response = await harness.client.get("/api/guests")
+
+    assert "password" not in keys_anywhere_in(response.json())
+    assert all(password_of(name) not in response.text for name in ("win", "lab1", "lab2"))
+
+
+async def test_a_single_guest_carries_no_password_in_any_object_or_in_its_text(
+    harness: Harness,
+) -> None:
+    response = await harness.client.get("/api/guests/lab2")
+
+    assert response.json()["identity"]["account"] == "Alice"
+    assert "password" not in keys_anywhere_in(response.json())
+    assert password_of("lab2") not in response.text
+
+
+async def test_the_openapi_schema_of_a_guests_identity_has_no_password(harness: Harness) -> None:
+    schema = harness.app.openapi()["components"]["schemas"]["GuestIdentity"]
+
+    assert "password" not in schema["properties"]
+
+
+# --- GET /guests/{name}/password ---------------------------------------------------------------
+
+
+async def test_the_password_route_answers_the_password_of_that_guest(harness: Harness) -> None:
+    response = await harness.client.get("/api/guests/lab2/password")
+
+    assert response.status_code == 200
+    assert response.json() == {"password": password_of("lab2")}
+    assert harness.control.calls_named("guest") == ["lab2"]
+
+
+async def test_the_password_route_forbids_caching_the_answer(harness: Harness) -> None:
+    response = await harness.client.get("/api/guests/lab2/password")
+
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_the_password_of_a_missing_guest_is_a_404_with_the_services_message(
+    harness: Harness,
+) -> None:
+    harness.use(FakeGuestControl(error=GuestControlRejected("guest", 404, "no guest called nope")))
+
+    response = await harness.client.get("/api/guests/nope/password")
+
+    assert response.status_code == 404
+    assert error_of(response)["code"] == "not_found"
+    assert error_of(response)["message"] == "no guest called nope"
+
+
+async def test_a_guest_that_has_no_account_yet_has_no_password_to_give(harness: Harness) -> None:
+    harness.use(FakeGuestControl(guests=[Guest(name="lab3", state="building")]))
+
+    response = await harness.client.get("/api/guests/lab3/password")
+
+    assert response.status_code == 404
+    assert error_of(response)["code"] == "not_found"
+
+
+async def test_the_password_route_while_the_control_service_is_down_is_a_502(
+    harness: Harness,
+) -> None:
+    harness.use(
+        FakeGuestControl(error=GuestControlUnreachable("guest", "ConnectError to cape-control"))
+    )
+
+    response = await harness.client.get("/api/guests/lab2/password")
+
+    assert response.status_code == 502
+    assert error_of(response)["message"] == UNREACHABLE_MESSAGE
+    assert "cape-control" not in response.text
+
+
+async def test_the_password_route_is_documented_with_its_own_operation(harness: Harness) -> None:
+    operation = harness.app.openapi()["paths"]["/api/guests/{name}/password"]["get"]
+
+    assert operation["operationId"] == "guests_password"
+    assert "password" in operation["description"]
 
 
 # --- DELETE /guests/{name} ---------------------------------------------------------------------
@@ -378,6 +479,7 @@ def test_the_routes_have_the_operation_ids_the_generated_client_is_named_after(
         ("/api/guests/{name}", "delete"): "guests_delete",
         ("/api/guests/{name}/check", "post"): "guests_check",
         ("/api/guests/{name}/clone", "post"): "guests_clone",
+        ("/api/guests/{name}/password", "get"): "guests_password",
         ("/api/guests/{name}/selftest", "post"): "guests_retry_selftest",
         ("/api/guests/build", "post"): "guests_start_build",
         ("/api/guests/builds/active", "get"): "guests_active_build",

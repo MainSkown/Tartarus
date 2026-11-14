@@ -76,3 +76,17 @@ async def test_a_guest_control_failure_is_answered_by_the_real_app_as_a_502(
 
     assert response.status_code == 502
     assert response.json()["error"]["message"] == "The guest control service is not reachable"
+
+
+async def test_the_password_route_is_behind_the_host_guard_of_the_real_app(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    class Never:
+        async def guest(self, name: str) -> object:
+            raise AssertionError("the guard must refuse before the route runs")
+
+    app.dependency_overrides[get_guest_control] = Never
+
+    response = await client.get("/api/guests/lab1/password", headers={"Host": "evil.example"})
+
+    assert response.status_code == 421

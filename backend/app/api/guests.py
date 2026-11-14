@@ -13,6 +13,7 @@ from app.guest.schemas import (
     BuildStarted,
     BuildView,
     Guest,
+    GuestPassword,
     GuestProfile,
     HealthCheckResult,
     MediaEntry,
@@ -175,6 +176,24 @@ async def _follow(control: GuestControl, tracking: BuildTracking, build_id: str)
 async def read(name: GuestNamePath, control: GuestControlDependency) -> Guest:
     """One guest's record. `404` when no guest has that name."""
     return await control.guest(name)
+
+
+@router.get("/{name}/password")
+async def password(
+    name: GuestNamePath, control: GuestControlDependency, response: Response
+) -> GuestPassword:
+    """The password of the guest's Windows account.
+
+    It is its own call so that the secret does not travel with every guest list and detail
+    answer, but only when the analyst asks to see or copy it; the answer must not be cached.
+    `404` when no guest has that name, or when it has no account yet (it is still being built);
+    `502` when the guest control service is not reachable.
+    """
+    identity = (await control.guest(name)).identity
+    if identity is None:
+        raise HTTPException(404, f"Guest {name} has no account password yet")
+    response.headers["Cache-Control"] = "no-store"
+    return GuestPassword(password=identity.password)
 
 
 @router.delete("/{name}", status_code=204)

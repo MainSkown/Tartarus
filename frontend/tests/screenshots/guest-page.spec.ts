@@ -18,6 +18,7 @@ import {
   LAB5_FAILED,
   LONG_GUEST,
   LONG_NAME,
+  PASSWORDS,
   POPULATED,
   gate,
   mockGuestApi,
@@ -74,9 +75,28 @@ for (const width of [700, 600]) {
 test('guest-page-password-revealed', async ({ page }) => {
   await openGuestPage(page, { guests: POPULATED })
   await card(page, 'lab1').getByRole('button', { name: '[REVEAL]' }).click()
-  await expect(card(page, 'lab1').locator('.guest-card__secret')).toHaveText('q7Zp-Lm2x-Rv9d')
+  await expect(card(page, 'lab1').locator('.guest-card__secret')).toHaveText(PASSWORDS.lab1!)
   await expectNoCardOverflow(page)
   await snapshot(page, 'guest-page-password-revealed')
+})
+
+test('guest-page-password-loading', async ({ page }) => {
+  const held = gate()
+  await openGuestPage(page, { guests: POPULATED, holdPassword: held.opened })
+  await card(page, 'lab1').getByRole('button', { name: '[REVEAL]' }).click()
+  await expect(card(page, 'lab1').locator('.guest-card__reveal .q-spinner')).toBeVisible()
+  await expectNoCardOverflow(page)
+  await snapshot(page, 'guest-page-password-loading')
+  held.open()
+})
+
+test('guest-page-password-error-502', async ({ page }) => {
+  await openGuestPage(page, { guests: POPULATED, passwordFailure: 'The guest control service is not reachable' })
+  await card(page, 'lab1').getByRole('button', { name: '[REVEAL]' }).click()
+  await expect(card(page, 'lab1').locator('.guest-card__refusal')).toContainText('not reachable')
+  await expect(card(page, 'lab1').locator('.guest-card__secret')).toHaveText('••••••••')
+  await expectNoCardOverflow(page)
+  await snapshot(page, 'guest-page-password-error-502')
 })
 
 test('guest-page-checks-busy', async ({ page }) => {

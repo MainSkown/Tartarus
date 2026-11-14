@@ -1411,10 +1411,6 @@ export type GuestIdentity = {
      * Machine
      */
     machine: string;
-    /**
-     * Password
-     */
-    password: string;
 };
 
 /**
@@ -1444,6 +1440,16 @@ export type GuestMedia = {
 };
 
 export type GuestName = string;
+
+/**
+ * GuestPassword
+ */
+export type GuestPassword = {
+    /**
+     * Password
+     */
+    password: string;
+};
 
 /**
  * GuestProfile
@@ -3886,6 +3892,36 @@ export type GuestsReadResponses = {
 };
 
 export type GuestsReadResponse = GuestsReadResponses[keyof GuestsReadResponses];
+
+export type GuestsPasswordData = {
+    body?: never;
+    path: {
+        /**
+         * Name
+         */
+        name: string;
+    };
+    query?: never;
+    url: '/api/guests/{name}/password';
+};
+
+export type GuestsPasswordErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type GuestsPasswordError = GuestsPasswordErrors[keyof GuestsPasswordErrors];
+
+export type GuestsPasswordResponses = {
+    /**
+     * Successful Response
+     */
+    200: GuestPassword;
+};
+
+export type GuestsPasswordResponse = GuestsPasswordResponses[keyof GuestsPasswordResponses];
 
 export type GuestsCheckData = {
     body?: never;

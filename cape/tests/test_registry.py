@@ -429,6 +429,15 @@ def test_the_adopted_record_says_it_is_adopted_and_lists_the_giveaways_it_carrie
     assert not any("identity.machine" in item for item in guest.giveaways)
 
 
+def test_a_giveaway_in_the_password_is_named_without_quoting_the_password():
+    # The giveaways are shown on the guest's card and sent with every listing of the guests.
+    guest = adopted()
+
+    (its_giveaway,) = [item for item in guest.giveaways if "identity.password" in item]
+    assert guest.identity.password not in its_giveaway
+    assert its_giveaway == "identity.password contains 'tartarus'"
+
+
 def test_adopting_twice_changes_nothing(guests):
     first = guests.adopt(DOMAIN_XML, REGISTRATION, sample_profile("windows"), now=NOW)
     guests.update_state("win", "failed")

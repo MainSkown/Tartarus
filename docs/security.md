@@ -45,7 +45,6 @@ audit by an outside party yet. The files to audit first are `cape/guest_engine/f
 | Risk | Why it stays | What would close it |
 |---|---|---|
 | **QEMU and libvirt are built from pinned source tarballs, so no distribution update reaches them.** A fix arrives only when the pin is bumped and the image rebuilt | QEMU carries the anti-VM patches, and QEMU 11 needs a newer libvirt than Ubuntu 24.04 ships | `make check-qemu-age` and its weekly workflow fail when either pin is over 180 days old or QEMU has a newer point release; bump as "Updating QEMU and libvirt" in the [CAPE integration spec](specs/cape-integration.md) describes |
-| **`GET /api/guests` returns the guest account password**, shown with reveal and copy on the guest card | It is a throwaway account on an isolated machine, and the browser-origin checks close the cross-site reader | A reveal endpoint and a change to the guest card (follow-up L3) |
 | **The CSP keeps `style-src 'unsafe-inline'`** | Quasar uses inline style attributes | Try `style-src 'self'` with `style-src-attr 'unsafe-inline'` in a real browser (follow-up L4) |
 | **Plain HTTP on `127.0.0.1`** | A local tool with one user; no port is published beyond loopback in production. A LAN install needs `TARTARUS_ALLOWED_HOSTS` and the nginx host map, and TLS in front | A TLS-terminating proxy, outside v1 |
 | **No login** | One user on their own machine | Out of scope for v1 |

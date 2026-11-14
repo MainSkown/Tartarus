@@ -1,10 +1,15 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { Notify, Quasar } from 'quasar'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import GuestCard from '@/components/guest/GuestCard.vue'
 import type { CheckState } from '@/composables/use-guest-list'
-import { buildFixture, guestFixture, WINDOWS_PROFILE } from './guest-fixtures'
+import { failed, succeeded } from './annotation-fixtures'
+import { buildFixture, GUEST_PASSWORD, guestFixture, WINDOWS_PROFILE } from './guest-fixtures'
+
+const api = vi.hoisted(() => ({ guestsPassword: vi.fn() }))
+vi.mock('@/api', () => api)
+
+const { default: GuestCard } = await import('@/components/guest/GuestCard.vue')
 
 type Props = InstanceType<typeof GuestCard>['$props']
 
@@ -24,8 +29,13 @@ async function mountCard(props: Partial<Props> = {}) {
 const button = (wrapper: Awaited<ReturnType<typeof mountCard>>['wrapper'], label: string) =>
   wrapper.findAll('button, a').find((element) => element.text().includes(label))
 
+function stubClipboard(writeText: ReturnType<typeof vi.fn>): void {
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+}
+
 beforeEach(() => {
   Notify.create = vi.fn()
+  api.guestsPassword.mockReset().mockResolvedValue(succeeded({ password: GUEST_PASSWORD }))
 })
 
 describe('GuestCard fields', () => {
@@ -71,28 +81,151 @@ describe('GuestCard fields', () => {
 })
 
 describe('GuestCard password', () => {
-  it('hides the password until revealed, then hides it again', async () => {
+  const copyButton = (wrapper: Awaited<ReturnType<typeof mountCard>>['wrapper']) => wrapper.find('[aria-label="Copy password"]')
+
+  function slowPassword() {
+    let settle: (answer: unknown) => void = () => undefined
+    api.guestsPassword.mockReturnValueOnce(new Promise((resolve) => (settle = resolve)))
+    return (answer: unknown) => settle(answer)
+  }
+
+  it('is masked by default and nothing is requested just by showing the card', async () => {
     const { wrapper } = await mountCard()
-    expect(wrapper.text()).not.toContain('q7Zp-Lm2x-Rv9')
-
-    await button(wrapper, 'REVEAL')!.trigger('click')
-    expect(wrapper.text()).toContain('q7Zp-Lm2x-Rv9')
-    expect(button(wrapper, 'REVEAL')).toBeUndefined()
-
-    await button(wrapper, 'HIDE')!.trigger('click')
-    expect(wrapper.text()).not.toContain('q7Zp-Lm2x-Rv9')
+    await flushPromises()
+    expect(wrapper.find('.guest-card__secret').text()).toBe('••••••••')
+    expect(wrapper.html()).not.toContain(GUEST_PASSWORD)
+    expect(api.guestsPassword).not.toHaveBeenCalled()
   })
 
-  it('does not reveal the password to someone reading the page as text through the copy button', async () => {
+  it('fetches the password once when REVEAL is pressed, and shows it', async () => {
     const { wrapper } = await mountCard()
-    expect(wrapper.find('[aria-label="Copy password"]').exists()).toBe(true)
-    expect(wrapper.html()).not.toContain('q7Zp-Lm2x-Rv9')
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
+    expect(api.guestsPassword).toHaveBeenCalledTimes(1)
+    expect(api.guestsPassword).toHaveBeenCalledWith(expect.objectContaining({ path: { name: 'lab1' } }))
+    expect(wrapper.find('.guest-card__secret').text()).toBe(GUEST_PASSWORD)
+    expect(button(wrapper, 'REVEAL')).toBeUndefined()
+    expect(button(wrapper, 'HIDE')!.attributes('aria-pressed')).toBe('true')
+  })
+
+  it('masks the password again on HIDE and forgets it: the next REVEAL asks again', async () => {
+    const { wrapper } = await mountCard()
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
+    await button(wrapper, 'HIDE')!.trigger('click')
+    expect(wrapper.text()).not.toContain(GUEST_PASSWORD)
+    expect(wrapper.html()).not.toContain(GUEST_PASSWORD)
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
+    expect(api.guestsPassword).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('.guest-card__secret').text()).toBe(GUEST_PASSWORD)
+  })
+
+  it('copies the password without revealing it when the copy button is pressed on a masked card', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    const { wrapper } = await mountCard()
+    await copyButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(api.guestsPassword).toHaveBeenCalledTimes(1)
+    expect(writeText).toHaveBeenCalledWith(GUEST_PASSWORD)
+    expect(wrapper.find('.guest-card__secret').text()).toBe('••••••••')
+    expect(wrapper.html()).not.toContain(GUEST_PASSWORD)
+  })
+
+  it('copies a revealed password without asking again', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    const { wrapper } = await mountCard()
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
+    await copyButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(api.guestsPassword).toHaveBeenCalledTimes(1)
+    expect(writeText).toHaveBeenCalledWith(GUEST_PASSWORD)
+  })
+
+  it('shows REVEAL busy and takes no second request while the password is on its way', async () => {
+    const answer = slowPassword()
+    const { wrapper } = await mountCard()
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    const reveal = button(wrapper, 'REVEAL')!
+    expect(reveal.attributes('disabled')).toBeDefined()
+    expect(reveal.find('.q-spinner').exists()).toBe(true)
+    expect(copyButton(wrapper).attributes('disabled')).toBeDefined()
+    await reveal.trigger('click')
+    expect(api.guestsPassword).toHaveBeenCalledTimes(1)
+    answer(succeeded({ password: GUEST_PASSWORD }))
+    await flushPromises()
+    expect(wrapper.find('.guest-card__secret').text()).toBe(GUEST_PASSWORD)
+  })
+
+  it('shows the copy button busy, and REVEAL unavailable, while a copy fetches the password', async () => {
+    stubClipboard(vi.fn().mockResolvedValue(undefined))
+    const answer = slowPassword()
+    const { wrapper } = await mountCard()
+    await copyButton(wrapper).trigger('click')
+    expect(copyButton(wrapper).find('.q-spinner').exists()).toBe(true)
+    expect(copyButton(wrapper).attributes('disabled')).toBeDefined()
+    expect(button(wrapper, 'REVEAL')!.attributes('disabled')).toBeDefined()
+    expect(button(wrapper, 'REVEAL')!.find('.q-spinner').exists()).toBe(false)
+    answer(succeeded({ password: GUEST_PASSWORD }))
+    await flushPromises()
+    expect(button(wrapper, 'REVEAL')!.attributes('disabled')).toBeUndefined()
+  })
+
+  it('says on the card why the password could not be fetched, and keeps it masked', async () => {
+    api.guestsPassword.mockResolvedValue(failed('The guest control service is not reachable', 502))
+    const { wrapper } = await mountCard()
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.guest-card__refusal[role="alert"]').text()).toContain('The password could not be read: The guest control service is not reachable')
+    expect(wrapper.find('.guest-card__secret').text()).toBe('••••••••')
+    expect(button(wrapper, 'REVEAL')!.attributes('disabled')).toBeUndefined()
+  })
+
+  it('says on the card why a copy failed, copies nothing and shows no copy toast', async () => {
+    const writeText = vi.fn()
+    stubClipboard(writeText)
+    api.guestsPassword.mockResolvedValue(failed('no guest called lab1', 404))
+    const { wrapper } = await mountCard()
+    await copyButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.guest-card__refusal[role="alert"]').text()).toContain('no guest called lab1')
+    expect(writeText).not.toHaveBeenCalled()
+    expect(Notify.create).not.toHaveBeenCalled()
+  })
+
+  it('takes the error away when the next try works', async () => {
+    api.guestsPassword.mockResolvedValueOnce(failed('down', 502))
+    const { wrapper } = await mountCard()
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.guest-card__refusal').exists()).toBe(false)
+    expect(wrapper.find('.guest-card__secret').text()).toBe(GUEST_PASSWORD)
+  })
+
+  it('shows a password error beside a delete refusal, even when their words are the same', async () => {
+    api.guestsPassword.mockResolvedValue(failed('The guest control service is not reachable', 502))
+    const { wrapper } = await mountCard({ deleteError: 'The guest control service is not reachable' })
+    await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.guest-card__refusal')).toHaveLength(2)
   })
 
   it('reveals a long password without widening the card', async () => {
-    const { wrapper } = await mountCard({ guest: guestFixture({ identity: { account: 'a', machine: 'b', password: 'x'.repeat(64) } }) })
+    api.guestsPassword.mockResolvedValue(succeeded({ password: 'x'.repeat(64) }))
+    const { wrapper } = await mountCard()
     await button(wrapper, 'REVEAL')!.trigger('click')
+    await flushPromises()
     expect(wrapper.find('.guest-card__secret').text()).toContain('x'.repeat(64))
+  })
+
+  it('has no password row for a guest that has no identity yet', async () => {
+    const { wrapper } = await mountCard({ guest: guestFixture({ identity: null }) })
+    expect(wrapper.find('.guest-card__password').exists()).toBe(false)
   })
 })
 

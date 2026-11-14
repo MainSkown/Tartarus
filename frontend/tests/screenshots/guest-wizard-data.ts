@@ -130,7 +130,7 @@ function sourceGuest(overrides: Partial<Guest> & Pick<Guest, 'name' | 'state'>):
     profile: 'windows',
     kind: 'build',
     options: { defender: true, decoys: false, sysmon: true, key: '', keyboard: 'Polish (Programmers)' },
-    identity: { account: 'Marta', machine: 'DESKTOP-4K7QX2A', password: 'q7Zp-Lm2x-Rv9d' },
+    identity: { account: 'Marta', machine: 'DESKTOP-4K7QX2A' },
     resources: { vcpus: 4, ram_mb: 8192, disk_gb: 80 },
     badges: ['DEFENDER ON'],
     ...overrides,

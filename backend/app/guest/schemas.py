@@ -7,9 +7,12 @@ specific to an operating system: what differs between them arrives as data in `G
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 type GuestState = Literal["building", "testing", "ready", "failed", "broken"]
+REDACTED = "***"
+QUOTING_GIVEAWAY_PREFIX = "identity.password "
+
 type BuildProgress = Literal["running", "paused", "failed", "succeeded"]
 type StepProgress = Literal["pending", "running", "paused", "failed", "succeeded"]
 
@@ -50,6 +53,12 @@ class GuestMedia(ControlModel):
 class GuestIdentity(ControlModel):
     account: str
     machine: str
+    # Read from the control service, never sent on: `GET /api/guests/{name}/password` is the only
+    # way out, so no model that embeds a guest can carry it into a list, a job or a socket.
+    password: str = Field(exclude=True)
+
+
+class GuestPassword(BaseModel):
     password: str
 
 
@@ -94,6 +103,20 @@ class Guest(ControlModel):
     giveaways: list[str] = Field(default_factory=list)
     badges: list[str] = Field(default_factory=list)
     build_id: str | None = None
+
+    @model_validator(mode="after")
+    def _keep_the_password_out_of_its_giveaway(self) -> "Guest":
+        # The record of a guest adopted before 2026-11-14 keeps the giveaway of its password as
+        # "identity.password '<the password>' contains '<word>'"; the control service has since
+        # stopped quoting it.
+        if self.identity is not None and self.identity.password:
+            self.giveaways = [
+                giveaway.replace(self.identity.password, REDACTED)
+                if giveaway.startswith(QUOTING_GIVEAWAY_PREFIX)
+                else giveaway
+                for giveaway in self.giveaways
+            ]
+        return self
 
 
 class ProfileResources(ControlModel):

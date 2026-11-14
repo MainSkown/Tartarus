@@ -26,6 +26,15 @@ export const WINDOWS_PROFILE = {
   packages: ['exe', 'dll'],
 } as unknown as GuestProfile
 
+/** What `/api/guests/{name}/password` answers; the guest list carries none of them. */
+export const PASSWORDS: Record<string, string> = {
+  lab1: 'q7Zp-Lm2x-Rv9d',
+  lab2: 'n4Vw-Qe8t-Kc2s',
+  lab3: 'x5Yh-Ud3p-Ma7f',
+  win: 'Tartarus1!',
+  'windows-11-defender-off-decoys-3': 'p'.repeat(64),
+}
+
 const SELFTEST_PASSED = { message: 'every signal was present and no giveaway was found', analysis_id: 41 }
 
 function windowsGuest(name: string, overrides: Partial<Guest> = {}): Guest {
@@ -37,7 +46,7 @@ function windowsGuest(name: string, overrides: Partial<Guest> = {}): Guest {
     created: '2026-10-16T09:30:00Z',
     media: { file: 'Win11_25H2_Polish_x64.iso', variant: '5', version: '25H2', language: 'pl-PL', arch: 'x64' },
     options: { defender: true },
-    identity: { account: 'Marta', machine: 'DESKTOP-4K7QX2A', password: 'q7Zp-Lm2x-Rv9d' },
+    identity: { account: 'Marta', machine: 'DESKTOP-4K7QX2A' },
     resources: { vcpus: 4, ram_mb: 8192, disk_gb: 80 },
     ip: '192.168.150.10',
     snapshot: 'clean',
@@ -55,7 +64,7 @@ export const LAB2 = windowsGuest('lab2', {
   kind: 'clone',
   cloned_from: 'lab1',
   created: '2026-10-16T14:05:00Z',
-  identity: { account: 'Marta', machine: 'LAPTOP-9HD3M1P', password: 'n4Vw-Qe8t-Kc2s' },
+  identity: { account: 'Marta', machine: 'LAPTOP-9HD3M1P' },
   ip: '192.168.150.11',
   badges: ['DEFENDER OFF'],
   selftest: { message: 'every signal was present; Defender is off as asked', analysis_id: 52 },
@@ -64,7 +73,7 @@ export const LAB3 = windowsGuest('lab3', {
   kind: 'clone',
   cloned_from: 'lab1',
   created: '2026-10-17T08:12:00Z',
-  identity: { account: 'Marta', machine: 'DESKTOP-R2B8T6W', password: 'x5Yh-Ud3p-Ma7f' },
+  identity: { account: 'Marta', machine: 'DESKTOP-R2B8T6W' },
   ip: '192.168.150.12',
   resources: { vcpus: 2, ram_mb: 4096, disk_gb: 80 },
   badges: ['DEFENDER ON', 'DECOYS'],
@@ -78,7 +87,7 @@ export const LAB4_BUILDING = windowsGuest('lab4', {
   ip: '192.168.150.13',
   snapshot: null,
   selftest: null,
-  identity: { account: 'Marta', machine: 'DESKTOP-J6C1N5Z', password: 'g3Lk-Pr9w-Tb4h' },
+  identity: { account: 'Marta', machine: 'DESKTOP-J6C1N5Z' },
   badges: ['DEFENDER OFF'],
   build_id: 'build-lab4',
 })
@@ -93,7 +102,7 @@ export const LAB5_FAILED = windowsGuest('lab5', {
 export const ADOPTED = windowsGuest('win', {
   adopted: true,
   created: '2026-10-12T18:00:00Z',
-  identity: { account: 'Analyst', machine: 'WIN-GUEST', password: 'Tartarus1!' },
+  identity: { account: 'Analyst', machine: 'WIN-GUEST' },
   badges: ['DEFENDER ON'],
   giveaways: ['account "Analyst"', 'folder C:\\tartarus', 'firewall rule "Tartarus agent"', 'computer name WIN-GUEST'],
   selftest: null,
@@ -104,7 +113,7 @@ export const LONG_NAME = 'windows-11-defender-off-decoys-3'
 export const LONG_GUEST = windowsGuest(LONG_NAME, {
   kind: 'clone',
   cloned_from: 'windows-11-defender-on-base-01',
-  identity: { account: 'Bartholomew', machine: 'DESKTOP-ABCDEFG', password: 'p'.repeat(64) },
+  identity: { account: 'Bartholomew', machine: 'DESKTOP-ABCDEFG' },
   media: { file: 'long.iso', variant: 'Pro for Workstations N Education Enterprise', version: '25H2', language: 'pl-PL', arch: 'x64' },
   badges: ['DEFENDER OFF', 'DECOYS', 'SYSMON ON', 'KEYBOARD PL-214', 'LANGUAGE PL-PL', 'SECURE BOOT', 'TPM 2.0'],
   selftest: {
@@ -150,6 +159,10 @@ export interface GuestApiMock {
   deleteRefusal?: string
   /** The check answers only after `release()` is called. */
   holdChecks?: Promise<void>
+  /** The password answers only after this resolves, for the loading state. */
+  holdPassword?: Promise<void>
+  /** The password answers 502 with this message. */
+  passwordFailure?: string
 }
 
 function guestsApiRoute(options: GuestApiMock): (route: Route) => Promise<void> {
@@ -171,6 +184,14 @@ function guestsApiRoute(options: GuestApiMock): (route: Route) => Promise<void> 
       await route.fulfill({ status: 404, json: errorEnvelope('not_found', 'no build is running') })
     } else if (pathname.startsWith('/api/guests/builds/')) {
       await route.fulfill({ json: BUILD_LAB4 })
+    } else if (pathname.endsWith('/password')) {
+      await options.holdPassword
+      if (options.passwordFailure) {
+        await route.fulfill({ status: 502, json: errorEnvelope('bad_gateway', options.passwordFailure) })
+        return
+      }
+      const name = decodeURIComponent(pathname.split('/')[3] ?? '')
+      await route.fulfill({ json: { password: PASSWORDS[name] }, headers: { 'Cache-Control': 'no-store' } })
     } else if (pathname.endsWith('/check') && method === 'POST') {
       await options.holdChecks
       if (options.checkRefusal) {

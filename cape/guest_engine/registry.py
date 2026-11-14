@@ -387,10 +387,17 @@ def _carried_giveaways(guest: Guest) -> tuple[str, ...]:
         "work_dir": guest.work_dir,
     }
     return tuple(
-        f"{field} '{value}' contains '{word}'"
+        _carried_giveaway(field, value, word)
         for field, value in fields.items()
         if (word := find_giveaway(value))
     )
+
+
+def _carried_giveaway(field: str, value: str, word: str) -> str:
+    # The list is shown on the guest's card and sent with every listing: it must not quote a secret.
+    if field == "identity.password":
+        return f"{field} contains '{word}'"
+    return f"{field} '{value}' contains '{word}'"
 
 
 def adopt(

@@ -1,5 +1,7 @@
 import type { BuildView, Guest, GuestProfile } from '@/api'
 
+export const GUEST_PASSWORD = 'q7Zp-Lm2x-Rv9'
+
 export function guestFixture(overrides: Partial<Guest> = {}): Guest {
   return {
     name: 'lab1',
@@ -9,7 +11,7 @@ export function guestFixture(overrides: Partial<Guest> = {}): Guest {
     created: '2026-10-16T09:30:00Z',
     media: { file: 'Win11_25H2.iso', variant: 'Pro', version: '25H2', language: 'pl-PL', arch: 'x64' },
     options: { defender: true },
-    identity: { account: 'Marta', machine: 'DESKTOP-4K7QX2A', password: 'q7Zp-Lm2x-Rv9' },
+    identity: { account: 'Marta', machine: 'DESKTOP-4K7QX2A' },
     resources: { vcpus: 4, ram_mb: 8192, disk_gb: 80 },
     ip: '192.168.150.10',
     snapshot: 'clean',

@@ -33,6 +33,7 @@ export default {
     progressLabel: '{name} {state}',
     progressFallback: '{state}…',
     passwordNoun: 'password',
+    passwordNotRead: 'The password could not be read: {reason}',
     hide: '[HIDE]',
     reveal: '[REVEAL]',
     analysisLink: 'analysis #{id}',

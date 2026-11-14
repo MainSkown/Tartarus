@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import type { BuildView, Guest, GuestProfile } from '@/api'
 import CopyButton from '@/components/CopyButton.vue'
 import GuestBadges from '@/components/guest/GuestBadges.vue'
@@ -7,6 +7,7 @@ import GuestChecks from '@/components/guest/GuestChecks.vue'
 import GuestField from '@/components/guest/GuestField.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import type { CheckState } from '@/composables/use-guest-list'
+import { useGuestPassword } from '@/composables/use-guest-password'
 import { t } from '@/i18n'
 import { formatTimestamp } from '@/services/format-time'
 import { isInProgress } from '@/services/guest-state'
@@ -28,11 +29,12 @@ const props = defineProps<{
 }>()
 defineEmits<{ runChecks: []; remove: []; retestSelfTest: [] }>()
 
-const passwordRevealed = ref(false)
+const password = useGuestPassword(() => props.guest.name)
 
 const actions = computed(() => guestActions(props.guest))
 const selfTest = computed(() => selfTestOf(props.guest))
-const refusals = computed(() => [props.deleteError, props.retestError].filter((message) => message !== undefined))
+const passwordRefusal = computed(() => password.error.value && t('guests.card.passwordNotRead', { reason: password.error.value }))
+const refusals = computed(() => [props.deleteError, props.retestError, passwordRefusal.value].filter((message) => message !== undefined))
 const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveaways ?? []).length > 0)
 </script>
 
@@ -131,19 +133,22 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
         </GuestField>
         <GuestField :label="t('guests.card.field.password')">
           <span class="guest-card__password">
-            <span class="guest-card__secret text-mono">{{ passwordRevealed ? guest.identity.password : MASKED_PASSWORD }}</span>
+            <span class="guest-card__secret text-mono">{{ password.value.value ?? MASKED_PASSWORD }}</span>
             <CopyButton
-              :text="guest.identity.password"
+              :text="password.valueToCopy"
               :what="t('guests.card.passwordNoun')"
+              :disabled="password.busy.value"
             />
             <q-btn
               flat
               dense
               square
-              :label="passwordRevealed ? t('guests.card.hide') : t('guests.card.reveal')"
-              :aria-pressed="passwordRevealed"
+              :label="password.revealed.value ? t('guests.card.hide') : t('guests.card.reveal')"
+              :aria-pressed="password.revealed.value"
               class="guest-card__reveal text-mono"
-              @click="passwordRevealed = !passwordRevealed"
+              :loading="password.revealing.value"
+              :disable="password.busy.value"
+              @click="password.toggle"
             />
           </span>
         </GuestField>
@@ -210,8 +215,8 @@ const showGiveaways = computed(() => props.guest.adopted && (props.guest.giveawa
     />
 
     <p
-      v-for="refusal in refusals"
-      :key="refusal"
+      v-for="(refusal, index) in refusals"
+      :key="index"
       class="guest-card__refusal text-mono"
       role="alert"
     >

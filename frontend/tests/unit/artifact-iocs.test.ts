@@ -50,7 +50,7 @@ describe('ArtifactIocs', () => {
 
   it('has a copy button holding the whole value', async () => {
     const wrapper = await mountIocs()
-    expect(rows(wrapper)[0]!.findComponent(CopyButton).props()).toEqual({ text: DROPPER_HASH, what: 'indicator' })
+    expect(rows(wrapper)[0]!.findComponent(CopyButton).props()).toMatchObject({ text: DROPPER_HASH, what: 'indicator' })
   })
 
   it('keeps a long value reachable through its title', async () => {
