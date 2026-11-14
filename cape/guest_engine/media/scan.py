@@ -1,14 +1,14 @@
 import logging
 import os
 from collections.abc import Iterator, Mapping
-from contextlib import AbstractContextManager
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 from guest_engine.media.commands import Runner
 from guest_engine.media.errors import Fault, MediaProblem
 from guest_engine.media.inspector import Inspector, MediaContext
-from guest_engine.media.mount import SCAN_ROOT, LoopMounter
+from guest_engine.media.reading import read_inside
 
 log = logging.getLogger(__name__)
 
@@ -19,20 +19,19 @@ def scan_media(
     directory: Path,
     inspectors: Mapping[str, Inspector],
     runner: Runner,
-    scan_root: Path = SCAN_ROOT,
 ) -> list[Entry]:
     """Every medium in `directory` that an inspector recognises, and every file that none does.
 
     One entry per (file, profile) that recognised it; a file nobody recognised, or that could not
-    be read, has one entry with `profile: None` and an `error` message. No cache: a scan costs
-    hundredths of a second (S0a).
+    be read, has one entry with `profile: None` and an `error` message. No cache: reading an image
+    takes a child process and a few hundredths of a second.
     """
-    mounter = LoopMounter(runner, scan_root)
+    context = MediaContext(runner, partial(read_inside, runner))
     entries: list[Entry] = []
     for name, path in _regular_files(directory):
         stat = path.stat()
         identity = {"file": name, "size": stat.st_size, "mtime": int(stat.st_mtime)}
-        recognised, problem = _ask_inspectors(path, inspectors, runner, mounter)
+        recognised, problem = _ask_inspectors(path, inspectors, context)
         if recognised:
             entries.extend(
                 {**identity, "profile": profile, **found, "sha256": None}
@@ -56,13 +55,13 @@ def _regular_files(directory: Path) -> Iterator[tuple[str, Path]]:
 
 
 def _ask_inspectors(
-    path: Path, inspectors: Mapping[str, Inspector], runner: Runner, mounter: LoopMounter
+    path: Path, inspectors: Mapping[str, Inspector], context: MediaContext
 ) -> tuple[list[tuple[str, Entry]], MediaProblem]:
     recognised: list[tuple[str, Entry]] = []
     problem = MediaProblem(Fault.UNRECOGNISED)
     for profile, inspector in inspectors.items():
         try:
-            found = inspector.inspect(path, _context_for(inspector, runner, mounter))
+            found = inspector.inspect(path, context)
         except MediaProblem as raised:
             problem = _more_specific(problem, raised)
         except Exception:  # one inspector's bug must not take the whole listing down
@@ -76,13 +75,3 @@ def _ask_inspectors(
 
 def _more_specific(current: MediaProblem, raised: MediaProblem) -> MediaProblem:
     return raised if current.fault is Fault.UNRECOGNISED else current
-
-
-def _context_for(inspector: Inspector, runner: Runner, mounter: LoopMounter) -> MediaContext:
-    if getattr(inspector, "needs_mount", False):
-        return MediaContext(runner, mounter.mounted)
-    return MediaContext(runner, _mount_not_declared)
-
-
-def _mount_not_declared(path: Path) -> AbstractContextManager[Path]:
-    raise RuntimeError(f"an inspector must declare needs_mount = True to mount {path.name}")

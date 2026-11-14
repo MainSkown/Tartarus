@@ -1,15 +1,27 @@
 import importlib.util
-from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 
 import pytest
-from test_media_support import ScriptedRunner, failed, ok
+from fixtures.iso_images import (
+    HEADER_FLAG_COMPRESSION,
+    RESOURCE_FLAG_COMPRESSED,
+    RESOURCE_FLAG_METADATA,
+    WINDOWS_HOME,
+    WINDOWS_PRO,
+    disc_image,
+    wim_file,
+    windows_image_xml,
+    windows_media,
+)
+from test_media_support import ScriptedRunner, ok
 
-from guest_engine.media.errors import MediaProblem
+from guest_engine.media.commands import run_command
+from guest_engine.media.errors import Fault, MediaProblem
 from guest_engine.media.inspector import MediaContext
+from guest_engine.media.reading import read_inside
 
 INSPECTOR_PATH = Path(__file__).parents[2] / "guest" / "profiles" / "windows" / "inspector.py"
-FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def load_inspector():
@@ -21,198 +33,207 @@ def load_inspector():
 
 inspector = load_inspector()
 
-
-def fixture_text(name: str) -> str:
-    return (FIXTURES / name).read_text(encoding="utf-8")
+TWO_EDITIONS = windows_image_xml(WINDOWS_PRO, WINDOWS_HOME)
 
 
-class TestParseWiminfo:
-    """The first fixture is the real output for Win11_25H2_Polish_x64_v2.iso (S0a); the
-    multi-language and ESD ones are derived from it by changing only the fields their tests name."""
-
-    @pytest.fixture
-    def real(self):
-        return inspector.parse_wiminfo(fixture_text("wiminfo_win11_25h2_pl_x64.txt"))
-
-    def test_real_iso_has_ten_editions_with_their_index_numbers(self, real):
-        assert real["image_count"] == 10
-        assert [(image["index"], image["edition_id"]) for image in real["images"]] == [
-            (1, "Core"),
-            (2, "CoreN"),
-            (3, "Education"),
-            (4, "EducationN"),
-            (5, "Professional"),
-            (6, "ProfessionalN"),
-            (7, "ProfessionalEducation"),
-            (8, "ProfessionalEducationN"),
-            (9, "ProfessionalWorkstation"),
-            (10, "ProfessionalWorkstationN"),
-        ]
-
-    def test_real_iso_pro_is_index_five(self, real):
-        pro = real["images"][4]
-
-        assert pro["name"] == "Windows 11 Pro"
-        assert pro["index"] == 5
-
-    def test_real_iso_build_language_and_architecture(self, real):
-        assert {image["build"] for image in real["images"]} == {26200}
-        assert {image["version"] for image in real["images"]} == {"10.0.26200"}
-        assert {tuple(image["languages"]) for image in real["images"]} == {("pl-PL",)}
-        assert {image["default_language"] for image in real["images"]} == {"pl-PL"}
-        assert {image["arch"] for image in real["images"]} == {"amd64"}
-        assert real["compression"] == "LZX"
-
-    def test_several_languages_and_other_architectures_are_accepted(self):
-        parsed = inspector.parse_wiminfo(fixture_text("wiminfo_multilang_two_arch.txt"))
-
-        first, second = parsed["images"]
-        assert first["languages"] == ["en-US", "de-DE"]
-        assert first["default_language"] == "en-US"
-        assert first["build"] == 26100
-        assert (first["arch"], second["arch"]) == ("amd64", "arm64")
-
-    def test_a_solid_esd_reports_lzms_compression(self):
-        parsed = inspector.parse_wiminfo(fixture_text("wiminfo_solid_esd_lzms.txt"))
-
-        assert parsed["compression"] == "LZMS"
-        assert [image["index"] for image in parsed["images"]] == [1, 2, 3]
-
-    def test_an_image_without_windows_metadata_has_none_for_it(self):
-        parsed = inspector.parse_wiminfo(fixture_text("wiminfo_non_windows.txt"))
-
-        (image,) = parsed["images"]
-        assert image["name"] == "backup"
-        assert image["edition_id"] is None
-        assert image["build"] is None
-        assert image["arch"] is None
-        assert image["languages"] == []
-
-    def test_text_without_images_parses_to_no_images(self):
-        assert inspector.parse_wiminfo("")["images"] == []
-
-    def test_an_unknown_architecture_keeps_its_own_name_lowercased(self):
-        text = fixture_text("wiminfo_win11_25h2_pl_x64.txt").replace("x86_64", "RISCV64")
-
-        assert inspector.parse_wiminfo(text)["images"][0]["arch"] == "riscv64"
+def real_context(runner=run_command) -> MediaContext:
+    return MediaContext(runner, partial(read_inside, runner))
 
 
-def tree(root: Path, *files: str) -> Path:
-    for relative in files:
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(b"x")
-    return root
+def inspect_image(image: Path, context: MediaContext | None = None):
+    return inspector.inspect(image, context or real_context())
 
 
-def context_for(root: Path, runner) -> MediaContext:
-    @contextmanager
-    def mounted(_image):
-        yield root
-
-    return MediaContext(runner, mounted)
+def context_answering(answer) -> MediaContext:
+    """A context whose child already answered `answer`, to test what the inspector makes of it."""
+    return MediaContext(ScriptedRunner(), lambda _image, _reader: answer)
 
 
-def run_inspect(root, runner, name="disc.iso"):
-    return inspector.inspect(Path(name), context_for(root, runner))
+def problem_of(image: Path, context: MediaContext | None = None) -> MediaProblem:
+    with pytest.raises(MediaProblem) as problem:
+        inspect_image(image, context)
+    return problem.value
 
 
-class TestInspect:
-    def test_it_declares_that_it_needs_a_mount(self):
-        assert inspector.needs_mount is True
+class TestInspectReadingARealImage:
+    def test_two_editions_give_the_documented_result(self, tmp_path):
+        image = windows_media(tmp_path / "win11.iso", wim_file(TWO_EDITIONS))
 
-    def test_real_iso_result(self, tmp_path):
-        root = tree(tmp_path, "sources/install.wim", "sources/boot.wim")
-        runner = ScriptedRunner((["wiminfo"], ok(fixture_text("wiminfo_win11_25h2_pl_x64.txt"))))
-
-        found = run_inspect(root, runner)
-
-        assert runner.calls == [["wiminfo", str(root / "sources" / "install.wim")]]
-        assert found["kind"] == "installer"
-        assert found["build"] == 26200
-        assert found["version"] == "10.0.26200"
-        assert found["language"] == "pl-PL"
-        assert found["arch"] == "amd64"
-        assert found["compression"] == "LZX"
-        assert len(found["variants"]) == 10
-        assert found["variants"][4] == {
-            "index": 5,
-            "name": "Windows 11 Pro",
-            "edition_id": "Professional",
-            "arch": "amd64",
-            "languages": ["pl-PL"],
-            "default_language": "pl-PL",
+        assert inspect_image(image) == {
+            "kind": "installer",
+            "variants": [
+                {
+                    "index": 1,
+                    "name": "Windows 11 Pro",
+                    "edition_id": "Professional",
+                    "arch": "amd64",
+                    "languages": ["pl-PL"],
+                    "default_language": "pl-PL",
+                    "build": 26200,
+                    "installation_type": "Client",
+                },
+                {
+                    "index": 2,
+                    "name": "Windows 11 Home",
+                    "edition_id": "Core",
+                    "arch": "amd64",
+                    "languages": ["pl-PL"],
+                    "default_language": "pl-PL",
+                    "build": 26200,
+                    "installation_type": "Client",
+                },
+            ],
+            "version": "10.0.26200",
             "build": 26200,
-            "installation_type": "Client",
+            "language": "pl-PL",
+            "arch": "amd64",
+            "compression": "LZX",
         }
 
-    def test_it_falls_back_to_install_esd(self, tmp_path):
-        root = tree(tmp_path, "sources/install.esd")
-        runner = ScriptedRunner((["wiminfo"], ok(fixture_text("wiminfo_solid_esd_lzms.txt"))))
+    def test_another_build_language_and_architecture_are_read_just_as_well(self, tmp_path):
+        older = {
+            **WINDOWS_PRO,
+            "build": 19041,
+            "arch": 0,
+            "languages": ["en-GB"],
+            "default_language": "en-GB",
+        }
+        image = windows_media(tmp_path / "win10.iso", wim_file(windows_image_xml(older)))
 
-        found = run_inspect(root, runner)
+        found = inspect_image(image)
 
-        assert runner.calls == [["wiminfo", str(root / "sources" / "install.esd")]]
+        assert (found["version"], found["build"], found["language"], found["arch"]) == (
+            "10.0.19041",
+            19041,
+            "en-GB",
+            "x86",
+        )
+
+    def test_install_esd_is_read_when_there_is_no_wim(self, tmp_path):
+        esd = wim_file(TWO_EDITIONS, header_flags=HEADER_FLAG_COMPRESSION | 0x80000)
+        image = windows_media(tmp_path / "esd.iso", esd, name="install.esd")
+
+        found = inspect_image(image)
+
         assert found["compression"] == "LZMS"
+        assert len(found["variants"]) == 2
 
     def test_install_wim_is_preferred_over_install_esd(self, tmp_path):
-        root = tree(tmp_path, "sources/install.wim", "sources/install.esd")
-        runner = ScriptedRunner((["wiminfo"], ok(fixture_text("wiminfo_win11_25h2_pl_x64.txt"))))
+        image = disc_image(
+            tmp_path / "both.iso",
+            {
+                "sources/install.wim": wim_file(windows_image_xml(WINDOWS_PRO)),
+                "sources/install.esd": wim_file(TWO_EDITIONS),
+            },
+        )
 
-        run_inspect(root, runner)
+        assert len(inspect_image(image)["variants"]) == 1
 
-        assert runner.calls[0][1].endswith("install.wim")
+    @pytest.mark.parametrize("filesystem", ["udf", "joliet", "iso9660"])
+    def test_media_is_recognised_by_content_in_every_filesystem(self, tmp_path, filesystem):
+        image = windows_media(
+            tmp_path / "whatever.bin", wim_file(TWO_EDITIONS), filesystem=filesystem
+        )
 
-    def test_media_is_recognised_by_content_not_by_file_name(self, tmp_path):
-        root = tree(tmp_path, "sources/install.wim")
-        runner = ScriptedRunner((["wiminfo"], ok(fixture_text("wiminfo_win11_25h2_pl_x64.txt"))))
-
-        assert run_inspect(root, runner, name="whatever.bin") is not None
+        assert inspect_image(image)["build"] == 26200
 
     def test_an_image_that_is_not_windows_media_is_not_claimed(self, tmp_path):
-        root = tree(tmp_path, "boot/grub/grub.cfg", "casper/vmlinuz")
-        runner = ScriptedRunner()
+        image = disc_image(
+            tmp_path / "linux.iso", {"boot/grub/grub.cfg": b"x", "casper/vmlinuz": b"x"}
+        )
 
-        assert run_inspect(root, runner) is None
-        assert runner.calls == []
+        assert inspect_image(image) is None
 
     def test_windows_media_without_an_install_image_is_a_problem(self, tmp_path):
-        root = tree(tmp_path, "sources/boot.wim", "setup.exe")
+        image = disc_image(tmp_path / "pe.iso", {"sources/boot.wim": b"x", "setup.exe": b"x"})
 
-        with pytest.raises(MediaProblem, match=r"install\.wim or install\.esd"):
-            run_inspect(root, ScriptedRunner())
+        assert str(problem_of(image)) == inspector.NO_INSTALL_IMAGE
+        assert "install.wim or install.esd" in inspector.NO_INSTALL_IMAGE
 
     def test_a_wim_without_windows_metadata_is_a_problem(self, tmp_path):
-        root = tree(tmp_path, "sources/install.wim")
-        runner = ScriptedRunner((["wiminfo"], ok(fixture_text("wiminfo_non_windows.txt"))))
+        xml = '<WIM><IMAGE INDEX="1"><NAME>backup</NAME></IMAGE></WIM>'
+        image = windows_media(tmp_path / "backup.iso", wim_file(xml))
 
-        with pytest.raises(MediaProblem, match="no Windows version information"):
-            run_inspect(root, runner)
+        assert "no Windows version information" in str(problem_of(image))
 
-    @pytest.mark.parametrize(("exit_code", "message"), sorted(inspector.WIMINFO_FAILURES.items()))
-    def test_every_row_of_the_wiminfo_error_table(self, tmp_path, exit_code, message):
-        root = tree(tmp_path, "sources/install.wim")
-        runner = ScriptedRunner((["wiminfo"], failed(exit_code, "raw stderr that is for the log")))
+    def test_a_file_that_is_not_an_iso_is_not_an_iso(self, tmp_path):
+        garbage = tmp_path / "notes.iso"
+        garbage.write_bytes(b"hello" * 50_000)
 
-        with pytest.raises(MediaProblem) as problem:
-            run_inspect(root, runner)
+        assert problem_of(garbage).fault is Fault.NOT_AN_ISO
 
-        assert str(problem.value) == message.format(file="install.wim")
-        assert "raw stderr" not in str(problem.value)
+    def test_an_empty_file_is_empty(self, tmp_path):
+        empty = tmp_path / "empty.iso"
+        empty.touch()
 
-    def test_the_table_has_the_three_codes_s0a_saw(self):
-        assert set(inspector.WIMINFO_FAILURES) == {43, 50, 65}
+        assert problem_of(empty).fault is Fault.EMPTY
 
-    def test_an_unlisted_wiminfo_failure_still_gets_a_readable_message(self, tmp_path):
-        root = tree(tmp_path, "sources/install.wim")
-        runner = ScriptedRunner((["wiminfo"], failed(99, "who knows")))
+    @pytest.mark.parametrize(
+        ("wim", "failure"),
+        [
+            (b"PK\x03\x04" + b"\0" * 400, "not_a_wim"),
+            (wim_file(TWO_EDITIONS)[:100], "incomplete"),
+            (wim_file(TWO_EDITIONS, xml_offset=10**12), "incomplete"),
+            (wim_file(TWO_EDITIONS, stored_size=10**9, original_size=10**9), "damaged"),
+            (
+                wim_file(
+                    TWO_EDITIONS, resource_flags=RESOURCE_FLAG_METADATA | RESOURCE_FLAG_COMPRESSED
+                ),
+                "unreadable",
+            ),
+            (wim_file('<!DOCTYPE WIM [<!ENTITY a "b">]><WIM/>'), "damaged"),
+        ],
+    )
+    def test_a_wim_that_cannot_be_read_gets_the_message_of_its_failure(
+        self, tmp_path, wim, failure
+    ):
+        image = windows_media(tmp_path / "broken.iso", wim)
 
-        with pytest.raises(MediaProblem, match=r"install\.wim could not be read"):
-            run_inspect(root, runner)
+        assert str(problem_of(image)) == inspector.IMAGE_FAILURES[failure].format(
+            file="install.wim"
+        )
 
     def test_the_message_names_the_esd_when_it_is_the_esd(self, tmp_path):
-        root = tree(tmp_path, "sources/install.esd")
-        runner = ScriptedRunner((["wiminfo"], failed(43)))
+        image = windows_media(tmp_path / "esd.iso", wim_file(b""), name="install.esd")
 
-        with pytest.raises(MediaProblem, match=r"install\.esd"):
-            run_inspect(root, runner)
+        assert "install.esd" in str(problem_of(image))
+
+
+class TestWhatTheInspectorMakesOfTheChildsAnswer:
+    def test_it_declares_no_mount_because_it_asks_the_context_to_read_inside_the_image(self):
+        assert not hasattr(inspector, "needs_mount")
+        assert inspector.READER.name == "wim_reader.py"
+        assert inspector.READER.is_file()
+
+    def test_the_reader_that_runs_in_the_child_is_the_one_next_to_the_inspector(self, tmp_path):
+        asked = []
+
+        def read(image, reader):
+            asked.append((image, reader))
+            return {"file": None, "boot_wim": False}
+
+        inspect_image(Path("disc.iso"), MediaContext(ScriptedRunner(), read))
+
+        assert asked == [(Path("disc.iso"), inspector.READER)]
+
+    def test_a_failure_the_table_does_not_know_still_gets_a_readable_message(self):
+        answer = {"file": "install.esd", "failure": "something new"}
+
+        assert str(problem_of(Path("d.iso"), context_answering(answer))) == (
+            "install.esd could not be read."
+        )
+
+    def test_the_table_has_the_failures_the_reader_can_name(self):
+        assert set(inspector.IMAGE_FAILURES) == {"not_a_wim", "incomplete", "damaged", "unreadable"}
+
+    def test_a_timeout_the_runner_reports_reaches_the_scan(self, tmp_path):
+        image = windows_media(tmp_path / "win.iso", wim_file(TWO_EDITIONS))
+        runner = ScriptedRunner(([], MediaProblem(Fault.TIMED_OUT)))
+
+        assert problem_of(image, real_context(runner)).fault is Fault.TIMED_OUT
+
+    def test_a_child_that_prints_garbage_is_an_inspection_failure(self, tmp_path):
+        image = windows_media(tmp_path / "win.iso", wim_file(TWO_EDITIONS))
+        runner = ScriptedRunner(([], ok("\x00garbage")))
+
+        assert problem_of(image, real_context(runner)).fault is Fault.INSPECTION_FAILED

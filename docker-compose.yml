@@ -143,8 +143,8 @@ services:
     restart: "no"
     # Not privileged: libvirtd, the rooter's iptables, the tt-guest bridge and QEMU's tap devices live in
     # this container's own network namespace, and these capabilities and devices are what they were
-    # measured to need. SYS_ADMIN and SYS_PTRACE are libvirt's mount namespace and the ISO scan's loop
-    # mount; MKNOD and the loop rule let the scan make the loop node it attaches (docs/security.md).
+    # measured to need. SYS_ADMIN is for the entrypoint alone, which makes the net.* sysctls writable
+    # with it and takes it out of the bounding set before it starts any program (docs/security.md).
     cap_drop:
       - ALL
     cap_add:
@@ -152,7 +152,6 @@ services:
       - DAC_OVERRIDE
       - FOWNER
       - KILL
-      - MKNOD
       - NET_ADMIN
       - NET_BIND_SERVICE
       - NET_RAW
@@ -161,14 +160,10 @@ services:
       - SETUID
       - SYS_ADMIN
       - SYS_CHROOT
-      - SYS_PTRACE
     devices:
       - /dev/kvm:/dev/kvm
       - /dev/net/tun:/dev/net/tun
       - /dev/vhost-net:/dev/vhost-net
-      - /dev/loop-control:/dev/loop-control
-    device_cgroup_rules:
-      - "b 7:* rmw"
     environment:
       TZ: ${TZ:-UTC}
       CAPE_DB_USER: ${CAPE_DB_USER:-cape}

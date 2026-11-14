@@ -1,6 +1,7 @@
 """Helpers shared by the media tests: a scripted command runner."""
 
 from collections.abc import Callable, Sequence
+from typing import BinaryIO
 
 from guest_engine.media.commands import CommandResult
 
@@ -21,10 +22,16 @@ class ScriptedRunner:
     def __init__(self, *rules: tuple[Sequence[str], Response]) -> None:
         self.rules = [(list(prefix), response) for prefix, response in rules]
         self.calls: list[list[str]] = []
+        self.timeouts: list[float | None] = []
+        self.stdin_names: list[str | None] = []
 
-    def __call__(self, args: Sequence[str], timeout: float | None = None) -> CommandResult:
+    def __call__(
+        self, args: Sequence[str], timeout: float | None = None, stdin: BinaryIO | None = None
+    ) -> CommandResult:
         command = list(args)
         self.calls.append(command)
+        self.timeouts.append(timeout)
+        self.stdin_names.append(getattr(stdin, "name", None))
         for prefix, response in self.rules:
             if command[: len(prefix)] == prefix:
                 if isinstance(response, BaseException):

@@ -72,14 +72,15 @@ def test_backend_image_hands_the_imports_folder_to_its_user() -> None:
     assert re.search(r"chown tartarus:tartarus[^\n]*\s/imports\b", dockerfile)
 
 
-# What libvirt, QEMU, the rooter and the ISO scan were measured to need (docs/security.md):
-# anything more is a way out of the container, anything less stops a guest.
+# What libvirt, QEMU and the rooter were measured to need (docs/security.md): anything more is a
+# way out of the container, anything less stops a guest. SYS_ADMIN is the entrypoint's alone, for
+# the one mount that makes net.* sysctls writable; it leaves the bounding set before any program
+# starts (cape/tests/test_capability_drop.py).
 CAPE_CAPABILITIES = {
     "CHOWN",
     "DAC_OVERRIDE",
     "FOWNER",
     "KILL",
-    "MKNOD",
     "NET_ADMIN",
     "NET_BIND_SERVICE",
     "NET_RAW",
@@ -88,10 +89,8 @@ CAPE_CAPABILITIES = {
     "SETUID",
     "SYS_ADMIN",
     "SYS_CHROOT",
-    "SYS_PTRACE",
 }
-CAPE_DEVICES = {"/dev/kvm", "/dev/net/tun", "/dev/vhost-net", "/dev/loop-control"}
-LOOP_DEVICES_RULE = "b 7:* rmw"
+CAPE_DEVICES = {"/dev/kvm", "/dev/net/tun", "/dev/vhost-net"}
 
 
 def _cape_service() -> dict[str, object]:
@@ -112,11 +111,13 @@ def test_cape_holds_exactly_the_capabilities_it_was_measured_to_need() -> None:
     assert "security_opt" not in cape
 
 
-def test_cape_sees_only_the_devices_a_guest_and_the_iso_scan_need() -> None:
+def test_cape_sees_only_the_devices_a_guest_needs() -> None:
     cape = _cape_service()
 
     assert {device.split(":")[0] for device in cape["devices"]} == CAPE_DEVICES
-    assert cape["device_cgroup_rules"] == [LOOP_DEVICES_RULE]
+    # A rule for a device class lets root in the container make and open any node of it, the
+    # host's own loop devices included; the ISO scan reads images without one.
+    assert "device_cgroup_rules" not in cape
 
 
 def test_cape_sends_nothing_about_a_sample_to_a_third_party() -> None:

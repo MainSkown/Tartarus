@@ -190,8 +190,7 @@ the same words. Nothing Tartarus puts in a guest may carry the product's name.
 
 ## Media inspectors
 
-`media.inspector` names a Python module in the profile directory with `needs_mount` (bool) and
-`inspect(path, context)`. For each file in `data/iso` the scan asks every profile's inspector, and one
+`media.inspector` names a Python module in the profile directory with `inspect(path, context)`. For each file in `data/iso` the scan asks every profile's inspector, and one
 file may be recognised by more than one:
 
 - return `None` if the file is not this profile's media;
@@ -199,9 +198,12 @@ file may be recognised by more than one:
   `disk_image` and each variant is `{index, name, ...}` (Windows: one per edition);
 - raise `MediaProblem` if it is this kind of medium but cannot be read, with a message fit for the GUI.
 
-With `needs_mount = True` the context offers `mounted(path)`, a read-only loop mount that is always
-detached afterwards. An inspector for non-Windows media should be a read-only userspace tool instead, may
-return `language: null`, and may recognise an unknown image by its sha256 against the profile's manifest.
+Nothing is mounted. To look inside a disc image the context offers `read_inside(image, reader)`:
+`reader` is a Python file of the profile with `read(image)`, run in an unprivileged, resource-limited
+child process over the opened image (`image.exists(*path)`, `image.open(*path)`), and whatever it returns
+comes back as JSON data. The image is untrusted, so an inspector never parses it in the control service
+itself. An inspector for non-Windows media may return `language: null`, and may recognise an unknown image
+by its sha256 against the profile's manifest.
 
 ## Self-test
 

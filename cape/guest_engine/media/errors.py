@@ -6,7 +6,6 @@ class Fault(StrEnum):
     EMPTY = "empty"
     NOT_AN_ISO = "not_an_iso"
     UNSUPPORTED_FILESYSTEM = "unsupported_filesystem"
-    ATTACH_FAILED = "attach_failed"
     TOOL_MISSING = "tool_missing"
     TIMED_OUT = "timed_out"
     UNRECOGNISED = "unrecognised"
@@ -14,17 +13,12 @@ class Fault(StrEnum):
 
 
 # One table of what the GUI shows for every way a medium can fail to be read. The first two and
-# ATTACH_FAILED / TOOL_MISSING are the operator's problem, not the file's, and say so.
+# TOOL_MISSING are the operator's problem, not the file's, and say so.
 MESSAGES: dict[Fault, str] = {
     Fault.NOT_A_FILE: "Not a readable file (a folder or a broken link).",
     Fault.EMPTY: "The file is empty; if it is still being copied, wait and refresh.",
     Fault.NOT_AN_ISO: "Not a disc image that can be read (not an ISO, or damaged).",
-    Fault.UNSUPPORTED_FILESYSTEM: (
-        "This host cannot read the image's filesystem (is the udf kernel module available?)."
-    ),
-    Fault.ATTACH_FAILED: (
-        "Could not attach the image to a loop device; a problem of the host, not of the file."
-    ),
+    Fault.UNSUPPORTED_FILESYSTEM: "The image's filesystem (UDF, Joliet or ISO 9660) is unreadable.",
     Fault.TOOL_MISSING: "A tool needed to read the image is not installed in the container.",
     Fault.TIMED_OUT: "Reading the image took too long and was stopped.",
     Fault.UNRECOGNISED: "Not a recognised installation medium.",

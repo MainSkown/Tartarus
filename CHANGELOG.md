@@ -25,7 +25,9 @@ milestone was built is in [docs/history](docs/history/README.md).
 The fixes from the [2026-11-12 hardening review](docs/security-audit-2026-11-12.md):
 
 - The `cape` container is no longer privileged. It runs with a fixed capability and device list, so no
-  host device but KVM's, the tun and vhost nodes and loop devices exists in it. The bridge port flag
+  host device but KVM's and the tun and vhost nodes exists in it. No program in it holds `SYS_ADMIN`
+  (the entrypoint drops it before starting any), `MKNOD` or `SYS_PTRACE`, and the ISO scan reads Windows
+  media without mounting it. The bridge port flag
   that keeps guests apart is set by the qemu hook; existing guests are migrated when `cape` starts.
 - The `cape` user, which parses what a sample sends back, may only read from libvirt. A root broker
   reverts a registered guest to its recorded snapshot, powers it off and dumps its memory for CAPE.

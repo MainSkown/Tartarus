@@ -23,7 +23,7 @@ test: test-cape test-scripts ## Run backend, cape-side and frontend unit tests
 	cd frontend && npm run test:unit
 
 test-cape: ## Run the unit tests of the code that runs inside the cape container
-	cd cape && uv run --no-project --with pytest pytest -q
+	cd cape && uv run --no-project --with pytest --with-requirements build/pycdlib.requirements pytest -q
 
 test-scripts: ## Run the shell tests of the scripts against fakes; the *_real.sh ones need a real ISO and stay manual
 	for t in $$(ls scripts/tests/test_*.sh | grep -v '_real\.sh$$'); do echo "== $$t"; bash $$t || exit 1; done

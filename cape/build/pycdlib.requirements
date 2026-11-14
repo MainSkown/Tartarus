@@ -1,0 +1,5 @@
+# Reads the install image's metadata straight out of a disc image, in a child process the media
+# scan starts (guest_engine/media/reading.py): nothing is mounted. Pure Python, no dependencies, so the
+# wheel's hash is the only thing fetched. Pinned to the newest release that was a month old when this
+# was pinned; the tests build their own discs with it, so a bump is exercised by `make test-cape`.
+pycdlib==1.22.0 --hash=sha256:bfa0b3631345a14b2741fe088398b6b8dc2838442ea607fd07d027dcc67b9e94

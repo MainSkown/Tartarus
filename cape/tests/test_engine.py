@@ -1137,14 +1137,6 @@ def test_everything_the_engine_returns_is_plain_json(lab):
 # --- the start of the service --------------------------------------------------------------
 
 
-def test_stale_loop_mounts_are_cleaned_once_when_the_engine_is_created(tmp_path):
-    (tmp_path / "scan").mkdir()
-
-    lab = Lab(tmp_path)
-
-    assert lab.host.calls.count(["findmnt", "-rno", "TARGET,SOURCE"]) == 1
-
-
 def test_the_create_function_works_with_no_arguments_when_nothing_is_installed(
     tmp_path, monkeypatch
 ):

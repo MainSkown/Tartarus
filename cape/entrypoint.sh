@@ -119,4 +119,6 @@ grant_qemu_user_kvm_access
 prepare_volumes
 create_cape_schema
 
-exec supervisord -n -c /etc/supervisor/supervisord.conf
+# SYS_ADMIN was for the mount above. Out of the bounding set, no program started from here on can
+# hold it again, whatever it executes: root in this container can then no longer remount /proc/sys.
+exec setpriv --bounding-set -sys_admin --inh-caps -sys_admin supervisord -n -c /etc/supervisor/supervisord.conf

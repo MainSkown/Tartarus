@@ -34,7 +34,7 @@ from guest_engine.health import CapeMachinesProbe, SnapshotAgentCheck, run_check
 from guest_engine.host import Host, HostError, guest_files
 from guest_engine.inspectors import load_inspectors
 from guest_engine.isolation import strip_guest
-from guest_engine.media import MediaProblem, cleanup_stale_mounts, scan_media
+from guest_engine.media import scan_media
 from guest_engine.profile import PipelineStep, Profile, derive_badges, load_profiles
 from guest_engine.registrar import Registrar, RegistrationFailed
 from guest_engine.registration import REGISTRATION_FILE
@@ -113,9 +113,7 @@ class Engine:
         return [_profile_view(profile) for profile in self._profiles.values()]
 
     def media(self) -> list[Json]:
-        return scan_media(
-            self._config.media_dir, self._inspectors, self._config.runner, self._config.scan_root
-        )
+        return scan_media(self._config.media_dir, self._inspectors, self._config.runner)
 
     def guests(self) -> list[Json]:
         views = [self._guest_view(guest) for guest in self._registry.list()]
@@ -297,17 +295,10 @@ class Engine:
     # --- internals -------------------------------------------------------------------------
 
     def _start(self) -> None:
-        self._clean_stale_mounts()
         for build in self._sequencer.recover_interrupted():
             self._mark_state(build.guest, "failed")
         self._adopt_existing_guests()
         self._strip_libvirt_port_isolation()
-
-    def _clean_stale_mounts(self) -> None:
-        try:
-            cleanup_stale_mounts(self._config.runner, self._config.scan_root)
-        except (MediaProblem, OSError):
-            log.exception("could not clean up the mounts a killed service left behind")
 
     def _context(self, media: list[Json]) -> ValidationContext:
         return ValidationContext(self._profiles, self._registry.list(), media)

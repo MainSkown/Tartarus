@@ -1,7 +1,7 @@
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 from guest_engine.media.errors import Fault, MediaProblem
 
@@ -18,16 +18,22 @@ class CommandResult:
 class Runner(Protocol):
     """Runs a command and returns its result whatever the exit status.
 
-    Raises `MediaProblem` when the program is not installed or runs past `timeout`.
+    `stdin`, when given, is an open file the program reads as its standard input. Raises
+    `MediaProblem` when the program is not installed or runs past `timeout`.
     """
 
-    def __call__(self, args: Sequence[str], timeout: float | None = None) -> CommandResult: ...
+    def __call__(
+        self, args: Sequence[str], timeout: float | None = None, stdin: BinaryIO | None = None
+    ) -> CommandResult: ...
 
 
-def run_command(args: Sequence[str], timeout: float | None = None) -> CommandResult:
+def run_command(
+    args: Sequence[str], timeout: float | None = None, stdin: BinaryIO | None = None
+) -> CommandResult:
     try:
         finished = subprocess.run(  # noqa: S603 - argument list, never a shell; callers pass fixed programs
             list(args),
+            stdin=stdin,
             capture_output=True,
             text=True,
             errors="replace",

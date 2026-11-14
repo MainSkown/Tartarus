@@ -36,7 +36,6 @@ class Lab:
             "steps_dir": FAKE / "steps",
             "registration_dir": self.registration_dir,
             "libvirt_dir": self.libvirt_dir,
-            "scan_root": tmp_path / "scan",
             "runner": self.host,
             "machines_probe": self.host.machines,
             "agent_check": lambda _guest, _profile: (True, "the agent answered"),

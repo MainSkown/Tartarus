@@ -105,6 +105,32 @@ container_is_not_privileged() {
     in_cape sh -c '! test -w /proc/sys/kernel/core_pattern' || { echo "kernel.core_pattern is writable"; return 1; }
 }
 
+# SYS_ADMIN is bit 21. The entrypoint drops it from the bounding set, so a program cannot regain it
+# by executing anything. This check's own shell is started by `docker exec`, which is the host's
+# administrator and not a program of the container, so its session is left out.
+no_program_can_hold_sys_admin() {
+    in_cape bash -c '
+        own_session=$(ps -o sid= -p $$ | tr -d " ")
+        held=0
+        for status in /proc/[0-9]*/status; do
+            pid=${status#/proc/}; pid=${pid%/status}
+            [[ $(ps -o sid= -p "$pid" 2>/dev/null | tr -d " ") != "$own_session" ]] || continue
+            bounding=$(awk "/^CapBnd/ {print \$2}" "$status" 2>/dev/null) || continue
+            [[ -n $bounding ]] || continue
+            if (((0x$bounding >> 21 & 1) == 1)); then
+                echo "pid $pid ($(cat "/proc/$pid/comm")) can hold SYS_ADMIN"
+                held=1
+            fi
+        done
+        exit $held'
+}
+
+root_cannot_make_a_device_or_mount() {
+    in_cape setpriv --bounding-set -sys_admin --inh-caps -sys_admin sh -c '
+        ! mknod /tmp/tt-probe-node b 7 0 2>/dev/null || { rm -f /tmp/tt-probe-node; echo "root made a block device node"; exit 1; }
+        ! mount -o remount,rw /proc/sys 2>/dev/null || { mount -o remount,ro /proc/sys; echo "a program of the container remounted /proc/sys writable"; exit 1; }'
+}
+
 # Opened for real, read-only and append, without reading or writing a byte: the device cgroup and the
 # node's group both decide, and only an open asks both.
 unprivileged_users_open_only_the_devices_they_need() {
@@ -237,6 +263,8 @@ cape_cannot_list_networks_or_pools() {
 
 check "cape cannot open the host's block devices" cape_cannot_open_a_host_block_device
 check "the cape container is not privileged and cannot write kernel.* sysctls" container_is_not_privileged
+check "no program of the container can hold SYS_ADMIN" no_program_can_hold_sys_admin
+check "root as the container's programs run it cannot make a device node or remount /proc/sys" root_cannot_make_a_device_or_mount
 check "cape and libvirt-qemu open no device beyond the ones a guest needs" unprivileged_users_open_only_the_devices_they_need
 check "no unprivileged program runs with a gid a host group could share" no_program_runs_with_a_gid_a_host_group_could_share
 check "cape opens connections to its database and nowhere else" cape_reaches_only_its_database

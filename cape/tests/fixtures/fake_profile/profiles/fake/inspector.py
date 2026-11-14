@@ -1,7 +1,5 @@
 """Recognises the toy media of the fake profile: any file called *.fake."""
 
-needs_mount = False
-
 
 def inspect(path, context):
     if path.suffix != ".fake":

@@ -34,5 +34,5 @@ def _load_module(profile_id: str, file: Path) -> Inspector:
         raise ImportError(f"{file} is not a Python module")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    # A module with `needs_mount` and `inspect` is an Inspector.
+    # A module with an `inspect` function is an Inspector.
     return cast(Inspector, module)

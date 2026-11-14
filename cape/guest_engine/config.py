@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from guest_engine.media import Runner, run_command
-from guest_engine.media.mount import SCAN_ROOT
 
 if TYPE_CHECKING:
     from guest_engine.profile import Profile
@@ -50,7 +49,6 @@ class EngineConfig:
     steps_dir: Path = Path("/usr/local/lib/tartarus/steps")
     registration_dir: Path = Path("/var/lib/libvirt/tartarus/kvm.conf.d")
     libvirt_dir: Path = Path("/var/lib/libvirt")
-    scan_root: Path = SCAN_ROOT
     guest_subnet: str = DEFAULT_SUBNET
     libvirt_uri: str = "qemu:///system"
     cape_api_url: str = DEFAULT_CAPE_API_URL

@@ -239,8 +239,16 @@ Found along the way:
 
 Still open:
 
-- Root inside the container keeps `SYS_ADMIN` (libvirt's mount namespace, the ISO scan's loop mount). See
-  the accepted risks in [security.md](security.md#accepted-risks).
+- ~~Root inside the container keeps `SYS_ADMIN`.~~ Done on 2026-11-13. The entrypoint takes `SYS_ADMIN` out
+  of the bounding set when it hands over to supervisord, so no program of the container holds it or can
+  regain it; `MKNOD`, `SYS_PTRACE`, `/dev/loop-control` and the loop device rule are gone from
+  `docker-compose.yml`. What needed them was removed: libvirt runs QEMU without a mount namespace of its
+  own and without `trusted.*` owner attributes, and the ISO scan reads Windows media in an unprivileged,
+  resource-limited child process instead of loop-mounting it. Proven with `make verify-cape-hardening`
+  (23 checks, two of them new: no program can hold `SYS_ADMIN`; root as the programs run it cannot make a
+  device node or remount `/proc/sys`), `scripts/verify-guest.sh`, a Windows 11 guest built from its ISO
+  through the wizard's API, `make verify-isolation` with that guest, an analysis with a memory dump, and
+  `make e2e`. The scan returns for both test ISOs exactly what the mounted `wiminfo` scan returned.
 - ~~QEMU has to move to a maintained series.~~ Done on 2026-11-13: QEMU 11.1.3, with libvirt 12.9.0 built
   from source because Ubuntu's libvirt 10.0 can neither revert a snapshot nor save memory on QEMU 11. The
   snapshot `win` took on QEMU 9.2.4 restores and runs an analysis; `make verify-cape-hardening`,

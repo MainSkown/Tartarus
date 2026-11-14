@@ -151,6 +151,16 @@ RUN uv pip install --python .venv/bin/python --no-deps --require-hashes -r /buil
 RUN .venv/bin/vol --help >/dev/null
 COPY cape/build/runtime-packages.sh /build/
 RUN find .venv -name '*.so*' -type f -print0 | xargs -0 /build/runtime-packages.sh > /build/venv-runtime-packages
+# Reads the Windows installation media for the guest wizard without mounting it (pycdlib: pure Python,
+# no dependencies). Built here because this stage has uv and the final image has no pip; the final
+# stage copies the tree into the system python3's dist-packages, where the engine's child process
+# (`python3 -I`) finds it, minus the scripts and man pages the wheel also carries. The hash of the wheel
+# is the only thing fetched.
+COPY cape/build/pycdlib.requirements /build/
+RUN uv pip install --python /usr/bin/python3.12 --target /build/pycdlib --no-deps --require-hashes \
+        -r /build/pycdlib.requirements \
+    && rm -rf /build/pycdlib/bin /build/pycdlib/share \
+    && chmod -R a+rX /build/pycdlib
 
 
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
@@ -291,13 +301,14 @@ RUN python3 /tmp/machinery-through-broker.py /opt/CAPEv2/lib/cuckoo/common/abstr
 # the Sysmon config from the profiles copied below.
 COPY cape/auxiliary/event_logs.py /opt/CAPEv2/modules/auxiliary/event_logs.py
 
-# Reads the Windows installation media (wiminfo) for the guest wizard. A layer of its own, after the
-# slow ones, so adding it does not re-resolve the packages the proven libvirt and QEMU were installed with.
-RUN apt-get update && apt-get install -y --no-install-recommends wimtools \
-    && rm -rf /var/lib/apt/lists/*
+# The media scan's reader of disc images, built in cape-build. A layer of its own, after the slow ones,
+# so adding it does not re-resolve the packages the proven libvirt and QEMU were installed with. The
+# import fails the build if the tree is not where the system python3 looks.
+COPY --from=cape-build /build/pycdlib/ /usr/local/lib/python3.12/dist-packages/
+RUN python3 -I -c "import pycdlib"
 
 # Builds the guest self-test's benign sample on request (the profile names the compiler); a layer of
-# its own for the same reason as wimtools.
+# its own, after the slow ones, for the same reason as the pycdlib layer.
 RUN apt-get update && apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 \
     && rm -rf /var/lib/apt/lists/*
 
