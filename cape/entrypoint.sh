@@ -89,9 +89,33 @@ prepare_volumes() {
 
 # Every CAPE process creates the schema on first connect; on an empty database they race and
 # collide on CREATE TYPE, so it is created once here before any of them starts.
+# CAPE answers a schema it does not expect by exiting with status 0, which would let every CAPE program
+# die at import while this script went on: here that is a failure.
 create_cape_schema() {
-    (cd /opt/CAPEv2 && runuser -u cape -- .venv/bin/python -c \
-        'from lib.cuckoo.core.database import init_database; init_database()')
+    (cd /opt/CAPEv2 && runuser -u cape -- .venv/bin/python -c '
+import sys
+from lib.cuckoo.core.database import init_database
+try:
+    init_database()
+except SystemExit:
+    sys.exit(1)')
+}
+
+cape_database_has_a_schema() {
+    (cd /opt/CAPEv2 && runuser -u cape -- .venv/bin/python -c '
+import sys
+import psycopg
+from lib.cuckoo.common.config import Config
+with psycopg.connect(Config().database.connection) as connection:
+    versioned = connection.execute("select to_regclass(%s)", ("public.alembic_version",)).fetchone()[0]
+sys.exit(0 if versioned else 1)')
+}
+
+# A database made by the CAPE of an earlier image is brought to this image's schema with CAPE's own
+# migrations. A new database has no schema to migrate: create_cape_schema makes it at the current one.
+migrate_cape_schema() {
+    cape_database_has_a_schema || return 0
+    (cd /opt/CAPEv2/utils/db_migration && runuser -u cape -- /opt/CAPEv2/.venv/bin/alembic upgrade head)
 }
 
 export CAPE_INTERNAL_IP CAPE_INTERNAL_IFACE CAPE_CONTROL_IP CAPE_DB_IP CAPE_DB_IFACE
@@ -117,6 +141,7 @@ render_inetsim_config
 render_cape_guest_network_overrides
 grant_qemu_user_kvm_access
 prepare_volumes
+migrate_cape_schema
 create_cape_schema
 
 # SYS_ADMIN was for the mount above. Out of the bounding set, no program started from here on can

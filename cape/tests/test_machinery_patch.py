@@ -7,6 +7,7 @@ patched class runs against stand-ins for libvirt and the broker client.
 
 import importlib.util
 import threading
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -157,7 +158,8 @@ def machines(patched):
     exec(compile(patched[patched.index(CLASS_START) :], "abstracts.py", "exec"), scope)  # noqa: S102 - the test's own fixture
     machinery = scope["LibVirtMachinery"].__new__(scope["LibVirtMachinery"])
     machinery.db = SimpleNamespace(
-        view_machine_by_label=lambda _label: SimpleNamespace(snapshot="tartarus-clean")
+        transaction=nullcontext,
+        view_machine_by_label=lambda _label: SimpleNamespace(snapshot="tartarus-clean"),
     )
     machinery.statuses = []
     machinery._status = lambda _label: machinery.status
@@ -232,13 +234,22 @@ def test_stop_still_refuses_a_guest_that_is_already_stopped(machines):
 
 def test_a_broker_that_fails_the_stop_is_the_error_cape_raises_today(machines):
     machines.status = "running"
-    machines.broker.error = BrokerError("libvirt: domain is not running")
+    machines.broker.error = BrokerError("libvirt: internal error")
 
     with pytest.raises(MachineError, match="Error stopping virtual machine win") as raised:
         machines.stop("win")
 
-    assert "libvirt: domain is not running" in str(raised.value)
+    assert "libvirt: internal error" in str(raised.value)
     assert machines.statuses == []
+
+
+def test_a_guest_that_powered_off_before_the_broker_destroyed_it_is_not_an_error(machines):
+    machines.status = "running"
+    machines.broker.error = BrokerError("libvirt: domain is not running")
+
+    machines.stop("win")
+
+    assert machines.statuses == [("win", "poweroff")]
 
 
 def test_a_memory_dump_goes_through_the_broker_with_the_path_cape_chose(machines):

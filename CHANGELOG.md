@@ -45,6 +45,9 @@ The fixes from the [2026-11-12 hardening review](docs/security-audit-2026-11-12.
   check covers its pin too. Existing guests keep their snapshots: one taken on QEMU 9.2.4 restores on the
   new pair.
 - Every group a program in the `cape` image runs with has a reserved gid, so none matches a host device group.
+- CAPE moves to commit `a85b36f` (138 commits on), which takes the advisories in its Python packages from
+  389 to 18. The `cape` container migrates an existing CAPE database to the new schema when it starts;
+  the migration has no way back, so keep a dump if you may return to an older image.
 
 ### Changed
 

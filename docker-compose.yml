@@ -139,7 +139,7 @@ services:
       context: .
       dockerfile: cape/Dockerfile
       args:
-        CAPE_REF: ${CAPE_REF:-9f806acd24ae23ee9a52cf4f1e82657635f07659}
+        CAPE_REF: ${CAPE_REF:-a85b36f0f6d7e64f53da9e3f9667d57043d24ab6}
     restart: "no"
     # Not privileged: libvirtd, the rooter's iptables, the tt-guest bridge and QEMU's tap devices live in
     # this container's own network namespace, and these capabilities and devices are what they were
