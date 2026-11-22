@@ -10,12 +10,18 @@
   after the wait is stopped. What stays is the list in desktop-apps.ps1: the shell and what the
   guest needs, above all the agent itself.
 
+  Windows 10 can open an app, the Store above all, a few seconds after the last window was closed, so
+  one pass is not enough: after each pass the script waits, looks again and closes what appeared,
+  for at most MaxRounds passes.
+
   Prints RESULT closed=<names> and RESULT left=<names>. Idempotent: with nothing open it closes
   nothing and exits 0; it exits 1 only when it cannot run.
 #>
 [CmdletBinding()]
 param(
-  [int] $GraceSeconds = 5
+  [int] $GraceSeconds = 5,
+  [int] $SettleSeconds = 5,
+  [int] $MaxRounds = 4
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,22 +51,31 @@ function Dismiss-NetworksPrompt {
   }
 }
 
-try {
-  . (Join-Path $PSScriptRoot 'desktop-apps.ps1')
-
+function Close-OpenApps {
   $open = @(Get-AppWindowProcess)
   foreach ($app in $open) { [void] $app.CloseMainWindow() }
   if ($open.Count -gt 0) { Start-Sleep -Seconds $GraceSeconds }
 
   $stillRunning = @($open | Where-Object { -not $_.HasExited })
   $stillRunning | Stop-Process -Force -ErrorAction SilentlyContinue
-  Start-Sleep -Seconds 1
+  return $open
+}
+
+try {
+  . (Join-Path $PSScriptRoot 'desktop-apps.ps1')
+
+  $closedInAnyRound = @()
+  for ($round = 1; $round -le $MaxRounds; $round++) {
+    $closedInAnyRound += @(Close-OpenApps)
+    Start-Sleep -Seconds $SettleSeconds
+    if (@(Get-AppWindowProcess).Count -eq 0) { break }
+  }
 
   Disable-NewNetworkPrompt
   Dismiss-NetworksPrompt
 
   $left = Get-Names @(Get-AppWindowProcess)
-  Result 'closed' ((Get-Names $open | Where-Object { $left -notcontains $_ }) -join ',')
+  Result 'closed' ((Get-Names $closedInAnyRound | Where-Object { $left -notcontains $_ }) -join ',')
   Result 'left' ($left -join ',')
 }
 catch {

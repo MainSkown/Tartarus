@@ -1507,6 +1507,20 @@ class TestQuietDesktopScript:
         assert text.index("CloseMainWindow()") < text.index("Start-Sleep")
         assert text.index("Start-Sleep") < text.index("Stop-Process")
 
+    def test_it_waits_and_looks_again_because_an_app_can_open_after_the_first_pass(self):
+        text = script_text("quiet-desktop.ps1")
+        assert "[int] $SettleSeconds = 5" in text
+        assert "[int] $MaxRounds = 4" in text
+        loop = text[text.index("for ($round") :]
+        assert loop.index("Close-OpenApps") < loop.index("Start-Sleep -Seconds $SettleSeconds")
+        assert loop.index("Start-Sleep -Seconds $SettleSeconds") < loop.index("Get-AppWindowProcess")
+        assert "break" in loop
+
+    def test_it_reports_what_every_round_closed(self):
+        text = script_text("quiet-desktop.ps1")
+        assert "$closedInAnyRound += " in text
+        assert "Get-Names $closedInAnyRound" in text
+
     def test_it_loads_the_shared_list_and_has_none_of_its_own(self):
         text = script_text("quiet-desktop.ps1")
         assert ". (Join-Path $PSScriptRoot 'desktop-apps.ps1')" in text
