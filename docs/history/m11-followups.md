@@ -12,18 +12,18 @@ the same day; the rest are scheduled or recorded in `docs/security.md` as accept
 
 Order: F1, then F2. Both land as two commits, test first. After F2, rebuild the stack once (`docker compose up -d --build`) and run `make e2e` pinned to `lab1` (`E2E_GUEST=lab1`), because F2 changes every image.
 
-## Later: moderate
+## Later: moderate (all done)
 
-| # | Item | How | Needs | Model |
-|---|---|---|---|---|
-| L1 | `WinStore.App` seen open by the self-test on one of three `w10-q` clones | A settle-and-recheck in `quiet-desktop` (wait, list again, close what appeared). Prove with five clones of `w10-q` | a real guest, about 30 minutes | Sonnet |
-| L2 | `make e2e` fails two checks on the Windows 10 guest (the process panel selects the first process, the Sigma alert triggers on a Sysmon event, not capemon) | Make both checks guest-aware, or pin the e2e's default guest (`E2E_GUEST`, already added) in `make e2e` documentation | a 13-minute run on `w10-q` | Sonnet |
-| L3 | `GET /api/guests` returns the guest account password | A reveal endpoint, one call from `GuestCard.vue`, the field removed from the list model, `make api-sync` | rule 4 screenshot round | Sonnet |
-| L4 | CSP keeps `style-src 'unsafe-inline'` | Try `style-src 'self'` with `style-src-attr 'unsafe-inline'` in a real browser against the production build, all routes plus the Guacamole desktop | a browser run | Haiku scan, Sonnet judgment |
+| # | Item | Outcome |
+|---|---|---|
+| L1 | `WinStore.App` seen open by the self-test on one of three `w10-q` clones | Two changes. `quiet-desktop` looks again after each pass and closes what opened meanwhile (up to four passes). That alone was not enough: five of five fresh Windows 10 clones still failed, because the Store opens during the idle that followed the quiet pass, so the snapshot step now idles first and runs the pre-snapshot steps after it. Five fresh clones of the same Windows 10 guest all reached `ready` with a clean self-test |
+| L2 | `make e2e` fails two checks on the Windows 10 guest | The process-panel check picks the sample by name (done earlier). The Sigma source check failed on a letter case alone: Windows 10's Sysmon reports `SOFTWARE\Tartarus\SelfTest`, the check wanted `Software`; it now compares without regard to case. A full run on Windows 10 failed that check and no other |
+| L3 | `GET /api/guests` returns the guest account password | A reveal endpoint, one call from `GuestCard.vue`, the field removed from the list model |
+| L4 | CSP keeps `style-src 'unsafe-inline'` | `style-src 'self'` with `style-src-attr 'unsafe-inline'`. The one inline element, Cytoscape's container rule, is a stylesheet of its own; `frontend/tests/e2e/csp.spec.ts` records policy violations on every route and analysis tab |
 
 ## Recorded, not fixed (go into `docs/security.md`)
 
-- **`cape` stays `privileged: true`.** Without it libvirt cannot set the bridge port flag `isolated` (sysfs is read-only in Docker). The way out is to drop `<port isolated>` from every domain XML and set it in the qemu hook with `bridge link set dev <tap> isolated on`: v1.1.
+- **`cape` stayed `privileged: true` at v1.0.0**, because libvirt could not set the bridge port flag `isolated` (sysfs is read-only in Docker). Closed afterwards: the qemu hook sets the flag and the container runs with a fixed capability list (see the [2026-11-12 review](../security-audit-2026-11-12.md)).
 - **`diskcache` advisory.** No upstream fix; a transitive dependency of pySigma, its cache holds ATT&CK data and hostile input cannot reach it.
 - **CAPE and Django advisories** at the pinned CAPE commit: a bump of `CAPE_REF` risks the analyzer patches, so it waits for a release that can be proven on a real guest.
 - **Plain HTTP on 127.0.0.1.** A local tool; TLS is not offered.
