@@ -84,6 +84,13 @@ test_two_alerts_of_the_rule_are_caught() { fault_is_caught_by two_alerts $ONE_AL
 test_no_alert_of_the_rule_is_caught() { fault_is_caught_by no_alert $ONE_ALERT "0 alerts of the rule"; }
 test_a_trigger_that_is_not_a_registry_write_is_caught() { fault_is_caught_by alert_not_registry $ONE_ALERT "reg-value-set"; }
 test_a_trigger_on_another_registry_path_is_caught() { fault_is_caught_by wrong_registry_path $ONE_ALERT "Tartarus"; }
+# Windows 10's Sysmon reports the key in the case the process wrote it (SOFTWARE); the registry does not tell them apart.
+test_the_registry_path_in_another_letter_case_passes() {
+    stop_server
+    start_server registry_path_upper_case || return 1
+    local output
+    output=$(run_check $ONE_ALERT 2>&1) || { echo "$ONE_ALERT failed on an upper-case key: $output" >&2; return 1; }
+}
 test_a_detections_view_without_a_sigma_group_is_caught() { fault_is_caught_by no_sigma_group selftest_detection_is_in_the_sigma_group "no sigma group"; }
 test_a_hit_count_of_two_is_caught() { fault_is_caught_by hits_count_two rule_has_one_detection "hits report 2"; }
 test_a_rule_missing_from_the_hits_is_caught() { fault_is_caught_by hits_missing rule_has_one_detection "hits report absent"; }

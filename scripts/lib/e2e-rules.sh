@@ -46,7 +46,7 @@ references = document["related"]["references"]
 assert references["total"] == 1, f"the alert names {references['total']} events"
 trigger = references["items"][0]
 assert trigger["action"] == "reg-value-set", f"the event it names is {trigger['action']}, not reg-value-set"
-assert (trigger["registry_path"] or "").endswith(r"$SELFTEST_REGISTRY_SUFFIX"), f"the registry path is {trigger['registry_path']}"
+assert (trigger["registry_path"] or "").lower().endswith(r"$SELFTEST_REGISTRY_SUFFIX".lower()), f"the registry path is {trigger['registry_path']}"
 detail = f"one alert, naming {trigger['action']} on {trigger['registry_path']} ({every_sigma_alert} Sigma alerts in all)"
 PY
 }

@@ -16,6 +16,7 @@ ANALYSIS_ID = 7
 SELFTEST_ID = "6c17e2ec-0203-4f72-8760-b1b2a72336db"
 SELFTEST_TITLE = "Tartarus Self-Test Registry Marker Written"
 REGISTRY_PATH = "HKEY_CURRENT_USER\\Software\\Tartarus\\SelfTest"
+REGISTRY_PATH_AS_WINDOWS_10_REPORTS_IT = "HKU\\S-1-5-21-1-2-3-1000\\SOFTWARE\\Tartarus\\SelfTest"
 REINGEST_POLLS = 2
 FAULTS = set(sys.argv[2:])
 CALLS: list[str] = []
@@ -132,12 +133,13 @@ def search(body):
 def trigger_event():
     wrong_action = "alert_not_registry" in FAULTS
     wrong_path = "wrong_registry_path" in FAULTS
+    path = REGISTRY_PATH_AS_WINDOWS_10_REPORTS_IT if "registry_path_upper_case" in FAULTS else REGISTRY_PATH
     return {
         "id": "reg-1",
         "lane": "registry",
         "kind": "event",
         "action": "file-write" if wrong_action else "reg-value-set",
-        "registry_path": REGISTRY_PATH + ("Other" if wrong_path else ""),
+        "registry_path": path + ("Other" if wrong_path else ""),
     }
 
 
