@@ -22,6 +22,11 @@ milestone was built is in [docs/history](docs/history/README.md).
 
 ### Security
 
+- The content security policy no longer allows inline `<style>` elements: `style-src` is `'self'` and only
+  `style` attributes stay allowed (`style-src-attr`). The one inline element the app made, Cytoscape's
+  container rule in the process graph, is now a stylesheet of its own. A browser test records policy
+  violations on every route and every analysis tab.
+
 The fixes from the [2026-11-12 hardening review](docs/security-audit-2026-11-12.md):
 
 - The `cape` container is no longer privileged. It runs with a fixed capability and device list, so no

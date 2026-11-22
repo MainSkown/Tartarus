@@ -41,6 +41,7 @@ SAMPLE_DIR=${TMPDIR:-/tmp}/tt-guest-verify
 SAMPLES_IN_BACKEND=/data/samples
 BROWSER_SECONDS=${E2E_BROWSER_SECONDS:-480}
 ANNOTATIONS_BROWSER_SECONDS=${E2E_ANNOTATIONS_BROWSER_SECONDS:-120}
+CSP_BROWSER_SECONDS=${E2E_CSP_BROWSER_SECONDS:-120}
 ANALYSIS_TIMEOUT=${E2E_ANALYSIS_TIMEOUT:-420}
 RESTORE_TIMEOUT=${E2E_RESTORE_TIMEOUT:-240}
 DRILLS=${E2E_DRILLS:-0}
@@ -224,6 +225,8 @@ step_n_browser_annotations() {
     check "browser: a tag from the autocomplete, the analysis note, the STIX download, the HTML report and the Dashboard's tag filter work on analysis $A_ID" \
         browser_test_passes "$A_FILE" annotations-flow 0 "$ANNOTATIONS_BROWSER_SECONDS" "$A_ID"
     info "annotations browser flow took $((SECONDS - started)) s"
+    check "browser: no route and no tab of analysis $A_ID breaks the content security policy (inline styles are refused)" \
+        browser_test_passes "" csp 0 "$CSP_BROWSER_SECONDS" "$A_ID"
 }
 
 # --- (b) and (c) strict order, and cancelling a queued analysis ---------------
@@ -344,7 +347,7 @@ browser_test_passes() { # file spec desktop(0|1) bound-seconds [analysis-id]
     output=$(cd frontend && E2E_BASE_URL=$BASE E2E_SAMPLE=$1 E2E_DESKTOP=$3 E2E_ANALYSIS_ID=${5:-} timeout "$4" npm run --silent e2e -- "$2" 2>&1)
     local status=$?
     # A skipped test exits 0 too, so the count is what proves it ran.
-    if ((status == 0)) && grep -q '1 passed' <<<"$output"; then return 0; fi
+    if ((status == 0)) && grep -Eq '[1-9][0-9]* passed' <<<"$output"; then return 0; fi
     tail -25 <<<"$output"
     return 1
 }
