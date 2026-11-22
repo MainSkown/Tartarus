@@ -20,6 +20,13 @@ milestone was built is in [docs/history](docs/history/README.md).
   `process.hash.sha256` (queryable in the event search); it is "not recorded" for an entry that runs
   through another program, such as a DLL or a script.
 
+### Fixed
+
+- A Windows 10 guest no longer ends its build or clone with an open `WinStore.App` window in the clean
+  snapshot. The snapshot step now lets the guest idle first and runs the quiet pass after it, and the
+  quiet pass looks again after each round and closes what opened in the meantime. Five clones of the
+  same Windows 10 guest all reached `ready` with a clean self-test.
+
 ### Security
 
 - The content security policy no longer allows inline `<style>` elements: `style-src` is `'self'` and only

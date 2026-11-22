@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Takes the guest's clean baseline: shut it down cleanly, boot it from its disk, wait until the agent
-# answers, let it idle, then take the external disk-and-memory snapshot CAPE reverts to for every
-# task. The guest is left powered off (CAPE powers a running registered machine off anyway).
+# answers, let it idle, run the profile's pre-snapshot steps, then take the external disk-and-memory
+# snapshot CAPE reverts to for every task. The guest is left powered off (CAPE powers a running registered machine off anyway).
 # The firmware is kept as it was at the clean baseline, for clones to copy instead of the live file.
 # Idempotent: once the snapshot exists, a re-run only makes sure the guest is off and recorded.
 set -uo pipefail
@@ -92,9 +92,12 @@ step "Waiting for the agent"
 progress 30
 wait_for "$AGENT_TIMEOUT_S" 5 agent_answers || fail "the agent did not answer within ${AGENT_TIMEOUT_S}s after the clean boot"
 progress 55
-run_pre_snapshot_steps
+# Idle first: a guest opens apps well after its agent answers (on a clone's first logon above all), so
+# the pre-snapshot steps that close them have to run after the wait, not before it.
 step "Letting the guest idle for ${IDLE_S}s"
 sleep "$IDLE_S"
+progress 70
+run_pre_snapshot_steps
 progress 85
 step "Taking the snapshot"
 take_clean_snapshot
