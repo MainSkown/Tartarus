@@ -1,0 +1,23 @@
+# Test and lint settings for the lan-sim daemon: the fake hosts of the simulated local network.
+# The framework is standard library only; protocol services add their own dependencies later.
+# It reuses the backend's ruff rules, like the cape project does.
+[project]
+name = "lan-sim"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.ruff]
+extend = "../backend/pyproject.toml"
+
+[tool.ruff.lint.isort]
+# lan_session is cape/guest_engine/lan_session.py, copied next to the package in the image.
+known-first-party = ["lan_sim", "lan_session"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004", "ARG001", "ARG002", "S104", "S105", "S106", "S107"]
+"lan_sim/service.py" = ["N818"]  # PeerClosed, ReadCapExceeded, IdleTimeout are the services' vocabulary
