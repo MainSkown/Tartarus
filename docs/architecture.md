@@ -102,8 +102,9 @@ touch CAPE's SQL task DB, and the final report is read from `report.json` (writt
   registry is the one source of truth; the libvirt domains and the CAPE registration are derived from it.
 - **`lan-sim` and the cape namespace:** `lan-sim` lives in the network namespace of the `cape` container it started
   with. Recreating `cape` alone (`docker compose up -d --force-recreate cape`) leaves `lan-sim` running in the
-  dead namespace, still healthy by its own heartbeat, so `GET /lan/health` would say ready while the fake hosts
-  are unreachable. Run `docker compose up -d` afterwards (no service name): it sees the changed namespace and
+  dead namespace. The daemon writes the name of its namespace into its heartbeat on every poll and the control
+  service compares it with its own, so `GET /lan/health` answers not ready ("runs in an old network namespace")
+  within seconds. Run `docker compose up -d` afterwards (no service name): it sees the changed namespace and
   recreates `lan-sim`. `make up` does this.
 - **The `lan-run` volume** is a tmpfs mounted at `/run/lan-sim` in `cape` and `lan-sim`: the control service
   and the daemon exchange sessions, status and logs there. It is empty at every start, so no session outlives

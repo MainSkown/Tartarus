@@ -7,8 +7,10 @@ images and uses the standard library only (the precedent is `machine_broker_clie
     <root>/sessions/<key>.json   written by the control service, read by the daemon
     <root>/status/<key>.json     written by the daemon
     <root>/logs/<key>.jsonl      written by the daemon (its schema is `lan-sim/SCHEMA.md`)
-    <root>/status/alive          touched by the daemon on every poll; the control service reads its
-                                 age to tell a running daemon from a dead one
+    <root>/status/alive          rewritten by the daemon on every poll with the name of its network
+                                 namespace; the control service reads its age to tell a running
+                                 daemon from a dead one, and the name to tell one in the current
+                                 namespace from one left in that of a cape container recreated since
 
 Open: the control service calls `publish_session`, then `wait_for_status(..., {"listening",
 "failed"})`. The daemon writes `listening` only after every listener of the session is bound, and
@@ -17,16 +19,22 @@ Open: the control service calls `publish_session`, then `wait_for_status(..., {"
 Close: the control service calls `retract_session`. The daemon notices (it polls), closes that
 session's listeners, appends the final `session-end` record to the log and writes `closed`.
 
+The daemon can be taken over by what it parses, and a root process reads what it writes: the status,
+the log (copied into an analysis folder) and the heartbeat. Those are read only through
+`open_regular_file`: never following a link, never blocking on a pipe, never past a size cap.
+
 Every file is written atomically (`atomic_write`), so a reader sees the old or the new content,
 never half of it. Session files are validated strictly on both sides: unknown fields, oversized
 files and malformed values are refused, because the daemon binds sockets from what they say.
 """
 
+import errno
 import ipaddress
 import json
 import math
 import os
 import re
+import stat
 import tempfile
 import time
 from collections.abc import Callable, Collection, Iterable, Mapping
@@ -36,6 +44,9 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_ROOT = "/run/lan-sim"
+# The daemon's user in its container. docker-compose.yml, lan-sim/Dockerfile and the cape
+# entrypoint write the number literally; a test keeps all four equal.
+LAN_SIM_UID = 10001
 
 KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}")
 PRESET_ID = re.compile(r"[a-z][a-z0-9-]{1,31}")
@@ -43,9 +54,11 @@ SERVICE_KIND = re.compile(r"[a-z][a-z0-9-]{0,31}")
 DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 
 STATES = ("listening", "failed", "closed")
+OWN_NAMESPACE_LINK = "/proc/self/ns/net"
 
 MAX_SESSION_FILE_BYTES = 256 * 1024
 MAX_STATUS_FILE_BYTES = 8 * 1024
+MAX_HEARTBEAT_BYTES = 256
 MAX_HOSTS = 48
 MAX_SERVICES_PER_HOST = 16
 MAX_ACCOUNTS_PER_HOST = 16
@@ -440,13 +453,61 @@ def atomic_write(path: Path, data: str | bytes) -> None:
         raise
 
 
-def _read_bounded(path: Path, max_bytes: int, what: str, *, follow_symlinks: bool) -> bytes:
-    flags = os.O_RDONLY | (0 if follow_symlinks else os.O_NOFOLLOW)
-    with os.fdopen(os.open(path, flags), "rb") as handle:
-        raw = handle.read(max_bytes + 1)
-    if len(raw) > max_bytes:
-        raise SessionFormatError(f"{what} is too large (over {max_bytes} bytes)")
-    return raw
+class NotARegularFileError(OSError):
+    """A pipe, a device, a directory or a link where the daemon was to leave a file."""
+
+
+class FileTooLargeError(OSError):
+    """A file over the cap its reader set."""
+
+
+def open_regular_file(path: str | Path, max_bytes: int) -> int:
+    """A descriptor for the regular file at `path`, of at most `max_bytes` when opened.
+
+    O_NOFOLLOW: a link is refused, so the daemon cannot show a root process a file it may not read.
+    O_NONBLOCK: opening a pipe returns at once instead of waiting for a writer that never comes.
+    What is checked is the open descriptor (`fstat`), not the name, so renaming the name afterwards
+    changes nothing. Raises `FileNotFoundError`, `NotARegularFileError` or `FileTooLargeError`.
+    """
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise NotARegularFileError(errno.ELOOP, "is a symbolic link", str(path)) from error
+        raise
+    try:
+        status = os.fstat(descriptor)
+        if not stat.S_ISREG(status.st_mode):
+            raise NotARegularFileError(errno.EINVAL, "not a regular file", str(path))
+        if status.st_size > max_bytes:
+            raise FileTooLargeError(errno.EFBIG, f"too large (over {max_bytes} bytes)", str(path))
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
+@dataclass(frozen=True)
+class FileContent:
+    data: bytes
+    modified: float
+
+
+def read_regular_file(path: str | Path, max_bytes: int) -> FileContent:
+    """Everything in the regular file at `path` and its modification time, read from the one
+    descriptor that was checked. A file that grows past `max_bytes` meanwhile is refused too."""
+    descriptor = open_regular_file(path, max_bytes)
+    try:
+        modified = os.fstat(descriptor).st_mtime
+        data = b""
+        while len(data) <= max_bytes:
+            chunk = os.read(descriptor, max_bytes + 1 - len(data))
+            if not chunk:
+                return FileContent(data, modified)
+            data += chunk
+    finally:
+        os.close(descriptor)
+    raise FileTooLargeError(errno.EFBIG, f"too large (over {max_bytes} bytes)", str(path))
 
 
 def publish_session(layout: Layout, spec: SessionSpec) -> None:
@@ -463,9 +524,7 @@ def retract_session(layout: Layout, key: str) -> None:
 
 
 def read_session(layout: Layout, key: str) -> SessionSpec:
-    raw = _read_bounded(
-        layout.session_file(key), MAX_SESSION_FILE_BYTES, "session file", follow_symlinks=False
-    )
+    raw = read_regular_file(layout.session_file(key), MAX_SESSION_FILE_BYTES).data
     spec = SessionSpec.from_json(raw)
     if spec.key != key:
         raise SessionFormatError(
@@ -505,12 +564,33 @@ def write_status(layout: Layout, key: str, status: SessionStatus) -> None:
 
 def read_status(layout: Layout, key: str) -> SessionStatus | None:
     try:
-        raw = _read_bounded(
-            layout.status_file(key), MAX_STATUS_FILE_BYTES, "status file", follow_symlinks=True
-        )
+        raw = read_regular_file(layout.status_file(key), MAX_STATUS_FILE_BYTES).data
     except FileNotFoundError:
         return None
     return SessionStatus.from_json(raw)
+
+
+@dataclass(frozen=True)
+class Heartbeat:
+    modified: float
+    namespace: str
+
+
+def network_namespace(link: str | Path = OWN_NAMESPACE_LINK) -> str:
+    """The identity of this process's network namespace, e.g. `net:[4026532812]`."""
+    return os.readlink(link)
+
+
+def write_heartbeat(layout: Layout, namespace: str) -> None:
+    layout.status_dir.mkdir(parents=True, exist_ok=True)
+    atomic_write(layout.alive_file, namespace)
+
+
+def read_heartbeat(layout: Layout) -> Heartbeat:
+    """When the daemon last wrote its heartbeat and in which namespace (empty for a daemon that
+    does not say). Raises `OSError` for a file that is missing or is not an ordinary small file."""
+    beat = read_regular_file(layout.alive_file, MAX_HEARTBEAT_BYTES)
+    return Heartbeat(beat.modified, beat.data.decode("utf-8", errors="replace").strip())
 
 
 def wait_for_status(  # noqa: PLR0913 - the clock and the sleep are injected so tests never wait

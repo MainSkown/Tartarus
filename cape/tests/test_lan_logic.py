@@ -13,10 +13,18 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from hostile_files import KINDS, bounded, plant
 from test_control_http import BIN  # noqa: F401 - importing it puts bin/ on sys.path
 
 from guest_engine.errors import Conflict, GuestNotFound, InvalidParameters
-from guest_engine.lan_session import Layout, SessionStatus, read_status, session_keys, write_status
+from guest_engine.lan_session import (
+    Layout,
+    SessionStatus,
+    read_status,
+    session_keys,
+    write_heartbeat,
+    write_status,
+)
 from guest_engine.media import CommandResult, MediaProblem
 from guest_engine.media.errors import Fault
 
@@ -28,6 +36,8 @@ ADMIN_PASSWORD = "Zx9-Admin-Secret"  # noqa: S105
 SERVICE_PASSWORD = "Hunter2-Backup!"  # noqa: S105
 PASSWORDS = (ADMIN_PASSWORD, SERVICE_PASSWORD)
 WALL_NOW = 1_700_000_000.0
+OWN_NAMESPACE = "net:[4026532812]"
+OLD_NAMESPACE = "net:[4026531840]"
 FIREWALL_COMMAND = ["python3", "-I", "/usr/local/lib/tartarus/guest-firewall"]
 
 
@@ -180,6 +190,7 @@ class Stack:
             sleep=self.sleep,
             wall_clock=lambda: self.wall_now,
             log=self.lines.append,
+            network_namespace=lambda: OWN_NAMESPACE,
         )
 
     def add_preset(self, preset: dict) -> None:
@@ -198,13 +209,13 @@ class Stack:
         events = self.storage / "analyses" / "7" / "lansim" / "events.jsonl"
         self.order.append(f"firewall-close(events copied: {events.exists()})")
 
-    def beat(self, age: float | None) -> None:
+    def beat(self, age: float | None, namespace: str = OWN_NAMESPACE) -> None:
         """Make the daemon's heartbeat `age` seconds old, or remove it."""
         alive = self.layout.alive_file
         if age is None:
             alive.unlink(missing_ok=True)
             return
-        alive.touch()
+        write_heartbeat(self.layout, namespace)
         os.utime(alive, (self.wall_now - age, self.wall_now - age))
 
     def open(self, key="analysis-7", guest="lab1", preset="small-office"):
@@ -288,6 +299,45 @@ def test_a_heartbeat_from_the_future_is_alive_not_an_error(stack):
     stack.beat(age=-30)
 
     assert stack.sessions.health()[1]["ready"] is True
+
+
+def test_a_daemon_left_in_the_namespace_of_a_cape_container_that_was_recreated_is_not_ready(stack):
+    stack.beat(age=0.1, namespace=OLD_NAMESPACE)
+
+    status, body = stack.sessions.health()
+
+    assert status == 200
+    assert body["ready"] is False
+    assert "old network namespace" in body["reason"]
+    assert "docker compose up -d" in body["reason"]
+
+
+def test_a_heartbeat_that_names_no_namespace_counts_as_the_wrong_one(stack):
+    stack.beat(age=0.1, namespace="")
+
+    body = stack.sessions.health()[1]
+
+    assert body["ready"] is False
+    assert "old network namespace" in body["reason"]
+
+
+def test_a_silent_daemon_is_reported_silent_before_its_namespace_is_compared(stack):
+    stack.beat(age=lan_logic.HEARTBEAT_STALE_AFTER_S + 1, namespace=OLD_NAMESPACE)
+
+    assert "has not answered" in stack.sessions.health()[1]["reason"]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_heartbeat_the_daemon_made_a_pipe_a_link_or_a_directory_is_not_ready_and_never_blocks(
+    stack, tmp_path, kind
+):
+    stack.layout.alive_file.unlink(missing_ok=True)
+    plant(kind, stack.layout.alive_file, tmp_path / "secret")
+
+    body = bounded(stack.sessions.health)[1]
+
+    assert body["ready"] is False
+    assert "not running" in body["reason"]
 
 
 @pytest.mark.parametrize("damage", ["missing folder", "bad json", "address outside the block"])
@@ -766,6 +816,78 @@ def test_a_copy_that_fails_keeps_the_log_so_a_retry_can_copy_it_and_still_closes
     assert stack.firewall.commands("lan-close") == [("lan-close", "analysis-7")]
     monkeypatch.undo()
     assert stack.sessions.close("analysis-7", 7) == (200, {"copied": True})
+
+
+# --- a daemon that has been taken over leaves hostile names behind --------------------------------
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_closing_a_key_whose_status_is_something_hostile_answers_and_removes_it(
+    stack, tmp_path, kind
+):
+    status_file = stack.layout.status_file("analysis-7")
+    plant(kind, status_file, tmp_path / "secret")
+
+    status, _body = bounded(stack.sessions.close, "analysis-7", None)
+
+    assert status == 200
+    if kind == "directory":
+        assert any("could not be deleted" in line for line in stack.lines)
+    else:
+        assert not status_file.is_symlink()
+        assert not status_file.exists()
+
+
+def test_closing_removes_a_link_in_place_of_a_status_without_touching_what_it_points_at(
+    stack, tmp_path
+):
+    secret = tmp_path / "secret"
+    plant("symlink", stack.layout.status_file("analysis-7"), secret)
+
+    bounded(stack.sessions.close, "analysis-7", None)
+
+    assert secret.read_text() == '{"state":"closed","error":null}'
+
+
+def test_listing_sessions_with_a_pipe_in_the_status_directory_answers(stack):
+    os.mkfifo(stack.layout.status_file("analysis-9"))
+
+    assert bounded(stack.sessions.keys) == (200, {"keys": []})
+
+
+@pytest.mark.parametrize("kind", ["fifo", "symlink", "dangling-symlink", "directory"])
+def test_a_log_that_is_not_a_file_is_not_copied_warns_and_is_deleted(stack, tmp_path, kind):
+    stack.open()
+    log = stack.layout.log_file("analysis-7")
+    log.unlink()
+    stack.daemon.writes_log = False
+    secret = tmp_path / "secret"
+    plant(kind, log, secret)
+    secret.write_text("/etc/shadow of the cape container")
+
+    status, body = bounded(stack.sessions.close, "analysis-7", 7)
+
+    assert status == 200
+    assert body["copied"] is False
+    assert any("could not be copied" in warning for warning in body["warnings"])
+    assert not stack.events_file().exists()
+    assert "shadow" not in "".join(
+        path.read_text() for path in stack.storage.rglob("*") if path.is_file()
+    )
+    assert not log.is_symlink()
+    assert kind == "directory" or not log.exists()
+
+
+def test_a_task_folder_whose_lansim_name_is_a_file_is_a_warning_not_a_crash(stack):
+    stack.open()
+    (stack.storage / "analyses" / "7" / "lansim").write_text("in the way")
+
+    status, body = stack.sessions.close("analysis-7", 7)
+
+    assert status == 200
+    assert body["copied"] is False
+    assert any("could not be copied" in warning for warning in body["warnings"])
+    assert stack.firewall.commands("lan-close") == [("lan-close", "analysis-7")]
 
 
 def test_a_failure_to_retract_the_file_does_not_stop_the_rest(stack, monkeypatch):

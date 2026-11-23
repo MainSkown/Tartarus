@@ -41,10 +41,13 @@ from guest_engine.lan_session import (
     PRESET_ID,
     HostSpec,
     Layout,
+    NotARegularFileError,
     ServiceSpec,
     SessionFormatError,
     SessionSpec,
+    network_namespace,
     publish_session,
+    read_heartbeat,
     read_session,
     read_status,
     retract_session,
@@ -127,6 +130,7 @@ class LanSessions:
         sleep: Callable[[float], None] = time.sleep,
         wall_clock: Callable[[], float] = time.time,
         log: Callable[[str], None] = lambda _message: None,
+        network_namespace: Callable[[], str] = network_namespace,
     ) -> None:
         self._settings = settings
         self._layout = settings.layout
@@ -136,6 +140,7 @@ class LanSessions:
         self._sleep = sleep
         self._wall_clock = wall_clock
         self._log = log
+        self._network_namespace = network_namespace
         # Held while a session is checked against the others and published, so two requests
         # cannot both find a guest's address free.
         self._publishing = threading.Lock()
@@ -155,12 +160,17 @@ class LanSessions:
 
     def _daemon_problem(self) -> str | None:
         try:
-            heartbeat = self._layout.alive_file.stat().st_mtime
+            heartbeat = read_heartbeat(self._layout)
         except OSError:
-            return "the fake-host daemon is not running (it has written no heartbeat)"
-        silent_for = self._wall_clock() - heartbeat
+            return "the fake-host daemon is not running (it has written no usable heartbeat)"
+        silent_for = self._wall_clock() - heartbeat.modified
         if silent_for > HEARTBEAT_STALE_AFTER_S:
             return f"the fake-host daemon has not answered for {silent_for:.0f} s"
+        if heartbeat.namespace != self._network_namespace():
+            return (
+                "the fake-host daemon runs in an old network namespace; "
+                "run `docker compose up -d` to recreate it"
+            )
         return None
 
     def _presets_problem(self) -> str | None:
@@ -331,7 +341,7 @@ class LanSessions:
 
     def _copy_events(self, key: str, task_id: int | None, warnings: list[str]) -> tuple[bool, bool]:
         """(copied, keep the staged log): the log is kept only when the copy failed in a way a
-        retry could mend."""
+        retry could mend, which a pipe or a link in its place is not."""
         if task_id is None:
             return False, False
         try:
@@ -346,7 +356,7 @@ class LanSessions:
                 f"the events of {key} could not be copied to task {task_id}:"
                 f" {failed.strerror or type(failed).__name__}"
             )
-            return False, True
+            return False, not isinstance(failed, NotARegularFileError)
         if not placed:
             self._log(f"lan: task {task_id} already has {EVENTS_FILE.name}; the first copy stays")
         return placed, False

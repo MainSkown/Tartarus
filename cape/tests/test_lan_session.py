@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from hostile_files import KINDS, bounded, plant
 
 from guest_engine import lan_session
 from guest_engine.lan_session import (
@@ -499,7 +500,7 @@ def test_reading_an_oversized_session_file_is_refused(tmp_path):
     layout.make_directories()
     layout.session_file("task-1").write_text(" " * (lan_session.MAX_SESSION_FILE_BYTES + 10))
 
-    with pytest.raises(SessionFormatError, match="too large"):
+    with pytest.raises(lan_session.FileTooLargeError, match="too large"):
         lan_session.read_session(layout, "task-1")
 
 
@@ -671,3 +672,201 @@ def test_wait_for_status_keeps_waiting_through_an_unreadable_status_file(tmp_pat
 def test_wait_for_status_refuses_a_key_that_is_not_a_key(tmp_path):
     with pytest.raises(SessionFormatError, match="key"):
         lan_session.wait_for_status(tmp_path, "../x", {"listening"}, timeout=1)
+
+
+# --- files the daemon writes are read like hostile input ------------------------------------------
+# A root process reads `status/` and `logs/` and the heartbeat, and the daemon (which can be taken
+# over) owns those names: a pipe would hang the reader, a link would show it a file the daemon may
+# not read, a huge file would fill its memory.
+
+CAP = 64
+
+
+@pytest.fixture
+def planted(tmp_path):
+    def make(kind: str) -> Path:
+        path = tmp_path / kind
+        plant(kind, path, tmp_path / "secret")
+        return path
+
+    return make
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_name_that_is_not_a_regular_file_is_an_error_not_a_hang_or_a_read(planted, kind):
+    with pytest.raises(OSError):  # noqa: PT011 - which one depends on the kind
+        bounded(lan_session.read_regular_file, planted(kind), CAP)
+
+
+def test_a_pipe_and_a_directory_say_what_they_are(planted):
+    with pytest.raises(lan_session.NotARegularFileError):
+        bounded(lan_session.read_regular_file, planted("fifo"), CAP)
+    with pytest.raises(lan_session.NotARegularFileError):
+        bounded(lan_session.read_regular_file, planted("directory"), CAP)
+
+
+def test_a_symlink_is_not_followed_and_says_so(planted, tmp_path):
+    with pytest.raises(lan_session.NotARegularFileError, match="link"):
+        bounded(lan_session.read_regular_file, planted("symlink"), CAP)
+
+
+def test_a_missing_file_is_a_plain_file_not_found(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        lan_session.read_regular_file(tmp_path / "absent", CAP)
+
+
+def test_a_file_over_the_cap_is_refused_by_its_size_before_a_byte_is_read(tmp_path, monkeypatch):
+    big = tmp_path / "big"
+    with big.open("wb") as handle:
+        handle.truncate(CAP + 1)
+    monkeypatch.setattr(os, "read", lambda *_arguments: pytest.fail("read a refused file"))
+
+    with pytest.raises(lan_session.FileTooLargeError, match="too large"):
+        lan_session.read_regular_file(big, CAP)
+
+
+def test_a_file_of_exactly_the_cap_is_read_whole(tmp_path):
+    exact = tmp_path / "exact"
+    exact.write_bytes(b"x" * CAP)
+
+    assert lan_session.read_regular_file(exact, CAP).data == b"x" * CAP
+
+
+def test_a_file_that_grows_past_the_cap_while_it_is_read_is_refused(tmp_path, monkeypatch):
+    growing = tmp_path / "growing"
+    growing.write_bytes(b"x" * 10)
+    real_read = os.read
+    monkeypatch.setattr(os, "read", lambda descriptor, count: real_read(descriptor, count) * 50)
+
+    with pytest.raises(lan_session.FileTooLargeError):
+        lan_session.read_regular_file(growing, CAP)
+
+
+def test_what_is_read_is_what_was_opened_even_if_the_name_is_swapped_afterwards(tmp_path):
+    named = tmp_path / "file"
+    named.write_bytes(b"what was checked")
+    secret = tmp_path / "secret"
+    secret.write_bytes(b"what was swapped in")
+
+    descriptor = lan_session.open_regular_file(named, CAP)
+    named.unlink()
+    named.symlink_to(secret)
+    try:
+        assert os.read(descriptor, CAP) == b"what was checked"
+    finally:
+        os.close(descriptor)
+
+
+def test_the_descriptor_is_not_inherited_by_a_child_process(tmp_path):
+    named = tmp_path / "file"
+    named.write_bytes(b"x")
+    descriptor = lan_session.open_regular_file(named, CAP)
+    try:
+        assert not os.get_inheritable(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def test_the_modification_time_comes_from_the_opened_file(tmp_path):
+    named = tmp_path / "file"
+    named.write_bytes(b"x")
+    os.utime(named, (1_000, 1_000))
+
+    assert lan_session.read_regular_file(named, CAP).modified == 1_000
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_status_planted_as_anything_but_a_file_is_an_error_within_a_bound(tmp_path, kind):
+    layout = Layout(tmp_path / "root")
+    layout.make_directories()
+    plant(kind, layout.status_file("task-1"), tmp_path / "secret")
+
+    with pytest.raises(OSError):  # noqa: PT011 - which one depends on the kind
+        bounded(lan_session.read_status, layout, "task-1")
+
+
+@pytest.mark.parametrize("kind", ["fifo", "symlink", "directory"])
+def test_waiting_for_a_status_planted_as_anything_but_a_file_times_out_instead_of_hanging(
+    tmp_path, kind
+):
+    layout = Layout(tmp_path / "root")
+    layout.make_directories()
+    plant(kind, layout.status_file("task-1"), tmp_path / "secret")
+
+    with pytest.raises(TimeoutError):
+        bounded(lan_session.wait_for_status, layout, "task-1", {"closed"}, 0.2, poll_interval=0.05)
+
+
+def test_an_oversized_status_file_is_refused(tmp_path):
+    layout = Layout(tmp_path)
+    layout.make_directories()
+    layout.status_file("task-1").write_text(" " * (lan_session.MAX_STATUS_FILE_BYTES + 1))
+
+    with pytest.raises(lan_session.FileTooLargeError):
+        lan_session.read_status(layout, "task-1")
+
+
+def test_a_session_file_that_is_a_pipe_is_an_error_within_a_bound(tmp_path):
+    layout = Layout(tmp_path)
+    layout.make_directories()
+    os.mkfifo(layout.session_file("task-1"))
+
+    with pytest.raises(lan_session.NotARegularFileError):
+        bounded(lan_session.read_session, layout, "task-1")
+
+
+# --- the heartbeat and the network namespace it names ---------------------------------------------
+
+
+def test_a_heartbeat_carries_the_namespace_and_the_time_it_was_written(tmp_path):
+    layout = Layout(tmp_path)
+    layout.make_directories()
+
+    lan_session.write_heartbeat(layout, "net:[4026532812]")
+
+    beat = lan_session.read_heartbeat(layout)
+    assert beat.namespace == "net:[4026532812]"
+    assert abs(beat.modified - layout.alive_file.stat().st_mtime) < 1
+
+
+def test_a_heartbeat_without_content_names_no_namespace(tmp_path):
+    layout = Layout(tmp_path)
+    layout.make_directories()
+    layout.alive_file.touch()
+
+    assert lan_session.read_heartbeat(layout).namespace == ""
+
+
+def test_a_heartbeat_with_bytes_that_are_not_text_still_reads(tmp_path):
+    layout = Layout(tmp_path)
+    layout.make_directories()
+    layout.alive_file.write_bytes(b"\xff\xfe net")
+
+    assert "net" in lan_session.read_heartbeat(layout).namespace
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_a_heartbeat_planted_as_anything_but_a_file_is_an_error_within_a_bound(tmp_path, kind):
+    layout = Layout(tmp_path / "root")
+    layout.make_directories()
+    plant(kind, layout.alive_file, tmp_path / "secret")
+
+    with pytest.raises(OSError):  # noqa: PT011 - which one depends on the kind
+        bounded(lan_session.read_heartbeat, layout)
+
+
+def test_a_huge_heartbeat_is_refused(tmp_path):
+    layout = Layout(tmp_path)
+    layout.make_directories()
+    layout.alive_file.write_bytes(b"x" * (lan_session.MAX_HEARTBEAT_BYTES + 1))
+
+    with pytest.raises(lan_session.FileTooLargeError):
+        lan_session.read_heartbeat(layout)
+
+
+def test_a_process_names_its_own_network_namespace_by_the_link_the_kernel_keeps(tmp_path):
+    link = tmp_path / "net"
+    link.symlink_to("net:[4026532812]")
+
+    assert lan_session.network_namespace(link) == "net:[4026532812]"
+    assert lan_session.network_namespace().startswith("net:[")

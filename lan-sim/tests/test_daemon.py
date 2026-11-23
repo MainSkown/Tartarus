@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import threading
+from contextlib import suppress
 from dataclasses import replace
 
 import pytest
@@ -21,6 +22,7 @@ from lan_session import (
     SessionStatus,
     atomic_write,
     publish_session,
+    read_heartbeat,
     read_status,
     retract_session,
     wait_for_status,
@@ -111,7 +113,7 @@ def address_of(spec: SessionSpec, index=0) -> tuple[str, int]:
 
 
 class World:
-    def __init__(self, tmp_path, services=None, **limits):
+    def __init__(self, tmp_path, services=None, network_namespace=None, **limits):
         self.layout = Layout(tmp_path / "root")
         self.layout.make_directories()
         self.clock = FakeClock()
@@ -120,7 +122,12 @@ class World:
         self.services = services or {service.kind: service for service in every_service}
         self.limits = replace(Limits(), **limits)
         self.daemon = Daemon(
-            self.layout, self.services, limits=self.limits, clock=self.clock, poll_interval=0.02
+            self.layout,
+            self.services,
+            limits=self.limits,
+            clock=self.clock,
+            poll_interval=0.02,
+            **({"network_namespace": network_namespace} if network_namespace else {}),
         )
 
     async def open(self, spec: SessionSpec) -> SessionStatus | None:
@@ -729,7 +736,7 @@ def test_the_run_loop_opens_and_closes_sessions_from_the_directory_and_stops_on_
     asyncio.run(body())
 
 
-def test_the_run_loop_touches_the_heartbeat_file_on_every_poll_and_removes_it_on_stop(tmp_path):
+def test_the_run_loop_rewrites_the_heartbeat_on_every_poll_and_removes_it_on_stop(tmp_path):
     async def body():
         world = World(tmp_path)
         alive = world.layout.alive_file
@@ -754,10 +761,60 @@ def test_the_run_loop_touches_the_heartbeat_file_on_every_poll_and_removes_it_on
     asyncio.run(body())
 
 
+def test_the_heartbeat_names_the_network_namespace_of_the_process_that_wrote_it(tmp_path):
+    # The control service compares it with its own: a daemon left behind in the namespace of a
+    # cape container that was recreated keeps beating, but names the old one.
+    async def body():
+        world = World(tmp_path, network_namespace=lambda: "net:[4026532812]")
+        running = asyncio.create_task(world.daemon.run())
+        for _ in range(200):
+            if world.layout.alive_file.exists():
+                break
+            await asyncio.sleep(0.01)
+
+        assert read_heartbeat(world.layout).namespace == "net:[4026532812]"
+        world.daemon.request_stop()
+        await asyncio.wait_for(running, 5)
+
+    asyncio.run(body())
+
+
+def test_without_a_namespace_given_the_heartbeat_names_the_real_one(tmp_path):
+    async def body():
+        world = World(tmp_path)
+        running = asyncio.create_task(world.daemon.run())
+        for _ in range(200):
+            if world.layout.alive_file.exists():
+                break
+            await asyncio.sleep(0.01)
+
+        assert read_heartbeat(world.layout).namespace == os.readlink("/proc/self/ns/net")
+        world.daemon.request_stop()
+        await asyncio.wait_for(running, 5)
+
+    asyncio.run(body())
+
+
+def test_a_reader_never_finds_the_heartbeat_empty_while_the_daemon_polls(tmp_path):
+    async def body():
+        world = World(tmp_path, network_namespace=lambda: "net:[1]")
+        running = asyncio.create_task(world.daemon.run())
+        seen: set[str] = set()
+        for _ in range(300):
+            with suppress(OSError):
+                seen.add(read_heartbeat(world.layout).namespace)
+            await asyncio.sleep(0.002)
+        world.daemon.request_stop()
+        await asyncio.wait_for(running, 5)
+        assert seen == {"net:[1]"}
+
+    asyncio.run(body())
+
+
 def test_a_heartbeat_that_cannot_be_written_does_not_stop_the_daemon(tmp_path, caplog):
     async def body():
         world = World(tmp_path)
-        world.layout.alive_file.symlink_to(tmp_path / "nowhere" / "alive")
+        world.layout.alive_file.mkdir()
         spec = session()
         publish_session(world.layout, spec)
         running = asyncio.create_task(world.daemon.run())

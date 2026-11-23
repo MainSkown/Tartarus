@@ -4,6 +4,9 @@
 programs, and the `cape` user parses hostile sample output. An nftables table of its own with an
 output hook, default deny, keyed on the process user, applied before supervisord starts anything:
 
+- the fake-host daemon (`lan-sim`, which shares this namespace and parses hostile input) may start
+  no connection at all: loopback would otherwise reach CAPE's API, the control service and guacd.
+  Its replies to a guest's connections are `established` and pass the rules below;
 - `cape` is refused Docker's resolver: a lookup leaves the host through the Docker daemon, and a
   query name can carry data out. The entrypoint pins the one name CAPE needs (`bin/pin-host`);
 - loopback is otherwise open to everyone (CAPE's API, guacd's VNC, the resolver for root);
@@ -30,6 +33,7 @@ from guest_engine.firewall import (
     nft_chain,
     nft_set,
 )
+from guest_engine.lan_session import LAN_SIM_UID
 from guest_engine.media import Runner
 from guest_engine.registry import write_atomically
 
@@ -76,6 +80,7 @@ def render_egress_ruleset(policy: EgressPolicy) -> str:
     output = nft_chain(
         "output",
         [
+            f"meta skuid {LAN_SIM_UID} ct state new counter reject",
             f"meta skuid {checked.cape_user} ip daddr {DOCKER_RESOLVER} counter reject",
             'oifname "lo" accept',
             "ct state established,related accept",

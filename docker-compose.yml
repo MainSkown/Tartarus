@@ -205,7 +205,8 @@ services:
   # The fake hosts of the simulated local network. It shares cape's network namespace (the guest bridge
   # exists only there), so it is a container of its own for the sake of its image, user and capabilities:
   # it parses hostile input from a guest and must hold none of CAPE's secrets, devices or privileges.
-  # Recreating cape recreates the namespace; compose recreates this service with it.
+  # Recreating cape alone leaves this service in the old namespace; GET /lan/health then says so, and
+  # `docker compose up -d` recreates it.
   lan-sim:
     container_name: tartarus-lan-sim
     image: tartarus-lan-sim:latest

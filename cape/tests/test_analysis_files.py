@@ -10,7 +10,10 @@ import os
 import stat
 
 import pytest
+from hostile_files import KINDS, bounded, plant
 from test_control_http import BIN  # noqa: F401 - importing it puts bin/ on sys.path
+
+from guest_engine.lan_session import NotARegularFileError
 
 analysis_files = importlib.import_module("analysis_files")
 
@@ -341,10 +344,70 @@ def test_a_staged_path_that_is_not_a_regular_file_is_refused_without_blocking(st
     pipe = tmp_path / "pipe.jsonl"
     os.mkfifo(pipe)
 
-    with pytest.raises(analysis_files.NotARegularFileError):
+    with pytest.raises(NotARegularFileError):
         place_once(pipe, storage)
-    with pytest.raises(analysis_files.NotARegularFileError):
+    with pytest.raises(NotARegularFileError):
         place_once(tmp_path, storage)
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_anything_planted_in_the_staged_files_place_ends_in_an_error_within_a_bound(
+    storage, tmp_path, kind
+):
+    staged = tmp_path / "planted.jsonl"
+    plant(kind, staged, tmp_path / "secret")
+
+    with pytest.raises(OSError):  # noqa: PT011 - which one depends on the kind
+        bounded(place_once, staged, storage)
+
+    assert not (storage / "analyses" / "7" / "lansim").exists()
+
+
+def test_a_staged_file_that_really_grows_while_the_folder_is_prepared_is_cut_at_the_limit(
+    events, storage, monkeypatch
+):
+    original = analysis_files._make_folder
+
+    def grow_then_make(*arguments):
+        with events.open("ab") as handle:
+            handle.write(b"x" * 500)
+        original(*arguments)
+
+    monkeypatch.setattr(analysis_files, "_make_folder", grow_then_make)
+
+    with pytest.raises(analysis_files.FileTooLargeError):
+        place_once(events, storage, limit=100)
+
+    assert list((storage / "analyses" / "7" / "lansim").iterdir()) == []
+
+
+def test_the_name_swapped_for_a_link_after_the_open_still_copies_what_was_opened(
+    events, storage, tmp_path, monkeypatch
+):
+    secret = tmp_path / "secret"
+    secret.write_bytes(b"not for an analysis")
+    original = analysis_files._make_folder
+
+    def swap_then_make(*arguments):
+        events.unlink()
+        events.symlink_to(secret)
+        original(*arguments)
+
+    monkeypatch.setattr(analysis_files, "_make_folder", swap_then_make)
+
+    place_once(events, storage)
+
+    placed = storage / "analyses" / "7" / "lansim" / "events.jsonl"
+    assert placed.read_bytes() == b'{"type":"session-end"}\n'
+
+
+def test_a_folder_name_taken_by_a_file_is_an_error_not_an_exception_of_another_kind(
+    events, storage
+):
+    (storage / "analyses" / "7" / "lansim").write_text("in the way")
+
+    with pytest.raises(OSError):  # noqa: PT011 - NotADirectoryError
+        place_once(events, storage)
 
 
 def test_a_missing_staged_file_is_a_file_not_found_and_creates_no_folder(storage, tmp_path):

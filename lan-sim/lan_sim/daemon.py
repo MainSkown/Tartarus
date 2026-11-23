@@ -11,7 +11,7 @@ import asyncio
 import logging
 import os
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 
@@ -20,10 +20,12 @@ from lan_session import (
     SessionFormatError,
     SessionSpec,
     SessionStatus,
+    network_namespace,
     read_session,
     read_status,
     session_keys,
     status_keys,
+    write_heartbeat,
     write_status,
 )
 from lan_sim.clock import Clock, SystemClock
@@ -103,6 +105,7 @@ class Daemon:
         clock: Clock | None = None,
         poll_interval: float = DEFAULT_POLL_INTERVAL_S,
         logger: logging.Logger | None = None,
+        network_namespace: Callable[[], str] = network_namespace,
     ) -> None:
         for kind, service in services.items():
             if service.kind != kind:
@@ -115,6 +118,7 @@ class Daemon:
         self._clock = clock or SystemClock()
         self._poll_interval = poll_interval
         self._logger = logger or logging.getLogger("lan_sim")
+        self._network_namespace = network_namespace
         self._sessions: dict[str, _ActiveSession] = {}
         self._by_guest: dict[str, _ActiveSession] = {}
         self._failed: dict[str, Signature] = {}
@@ -150,9 +154,11 @@ class Daemon:
 
     def _beat(self) -> None:
         """The control service reads the age of this file to know the daemon is running, so a
-        daemon that hangs (or dies without `finally`) stops being offered to analyses."""
+        daemon that hangs (or dies without `finally`) stops being offered to analyses. It reads
+        the namespace in it to know the daemon is in the cape container's current one: after
+        `docker compose up -d --force-recreate cape` this process keeps beating in the old one."""
         try:
-            self._layout.alive_file.touch()
+            write_heartbeat(self._layout, self._network_namespace())
         except OSError as error:
             if not self._heartbeat_failing:
                 self._logger.error("cannot write the heartbeat file: %s", error.strerror)

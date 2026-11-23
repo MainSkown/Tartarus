@@ -11,11 +11,12 @@ broker (the memory dump of a guest) and by `lan_logic` (the fake local network's
 import errno
 import os
 import secrets
-import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+from guest_engine.lan_session import FileTooLargeError, open_regular_file
 
 STORAGE_DIRECTORY = Path("/opt/CAPEv2/storage")
 ANALYSIS_FILE_MODE = 0o644
@@ -97,14 +98,6 @@ def _copy_into(destination: int, staged: Path) -> None:
         os.close(source)
 
 
-class FileTooLargeError(OSError):
-    """The staged file is larger than the limit its caller set."""
-
-
-class NotARegularFileError(OSError):
-    """The staged path is a pipe, a device, a directory: not something to copy."""
-
-
 @dataclass(frozen=True)
 class Placement:
     """Where in an analysis folder a file goes, and the most it may hold."""
@@ -118,13 +111,14 @@ def place_once(staged: Path, storage: Path, task_id: int, placement: Placement) 
     """Copies `staged` to `<storage>/analyses/<task_id>/<folder>/<name>`, owned like the analysis
     folder, and returns False, changing nothing, when `name` is already there: the first copy wins.
 
-    The staged file belongs to another, less trusted service, so it is opened without following a
-    link, must be a regular file and is refused above the limit however it grows meanwhile.
+    The staged file belongs to another, less trusted service, so it is opened like the contract
+    says (`open_regular_file`: no link, no pipe, a regular file under the limit) and is refused
+    above the limit however it grows meanwhile.
     The folder is created when missing, but the analysis folder is not (`FileNotFoundError`: the
     analysis is gone). The copy goes to a temporary name and is linked into place, which fails
     rather than replaces, so a racing second copy cannot clobber the first.
     """
-    source = _open_staged(staged, placement.limit)
+    source = open_regular_file(staged, placement.limit)
     try:
         with _open_analysis_folder(storage, task_id) as analysis:
             owner = os.fstat(analysis)
@@ -133,21 +127,6 @@ def place_once(staged: Path, storage: Path, task_id: int, placement: Placement) 
                 return _link_copy(source, target, placement, owner)
     finally:
         os.close(source)
-
-
-def _open_staged(staged: Path, limit: int) -> int:
-    # O_NONBLOCK so that a pipe planted in the log's place cannot hang this service on open.
-    descriptor = os.open(staged, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-    try:
-        status = os.fstat(descriptor)
-        if not stat.S_ISREG(status.st_mode):
-            raise NotARegularFileError(errno.EINVAL, "not a regular file", str(staged))
-        if status.st_size > limit:
-            raise FileTooLargeError(errno.EFBIG, f"larger than {limit} bytes", str(staged))
-    except BaseException:
-        os.close(descriptor)
-        raise
-    return descriptor
 
 
 def _make_folder(analysis: int, name: str, owner: os.stat_result) -> None:

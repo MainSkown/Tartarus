@@ -1,11 +1,16 @@
 """What the processes inside the cape container may connect to, as an nftables ruleset."""
 
+import re
+from pathlib import Path
+
 import pytest
 from test_guest_firewall import ROUTES
 
 from guest_engine.egress import EgressPolicy, policy_for, render_egress_ruleset
 from guest_engine.firewall import RESERVED_NETWORKS
+from guest_engine.lan_session import LAN_SIM_UID
 
+REPO = Path(__file__).resolve().parents[2]
 ENVIRONMENT = {"CAPE_DB_IP": "172.20.0.3", "CAPE_DB_IFACE": "eth0"}
 
 
@@ -41,6 +46,26 @@ def test_the_chain_hooks_output_with_default_deny_before_iptables():
     ruleset = render_egress_ruleset(make_policy())
 
     assert "type filter hook output priority -10; policy drop;" in ruleset
+
+
+def test_the_fake_host_daemon_may_only_answer_never_start_a_connection():
+    # It shares this namespace and parses hostile input: loopback must not open CAPE's API, the
+    # control service or guacd to it. Replies to a guest's connection are `established`, not `new`.
+    rules = output_rules(render_egress_ruleset(make_policy()))
+
+    assert rules[0] == f"meta skuid {LAN_SIM_UID} ct state new counter reject"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{}, {"cape_user": "sandbox"}, {"bridge": "tt-lab"}, {"networks": ()}],
+)
+def test_the_daemon_rule_is_in_every_ruleset_and_comes_before_any_rule_that_could_accept(changes):
+    rules = output_rules(render_egress_ruleset(make_policy(**changes)))
+    rule = f"meta skuid {LAN_SIM_UID} ct state new counter reject"
+
+    assert rules.count(rule) == 1
+    assert not any(other.endswith("accept") for other in rules[: rules.index(rule)])
 
 
 def test_loopback_is_open_to_every_user():
@@ -162,3 +187,18 @@ def test_the_default_route_is_never_taken_for_the_database_network():
 
     with pytest.raises(ValueError, match="database"):
         policy_for(ENVIRONMENT, routes, "tt-guest", "cape")
+
+
+def test_the_daemons_uid_is_the_same_number_in_compose_the_image_and_the_entrypoint():
+    # The egress rule names the uid; the places that create or run the daemon write it literally.
+    compose = (REPO / "docker-compose.yml").read_text()
+    service = re.search(r"^  lan-sim:\n(.*?)(?=^  \S)", compose, re.MULTILINE | re.DOTALL)
+    dockerfile = (REPO / "lan-sim" / "Dockerfile").read_text()
+    entrypoint = (REPO / "cape" / "entrypoint.sh").read_text()
+    uid = str(LAN_SIM_UID)
+
+    assert service is not None
+    assert re.findall(r'^    user: "(\d+):', service.group(1), re.MULTILINE) == [uid]
+    assert set(re.findall(r"--(?:uid|gid) (\d+)", dockerfile)) == {uid}
+    assert re.findall(r"^USER (\d+):", dockerfile, re.MULTILINE) == [uid]
+    assert set(re.findall(r"-[og] (\d+) /run/lan-sim", entrypoint)) == {uid}
