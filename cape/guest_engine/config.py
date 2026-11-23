@@ -33,6 +33,7 @@ ENVIRONMENT_PATHS = {
     "GUEST_MEDIA_DIR": "media_dir",
     "GUEST_PROFILES_DIR": "profiles_dir",
     "GUEST_STEPS_DIR": "steps_dir",
+    "GUEST_LAN_PRESETS_DIR": "lan_presets_dir",
     "GUEST_REGISTRATION_DIR": "registration_dir",
 }
 
@@ -47,6 +48,7 @@ class EngineConfig:
     media_dir: Path = Path("/data/iso")
     profiles_dir: Path = Path("/usr/local/lib/tartarus/profiles")
     steps_dir: Path = Path("/usr/local/lib/tartarus/steps")
+    lan_presets_dir: Path = Path("/usr/local/lib/tartarus/lan-presets")
     registration_dir: Path = Path("/var/lib/libvirt/tartarus/kvm.conf.d")
     libvirt_dir: Path = Path("/var/lib/libvirt")
     guest_subnet: str = DEFAULT_SUBNET

@@ -1,0 +1,116 @@
+{
+  "id": "flat-home",
+  "name": "Flat home LAN",
+  "description": "A NAS, a desktop, a laptop and a printer on a home.lan network.",
+  "domain": "home.lan",
+  "hosts": [
+    {
+      "fqdn": "nas.home.lan",
+      "host_offset": 216,
+      "role": "nas",
+      "os_banner": "Linux 5.10 (Synology DSM 7.1)",
+      "accounts": [
+        {
+          "user": "admin",
+          "password": "admin"
+        },
+        {
+          "user": "guest",
+          "password": "guest"
+        }
+      ],
+      "services": [
+        {
+          "kind": "smb",
+          "port": 445,
+          "options": {
+            "shares": [
+              "Public",
+              "Photos",
+              "Backup"
+            ]
+          }
+        },
+        {
+          "kind": "ssh",
+          "port": 22,
+          "options": {
+            "banner": "OpenSSH_8.2p1"
+          }
+        }
+      ]
+    },
+    {
+      "fqdn": "desktop.home.lan",
+      "host_offset": 217,
+      "role": "workstation",
+      "os_banner": "Windows 10 Pro 10.0.19045",
+      "accounts": [
+        {
+          "user": "admin",
+          "password": "admin"
+        },
+        {
+          "user": "user",
+          "password": "123456"
+        }
+      ],
+      "services": [
+        {
+          "kind": "smb",
+          "port": 445,
+          "options": {}
+        },
+        {
+          "kind": "rdp",
+          "port": 3389,
+          "options": {}
+        }
+      ]
+    },
+    {
+      "fqdn": "laptop.home.lan",
+      "host_offset": 218,
+      "role": "workstation",
+      "os_banner": "Windows 11 Pro 10.0.26100",
+      "accounts": [
+        {
+          "user": "admin",
+          "password": "admin"
+        },
+        {
+          "user": "user",
+          "password": "password"
+        }
+      ],
+      "services": [
+        {
+          "kind": "smb",
+          "port": 445,
+          "options": {}
+        }
+      ]
+    },
+    {
+      "fqdn": "printer.home.lan",
+      "host_offset": 219,
+      "role": "printer",
+      "os_banner": "Embedded Linux 4.19",
+      "accounts": [
+        {
+          "user": "admin",
+          "password": "admin"
+        }
+      ],
+      "services": [
+        {
+          "kind": "ssh",
+          "port": 22,
+          "options": {
+            "banner": "OpenSSH_7.4"
+          }
+        }
+      ]
+    }
+  ]
+}

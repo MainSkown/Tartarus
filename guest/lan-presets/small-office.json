@@ -1,0 +1,199 @@
+{
+  "id": "small-office",
+  "name": "Small office",
+  "description": "A domain controller, a file server, two workstations, a SQL server and a printer on one corp.local network.",
+  "domain": "corp.local",
+  "hosts": [
+    {
+      "fqdn": "dc01.corp.local",
+      "host_offset": 200,
+      "role": "domain-controller",
+      "os_banner": "Windows Server 2019 Standard 10.0.17763",
+      "accounts": [
+        {
+          "user": "Administrator",
+          "password": "Password1"
+        },
+        {
+          "user": "svc_backup",
+          "password": "Summer2019!"
+        }
+      ],
+      "services": [
+        {
+          "kind": "smb",
+          "port": 445,
+          "options": {}
+        },
+        {
+          "kind": "ldap",
+          "port": 389,
+          "options": {}
+        },
+        {
+          "kind": "rdp",
+          "port": 3389,
+          "options": {}
+        },
+        {
+          "kind": "winrm",
+          "port": 5985,
+          "options": {}
+        }
+      ]
+    },
+    {
+      "fqdn": "fs01.corp.local",
+      "host_offset": 201,
+      "role": "file-server",
+      "os_banner": "Windows Server 2019 Standard 10.0.17763",
+      "accounts": [
+        {
+          "user": "Administrator",
+          "password": "Password1"
+        },
+        {
+          "user": "svc_backup",
+          "password": "Summer2019!"
+        }
+      ],
+      "services": [
+        {
+          "kind": "smb",
+          "port": 445,
+          "options": {
+            "shares": [
+              "Public",
+              "Finance"
+            ]
+          }
+        },
+        {
+          "kind": "rdp",
+          "port": 3389,
+          "options": {}
+        },
+        {
+          "kind": "winrm",
+          "port": 5985,
+          "options": {}
+        }
+      ]
+    },
+    {
+      "fqdn": "ws01.corp.local",
+      "host_offset": 202,
+      "role": "workstation",
+      "os_banner": "Windows 10 Pro 10.0.19045",
+      "accounts": [
+        {
+          "user": "Administrator",
+          "password": "Welcome1"
+        },
+        {
+          "user": "jsmith",
+          "password": "Spring2023!"
+        }
+      ],
+      "services": [
+        {
+          "kind": "smb",
+          "port": 445,
+          "options": {}
+        },
+        {
+          "kind": "rdp",
+          "port": 3389,
+          "options": {}
+        }
+      ]
+    },
+    {
+      "fqdn": "ws02.corp.local",
+      "host_offset": 203,
+      "role": "workstation",
+      "os_banner": "Windows 11 Pro 10.0.26100",
+      "accounts": [
+        {
+          "user": "Administrator",
+          "password": "Welcome1"
+        },
+        {
+          "user": "mjones",
+          "password": "Winter2022!"
+        }
+      ],
+      "services": [
+        {
+          "kind": "smb",
+          "port": 445,
+          "options": {}
+        },
+        {
+          "kind": "rdp",
+          "port": 3389,
+          "options": {}
+        }
+      ]
+    },
+    {
+      "fqdn": "sql01.corp.local",
+      "host_offset": 204,
+      "role": "sql-server",
+      "os_banner": "Windows Server 2016 Standard 10.0.14393",
+      "accounts": [
+        {
+          "user": "Administrator",
+          "password": "Password1"
+        },
+        {
+          "user": "sa",
+          "password": "Passw0rd"
+        }
+      ],
+      "services": [
+        {
+          "kind": "smb",
+          "port": 445,
+          "options": {}
+        },
+        {
+          "kind": "mssql",
+          "port": 1433,
+          "options": {}
+        },
+        {
+          "kind": "rdp",
+          "port": 3389,
+          "options": {}
+        },
+        {
+          "kind": "winrm",
+          "port": 5985,
+          "options": {}
+        }
+      ]
+    },
+    {
+      "fqdn": "printer01.corp.local",
+      "host_offset": 205,
+      "role": "printer",
+      "os_banner": "Embedded Linux 4.19",
+      "accounts": [
+        {
+          "user": "admin",
+          "password": "admin"
+        }
+      ],
+      "services": [
+        {
+          "kind": "ssh",
+          "port": 22,
+          "options": {
+            "banner": "OpenSSH_7.4"
+          }
+        }
+      ]
+    }
+  ]
+}

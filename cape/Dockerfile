@@ -330,6 +330,7 @@ COPY guest/profiles/ /usr/local/lib/tartarus/profiles/
 COPY guest/steps/ /usr/local/lib/tartarus/steps/
 COPY guest/domain/ /usr/local/lib/tartarus/domain/
 COPY guest/personas/ /usr/local/lib/tartarus/personas/
+COPY guest/lan-presets/ /usr/local/lib/tartarus/lan-presets/
 COPY cape/entrypoint.sh /usr/local/bin/cape-entrypoint
 COPY cape/conf/ /opt/CAPEv2/custom/conf/
 # CAPE's web process serves only the REST API, without debug pages; see web/local_settings.py.
