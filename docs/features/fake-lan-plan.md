@@ -120,7 +120,7 @@ Delete the throwaway container, the uploaded tools and any memory dumps afterwar
 **Tier:** Sonnet (it fixes the format three components read), with the format already decided by Step 0.
 
 - `guest/lan-presets/<id>.json`, declarative, next to `guest/profiles`: `id`, `name`, `description`,
-  `domain`, `hosts: [{fqdn, host_offset, role, os_banner, accounts: [{user, password}], services: [{service, port, banner, options}]}]`.
+  `domain`, `hosts: [{fqdn, host_offset, role, os_banner, accounts: [{user, password}], services: [{kind, port, options}]}]`.
   `accounts` are the well-known weak accounts that let Windows' signing SMB client past the logon (S5).
 - A loader and validator in the `cape` Python project (`guest_engine/lan_presets.py`), because the control
   service, the firewall and the daemon all run beside it. Rules checked by tests: offsets inside
