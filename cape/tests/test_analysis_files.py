@@ -175,3 +175,192 @@ def test_a_slot_is_not_free_in_a_folder_that_is_missing_or_a_symlink(storage, vi
         analysis_files.require_free_dump_slot(storage, 9)
     with pytest.raises(NotADirectoryError):
         analysis_files.require_free_dump_slot(storage, 8)
+
+
+# --- place_once: a file in a folder of the analysis, the first copy wins -----------------------
+
+LIMIT = 1 << 20
+
+
+def place_once(staged, storage, task_id=7, limit=LIMIT):
+    placement = analysis_files.Placement("lansim", "events.jsonl", limit)
+    return analysis_files.place_once(staged, storage, task_id, placement)
+
+
+@pytest.fixture
+def events(tmp_path):
+    file = tmp_path / "staging" / "task-1.jsonl"
+    file.parent.mkdir()
+    file.write_bytes(b'{"type":"session-end"}\n')
+    return file
+
+
+def test_the_file_lands_in_a_new_folder_of_the_analysis_readable_by_everyone(events, storage):
+    assert place_once(events, storage) is True
+
+    folder = storage / "analyses" / "7" / "lansim"
+    assert (folder / "events.jsonl").read_bytes() == b'{"type":"session-end"}\n'
+    assert stat.S_IMODE((folder / "events.jsonl").stat().st_mode) == 0o644
+    assert stat.S_IMODE(folder.stat().st_mode) == 0o755
+    assert [path.name for path in folder.iterdir()] == ["events.jsonl"]
+
+
+def test_the_folder_and_the_file_are_handed_to_the_owner_of_the_analysis_folder(
+    events, storage, monkeypatch
+):
+    handed: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "fchown", lambda _fd, uid, gid: handed.append((uid, gid)))
+    owner = (storage / "analyses" / "7").stat()
+
+    place_once(events, storage)
+
+    assert handed == [(owner.st_uid, owner.st_gid)] * 2
+
+
+def test_an_existing_file_is_never_overwritten_and_nothing_is_left_beside_it(events, storage):
+    folder = storage / "analyses" / "7" / "lansim"
+    folder.mkdir()
+    (folder / "events.jsonl").write_bytes(b"first")
+
+    assert place_once(events, storage) is False
+
+    assert [(path.name, path.read_bytes()) for path in folder.iterdir()] == [
+        ("events.jsonl", b"first")
+    ]
+
+
+def test_a_second_placement_after_the_first_changes_nothing(events, storage):
+    place_once(events, storage)
+    events.write_bytes(b"second")
+
+    assert place_once(events, storage) is False
+
+    assert (storage / "analyses" / "7" / "lansim" / "events.jsonl").read_bytes() != b"second"
+
+
+def test_a_name_that_is_a_symlink_is_not_followed_and_counts_as_taken(events, storage, victim):
+    folder = storage / "analyses" / "7" / "lansim"
+    folder.mkdir()
+    (folder / "events.jsonl").symlink_to(victim / "important")
+
+    assert place_once(events, storage) is False
+
+    assert (victim / "important").read_text() == "keep"
+
+
+def test_a_missing_analysis_folder_is_an_error_and_is_not_created_for_a_placed_file(
+    events, storage
+):
+    with pytest.raises(FileNotFoundError):
+        place_once(events, storage, task_id=8)
+
+    assert not (storage / "analyses" / "8").exists()
+
+
+def test_an_analysis_folder_that_is_a_symlink_is_refused_and_nothing_is_written_for_a_placed_file(
+    events, storage, victim
+):
+    (storage / "analyses" / "8").symlink_to(victim)
+
+    with pytest.raises(NotADirectoryError):
+        place_once(events, storage, task_id=8)
+
+    assert sorted(path.name for path in victim.iterdir()) == ["important"]
+
+
+def test_a_target_folder_that_is_a_symlink_is_refused_and_nothing_is_written(
+    events, storage, victim
+):
+    (storage / "analyses" / "7" / "lansim").symlink_to(victim)
+
+    with pytest.raises(OSError):  # noqa: PT011 - ELOOP or ENOTDIR, whichever the kernel says
+        place_once(events, storage)
+
+    assert sorted(path.name for path in victim.iterdir()) == ["important"]
+
+
+def test_a_folder_swapped_for_a_symlink_while_copying_does_not_redirect_the_write_for_a_placed_file(
+    events, storage, victim, monkeypatch
+):
+    real_read = os.read
+    analyses = storage / "analyses"
+
+    def swap_then_read(*arguments):
+        if not (analyses / "7.moved").exists():
+            (analyses / "7").rename(analyses / "7.moved")
+            (analyses / "7").symlink_to(victim)
+        return real_read(*arguments)
+
+    monkeypatch.setattr(os, "read", swap_then_read)
+
+    place_once(events, storage)
+
+    assert sorted(path.name for path in victim.iterdir()) == ["important"]
+    assert (analyses / "7.moved" / "lansim" / "events.jsonl").exists()
+
+
+def test_a_staged_file_over_the_limit_is_refused_and_leaves_nothing(events, storage):
+    events.write_bytes(b"x" * 101)
+
+    with pytest.raises(analysis_files.FileTooLargeError):
+        place_once(events, storage, limit=100)
+
+    assert not (storage / "analyses" / "7" / "lansim").exists()
+
+
+def test_a_staged_file_of_exactly_the_limit_is_placed(events, storage):
+    events.write_bytes(b"x" * 100)
+
+    assert place_once(events, storage, limit=100) is True
+
+
+def test_a_staged_file_that_grows_past_the_limit_while_it_is_copied_is_refused(
+    events, storage, monkeypatch
+):
+    real_read = os.read
+    monkeypatch.setattr(os, "read", lambda descriptor, count: real_read(descriptor, count) * 50)
+    events.write_bytes(b"x" * 10)
+
+    with pytest.raises(analysis_files.FileTooLargeError):
+        place_once(events, storage, limit=100)
+
+    assert list((storage / "analyses" / "7" / "lansim").iterdir()) == []
+
+
+def test_a_staged_symlink_is_not_followed(storage, tmp_path, victim):
+    link = tmp_path / "staging-link.jsonl"
+    link.symlink_to(victim / "important")
+
+    with pytest.raises(OSError):  # noqa: PT011 - ELOOP
+        place_once(link, storage)
+
+    assert not (storage / "analyses" / "7" / "lansim" / "events.jsonl").exists()
+
+
+def test_a_staged_path_that_is_not_a_regular_file_is_refused_without_blocking(storage, tmp_path):
+    pipe = tmp_path / "pipe.jsonl"
+    os.mkfifo(pipe)
+
+    with pytest.raises(analysis_files.NotARegularFileError):
+        place_once(pipe, storage)
+    with pytest.raises(analysis_files.NotARegularFileError):
+        place_once(tmp_path, storage)
+
+
+def test_a_missing_staged_file_is_a_file_not_found_and_creates_no_folder(storage, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        place_once(tmp_path / "absent.jsonl", storage)
+
+    assert not (storage / "analyses" / "7" / "lansim").exists()
+
+
+def test_a_write_that_fails_leaves_no_file_and_no_temporary(events, storage, monkeypatch):
+    def disk_full(*_arguments):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(os, "write", disk_full)
+
+    with pytest.raises(OSError, match="No space"):
+        place_once(events, storage)
+
+    assert list((storage / "analyses" / "7" / "lansim").iterdir()) == []

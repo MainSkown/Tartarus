@@ -14,10 +14,17 @@ Neither does POST /symbols, which makes the symbol file Volatility3 needs for on
 from its GUID and age (symbols_logic.py); it is the one request of this service that reaches the
 internet, and only Microsoft's symbol server.
 
+The LAN routes (GET /lan-presets, GET /lan/health, GET and POST /lan/sessions, DELETE
+/lan/sessions/{key}) run the fake local network's sessions (lan_logic.py): the firewall through
+`guest-firewall lan-*`, the `lan-sim` daemon through the files of /run/lan-sim, and the daemon's log
+into the analysis folder. A restart of this service closes no session, since it would cut the fake
+network of a running analysis; the backend reconciles with GET /lan/sessions.
+
 Every route but GET /healthz needs `Authorization: Bearer <GUEST_CONTROL_TOKEN>`.
 
 Environment: CAPE_CONTROL_IP (required), GUEST_CONTROL_TOKEN (required, 32+ characters),
-GUEST_CONTROL_PORT (8002), GUEST_CONTROL_AGENT_TIMEOUT in seconds (5).
+GUEST_CONTROL_PORT (8002), GUEST_CONTROL_AGENT_TIMEOUT in seconds (5), LAN_SIM_ROOT (/run/lan-sim),
+GUEST_LAN_PRESETS_DIR and GUEST_SUBNET (as the guest engine reads them).
 """
 
 import importlib
@@ -37,8 +44,10 @@ SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 sys.path[:0] = [SCRIPT_DIRECTORY, os.path.dirname(SCRIPT_DIRECTORY)]
 
 import control_http  # noqa: E402
+from analysis_files import STORAGE_DIRECTORY  # noqa: E402
 from control_http import HttpError, Request, Route  # noqa: E402
-from finish_logic import finish_response  # noqa: E402
+from finish_logic import TASK_ID_NOT_DIGITS, finish_response, parse_task_id  # noqa: E402
+from lan_logic import LanSessions, LanSettings  # noqa: E402
 from memory_logic import (  # noqa: E402
     IMAGE_REJECTED,
     MemoryAnalyser,
@@ -50,7 +59,9 @@ from memory_logic import (  # noqa: E402
 from symbols_logic import SymbolStore, symbols_response  # noqa: E402
 from symbols_logic import in_container as symbol_store_in_container  # noqa: E402
 
+from guest_engine.config import EngineConfig  # noqa: E402
 from guest_engine.errors import Conflict, GuestNotFound, InvalidParameters  # noqa: E402
+from guest_engine.lan_session import DEFAULT_ROOT, KEY, Layout  # noqa: E402
 from guest_engine.protocol import GuestEngine  # noqa: E402
 from guest_engine.selftest import ChecksFailed, SampleBuildFailed  # noqa: E402
 
@@ -126,6 +137,22 @@ def load_engine(import_module: Callable[[str], Any] = importlib.import_module) -
     return module.create_engine()
 
 
+def lan_in_container(engine: GuestEngine, environ: Mapping[str, str]) -> LanSessions:
+    config = EngineConfig.from_environment(environ)
+    settings = LanSettings(
+        layout=Layout(Path(environ.get("LAN_SIM_ROOT", DEFAULT_ROOT))),
+        presets_dir=config.lan_presets_dir,
+        subnet=config.guest_subnet,
+        storage=STORAGE_DIRECTORY,
+        firewall_command=["python3", "-I", os.path.join(SCRIPT_DIRECTORY, "guest-firewall")],
+    )
+    return LanSessions(
+        settings,
+        lambda guest: engine.guest_address(guest)["ip"],
+        log=lambda message: control_http.log(SERVICE, message),
+    )
+
+
 def guest_name(request: Request, argument: str = "name") -> str:
     return _valid(request.arguments[argument], GUEST_NAME, "guest name")
 
@@ -162,11 +189,13 @@ class Routes:
         agent_timeout: float,
         memory: MemoryAnalyser,
         symbols: SymbolStore,
+        lan: LanSessions,
     ) -> None:
         self.engine = engine
         self.agent_timeout = agent_timeout
         self.memory = memory
         self.symbols = symbols
+        self.lan = lan
 
     def table(self) -> list[Route]:
         guest = r"/guests/(?P<name>[^/]*)"
@@ -199,6 +228,11 @@ class Routes:
                 "DELETE", r"/memory/(?P<task_id>[^/]*)/findings", self.delete_image_findings
             ),
             self._route("POST", "/symbols", self.make_symbols),
+            self._route("GET", "/lan-presets", lambda _request: self.lan.presets()),
+            self._route("GET", "/lan/health", lambda _request: self.lan.health()),
+            self._route("GET", "/lan/sessions", lambda _request: self.lan.keys()),
+            self._route("POST", "/lan/sessions", self.open_lan_session),
+            self._route("DELETE", r"/lan/sessions/(?P<key>[^/]*)", self.close_lan_session),
         ]
 
     def _route(self, method: str, pattern: str, handler: Callable[[Request], Any]) -> Route:
@@ -327,6 +361,29 @@ class Routes:
         """
         return symbols_response(request.body, self.symbols)
 
+    def open_lan_session(self, request: Request) -> control_http.Answer:
+        """Opens a fake local network for a guest: body `{"key", "guest", "preset"}`.
+
+        Answers 201 `{"key"}` once the fake hosts listen and the guest's firewall lets it reach
+        them, 404 for a guest or preset that does not exist, 409 for a key or guest address that
+        another session holds, and 503 with the reason (leaving nothing open) when it cannot start.
+        Opening the same session again is 201 again.
+        """
+        return self.lan.open(request.body)
+
+    def close_lan_session(self, request: Request) -> control_http.Answer:
+        """Closes a session; `?task_id=` copies its event log into that analysis's folder.
+
+        Answers 200 `{"copied": bool}`, also for a key that is not open, and 500 when the firewall
+        could not be closed (the backend retries).
+        """
+        key = _valid(request.arguments["key"], KEY, "session key")
+        raw_task_id = request.query.get("task_id")
+        task_id = None if raw_task_id is None else parse_task_id(raw_task_id)
+        if raw_task_id is not None and task_id is None:
+            raise HttpError(400, TASK_ID_NOT_DIGITS)
+        return self.lan.close(key, task_id)
+
     def _agent_of(self, guest: str) -> Callable[[], tuple[str, str]]:
         def destination() -> tuple[str, str]:
             address = self.engine.guest_address(guest)
@@ -355,17 +412,19 @@ def _translating_engine_errors(
     return translated
 
 
-def make_handler(
+def make_handler(  # noqa: PLR0913 - the collaborators a test replaces
     engine: GuestEngine,
     *,
     token: str,
     agent_timeout: float = DEFAULT_AGENT_TIMEOUT_SECONDS,
     memory: MemoryAnalyser | None = None,
     symbols: SymbolStore | None = None,
+    lan: LanSessions | None = None,
 ):
     memory = memory or in_container(log=lambda message: control_http.log(SERVICE, message))
     symbols = symbols or symbol_store_in_container()
-    routes = Routes(engine, agent_timeout, memory, symbols).table()
+    lan = lan or lan_in_container(engine, os.environ)
+    routes = Routes(engine, agent_timeout, memory, symbols, lan).table()
     return control_http.make_handler(routes, service=SERVICE, token=token)
 
 
@@ -391,6 +450,8 @@ def main() -> None:
     settings = settings_from(os.environ)
     engine = load_engine()
     handler = make_handler(engine, token=settings.token, agent_timeout=settings.agent_timeout)
+    # No LAN session is closed here: a restart of this service must not cut the fake network of
+    # an analysis that is running. The backend reconciles through GET /lan/sessions.
     server = control_http.make_server(settings.address, settings.port, handler)
     stop_when_told(engine, server)
     control_http.log(SERVICE, f"listening on {settings.address}:{settings.port}")

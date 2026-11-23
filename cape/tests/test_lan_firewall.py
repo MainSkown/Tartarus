@@ -10,6 +10,7 @@ import re
 import shlex
 import shutil
 import subprocess
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from guest_engine.lan_firewall import (
     LanLedger,
     LanSession,
     LanTarget,
+    session_from_dict,
 )
 from guest_engine.media import CommandResult, MediaProblem
 from guest_engine.media.errors import Fault
@@ -333,6 +335,26 @@ def test_a_session_survives_a_round_trip_through_the_ledger(tmp_path):
     ledger.record(SESSION_B)
 
     assert ledger.sessions() == [SESSION_A, SESSION_B]
+
+
+def test_a_session_survives_a_round_trip_through_a_dict():
+    assert session_from_dict(json.loads(json.dumps(asdict(SESSION_A)))) == SESSION_A
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        None,
+        [],
+        {},
+        {"key": "task-1"},
+        {**asdict(SESSION_A), "targets": [{"address": DC}]},
+        {**asdict(SESSION_A), "targets": 5},
+    ],
+)
+def test_a_dict_that_is_not_a_session_is_a_value_error_not_a_key_error(document):
+    with pytest.raises(ValueError, match="not a LAN session"):
+        session_from_dict(document)
 
 
 def test_the_ledger_writes_one_file_per_session_key(tmp_path):

@@ -6,6 +6,7 @@ Loopback addresses stand in for the guest and the fake hosts (Linux binds all of
 
 import asyncio
 import json
+import os
 import threading
 from dataclasses import replace
 
@@ -649,6 +650,52 @@ def test_the_run_loop_opens_and_closes_sessions_from_the_directory_and_stops_on_
         assert world.log("task-1")[-1]["type"] == "session-end"
 
     asyncio.run(body())
+
+
+def test_the_run_loop_touches_the_heartbeat_file_on_every_poll_and_removes_it_on_stop(tmp_path):
+    async def body():
+        world = World(tmp_path)
+        alive = world.layout.alive_file
+        running = asyncio.create_task(world.daemon.run())
+        for _ in range(200):
+            if alive.exists():
+                break
+            await asyncio.sleep(0.01)
+        assert alive.exists()
+
+        os.utime(alive, (1, 1))
+        for _ in range(200):
+            if alive.stat().st_mtime > 1:
+                break
+            await asyncio.sleep(0.01)
+        assert alive.stat().st_mtime > 1
+
+        world.daemon.request_stop()
+        await asyncio.wait_for(running, 5)
+        assert not alive.exists()
+
+    asyncio.run(body())
+
+
+def test_a_heartbeat_that_cannot_be_written_does_not_stop_the_daemon(tmp_path, caplog):
+    async def body():
+        world = World(tmp_path)
+        world.layout.alive_file.symlink_to(tmp_path / "nowhere" / "alive")
+        spec = session()
+        publish_session(world.layout, spec)
+        running = asyncio.create_task(world.daemon.run())
+        for _ in range(200):
+            if world.status("task-1"):
+                break
+            await asyncio.sleep(0.01)
+        assert world.status("task-1") == SessionStatus("listening")
+        world.daemon.request_stop()
+        await asyncio.wait_for(running, 5)
+
+    with caplog.at_level("ERROR", logger="lan_sim"):
+        asyncio.run(body())
+
+    assert len([r for r in caplog.records if "heartbeat" in r.getMessage()]) == 1
 
 
 def test_stopping_the_run_loop_closes_the_sessions_still_open(tmp_path):

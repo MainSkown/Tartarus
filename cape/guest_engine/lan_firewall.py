@@ -29,6 +29,7 @@ import shlex
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from guest_engine.lan_block import block_of
 from guest_engine.media import CommandResult, Runner
@@ -143,19 +144,23 @@ class LanLedger:
         found: list[LanSession] = []
         for file in sorted(self._directory.glob("*.json")):
             try:
-                session = _session_from(json.loads(file.read_text()))
-            except (OSError, ValueError, TypeError, KeyError):
+                session = session_from_dict(json.loads(file.read_text()))
+            except (OSError, ValueError):
                 continue
             if file.name == f"{session.key}.json":
                 found.append(session)
         return found
 
 
-def _session_from(data: dict) -> LanSession:
-    targets = tuple(
-        LanTarget(target["address"], tuple(target["tcp_ports"])) for target in data["targets"]
-    )
-    return LanSession(data["key"], data["guest_address"], targets)
+def session_from_dict(data: Any) -> LanSession:
+    """The inverse of `dataclasses.asdict(session)`; raises `ValueError` for anything else."""
+    try:
+        targets = tuple(
+            LanTarget(target["address"], tuple(target["tcp_ports"])) for target in data["targets"]
+        )
+        return LanSession(data["key"], data["guest_address"], targets)
+    except (TypeError, KeyError) as malformed:
+        raise ValueError(f"not a LAN session: {type(malformed).__name__}") from malformed
 
 
 def _pairs(sessions: Iterable[LanSession]) -> list[tuple[str, str]]:

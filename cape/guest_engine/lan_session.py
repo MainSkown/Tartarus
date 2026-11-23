@@ -7,6 +7,8 @@ images and uses the standard library only (the precedent is `machine_broker_clie
     <root>/sessions/<key>.json   written by the control service, read by the daemon
     <root>/status/<key>.json     written by the daemon
     <root>/logs/<key>.jsonl      written by the daemon (its schema is `lan-sim/SCHEMA.md`)
+    <root>/alive                 touched by the daemon on every poll; the control service reads its
+                                 age to tell a running daemon from a dead one
 
 Open: the control service calls `publish_session`, then `wait_for_status(..., {"listening",
 "failed"})`. The daemon writes `listening` only after every listener of the session is bound, and
@@ -400,6 +402,10 @@ class Layout:
     @property
     def logs_dir(self) -> Path:
         return self.root / "logs"
+
+    @property
+    def alive_file(self) -> Path:
+        return self.root / "alive"
 
     def session_file(self, key: str) -> Path:
         return self.sessions_dir / f"{checked_key(key)}.json"

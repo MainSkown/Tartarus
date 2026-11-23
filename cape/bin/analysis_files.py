@@ -4,14 +4,17 @@
 any moment, while the services in this directory run as root. So everything root does there goes
 through directory descriptors opened with O_NOFOLLOW, and each file it creates is handed to the
 owner of the analysis folder, since CAPE (as `cape`) deletes the folder with its analysis and cannot
-remove what root leaves in it. Used by `memory_logic` (Volatility's results) and by the machine
-broker (the memory dump of a guest).
+remove what root leaves in it. Used by `memory_logic` (Volatility's results), by the machine
+broker (the memory dump of a guest) and by `lan_logic` (the fake local network's event log).
 """
 
 import errno
 import os
+import secrets
+import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 STORAGE_DIRECTORY = Path("/opt/CAPEv2/storage")
@@ -20,6 +23,8 @@ ANALYSIS_DIRECTORY_MODE = 0o755
 DUMP_NAME = "memory.dmp"
 ANALYSES_FOLDER = "analyses"
 COPY_CHUNK_BYTES = 1 << 30
+
+READ_CHUNK_BYTES = 1 << 20
 
 CREATE_NEW_FILE = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 
@@ -90,3 +95,93 @@ def _copy_into(destination: int, staged: Path) -> None:
             pass
     finally:
         os.close(source)
+
+
+class FileTooLargeError(OSError):
+    """The staged file is larger than the limit its caller set."""
+
+
+class NotARegularFileError(OSError):
+    """The staged path is a pipe, a device, a directory: not something to copy."""
+
+
+@dataclass(frozen=True)
+class Placement:
+    """Where in an analysis folder a file goes, and the most it may hold."""
+
+    folder: str
+    name: str
+    limit: int
+
+
+def place_once(staged: Path, storage: Path, task_id: int, placement: Placement) -> bool:
+    """Copies `staged` to `<storage>/analyses/<task_id>/<folder>/<name>`, owned like the analysis
+    folder, and returns False, changing nothing, when `name` is already there: the first copy wins.
+
+    The staged file belongs to another, less trusted service, so it is opened without following a
+    link, must be a regular file and is refused above the limit however it grows meanwhile.
+    The folder is created when missing, but the analysis folder is not (`FileNotFoundError`: the
+    analysis is gone). The copy goes to a temporary name and is linked into place, which fails
+    rather than replaces, so a racing second copy cannot clobber the first.
+    """
+    source = _open_staged(staged, placement.limit)
+    try:
+        with _open_analysis_folder(storage, task_id) as analysis:
+            owner = os.fstat(analysis)
+            _make_folder(analysis, placement.folder, owner)
+            with open_directory(placement.folder, analysis) as target:
+                return _link_copy(source, target, placement, owner)
+    finally:
+        os.close(source)
+
+
+def _open_staged(staged: Path, limit: int) -> int:
+    # O_NONBLOCK so that a pipe planted in the log's place cannot hang this service on open.
+    descriptor = os.open(staged, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        status = os.fstat(descriptor)
+        if not stat.S_ISREG(status.st_mode):
+            raise NotARegularFileError(errno.EINVAL, "not a regular file", str(staged))
+        if status.st_size > limit:
+            raise FileTooLargeError(errno.EFBIG, f"larger than {limit} bytes", str(staged))
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
+def _make_folder(analysis: int, name: str, owner: os.stat_result) -> None:
+    try:
+        os.mkdir(name, ANALYSIS_DIRECTORY_MODE, dir_fd=analysis)
+    except FileExistsError:
+        return
+    with open_directory(name, analysis) as created:
+        hand_over(created, owner, ANALYSIS_DIRECTORY_MODE)
+
+
+def _link_copy(source: int, folder: int, placement: Placement, owner: os.stat_result) -> bool:
+    name = placement.name
+    temporary = f".{name}.{secrets.token_hex(4)}.tmp"
+    destination = os.open(temporary, CREATE_NEW_FILE, ANALYSIS_FILE_MODE, dir_fd=folder)
+    try:
+        _copy_capped(source, destination, placement.limit)
+        hand_over(destination, owner, ANALYSIS_FILE_MODE)
+        try:
+            os.link(temporary, name, src_dir_fd=folder, dst_dir_fd=folder, follow_symlinks=False)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        os.close(destination)
+        os.unlink(temporary, dir_fd=folder)
+
+
+def _copy_capped(source: int, destination: int, limit: int) -> None:
+    copied = 0
+    while chunk := os.read(source, READ_CHUNK_BYTES):
+        copied += len(chunk)
+        if copied > limit:
+            raise FileTooLargeError(errno.EFBIG, f"larger than {limit} bytes")
+        view = memoryview(chunk)
+        while view:
+            view = view[os.write(destination, view) :]

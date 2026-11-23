@@ -398,6 +398,10 @@ def test_the_layout_puts_each_file_kind_in_its_own_directory(tmp_path):
     assert layout.log_file("task-1") == tmp_path / "logs" / "task-1.jsonl"
 
 
+def test_the_daemons_heartbeat_file_is_directly_under_the_root(tmp_path):
+    assert Layout(tmp_path).alive_file == tmp_path / "alive"
+
+
 def test_the_default_root_is_run_lan_sim():
     assert Layout().root == Path("/run/lan-sim")
 

@@ -811,6 +811,7 @@ def launch_script_without_engine(tmp_path) -> tuple[subprocess.Popen, Client]:
         "analysis_files.py",
         "control_http.py",
         "finish_logic.py",
+        "lan_logic.py",
         "memory_logic.py",
         "symbols_logic.py",
         "volatility.py",

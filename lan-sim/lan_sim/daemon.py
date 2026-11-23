@@ -114,6 +114,7 @@ class Daemon:
         self._failed: dict[str, Signature] = {}
         self._listeners: dict[Address, _Listener] = {}
         self._stop = asyncio.Event()
+        self._heartbeat_failing = False
         self.refused_unknown_source = 0
 
     def request_stop(self) -> None:
@@ -132,11 +133,26 @@ class Daemon:
         self._close_stale_statuses()
         try:
             while not self._stop.is_set():
+                self._beat()
                 await self._reconcile_once_safely()
                 with suppress(TimeoutError):
                     await asyncio.wait_for(self._stop.wait(), self._poll_interval)
         finally:
             await self.shutdown()
+            with suppress(OSError):
+                self._layout.alive_file.unlink(missing_ok=True)
+
+    def _beat(self) -> None:
+        """The control service reads the age of this file to know the daemon is running, so a
+        daemon that hangs (or dies without `finally`) stops being offered to analyses."""
+        try:
+            self._layout.alive_file.touch()
+        except OSError as error:
+            if not self._heartbeat_failing:
+                self._logger.error("cannot write the heartbeat file: %s", error.strerror)
+            self._heartbeat_failing = True
+        else:
+            self._heartbeat_failing = False
 
     async def shutdown(self) -> None:
         for key in list(self._sessions):
