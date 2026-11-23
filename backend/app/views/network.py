@@ -1,5 +1,6 @@
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 
 from app.ingest.attribution import Key, dns_key, endpoint_key, url_key
 from app.schemas.views_events import (
@@ -19,6 +20,7 @@ from app.views.event_fields import (
     Source,
     event_id,
     event_time,
+    flag_at,
     hits_of,
     int_at,
     process_ref,
@@ -100,13 +102,37 @@ def _flow_row(event: Source) -> FlowRow:
         destination_ip=text_at(event, "destination", "ip"),
         destination_port=int_at(event, "destination", "port"),
         process=process_ref(event),
+        simulated=flag_at(event, "tartarus", "lan", "simulated"),
     )
 
 
+@dataclass(frozen=True)
+class _FakeHost:
+    fqdn: str | None
+    role: str | None
+
+
+def _fake_hosts(flow_events: Iterable[Source]) -> dict[str, _FakeHost]:
+    """The fake hosts the flows went to, by address, as the flows' own `tartarus.lan` names them."""
+    return {
+        address: _FakeHost(
+            text_at(event, "tartarus", "lan", "host"), text_at(event, "tartarus", "lan", "role")
+        )
+        for event in flow_events
+        if flag_at(event, "tartarus", "lan", "simulated")
+        and (address := text_at(event, "destination", "ip"))
+    }
+
+
 def _hosts(
-    dns: Iterable[DnsRow], http: Iterable[HttpRow], flows: Iterable[FlowRow]
+    dns: Iterable[DnsRow],
+    http: Iterable[HttpRow],
+    flows: Iterable[FlowRow],
+    fake_hosts: Mapping[str, _FakeHost],
 ) -> list[HostRow]:
-    """Addresses count their connections; names count their lookups and requests."""
+    """Addresses count their connections; names count their lookups and requests. The address of
+    a fake host is marked, and its first related name is its own.
+    """
     dns = list(dns)
     addresses = Counter(flow.destination_ip for flow in flows if flow.destination_ip)
     names: Counter[str] = Counter(_name(row.query) for row in dns)
@@ -118,7 +144,7 @@ def _hosts(
             names_of.setdefault(answer, []).append(_name(row.query))
             addresses_of.setdefault(_name(row.query), []).append(answer)
     hosts = [
-        HostRow(host=address, kind="ip", count=count, related=_distinct(names_of.get(address, [])))
+        _address_row(address, count, names_of.get(address, []), fake_hosts.get(address))
         for address, count in addresses.items()
     ] + [
         HostRow(
@@ -127,6 +153,21 @@ def _hosts(
         for name, count in names.items()
     ]
     return sorted(hosts, key=lambda host: (-host.count, host.host))
+
+
+def _address_row(address: str, count: int, names: list[str], fake: _FakeHost | None) -> HostRow:
+    if fake is None:
+        return HostRow(host=address, kind="ip", count=count, related=_distinct(names))
+    own_name = [] if fake.fqdn is None else [_name(fake.fqdn)]
+    return HostRow(
+        host=address,
+        kind="ip",
+        count=count,
+        related=_distinct([*own_name, *names]),
+        simulated=True,
+        lan_host=fake.fqdn,
+        lan_role=fake.role,
+    )
 
 
 def _name(name: str) -> str:
@@ -147,13 +188,16 @@ def shape_network(events: Sequence[Source], *, simulated: bool, limit: int) -> N
     dns = _rows(shown, "dns-query", _dns_row)
     http = _rows(shown, "http-request", _http_row)
     flows = _rows(shown, "network-connection", _flow_row)
+    fake_hosts = _fake_hosts(
+        e for e in shown if text_at(e, "event", "action") == "network-connection"
+    )
     return NetworkView(
         dns=_listing(dns, limit),
         http=_listing(http, limit),
         tls=_listing(list[TlsRow](), limit),
         flows=_listing(flows, limit),
         alerts=_listing(list[NetworkAlertRow](), limit),
-        hosts=_listing(_hosts(dns, http, flows), limit),
+        hosts=_listing(_hosts(dns, http, flows, fake_hosts), limit),
         simulated=simulated,
     )
 

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.ingest.protocol import IngestContext, Normalizer
+from app.ingest.protocol import IngestContext, LanHost, Normalizer
 
 STARTED = datetime(2026, 10, 13, 10, 12, 18, tzinfo=UTC)
 
@@ -55,3 +55,21 @@ def test_context_has_no_host_registrations_unless_given() -> None:
     assert IngestContext(analysis_id=6, started_at=STARTED).host_registrations == {}
     registered = {9708: STARTED}
     assert IngestContext(6, STARTED, registered).host_registrations == registered
+
+
+def test_context_has_no_fake_lan_hosts_unless_given_some() -> None:
+    assert IngestContext(analysis_id=6, started_at=STARTED).lan_hosts == {}
+
+
+def test_a_fake_lan_host_is_immutable_and_hashable_whatever_its_services() -> None:
+    host = LanHost("fs01.corp.local", "file-server", "small-office", {445: "smb"})
+
+    assert hash(host) == hash(LanHost("fs01.corp.local", "file-server", "small-office"))
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        host.role = "other"  # type: ignore[misc]
+
+
+def test_the_services_of_a_fake_host_are_named_by_port() -> None:
+    host = LanHost("fs01.corp.local", "file-server", "small-office", {445: "smb", 3389: "rdp"})
+
+    assert host.services[445] == "smb"

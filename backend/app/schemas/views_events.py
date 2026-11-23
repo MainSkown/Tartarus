@@ -108,6 +108,9 @@ class FlowRow(ApiModel):
     destination_ip: str | None
     destination_port: int | None
     process: ProcessRef | None
+    simulated: bool = Field(
+        default=False, description="The flow went to a host of the fake local network."
+    )
 
 
 class NetworkAlertRow(ApiModel):
@@ -123,6 +126,15 @@ class HostRow(ApiModel):
     kind: str
     count: int
     related: list[str]
+    simulated: bool = Field(
+        default=False, description="The address is a host of the fake local network."
+    )
+    lan_host: str | None = Field(
+        default=None, description="Fully qualified name of that fake host."
+    )
+    lan_role: str | None = Field(
+        default=None, description="Role the preset gives that fake host, such as file-server."
+    )
 
 
 class Listing[T](ApiModel):

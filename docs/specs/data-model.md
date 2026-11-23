@@ -93,7 +93,7 @@ Common fields on every document:
 | `event.category` | keyword[] | ECS categories (`process`, `file`, `registry`, `network`, `malware`, `intrusion_detection`, …) |
 | `event.type` | keyword[] | ECS types (`start`, `end`, `creation`, `deletion`, `change`, `access`, `connection`, `protocol`, `info`, `indicator`) |
 | `event.action` | keyword | Specific action, e.g. `process-created`, `file-written`, `reg-value-set`, `dns-query`, `api-call`, `inject-thread` |
-| `event.module` | keyword | `capemon`, `sysmon`, `suricata`, `volatility`, `cape`, `defender`, `sigma`, `yara`, `tartarus` |
+| `event.module` | keyword | `capemon`, `sysmon`, `suricata`, `volatility`, `cape`, `defender`, `lan-sim`, `sigma`, `yara`, `tartarus` |
 | `event.dataset` | keyword | e.g. `capemon.api`, `sysmon.evtx`, `suricata.alert`, `cape.signature`, `defender.operational`, `volatility.malfind` |
 | `event.severity` | integer | 0 info, 1 low, 2 medium, 3 high, 4 critical (alerts only) |
 | `event.outcome` | keyword | `success` or `failure`, on action events (Defender); omitted otherwise |
@@ -127,7 +127,28 @@ Category fields:
 | registry | `registry.path`, `registry.hive`, `registry.key`, `registry.value`, `registry.data.type`, `registry.data.strings` |
 | network | `source.ip`/`port`, `destination.ip`/`port`/`domain`, `network.transport`, `network.protocol`, `dns.question.name`, `dns.question.type`, `dns.answers.data`, `url.full`, `http.request.method`, `http.response.status_code`, `user_agent.original`, `tls.server.sni`, `tls.server.ja3s`, `tls.client.ja3` |
 | api | `api.name` (keyword), `api.category` (capemon category: process, filesystem, registry, network, synchronisation, crypto, …), `api.status` (bool), `api.return_value` (keyword), `api.arguments` (`flat_object`: arbitrary argument names without mapping explosion), `api.repeated` (count when capemon collapsed repeats) |
+| fake LAN | the `tartarus.lan.*` fields (below), on every event that involves a host of the fake local network, besides the network and file fields of the lane the event is in |
 | memory | `tartarus.memory.plugin` (Volatility plugin), `tartarus.memory.address`, `tartarus.memory.protection`, `tartarus.memory.dump_ref` (artefact id, unset: v1 does not extract regions), `tartarus.memory.note` (what the plugin says about the region) |
+
+Fake local network (analyses run with a `lan_preset`; every field is on events of lane `network`):
+
+| Field | Type | Notes |
+|---|---|---|
+| `tartarus.lan.simulated` | boolean | `true` on every event that involves a fake host: the `cape-network` flows to it and every `lan-sim` event. Alias `lan` |
+| `tartarus.lan.host` | keyword | The fake host's FQDN (`fs01.corp.local`); not on derived events, which name their hosts in `related.hosts` |
+| `tartarus.lan.role` | keyword | The role the preset gives the host (`domain-controller`, `file-server`, ...); absent when the preset does not list the address |
+| `tartarus.lan.service` | keyword | `smb`, `rdp`, `winrm`, `ssh`, `ldap` or `mssql`; a list on a fan-out |
+| `tartarus.lan.preset` | keyword | The preset id the analysis ran with |
+| `tartarus.lan.share` | keyword | The SMB share as the sample wrote the name (`ADMIN$`) |
+| `tartarus.lan.count` | long | Distinct hosts a derived event stands for; events an aggregate stands for |
+| `tartarus.lan.mechanism` | keyword | `ntlm`, `basic`, `password`, `publickey`, `sql` or `ldap-simple` |
+| `tartarus.lan.credential` | keyword | The secret as the sample sent it (a password, a key fingerprint, or a NetNTLM hash). **Untrusted, sample-supplied** |
+| `tartarus.lan.request` | keyword | The share operation (`tree-connect`, `write`, ...) or the protocol request (`svcctl CreateService`) |
+| `tartarus.lan.detail` | keyword + text subfield | The request's argument as the sample sent it. **Untrusted, sample-supplied** |
+
+`user.name`, `user.domain`, `file.*`, `source.*`, `destination.*`, `network.*`, `event.outcome` and `related.*`
+are the existing catalog fields. Every string that comes from the sample is cleaned of control and format
+characters and cut at a cap before it reaches an event, and must still be escaped by whatever renders it.
 
 Detections (`event.kind: alert`, lane = the lane of the triggering event, drawn on the
 detections track):
@@ -171,6 +192,7 @@ becomes in the event document.
 | Defender 1116 (malware detected), 1117/1118/1119 (action taken, failed), from the host export `aux/defender.xml` | n/a | detection `malware-detected`, `rule.ruleset: defender`; actions `malware-quarantined`, `malware-removed`, `malware-action-failed` | file |
 | YARA hit (file, memory or payload) | n/a | detection, `rule.ruleset: yara` | file or memory |
 | Volatility3 findings (malfind, hollowprocesses), from `memory/` | n/a | `memory-finding`, and a detection `injection-detected` / `hollowing-detected`, `rule.ruleset: volatility` | memory |
+| Fake-LAN daemon log `lansim/events.jsonl`: `login-attempt`, `share-access`, `file-write`, `service-request`, `aggregate` | n/a | `lan-login-attempt`, `lan-share-access`, `lan-file-write`, `lan-service-request`, `lan-aggregate`; derived `lan-sweep`, `lan-fan-out`, `lan-credential-spray` | network |
 
 The Sysmon rows are final-phase sources: the guest's Sysmon log is exported at the end of the run to
 `sysmon/sysmon.xml`, and there is no live forwarder, so these events arrive with the final report, never in the
@@ -507,6 +529,54 @@ Final phase, `event.module: volatility`, `event.dataset: volatility.<plugin>` (`
   12 more malfind rows, Defender and OneDrive). The rule rests on one guest and 4 runs.
 
 Fields this source adds to the catalog: `tartarus.memory.note`; `rule.ruleset` gains `volatility`.
+
+#### `lan-sim` (`lansim/events.jsonl`)
+
+Reads the fake-LAN daemon's log from the analysis folder (`backend/app/ingest/lan_sim*.py`, the log's
+schema is `lan-sim/SCHEMA.md`) and, for the derived events, the report. `event.module: lan-sim`, lane
+`network`, `phase: final`. Without `context.lan_hosts` (no preset, or its hosts could not be looked up)
+it yields nothing. The hosts, by address, come from the control service's preset list at final ingest.
+
+The log is **untrusted**: every string came from malware. It is read with a 64 KiB line cap and a 16 MiB
+file cap, every string is cleaned and cut again (control, format, line-separator and private-use
+characters removed, a final `…` on a cut), and a line that is truncated, not JSON, of an unknown type,
+or with a wrong-typed field is skipped alone. A missing file, or no folder, is no events.
+
+| Record | Event | Fields |
+|---|---|---|
+| `login-attempt` | `lan-login-attempt`: category `network`, `authentication`, type `start`, `event.outcome` `success` or `failure` | `user.name`, `user.domain`, `tartarus.lan.mechanism`, `tartarus.lan.credential` |
+| `share-access` | `lan-share-access`: category `network`, `file`; type `creation` (create), `deletion` (delete), `change` (rename, write) else `access` | `tartarus.lan.share`, `tartarus.lan.request` (the operation), `file.path`/`name`/`extension`; a rename's `<old> -> <new>` is `file.path` and `file.target_path` |
+| `file-write` | `lan-file-write`: category `network`, `file`, type `change` | `file.path`, `file.size`, `file.hash.sha256`, `tartarus.lan.share`; a truncated stored copy is said in the summary |
+| `service-request` | `lan-service-request`: category `network`, type `protocol` | `tartarus.lan.request` (the name), `tartarus.lan.detail` |
+| `aggregate` | `lan-aggregate`: one event with the counts, so a flood the daemon stopped logging is not lost; placed at `first_time`; category `network`, type `info` | `tartarus.lan.count`, `user.name` (the distinct users, a list), `tartarus.lan.credential` (the distinct secrets, a list); `by_type` is in `tartarus.raw` and the summary |
+| `connection` | none: the pcap's flow is the row | |
+| `session-end` | none: kept on `LanSimNormalizer.session_end` (`log_truncated`, the counters) for the summary | |
+
+Every event also has `source.ip/port`, `destination.ip/port` and `destination.domain` (the FQDN),
+`network.transport: tcp`, `network.protocol` (the service), and `tartarus.lan.simulated`, `.host`, `.service`,
+and `.role` and `.preset` from the preset. The id is `sha1(analysis, "lan-sim", "events", line number)`, so
+a skipped line moves no other id. No event has `process.command_line`: no process is involved in a request.
+
+- **Attribution.** As `cape-network`: `process.*` only when exactly one process has a capemon `connect` to the
+  event's `(destination ip, port)`, listed in `related.events`. No `connect`, or two processes, no process.
+- **Flows are not repeated.** The flows to fake hosts are `cape-network`'s rows (same count with and
+  without the log), flagged with `tartarus.lan.simulated`, `.host`, `.role`, `.preset`; `lan-sim` events
+  enrich them and are not rows of the Network tab.
+- **Derived events** (the Sigma matcher is single-event): `lan-sweep` (one process, >= 5 distinct fake hosts on
+  one port within 30 s), `lan-fan-out` (one process, >= 4 hosts over >= 2 services within 5 min) and
+  `lan-credential-spray` (one process, >= 3 hosts with login attempts under one user name, compared without
+  case, within 5 min). The numbers are `SWEEP`, `FAN_OUT` and `CREDENTIAL_SPRAY` in `app/ingest/lan_derived.py`,
+  the only place to change them. A window opens at the earliest unused contact, takes everything within the
+  window, and when it meets the rule it is one event and uses its contacts, so a long scan is one event
+  per window and not one per host. Contacts are capemon's `connect` calls and, for endpoints capemon did not
+  see, the pcap's `tcp[]` flows (no process; their time is the flow's relative time, up to a few seconds
+  early); `dead_hosts` has no time and is not read. Sweeps and fan-outs need only the report, so they exist
+  without the log. Each event has `event.kind: event`, `event.dataset: lan-sim.derived`, `tartarus.lan.count`
+  (distinct hosts), `related.hosts` (FQDNs), `related.ip`, `related.events` (the contacts' events, at most 50),
+  the process when attributable, `destination.port` (sweep) or `user.name` (spray), and the time of its first contact.
+
+Fields this source adds to the catalog: `tartarus.lan.{simulated, host, role, service, preset, share, count,
+mechanism, credential, request, detail}`.
 
 ### Sigma field mapping
 Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` →

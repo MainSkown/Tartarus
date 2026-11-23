@@ -152,3 +152,114 @@ def test_simulated_is_passed_through_and_tls_and_alerts_stay_empty() -> None:
 
     assert view.simulated is True
     assert (view.tls.items, view.tls.total, view.alerts.items, view.alerts.total) == ([], 0, [], 0)
+
+
+# --- the fake local network ---------------------------------------------------------------------
+
+
+def fake_flow(address: str, port: int, host: str, role: str, dataset: str = PCAP) -> dict[str, Any]:
+    return connection(
+        address,
+        port,
+        dataset,
+        tartarus={"lan": {"simulated": True, "host": host, "role": role, "preset": "small-office"}},
+    )
+
+
+def lan_event(action: str, address: str, port: int) -> dict[str, Any]:
+    return event(
+        action,
+        "lan-sim.log",
+        "2026-01-01T00:00:04Z",
+        f"{action}-{address}",
+        destination={"ip": address, "port": port, "domain": "fs01.corp.local"},
+        source={"ip": "10.0.0.2", "port": 5000},
+        tartarus={"lan": {"simulated": True, "host": "fs01.corp.local"}},
+    )
+
+
+def test_a_flow_to_a_fake_host_is_marked_and_any_other_is_not() -> None:
+    view = shape(
+        [
+            fake_flow("192.168.150.201", 445, "fs01.corp.local", "file-server"),
+            connection("1.2.3.4", 80),
+        ]
+    )
+
+    assert [(row.destination_ip, row.simulated) for row in view.flows.items] == [
+        ("192.168.150.201", True),
+        ("1.2.3.4", False),
+    ]
+
+
+def test_the_host_row_of_a_fake_address_is_marked_and_names_the_host_by_its_fqdn() -> None:
+    view = shape(
+        [
+            fake_flow("192.168.150.201", 445, "fs01.corp.local", "file-server"),
+            fake_flow("192.168.150.201", 3389, "fs01.corp.local", "file-server"),
+            connection("1.2.3.4", 80),
+        ]
+    )
+
+    hosts = {row.host: row for row in view.hosts.items}
+    fake = hosts["192.168.150.201"]
+    assert (fake.simulated, fake.lan_host, fake.lan_role, fake.count) == (
+        True,
+        "fs01.corp.local",
+        "file-server",
+        2,
+    )
+    assert fake.related == ["fs01.corp.local"]
+    other = hosts["1.2.3.4"]
+    assert (other.simulated, other.lan_host, other.lan_role) == (False, None, None)
+
+
+def test_the_fqdn_comes_before_the_names_that_resolved_to_a_fake_address() -> None:
+    view = shape(
+        [
+            dns("fileserver.corp.local", answers=["192.168.150.201"]),
+            fake_flow("192.168.150.201", 445, "fs01.corp.local", "file-server"),
+        ]
+    )
+
+    [fake] = [row for row in view.hosts.items if row.host == "192.168.150.201"]
+    assert fake.related == ["fs01.corp.local", "fileserver.corp.local"]
+
+
+def test_the_fqdn_is_not_listed_twice_when_a_lookup_found_it_too() -> None:
+    view = shape(
+        [
+            dns("FS01.corp.local.", answers=["192.168.150.201"]),
+            fake_flow("192.168.150.201", 445, "fs01.corp.local", "file-server"),
+        ]
+    )
+
+    [fake] = [row for row in view.hosts.items if row.host == "192.168.150.201"]
+    assert fake.related == ["fs01.corp.local"]
+
+
+def test_a_domain_row_is_never_marked_as_a_fake_host() -> None:
+    view = shape([dns("fs01.corp.local", answers=["192.168.150.201"])])
+
+    assert [(row.host, row.simulated) for row in view.hosts.items] == [("fs01.corp.local", False)]
+
+
+def test_the_events_of_the_fake_hosts_log_add_no_row_to_any_list() -> None:
+    flows = [fake_flow("192.168.150.201", 445, "fs01.corp.local", "file-server")]
+    enriching = [
+        lan_event("lan-login-attempt", "192.168.150.201", 445),
+        lan_event("lan-share-access", "192.168.150.201", 445),
+        lan_event("lan-file-write", "192.168.150.201", 445),
+        lan_event("lan-sweep", "192.168.150.201", 445),
+    ]
+
+    plain = shape(flows)
+    with_log = shape([*flows, *enriching])
+
+    assert with_log == plain
+
+
+def test_a_view_without_fake_hosts_marks_nothing() -> None:
+    view = shape([connection("192.168.150.201", 445), dns("a.example", answers=["1.1.1.1"])])
+
+    assert not any(row.simulated for row in [*view.flows.items, *view.hosts.items])

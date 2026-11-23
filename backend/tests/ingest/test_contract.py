@@ -7,6 +7,7 @@ from app.ingest.cape_network import CapeNetworkNormalizer
 from app.ingest.cape_signatures import CapeSignaturesNormalizer
 from app.ingest.capemon import CapemonNormalizer
 from app.ingest.defender import DefenderNormalizer
+from app.ingest.lan_sim import LanSimNormalizer
 from app.ingest.protocol import IngestContext, Normalizer
 from app.ingest.sysmon import SysmonNormalizer
 from app.ingest.volatility import VolatilityNormalizer
@@ -23,6 +24,8 @@ from tests.ingest.defender_cases import (
     copy_export,
     report_of,
 )
+from tests.ingest.lan_sim_cases import context_of as lan_context_of
+from tests.ingest.lan_sim_cases import file_write, login, service_request, write_log
 from tests.ingest.sysmon_cases import WIDE_REPORT, analysis_with_fixture
 from tests.ingest.sysmon_cases import context_of as sysmon_context_of
 from tests.ingest.volatility_cases import (
@@ -95,3 +98,15 @@ def test_volatility_does_not_raise_on_a_report_without_processes(tmp_path: Path)
     write_fixture_memory(tmp_path, MALFIND, PSLIST, malfind_pids=SAMPLE_PIDS)
 
     check_tolerates_junk(VolatilityNormalizer(), volatility_context_of(tmp_path))
+
+
+def test_lan_sim_keeps_the_contract_on_its_log(tmp_path: Path) -> None:
+    write_log(tmp_path, [login(), file_write(), service_request()])
+
+    check_normalizer_contract(LanSimNormalizer(), WIDE_REPORT, lan_context_of(tmp_path))
+
+
+def test_lan_sim_does_not_raise_on_a_report_without_processes(tmp_path: Path) -> None:
+    write_log(tmp_path, [login()])
+
+    check_tolerates_junk(LanSimNormalizer(), lan_context_of(tmp_path))

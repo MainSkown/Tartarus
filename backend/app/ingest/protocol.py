@@ -6,6 +6,19 @@ from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
+class LanHost:
+    """A host of the analysis's fake local network, as its preset names it.
+
+    `services` maps a port to the kind of service the host serves there (`445` to `smb`).
+    """
+
+    fqdn: str
+    role: str
+    preset: str
+    services: Mapping[int, str] = field(default_factory=dict, hash=False)
+
+
+@dataclass(frozen=True)
 class IngestContext:
     """What a normaliser knows about the analysis beyond the report itself.
 
@@ -19,12 +32,16 @@ class IngestContext:
     `analysis_dir` is the folder of CAPE's task, where the sources that are not part of
     `report.json` leave their files (`sysmon/sysmon.xml`, `aux/defender.xml`); `None` when the
     caller has no folder to offer.
+
+    `lan_hosts` is the fake local network the analysis ran with, by the host's address; empty when
+    the feature was off, and then no event is flagged as simulated.
     """
 
     analysis_id: int
     started_at: datetime
     host_registrations: Mapping[int, datetime] = field(default_factory=dict)
     analysis_dir: Path | None = None
+    lan_hosts: Mapping[str, LanHost] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.started_at.tzinfo is None:

@@ -7,12 +7,14 @@ never turns a good analysis into a failed one, so a close that fails is retried 
 
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Protocol
 
 from app.db.models import Analysis
 from app.db.models.analysis import ACTIVE_STATUSES
 from app.guest.errors import GuestControlError, GuestControlRejected
+from app.guest.lan_schemas import LanPreset
+from app.ingest.protocol import LanHost
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,8 @@ _OUR_KEY = re.compile(rf"{KEY_PREFIX}([1-9][0-9]*)")
 
 class LanControl(Protocol):
     """The fake-LAN session routes of the guest control service."""
+
+    async def lan_presets(self) -> list[LanPreset]: ...
 
     async def lan_sessions(self) -> list[str]: ...
 
@@ -73,6 +77,34 @@ class LanSessions:
         except GuestControlError as error:
             await self.close(analysis, task_id=None)
             raise LanStartError(_start_failure(str(error))) from None
+
+    async def hosts_of(self, analysis: Analysis) -> tuple[Mapping[str, LanHost], list[str]]:
+        """The fake hosts the analysis's preset has, by address, for the ingest to flag them; and
+        the warnings for the analyst. A preset that cannot be looked up gives no hosts and a
+        warning: the run is still ingested, only without the fake-LAN flags and events.
+        """
+        preset_id = lan_preset_of(analysis)
+        if preset_id is None:
+            return {}, []
+        try:
+            presets = await self._control.lan_presets()
+        except GuestControlError as error:
+            logger.warning(
+                "The fake-LAN presets could not be read for analysis %s: %s", analysis.id, error
+            )
+            return {}, [_lookup_warning(preset_id, "the control service could not be asked")]
+        preset = next((offered for offered in presets if offered.id == preset_id), None)
+        if preset is None:
+            return {}, [_lookup_warning(preset_id, "the control service no longer offers it")]
+        return {
+            host.address: LanHost(
+                host.fqdn,
+                host.role,
+                preset.id,
+                {service.port: service.kind for service in host.services},
+            )
+            for host in preset.hosts
+        }, []
 
     async def close(self, analysis: Analysis, task_id: int | None) -> None:
         """Copies the session's log into the task's folder and closes it. The ingest reads that
@@ -126,6 +158,13 @@ class LanSessions:
             self._listing_due = True
             return False
         return True
+
+
+def _lookup_warning(preset_id: str, why: str) -> str:
+    return (
+        f"The hosts of the fake local network {preset_id!r} could not be looked up ({why}), so "
+        "the Network tab does not mark them and the events of their log were not indexed."
+    )
 
 
 def _start_failure(why: str) -> str:

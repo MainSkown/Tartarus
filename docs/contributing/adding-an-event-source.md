@@ -14,7 +14,8 @@ The interface is `Normalizer` in `backend/app/ingest/protocol.py`, a `typing.Pro
   yields event dicts.
 
 `IngestContext` (same file) carries the analysis id, the start time (timezone-aware UTC, refused if
-naive), the host's process registrations, and `analysis_dir`. The last is where sources that are not
+naive), the host's process registrations, the fake local network's hosts (`lan_hosts`, empty when the
+feature was off) and `analysis_dir`. The last is where sources that are not
 in `report.json` leave their files, such as `sysmon/sysmon.xml` and `aux/defender.xml`.
 
 Three rules come with the protocol, and the contract test checks them:
@@ -33,6 +34,7 @@ The built-in normalisers are, with their modules:
 | `SysmonNormalizer` | `backend/app/ingest/sysmon.py` |
 | `DefenderNormalizer` | `backend/app/ingest/defender.py` |
 | `VolatilityNormalizer` | `backend/app/ingest/volatility.py` |
+| `LanSimNormalizer` | `backend/app/ingest/lan_sim.py` |
 
 ## Build events with the shared helpers
 

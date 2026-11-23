@@ -2,8 +2,8 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
@@ -619,6 +619,7 @@ class Runner:
             )
             return
         await self._lan.close(analysis, task_id)
+        lan_hosts, lan_warnings = await self._lan.hosts_of(analysis)
         memory = await self._memory.run(analysis, task_id)
         try:
             indexed = await self._ingester.ingest(
@@ -626,6 +627,7 @@ class Runner:
                 report_file,
                 started_at=_capture_start(analysis),
                 archive_entry=analysis.options.get("archive_entry"),
+                lan_hosts=lan_hosts,
             )
         except IngestFailedError as failure:
             # The ingester removes a half-built index, so no events are left to count.
@@ -638,6 +640,7 @@ class Runner:
             )
             return
         memory = await self._memory.release(analysis, task_id, memory)
+        outcome = replace(outcome, summary=_with_warnings(outcome.summary, lan_warnings))
         await self._finish_done(session, analysis_id, outcome, indexed, memory)
 
     async def _finish_done(
@@ -768,6 +771,12 @@ def _with_entry_sha256(summary: dict[str, Any], sha256: str | None) -> dict[str,
     if sha256 is None:
         return summary
     return {**summary, "sample": {**summary.get("sample", {}), "entry_sha256": sha256}}
+
+
+def _with_warnings(summary: dict[str, Any], warnings: Sequence[str]) -> dict[str, Any]:
+    if not warnings:
+        return summary
+    return {**summary, "warnings": [*summary.get("warnings", []), *warnings]}
 
 
 def _task_options(options: Mapping[str, Any], interactive: InteractiveOptions) -> str:

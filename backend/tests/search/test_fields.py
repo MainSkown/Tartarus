@@ -126,6 +126,19 @@ DEFENDER = [
     "tartarus.defender.status_code",
     "tartarus.defender.clock",
 ]
+LAN = [
+    "tartarus.lan.simulated",
+    "tartarus.lan.host",
+    "tartarus.lan.role",
+    "tartarus.lan.service",
+    "tartarus.lan.preset",
+    "tartarus.lan.share",
+    "tartarus.lan.count",
+    "tartarus.lan.mechanism",
+    "tartarus.lan.credential",
+    "tartarus.lan.request",
+    "tartarus.lan.detail",
+]
 SPEC_FIELDS = (
     COMMON
     + PROCESS
@@ -138,6 +151,7 @@ SPEC_FIELDS = (
     + DETECTION
     + ACCOUNT_AND_ERROR
     + DEFENDER
+    + LAN
 )
 
 
@@ -192,6 +206,17 @@ def test_every_field_is_described_and_has_an_example() -> None:
         ("api.status", FieldType.BOOLEAN),
         ("api.arguments", FieldType.FLAT_OBJECT),
         ("tartarus.raw", FieldType.OBJECT_DISABLED),
+        ("tartarus.lan.simulated", FieldType.BOOLEAN),
+        ("tartarus.lan.count", FieldType.LONG),
+        ("tartarus.lan.host", FieldType.KEYWORD),
+        ("tartarus.lan.role", FieldType.KEYWORD),
+        ("tartarus.lan.service", FieldType.KEYWORD),
+        ("tartarus.lan.preset", FieldType.KEYWORD),
+        ("tartarus.lan.share", FieldType.KEYWORD),
+        ("tartarus.lan.mechanism", FieldType.KEYWORD),
+        ("tartarus.lan.credential", FieldType.KEYWORD),
+        ("tartarus.lan.request", FieldType.KEYWORD),
+        ("tartarus.lan.detail", FieldType.KEYWORD_WITH_TEXT),
     ],
 )
 def test_field_types_follow_the_spec(name: str, expected: FieldType) -> None:
@@ -210,6 +235,29 @@ def test_fields_carry_their_lane_only_when_the_spec_assigns_one() -> None:
     assert field_by_name("tartarus.inject.target_command_line").lane is Lane.PROCESS
     assert field_by_name("event.id").lane is None
     assert field_by_name("rule.name").lane is None
+
+
+@pytest.mark.parametrize("name", LAN)
+def test_every_fake_lan_field_belongs_to_the_network_lane_and_says_what_it_holds(
+    name: str,
+) -> None:
+    field = field_by_name(name)
+    assert field.lane is Lane.NETWORK
+    assert len(field.description) > 20
+
+
+@pytest.mark.parametrize("name", ["tartarus.lan.credential", "tartarus.lan.detail"])
+def test_the_fields_that_carry_what_the_sample_sent_say_they_are_untrusted(name: str) -> None:
+    assert "untrusted" in field_by_name(name).description.lower()
+
+
+def test_lan_is_the_alias_of_the_simulated_flag() -> None:
+    assert resolve_field("lan") is field_by_name("tartarus.lan.simulated")
+
+
+def test_the_fake_lan_reuses_the_ecs_fields_the_catalog_already_has() -> None:
+    reused = ["user.name", "user.domain", "file.size", "file.hash.sha256", "event.outcome"]
+    assert [name for name in reused if name not in {f.name for f in FIELDS}] == []
 
 
 def test_field_by_name_rejects_an_unknown_name() -> None:

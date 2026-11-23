@@ -9,6 +9,7 @@ from typing import Any
 from app.analyses.memory_disk import MemoryDumpRefusedError
 from app.analyses.ports import IngestFailedError, IngestResult, ReportOutcome
 from app.cape.models import TaskView
+from app.ingest.protocol import LanHost
 
 FIRST_TASK_ID = 100
 CAPE_STARTED_ON = datetime(2026, 5, 1, 12, 0, 5, tzinfo=UTC)
@@ -139,6 +140,7 @@ class FakeIngester:
         self.requests: list[tuple[int, Path]] = []
         self.started_at: dict[int, datetime | None] = {}
         self.archive_entries: dict[int, str | None] = {}
+        self.lan_hosts: dict[int, Mapping[str, LanHost] | None] = {}
         self.image_requests: list[tuple[int, Path, datetime]] = []
 
     async def ingest(
@@ -148,10 +150,12 @@ class FakeIngester:
         *,
         started_at: datetime | None = None,
         archive_entry: str | None = None,
+        lan_hosts: Mapping[str, LanHost] | None = None,
     ) -> IngestResult:
         self.requests.append((analysis_id, report_path))
         self.started_at[analysis_id] = started_at
         self.archive_entries[analysis_id] = archive_entry
+        self.lan_hosts[analysis_id] = lan_hosts
         if isinstance(self.result, Exception):
             raise self.result
         return self.result

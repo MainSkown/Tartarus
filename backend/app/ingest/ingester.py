@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from datetime import datetime
 from functools import partial
 from itertools import chain
@@ -25,7 +25,8 @@ from app.ingest.clock import (
 )
 from app.ingest.defender import DefenderNormalizer
 from app.ingest.defender_verdict import verdict_of_export
-from app.ingest.protocol import IngestContext, Normalizer
+from app.ingest.lan_sim import LanSimNormalizer
+from app.ingest.protocol import IngestContext, LanHost, Normalizer
 from app.ingest.sigma import RulesProvider, can_match_a_rule, final_detections, no_rules
 from app.ingest.sysmon import SysmonNormalizer
 from app.ingest.sysmon_mapping import DATASET as SYSMON_DATASET
@@ -66,6 +67,7 @@ def default_normalizers() -> list[Normalizer]:
         SysmonNormalizer(),
         DefenderNormalizer(),
         VolatilityNormalizer(),
+        LanSimNormalizer(),
     ]
 
 
@@ -102,10 +104,11 @@ class ReportIngester:
         *,
         started_at: datetime | None = None,
         archive_entry: str | None = None,
+        lan_hosts: Mapping[str, LanHost] | None = None,
     ) -> IngestResult:
         return await self._ingest(
             analysis_id,
-            partial(_read, analysis_id, report_path, started_at),
+            partial(_read, analysis_id, report_path, started_at, lan_hosts or {}),
             archive_entry=archive_entry,
         )
 
@@ -262,7 +265,10 @@ def _detections(
 
 
 def _read(
-    analysis_id: int, report_path: Path, started_at: datetime | None
+    analysis_id: int,
+    report_path: Path,
+    started_at: datetime | None,
+    lan_hosts: Mapping[str, LanHost],
 ) -> tuple[IngestContext, dict[str, Any]]:
     try:
         report = load_report(report_path)
@@ -277,6 +283,7 @@ def _read(
         started_at,
         host_registrations=registrations,
         analysis_dir=analysis_dir_of(report_path),
+        lan_hosts=lan_hosts,
     )
     return context, report
 

@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -9,6 +9,7 @@ from app.analyses.ports import IngestResult, ReportOutcome
 from app.analyses.runner import Runner, RunnerConfig
 from app.db import analysis_repository as repository
 from app.db.models.analysis import AnalysisStatus
+from app.ingest.protocol import LanHost
 from tests.analyses.fakes import (
     FakeCape,
     FakeClock,
@@ -60,11 +61,16 @@ class GatedIngester(FakeIngester):
         *,
         started_at: datetime | None = None,
         archive_entry: str | None = None,
+        lan_hosts: Mapping[str, LanHost] | None = None,
     ) -> IngestResult:
         self.began.set()
         await self.release.wait()
         return await super().ingest(  # type: ignore[arg-type]
-            analysis_id, report_path, started_at=started_at, archive_entry=archive_entry
+            analysis_id,
+            report_path,
+            started_at=started_at,
+            archive_entry=archive_entry,
+            lan_hosts=lan_hosts,
         )
 
 

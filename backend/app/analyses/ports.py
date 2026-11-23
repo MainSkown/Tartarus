@@ -4,7 +4,7 @@ The runner (tracks an analysis through CAPE) depends only on these, so it can be
 fakes, and the sample store and the report reader implement them without importing the runner.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -15,6 +15,7 @@ from app.analyses.defender import DefenderVerdict
 from app.analyses.lan_sessions import LanControl
 from app.db.models.analysis import Severity
 from app.guest.schemas import Guest, GuestProfile, MemoryAnalysis, MissingSymbols
+from app.ingest.protocol import LanHost
 
 
 class SampleSource(Protocol):
@@ -74,12 +75,14 @@ class EventIngester(Protocol):
         *,
         started_at: datetime | None = None,
         archive_entry: str | None = None,
+        lan_hosts: Mapping[str, LanHost] | None = None,
     ) -> IngestResult:
         """Raises `IngestFailedError`, leaving no index behind, when the events cannot be stored.
 
         `started_at` replaces the report's own start, for a capture imported long after it was
         taken. `archive_entry` is the member of a submitted zip the run was told to start; it
-        asks for `IngestResult.entry_sha256`.
+        asks for `IngestResult.entry_sha256`. `lan_hosts` is the fake local network the run had,
+        by address; without it no event is flagged as simulated.
         """
 
     async def ingest_memory_image(

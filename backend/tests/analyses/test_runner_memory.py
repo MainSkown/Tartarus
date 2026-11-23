@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from app.analyses.runner import Runner
 from app.db.models import Analysis
 from app.db.models.analysis import AnalysisStatus
 from app.guest.errors import GuestControlRejected, GuestControlUnreachable
+from app.ingest.protocol import LanHost
 from tests.analyses.fakes import FakeCape, FakeIngester, FakeReports
 from tests.analyses.guest_fakes import ScriptedGuestControl, profile_needing_enforced_timeout
 from tests.analyses.helpers import adopt_by_cape, enqueue, load
@@ -38,10 +40,15 @@ class JournalIngester(FakeIngester):
         *,
         started_at: datetime | None = None,
         archive_entry: str | None = None,
+        lan_hosts: Mapping[str, LanHost] | None = None,
     ) -> IngestResult:
         self._guests.calls.append(("ingest", analysis_id))
         return await super().ingest(
-            analysis_id, report_path, started_at=started_at, archive_entry=archive_entry
+            analysis_id,
+            report_path,
+            started_at=started_at,
+            archive_entry=archive_entry,
+            lan_hosts=lan_hosts,
         )
 
 

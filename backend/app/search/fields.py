@@ -444,6 +444,88 @@ _DEFENDER = (
     ),
 )
 
+_LAN = (
+    FieldDefinition(
+        "tartarus.lan.simulated",
+        FieldType.BOOLEAN,
+        "Whether the event involves a host of the fake local network, not a real one",
+        "true",
+        Lane.NETWORK,
+        aliases=("lan",),
+    ),
+    FieldDefinition(
+        "tartarus.lan.host",
+        _K,
+        "Fully qualified name of the fake host the sample reached",
+        "fs01.corp.local",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.role",
+        _K,
+        "Role the preset gives the fake host: domain controller, file server, and so on",
+        "file-server",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.service",
+        _K,
+        "Service of the fake host the sample used: smb, rdp, winrm, ssh, ldap or mssql",
+        "smb",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.preset",
+        _K,
+        "Id of the fake local network preset the analysis ran with",
+        "small-office",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.share",
+        _K,
+        "SMB share the sample asked for, as it wrote the name",
+        "ADMIN$",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.count",
+        _LONG,
+        "How many distinct fake hosts a derived event stands for, or how many events an aggregate",
+        "7",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.mechanism",
+        _K,
+        "How a login attempt authenticated: ntlm, basic, password, publickey, sql or ldap-simple",
+        "ntlm",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.credential",
+        _K,
+        "The secret as the sample sent it: a password, a key fingerprint or a NetNTLM hash. "
+        "Untrusted: sample-supplied text, never rendered as markup",
+        "Password1",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.request",
+        _K,
+        "Name of the protocol request or share operation the sample made against a fake host",
+        "svcctl CreateService",
+        Lane.NETWORK,
+    ),
+    FieldDefinition(
+        "tartarus.lan.detail",
+        _KT,
+        "Argument of that request as the sample sent it. Untrusted: sample-supplied text",
+        r"evil, C:\Windows\evil.exe",
+        Lane.NETWORK,
+    ),
+)
+
 FIELDS: tuple[FieldDefinition, ...] = (
     *_COMMON,
     *_PROCESS,
@@ -455,6 +537,7 @@ FIELDS: tuple[FieldDefinition, ...] = (
     *_DETECTION,
     *_ACCOUNT_AND_ERROR,
     *_DEFENDER,
+    *_LAN,
 )
 
 # A query alias that stands for several fields at once; the query compiler ORs them.

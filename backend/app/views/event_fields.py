@@ -32,6 +32,10 @@ def int_at(source: Source, *path: str) -> int | None:
     return to_int(dig(source, *path))
 
 
+def flag_at(source: Source, *path: str) -> bool:
+    return dig(source, *path) is True
+
+
 def texts_at(source: Source, *path: str) -> list[str]:
     value = dig(source, *path)
     items = value if isinstance(value, list) else [value]
