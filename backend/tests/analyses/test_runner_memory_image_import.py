@@ -135,7 +135,7 @@ async def test_an_imported_image_needs_neither_a_guest_nor_a_cape_task(
 
     assert (await load(session_factory, analysis_id)).cape_task_id is None
     assert cape.calls == []
-    assert [name for name, _ in guests.calls] == ["analyse_memory"]
+    assert [name for name, _ in guests.non_lan_calls()] == ["analyse_memory"]
     assert guests.images_asked == [f"{analysis_id}/upload"]
 
 
@@ -157,7 +157,7 @@ async def test_missing_symbols_are_made_and_the_image_scanned_a_second_time(
 
     assert (await load(session_factory, analysis_id)).status is AnalysisStatus.DONE
     assert guests.symbols_made == [NEEDED]
-    assert [name for name, _ in guests.calls] == [
+    assert [name for name, _ in guests.non_lan_calls()] == [
         "analyse_memory",
         "make_symbols",
         "analyse_memory",
@@ -201,7 +201,7 @@ async def test_a_missing_upload_fails_the_analysis_and_says_so(
     assert failed.status is AnalysisStatus.FAILED
     assert failed.error is not None
     assert "uploaded file is missing" in failed.error
-    assert guests.calls == []
+    assert guests.non_lan_calls() == []
 
 
 async def test_events_that_cannot_be_indexed_end_the_analysis_as_report_failed(

@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.guest.lan_schemas import LanHealth, LanHost, LanPreset, LanService
 from app.guest.schemas import (
     BuildProgress,
     BuildStatus,
@@ -16,6 +17,19 @@ from app.guest.schemas import (
 from tests.guest.captured import captured
 
 BUILD_ID = "b2f48f9dcd08a"
+LAN_CALLS = frozenset(
+    {"lan_presets", "lan_health", "lan_sessions", "open_lan_session", "close_lan_session"}
+)
+
+
+def a_preset(preset_id: str = "small-office") -> LanPreset:
+    host = LanHost(
+        fqdn="dc01.corp.example",
+        address="192.168.150.200",
+        role="domain-controller",
+        services=[LanService(kind="smb", port=445)],
+    )
+    return LanPreset(id=preset_id, name="Small office", description="A small office", hosts=[host])
 
 
 @dataclass
@@ -50,6 +64,9 @@ class FakeGuestControl:
         self.error_by_call: dict[str, Exception] = {}
         self.selftest_sample_listed = SelfTestSample("benign.exe", b"MZ pretend")
         self.selftest_checks_listed = clean_checks()
+        self.lan_presets_listed = [a_preset()]
+        self.lan_health_answer = LanHealth(ready=True)
+        self.lan_open: dict[str, tuple[str, str]] = {}
 
     def _record(self, call: str, argument: Any = None) -> None:
         self.calls.append((call, argument))
@@ -60,6 +77,33 @@ class FakeGuestControl:
 
     def calls_named(self, call: str) -> list[Any]:
         return [argument for name, argument in self.calls if name == call]
+
+    def non_lan_calls(self) -> list[tuple[str, Any]]:
+        return [(name, argument) for name, argument in self.calls if name not in LAN_CALLS]
+
+    def lan_calls(self) -> list[tuple[str, Any]]:
+        return [(name, argument) for name, argument in self.calls if name in LAN_CALLS]
+
+    async def lan_presets(self) -> list[LanPreset]:
+        self._record("lan_presets")
+        return self.lan_presets_listed
+
+    async def lan_health(self) -> LanHealth:
+        self._record("lan_health")
+        return self.lan_health_answer
+
+    async def lan_sessions(self) -> list[str]:
+        self._record("lan_sessions")
+        return list(self.lan_open)
+
+    async def open_lan_session(self, key: str, guest: str, preset: str) -> None:
+        self._record("open_lan_session", (key, guest, preset))
+        self.lan_open[key] = (guest, preset)
+
+    async def close_lan_session(self, key: str, task_id: int | None = None) -> bool:
+        self._record("close_lan_session", (key, task_id))
+        was_open = self.lan_open.pop(key, None) is not None
+        return was_open and task_id is not None
 
     async def guests(self) -> list[Guest]:
         self._record("guests")

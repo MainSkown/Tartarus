@@ -14,6 +14,7 @@ from pydantic import (
 from app.analyses.guest_choice import AUTO_PACKAGE
 from app.schemas.analysis import AnalysisRead
 from app.schemas.guest_name import GuestName
+from app.schemas.lan_preset_id import LanPresetId
 from app.schemas.settings import Route
 
 type PackageName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_]{1,64}$")]
@@ -63,6 +64,14 @@ class AnalysisOptions(BaseModel):
         default=None,
         description="The guest to run on; the default guest when omitted. Always stored resolved.",
     )
+    lan_preset: LanPresetId | None = Field(
+        default=None,
+        description=(
+            "Simulate a local network of fake hosts for the sample to find, from the preset with "
+            "this id (`GET /lan-presets`); off when omitted. Refused with the `internet` route. "
+            "The preset must exist and the fake hosts must be up, or the submission is refused."
+        ),
+    )
     archive_password: str | None = Field(
         default=None,
         description=(
@@ -105,6 +114,18 @@ class AnalysisOptions(BaseModel):
             raise ValueError(f"package must be auto or zip for an archive, not {self.package}")
         self.package = ZIP_PACKAGE
         return self
+
+    @field_validator("lan_preset")
+    @classmethod
+    def only_where_the_sample_cannot_reach_the_analysts_network(
+        cls, preset: str | None, info: ValidationInfo
+    ) -> str | None:
+        if preset is not None and info.data.get("route") == "internet":
+            raise ValueError(
+                "lan_preset cannot be used with route internet: the sample's traffic would "
+                "leave through the analyst's own connection"
+            )
+        return preset
 
     @field_validator("keep_memory_dump")
     @classmethod

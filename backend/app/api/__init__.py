@@ -8,6 +8,7 @@ from app.api import (
     guests,
     iocs,
     jobs,
+    lan,
     query,
     rules,
     search,
@@ -23,6 +24,7 @@ api_router.include_router(system.router)
 api_router.include_router(version.router)
 api_router.include_router(settings.router)
 api_router.include_router(guests.router)
+api_router.include_router(lan.router)
 api_router.include_router(analyses.router)
 api_router.include_router(views_events.router)
 api_router.include_router(views_findings.router)

@@ -119,7 +119,7 @@ async def test_an_import_neither_looks_up_a_guest_nor_waits_for_one(  # noqa: PL
     await runner.run_once()
 
     assert (await load(session_factory, analysis_id)).status is AnalysisStatus.DONE
-    assert guests.calls == []
+    assert guests.non_lan_calls() == []
 
 
 async def test_an_import_is_submitted_while_a_run_is_being_followed(

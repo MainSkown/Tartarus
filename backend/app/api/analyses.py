@@ -26,6 +26,7 @@ from app.analyses.archive_check import ArchiveRefusedError
 from app.analyses.deadline import MAX_RUN_S, at_the_latest, extended_deadline
 from app.analyses.guest_badges import badges_by_guest
 from app.analyses.guest_choice import GuestRefusedError, PackageNotAcceptedError, recorded_guest
+from app.analyses.lan_check import LanNotReadyError, LanPresetUnknownError
 from app.analyses.memory_disk import FreeSpaceProbe, MemoryDumpRefusedError
 from app.analyses.memory_import import image_task_id, is_memory_image_import
 from app.analyses.monitor import monitor_started
@@ -111,7 +112,9 @@ def parse_options(
                 "JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's "
                 "profile lists), `interactive` (a desktop to drive; the run then lasts the whole "
                 "timeout), `memory_dump` (dump the guest's RAM and read it; needs free disk), "
-                "`keep_memory_dump` (keep the dump afterwards; only with `memory_dump`) and "
+                "`keep_memory_dump` (keep the dump afterwards; only with `memory_dump`), "
+                "`lan_preset` (the id of a fake local network from `GET /lan-presets`; off when "
+                "omitted, refused with the `internet` route) and "
                 "`guest` (a ready guest; the default guest when omitted), `archive_password` and "
                 "`archive_entry` (the file of the submitted zip to run; set together, the zip is "
                 "unpacked in the guest and `package` becomes `zip`)."
@@ -148,9 +151,10 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
     and while any guest is being built or tested, and for a memory dump when the CAPE storage has
     less free disk than the dump needs (the message gives both numbers); `422` for a package the
     guest does not accept, and for an archive (`archive_password` with `archive_entry`) that is not
-    a zip, has no such member, or is not opened by the password; `502` when the guest control
-    service cannot be asked. `warnings` is filled when the submission was accepted with little free
-    disk left.
+    a zip, has no such member, or is not opened by the password, and for a `lan_preset` the control
+    service does not offer; `503` when the fake local network cannot start now (the message gives
+    the reason); `502` when the guest control service cannot be asked. `warnings` is filled when
+    the submission was accepted with little free disk left.
     """
     try:
         submitted = await AnalysisSubmitter(store, guests, runner, free_space).submit_with_warnings(
@@ -162,6 +166,12 @@ async def create(  # noqa: PLR0913 - one argument per dependency of the submissi
         raise RequestValidationError(
             [{"loc": ("body", "options", "package"), "msg": str(refused), "type": "value_error"}]
         ) from None
+    except LanPresetUnknownError as refused:
+        raise RequestValidationError(
+            [{"loc": ("body", "options", "lan_preset"), "msg": str(refused), "type": "value_error"}]
+        ) from None
+    except LanNotReadyError as refused:
+        raise HTTPException(503, str(refused)) from None
     except ArchiveRefusedError as refused:
         raise RequestValidationError(
             [

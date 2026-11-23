@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.analyses.deadline import MAX_RUN_S, initial_deadline
 from app.analyses.defender import DefenderVerdict
 from app.analyses.guest_choice import recorded_guest
+from app.analyses.lan_sessions import LanSessions, LanStartError
 from app.analyses.memory import MemorySummary
 from app.analyses.memory_import import MemoryImport, MemoryImportFailedError, is_memory_image_import
 from app.analyses.memory_step import MemoryStep
@@ -156,6 +157,7 @@ class Runner:
         self._ingester = ingester
         self._guests = guests
         self._memory = MemoryStep(guests, config.cape_storage_path)
+        self._lan = LanSessions(guests)
         self._images = MemoryImport(guests, ingester, config.cape_storage_path, config.imports_dir)
         self._memory_imports: dict[int, asyncio.Task[None]] = {}
         self._config = config
@@ -249,9 +251,21 @@ class Runner:
         for the other's analysis to end.
         """
         started: list[asyncio.Task[None]] = []
+        # Before the ticks, so what it lists is not being closed by a follower this pass starts.
+        await self._reconcile_lan_sessions()
         for kind in (AnalysisKind.RUN, AnalysisKind.IMPORTED):
             started += await self._tick(kind)
         return started
+
+    async def _reconcile_lan_sessions(self) -> None:
+        try:
+            await self._lan.reconcile(self._find_analysis)
+        except Exception:
+            logger.exception("Reconciling the fake-LAN sessions failed")
+
+    async def _find_analysis(self, analysis_id: int) -> Analysis | None:
+        async with self._session_factory() as session:
+            return await get_analysis(session, analysis_id)
 
     async def _tick(self, kind: AnalysisKind) -> list[asyncio.Task[None]]:
         followers: list[asyncio.Task[None]] = []
@@ -335,7 +349,12 @@ class Runner:
                 return
             logger.warning("Analysis %s goes back to the queue: %s", claimed.id, unreachable)
             await update_analysis(session, claimed.id, status=AnalysisStatus.QUEUED)
-        except (GuestUnavailableError, GuestControlError, ImportRefusedError) as unavailable:
+        except (
+            GuestUnavailableError,
+            GuestControlError,
+            ImportRefusedError,
+            LanStartError,
+        ) as unavailable:
             await self._finish(
                 session, claimed.id, status=AnalysisStatus.FAILED, error=str(unavailable)
             )
@@ -369,18 +388,23 @@ class Runner:
         guest = await self._guest_of(analysis)
         is_interactive = options.get("interactive") is True
         interactive = await self._interactive_options(guest) if is_interactive else NOT_INTERACTIVE
-        async with self._samples.open_plain(analysis.sample_sha256) as path:
-            task_id = await self._cape.create_file_task(
-                path,
-                analysis.filename,
-                machine=guest.name,
-                route=options["route"],
-                # The backend ends interactive runs at their deadline; CAPE only backstops them.
-                timeout=MAX_RUN_S if is_interactive else options["timeout"],
-                package=options.get("package", "auto"),
-                options=_task_options(options, interactive),
-                task_fields=_task_fields(options, interactive),
-            )
+        await self._lan.open(analysis, guest.name)
+        try:
+            async with self._samples.open_plain(analysis.sample_sha256) as path:
+                task_id = await self._cape.create_file_task(
+                    path,
+                    analysis.filename,
+                    machine=guest.name,
+                    route=options["route"],
+                    # The backend ends interactive runs at their deadline; CAPE only backstops them.
+                    timeout=MAX_RUN_S if is_interactive else options["timeout"],
+                    package=options.get("package", "auto"),
+                    options=_task_options(options, interactive),
+                    task_fields=_task_fields(options, interactive),
+                )
+        except BaseException:
+            await self._lan.close(analysis, task_id=None)
+            raise
         return Submitted(task_id)
 
     async def _guest_of(self, analysis: Analysis) -> Guest:
@@ -594,6 +618,7 @@ class Runner:
                 session, analysis_id, status=AnalysisStatus.REPORT_FAILED, error=str(unreadable)
             )
             return
+        await self._lan.close(analysis, task_id)
         memory = await self._memory.run(analysis, task_id)
         try:
             indexed = await self._ingester.ingest(
@@ -713,10 +738,16 @@ class Runner:
         except Exception:
             logger.exception("Stopping the live collection of analysis %s failed", analysis_id)
 
+    async def _close_lan_session(self, session: AsyncSession, analysis_id: int) -> None:
+        analysis = await get_analysis(session, analysis_id)
+        if analysis is not None:
+            await self._lan.close_at_end(analysis)
+
     async def _finish(
         self, session: AsyncSession, analysis_id: int, **changes: Unpack[AnalysisChanges]
     ) -> None:
         await self._stop_live(analysis_id)
+        await self._close_lan_session(session, analysis_id)
         ended: AnalysisChanges = {**changes, "finished_at": utc_now()}
         await update_analysis(session, analysis_id, **ended)
         self._trouble_since.pop(analysis_id, None)

@@ -14,6 +14,14 @@ from app.guest.errors import (
     GuestControlRejected,
     GuestControlUnreachable,
 )
+from app.guest.lan_schemas import (
+    LanHealth,
+    LanPreset,
+    LanPresetList,
+    LanSessionClosed,
+    LanSessionKeys,
+    LanSessionOpened,
+)
 from app.guest.schemas import (
     BuildStatus,
     Guest,
@@ -45,6 +53,8 @@ EXPLAINED_SERVER_ERRORS = frozenset({httpx.codes.BAD_GATEWAY})
 # The sample route answers 500 with the reason building the sample failed, and the memory routes
 # answer 500 (results not written) and 502 (Volatility3 could not start) with theirs.
 EXPLAINED_SERVER_ERRORS_WITH_500 = EXPLAINED_SERVER_ERRORS | {httpx.codes.INTERNAL_SERVER_ERROR}
+# Opening a LAN session answers 503, with the reason, when the fake hosts cannot start.
+EXPLAINED_SERVER_ERRORS_WITH_503 = frozenset({httpx.codes.SERVICE_UNAVAILABLE})
 SAMPLE_FILENAME_HEADER = "X-Filename"
 
 _PROFILES = TypeAdapter(list[GuestProfile])
@@ -57,6 +67,11 @@ _LOG_LINES = TypeAdapter(list[str])
 _DISPLAY = TypeAdapter(GuestDisplay)
 _SELFTEST_CHECKS = TypeAdapter(SelfTestChecks)
 _MEMORY_ANALYSIS = TypeAdapter(MemoryAnalysis)
+_LAN_PRESETS = TypeAdapter(LanPresetList)
+_LAN_HEALTH = TypeAdapter(LanHealth)
+_LAN_SESSION_KEYS = TypeAdapter(LanSessionKeys)
+_LAN_SESSION_OPENED = TypeAdapter(LanSessionOpened)
+_LAN_SESSION_CLOSED = TypeAdapter(LanSessionClosed)
 
 
 @dataclass(frozen=True)
@@ -125,6 +140,26 @@ class GuestControl(Protocol):
     async def delete_image_findings(self, task_id: int) -> None: ...
 
     async def make_symbols(self, missing: MissingSymbols) -> None: ...
+
+    async def lan_presets(self) -> list[LanPreset]: ...
+
+    async def lan_health(self) -> LanHealth: ...
+
+    async def lan_sessions(self) -> list[str]:
+        """The keys of the fake-LAN sessions open now."""
+        ...
+
+    async def open_lan_session(self, key: str, guest: str, preset: str) -> None:
+        """Raises `GuestControlRejected`: 404 for an unknown guest or preset, 409 when the guest
+        has a session open, 503 (with the reason) when the fake hosts cannot start.
+        """
+        ...
+
+    async def close_lan_session(self, key: str, task_id: int | None = None) -> bool:
+        """Closes the session, which is not an error when it is not open. With `task_id` its log is
+        first copied into that CAPE task's analysis folder; answers whether it was copied.
+        """
+        ...
 
 
 class HttpGuestControl:
@@ -289,6 +324,41 @@ class HttpGuestControl:
             {"guid": missing.guid, "age": missing.age},
             patience=httpx.Timeout(SYMBOLS_TIMEOUT_S, connect=CONNECT_TIMEOUT_S),
         )
+
+    async def lan_presets(self) -> list[LanPreset]:
+        body = await self._send("lan_presets", "GET", "/lan-presets")
+        return _parsed("lan_presets", _LAN_PRESETS, body).presets
+
+    async def lan_health(self) -> LanHealth:
+        return _parsed(
+            "lan_health", _LAN_HEALTH, await self._send("lan_health", "GET", "/lan/health")
+        )
+
+    async def lan_sessions(self) -> list[str]:
+        body = await self._send("lan_sessions", "GET", "/lan/sessions")
+        return _parsed("lan_sessions", _LAN_SESSION_KEYS, body).keys
+
+    async def open_lan_session(self, key: str, guest: str, preset: str) -> None:
+        call = "open_lan_session"
+        body = await self._send(
+            call,
+            "POST",
+            "/lan/sessions",
+            {"key": key, "guest": guest, "preset": preset},
+            explained_server_errors=EXPLAINED_SERVER_ERRORS_WITH_503,
+        )
+        if _parsed(call, _LAN_SESSION_OPENED, body).key != key:
+            raise GuestControlBadResponse(call, "another session key")
+
+    async def close_lan_session(self, key: str, task_id: int | None = None) -> bool:
+        call = "close_lan_session"
+        body = await self._send(
+            call,
+            "DELETE",
+            f"/lan/sessions/{key}",
+            query=None if task_id is None else {"task_id": task_id},
+        )
+        return _parsed(call, _LAN_SESSION_CLOSED, body).copied
 
     async def _send(  # noqa: PLR0913 - the request's parts
         self,

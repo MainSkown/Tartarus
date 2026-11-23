@@ -15,6 +15,7 @@ from app.analyses.guest_choice import (
     recorded_guest,
     require_package_accepted,
 )
+from app.analyses.lan_check import LanDirectory, require_lan_ready
 from app.analyses.memory_disk import (
     FreeSpaceProbe,
     MemoryDumpRefusedError,
@@ -41,7 +42,7 @@ from app.schemas.analysis_requests import AnalysisOptions
 from app.schemas.settings import SettingsBody
 
 
-class GuestDirectory(Protocol):
+class GuestDirectory(LanDirectory, Protocol):
     """The part of the guest control service that choosing a guest needs."""
 
     async def guests(self) -> list[Guest]: ...
@@ -112,6 +113,8 @@ class AnalysisSubmitter:
         (the named guest must still exist and be registered), and with `tags=["self-test"]`.
 
         Raises `GuestRefusedError` (the guest cannot run it), `PackageNotAcceptedError`,
+        `LanPresetUnknownError` and `LanNotReadyError` (a fake-LAN preset the control service does
+        not offer, or fake hosts that cannot start now),
         `MemoryDumpRefusedError` (too little free disk for the dump), `ArchiveRefusedError` (the
         archive fields name a zip that cannot be run: not a zip, no such member, a member that
         cannot be chosen, or a password that does not open it), `ValueError` (a bad tag name),
@@ -121,6 +124,8 @@ class AnalysisSubmitter:
         """
         tag_names = [normalise_tag_name(tag) for tag in tags]
         resolved = await self._resolve(session, options, gate=gate)
+        if options.lan_preset is not None:
+            await require_lan_ready(self._guests, options.lan_preset)
         warnings = self._room_for_memory_dump(resolved)
         name = safe_file_name(filename)
         stored = await self._store.save(stream, name)

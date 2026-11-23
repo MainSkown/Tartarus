@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from app.analyses.defender import DefenderVerdict
+from app.analyses.lan_sessions import LanControl
 from app.db.models.analysis import Severity
 from app.guest.schemas import Guest, GuestProfile, MemoryAnalysis, MissingSymbols
 
@@ -104,7 +105,7 @@ class MemoryControl(Protocol):
         """Raises `GuestControlRejected` with status 404 when the task has no dump on disk."""
 
 
-class GuestSource(MemoryControl, Protocol):
+class GuestSource(MemoryControl, LanControl, Protocol):
     """What the runner asks the guest control service, to know where and how to run a task."""
 
     async def guest(self, name: str) -> Guest:
