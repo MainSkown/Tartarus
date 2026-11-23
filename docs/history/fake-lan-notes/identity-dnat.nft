@@ -1,0 +1,9 @@
+table ip tartarus_lanspike
+delete table ip tartarus_lanspike
+table ip tartarus_lanspike {
+  set lan_pairs { type ipv4_addr . ipv4_addr; elements = { 192.168.150.10 . 192.168.150.200, 192.168.150.10 . 192.168.150.201 } }
+  chain pre {
+    type nat hook prerouting priority -110; policy accept;
+    iifname "tt-guest" ip saddr . ip daddr @lan_pairs counter dnat to ip daddr
+  }
+}

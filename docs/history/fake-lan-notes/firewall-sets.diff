@@ -1,0 +1,28 @@
+34a35,37
+> LAN_BLOCK = ("192.168.150.200", "192.168.150.247")
+> LAN_PAIRS: list = []   # (guest ip, host ip, [tcp ports])
+> 
+206a210,211
+>             "ip saddr . ip daddr . tcp dport @lan_tcp accept",
+>             "ip saddr . ip daddr @lan_icmp icmp type echo-request accept",
+227a233,235
+>     lan_tcp = nft_set("lan_tcp", "ipv4_addr . ipv4_addr . inet_service",
+>         [f"{g} . {h} . {port}" for g, h, ports in LAN_PAIRS for port in ports])
+>     lan_icmp = nft_set("lan_icmp", "ipv4_addr . ipv4_addr", [f"{g} . {h}" for g, h, _ in LAN_PAIRS])
+234a243,244
+>             lan_tcp,
+>             lan_icmp,
+247c257,258
+<     protected = [_checked_address(policy.gateway), *(address for _, address in owned)]
+---
+>     protected = [_checked_address(policy.gateway), *(address for _, address in owned), *sorted({h for _, h, _ in LAN_PAIRS})]
+>     fake_block = f"{LAN_BLOCK[0]}-{LAN_BLOCK[1]}"
+260a272,273
+>             "arp saddr ip @fake_block counter drop",
+>             "arp daddr ip @fake_block arp saddr ip . arp daddr ip != @lan_pairs counter drop",
+271a285,286
+>             "ip saddr @fake_block counter drop",
+>             "ip daddr @fake_block ip saddr . ip daddr != @lan_pairs counter drop",
+289a305,306
+>             nft_set("fake_block", "ipv4_addr", [fake_block], intervals=True),
+>             nft_set("lan_pairs", "ipv4_addr . ipv4_addr", [f"{g} . {h}" for g, h, _ in LAN_PAIRS]),

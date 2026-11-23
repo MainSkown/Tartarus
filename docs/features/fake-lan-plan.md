@@ -3,8 +3,9 @@
 Implementation plan for [fake-lan.md](fake-lan.md). It was written from reading the spec, the guest
 firewall (`cape/guest_engine/firewall.py`), the compose file, the supervisor config, the submit and run
 path (`backend/app/analyses/runner.py`), the ingest and Sigma code, and the zip-submission plan for its
-shape. **Nothing has been run yet**: every finding below is from reading code, and Step 0 checks the ones
-marked *verify* on a real stack.
+shape. **Step 0 has run** (2026-11-23, notes in
+[../history/fake-lan-notes/step0-notes.md](../history/fake-lan-notes/step0-notes.md)): findings 1 to 13 were
+written from reading code, and "What Step 0 found" below says which held and what it added.
 
 ## Findings that change the spec
 
@@ -23,6 +24,25 @@ marked *verify* on a real stack.
 | 11 | The summary is computed at final ingest (`backend/app/analyses/summary.py`, as `entry_sha256` was for zip submission), not by a view endpoint. | "Summary view endpoint" in the spec becomes a field of the analysis summary: `summary.lan`. |
 | 12 | `SubmitDialog.vue` is 827 lines, and the tunnel-routes spec rewrites its route picker. | The LAN controls go in a new `SubmitLanFields.vue`, as `SubmitArchiveFields.vue` did. Merge order with the tunnel work is Decision 6. |
 | 13 | The live feed has no source for fake-host logs. | The Lateral movement data is final-phase only in v1. The e2e live-versus-final alert comparison already exempts alerts whose trigger exists only in the final phase. |
+
+## What Step 0 found
+
+Held: findings 1, 2, 4, 6, 7, 9 and 10. Corrected or added by the spike:
+
+| # | Result | Effect on the plan |
+|---|---|---|
+| S1 | **Finding 3 is true and worse.** The rooter's `inetsim` DNAT sends a guest's SYN to a fake address to INetSim's port 1 (the guest sees a live host answering from `.200`, and the per-port filter is bypassed). Routes `none` and `drop` add `iptables OUTPUT -d <guest> -j DROP`, which kills every reply of a local fake host. `inetsim` also adds `INPUT -s <guest> --dport 22 -j DROP`. | Three fixes, all tested on a replica rig: a `notrack` rule in a raw-priority table of ours (both directions); `iptables -I OUTPUT 1 -m iprange --src-range <block> -d <guest> -m comment --comment tartarus-lan -j ACCEPT`; and the same kind of rule for INPUT. `cleanup_rooter()` keeps rules whose comment is not `CAPE-rooter`. **`firewall.py` must therefore also drive iptables**, and the iptables rules must be reconciled (stale ones removed) by the same `apply()`. |
+| S2 | **An accept in a table of ours cannot open the input chain**: a packet accepted at one base chain still meets `tartarus_guest`'s final `counter drop`. | The allowed-pair sets go **inside `tartarus_guest`'s own input chain**, not a table of ours. Only the notrack and TTL rules live in tables of ours. |
+| S3 | The bridge-level sets work as drafted: `arp daddr ip` and `ip daddr` of the fake block dropped unless the `(guest, host)` pair is allowed; a guest that takes a fake address is dropped; a canary on the container's other address stays unreachable. The accept for a pair must not be a bridge `accept`, which would skip the spoofing checks below it. | Step 2 uses the prototype's rule shapes (`docs/history/fake-lan-notes/firewall-sets.diff`). The sets are rendered **only when a session exists**, so the no-session ruleset stays byte-identical. The block comes from the presets, not a literal `.200-.247`. |
+| S4 | Fake addresses answer ARP with the bridge's MAC. ICMP TTL is 64, fixable to 128 with an nft `type route hook output` rule (`ip ttl set 128`) for the fake addresses. | Decision 4 improves: the MAC is accepted, the TTL is fixed (`ttl.nft`). |
+| S5 | **Windows' SMB client signs with a key derived from the password.** A fake host that accepts any password cannot sign back, so `net use`, `dir` and `copy` end in "Invalid Signature" on Win10 22H2 and Win11 25H2. With **one known account** per host, `net use`, `dir` and `copy` to `ADMIN$` all work. `sc \\host` also needs an authenticated, sealed RPC bind. | Presets list **accounts with known (weak, well-known) passwords per host**. A login with another password fails as on a real host, and its NTLMv2 material is logged. "Accept any login" holds only for clients that do not sign (impacket tools, smbclient, nxc). Execution is never offered; PsExec from Windows is logged up to the service-creation attempt. Decision 9. |
+| S6 | impacket's `SimpleSMBServer` needs patches: clear the Guest session flag, make `IPC$` read-only, add a fake `svcctl` pipe, serve each RPC connection on its own thread, and replace its file writes (any size, client-chosen path) with a capped virtual store. `wmiexec` needs DCOM on 135 and is out. | SMB is the biggest service, not "negotiate plus tree connect". Step 4 describes it accordingly. Decision 10. |
+| S7 | Names: `dns_static` serves **FQDNs only**; a single-label name stops all of INetSim from starting, and so does a name with an underscore (SRV); the guests have no DNS suffix, so `\\FS01\C$` cannot work by name. NetBIOS, LLMNR and mDNS queries leave the guest but nothing in the chain delivers them to a socket. | Preset host names are FQDNs (`fs01.corp.local`), and the renderer validates them before writing `inetsim.conf`. Single-label discovery is out of scope (worm-style IP scanning needs no name). |
+| S8 | The daemon only sees connections to **open** ports: a half-open SYN scan is invisible to it, and closed ports and absent addresses exist only in CAPE's flows and ARP. | `lan-sweep` and `lan-fan-out` are derived from the CAPE `tcp[]` and `dead_hosts` flows and the capemon `connect` calls that the `lan-sim` normaliser reads from the report, not from the daemon's log. |
+| S9 | Attribution works the way `cape-network` already does it: pcap flow (source port) joined with Sysmon EID 3 (`SourcePort`, pid, image), and capemon `connect` for attempts that never established. `tcp[]` has no process; EID 3 exists only for established connections. | The `lan-sim` log has no pid: its events are keyed on `(guest source port, destination ip, port)` and take the process from the flow. |
+| S10 | Caps from the flood data (Step 4 uses them): 200 events/s per session; the first 200 events per (session, host, service) in full, then counters (up to 50 usernames, 5 secrets); a hard cap of 20 000 events or 8 MB per session; 32 connections per (source, service) and 512 per session; 64 KiB per connection, 30 s idle, 16 MiB per file and 64 MiB per session. Derived thresholds: sweep at 5 or more hosts on one port within 30 s; fan-out at 4 or more hosts over 2 or more services within 5 min; credential spray at 3 or more hosts with one username within 5 min. | Starting values, tuned once the real daemon exists. |
+
+Not tested by the spike, so Steps 2 and 12 must cover them: a Windows guest reaching a fake address with the fixes in place (the spike could not replace the live `tartarus_guest`, which the permission layer denied, so it measured a Linux guest on a replica rig that uses the repo's own `render_ruleset` and the rooter's real functions), two guests at once, a `GUEST_SUBNET` other than the default, and hostile input against the services.
 
 ## Design in one paragraph
 
@@ -45,6 +65,10 @@ notes file in `docs/history/fake-lan-notes/` (done, running, next), and I re-run
 diff before committing. Work goes on **one branch** (`fake-lan`) as separate commits.
 
 ### Step 0: spike on a real stack
+
+**Status: done.** Evidence and the stand-in scripts are in
+[../history/fake-lan-notes/](../history/fake-lan-notes/step0-notes.md); "What Step 0 found" above carries
+the results.
 
 **Tier:** extreme (Sonnet, with the notes file). Needs the stack up and one ready Windows guest. The app
 has no Linux guests, so the spike has two vantage points, and each case says which one it uses:
@@ -96,10 +120,11 @@ Delete the throwaway container, the uploaded tools and any memory dumps afterwar
 **Tier:** Sonnet (it fixes the format three components read), with the format already decided by Step 0.
 
 - `guest/lan-presets/<id>.json`, declarative, next to `guest/profiles`: `id`, `name`, `description`,
-  `hosts: [{name, host_offset, role, os_banner, services: [{service, port, banner, options}]}]`.
+  `domain`, `hosts: [{fqdn, host_offset, role, os_banner, accounts: [{user, password}], services: [{service, port, banner, options}]}]`.
+  `accounts` are the well-known weak accounts that let Windows' signing SMB client past the logon (S5).
 - A loader and validator in the `cape` Python project (`guest_engine/lan_presets.py`), because the control
   service, the firewall and the daemon all run beside it. Rules checked by tests: offsets inside
-  `.200`-`.247`, **no overlap between presets**, unique host names, ports in range, known service kinds.
+  `.200`-`.247`, **no overlap between presets**, unique FQDNs (valid for INetSim's `dns_static`: two labels or more, no underscore, S7), ports in range, known service kinds, at least one account on every SMB host.
 - Three presets: small office (domain controller, file server, two workstations, SQL server, printer),
   flat home LAN, domain with servers. The concrete hosts come from the Step 0 findings.
 - Test first: the three shipped presets validate; an overlap, a duplicate name and an offset outside the
@@ -114,18 +139,24 @@ Extend `cape/guest_engine/firewall.py` (a `lan_firewall.py` beside it if it grow
 module keeps one job):
 
 - A `LanLedger` like `PortLedger`: one file per running guest, `{guest_address, preset}`.
-- Input chain: accept `ip saddr . ip daddr . tcp dport` and the ICMP echo pairs from a set built from the
-  ledger and the presets. The rest of the chain is unchanged: still `counter drop`.
-- Bridge table: the same pairs for IP and for ARP (`arp daddr ip`); an address of the fake block that is
-  not allowed for the port is dropped. The fake addresses join `protected` with no binding.
-- Local `/32` routes for the addresses of the presets in use (applied and removed by the same `apply()`),
-  and the fix Step 0 found for finding 3.
+- Inside `tartarus_guest`'s own input chain (S2): accept `ip saddr . ip daddr . tcp dport` and the ICMP echo
+  pairs from sets built from the ledger and the presets. The rest of the chain is unchanged: still `counter drop`.
+- Bridge table (S3, shapes from `firewall-sets.diff`): drop ARP and IP to a fake-block address unless the
+  `(guest, host)` pair is allowed, and any frame that uses a fake address as its source. Not a bridge `accept`.
+- Three more pieces, because nft cannot override the rooter's iptables (S1, S4): a raw-priority table of
+  ours with `notrack` both ways for the pairs; a `type route hook output` table that sets TTL 128 on the
+  fake addresses; and iptables `OUTPUT` and `INPUT` accepts for the fake block, one per guest, with the
+  comment `tartarus-lan`, inserted first and reconciled (stale ones removed) by `apply()`.
+- Local `/32` routes (`dev lo`) for the addresses of the presets in use, applied and removed by the same `apply()`.
+- Everything is rendered only while a session exists; the block comes from the presets and `GUEST_SUBNET`.
 - `RESERVED_NETWORKS`, forward chain, port isolation (`isolation.py`, `port_isolation.py`) and the qemu
-  hook are **not touched**. With no session the rendered ruleset is byte-identical to today's, and a test
-  says so.
+  hook are **not touched**. With no session the rendered ruleset is byte-identical to today's and nothing is
+  added to iptables, and a test says so.
 - Tests first: render tests like `test_guest_firewall.py` (the ruleset with zero, one and two sessions;
   every value validated before it lands in nft input; the empty case is unchanged), plus a syntax check
-  with `nft -c` where the test image has nft.
+  with `nft -c` where the test image has nft. The iptables reconcile is tested with a fake runner (the add, the
+  removal of a stale rule, the rooter's own rules left alone). The proof on a real Windows guest and on two
+  guests is Step 12.
 
 ### Step 3: control service endpoints
 
@@ -161,18 +192,25 @@ project with its own tests):
   from the source address. Hard limits: bytes per connection, connections per source, a file-write cap
   (writes are logged and hashed, never stored beyond a cap, never executed), idle timeouts. Flood
   control from Step 0: events past the cap collapse into counters in the session's final record.
-- **SMB** (Sonnet): negotiate, session setup that accepts any login and logs it (user, domain, NTLM
-  material), tree connect to `IPC$`, `ADMIN$`, `C$` and the preset's shares, a file write that is
-  accepted and logged. No shell, no service creation: what PsExec writes to `ADMIN$` is logged and
-  dropped.
-- **RDP** (Sonnet): X.224 connection and negotiation, a canned NLA/CredSSP exchange that logs the
-  attempt, then close.
-- **LDAP** (Sonnet): bind and a canned root DSE and base-object search for the preset's domain.
-- **MSSQL** (Sonnet unless Step 0 finds a library): TDS prelogin and login7, log the login, answer a
-  canned `SELECT @@version`.
-- **WinRM** (Haiku): HTTP 5985, `WWW-Authenticate: Negotiate`/`Basic`, log the attempt, `401`.
-- **SSH** (Haiku, library): banner from the preset, password and key attempts logged, a login that is
-  accepted and leaves the client with nothing to run.
+- **SMB** (Sonnet, the largest piece; S5, S6): impacket's protocol classes behind our own server, not its
+  `SimpleSMBServer` as is. Known accounts from the preset sign and get real sessions; any other login
+  fails and its NTLMv2 material is logged; clients that do not sign may also get in (impacket tools,
+  smbclient, nxc) with the Guest flag cleared. Tree connect to `IPC$` (read-only), `ADMIN$`, `C$` and the
+  preset's shares; a fake `svcctl` pipe (open manager, create, start, delete, enumerate) that logs the
+  service name and binary path and never starts anything; one thread per RPC connection; a capped
+  virtual file store (hash and size, never a client-chosen host path). Server name and domain from the
+  preset, SMB1 off. `wmiexec` (DCOM on 135) and `sc.exe`'s authenticated RPC are out for v1.
+- **RDP** (Sonnet): X.224 confirm selecting HYBRID, TLS with a self-signed certificate for the host's FQDN,
+  a CredSSP exchange that captures the NTLM material, then `STATUS_LOGON_FAILURE`.
+- **LDAP** (Sonnet): ldap3's `rfc4511` classes with a small hand-written server: anonymous and simple bind, a
+  root DSE that includes `configurationNamingContext` (nxc needs it), a base search of the domain DN, NTLM
+  binds captured and refused.
+- **MSSQL** (Sonnet; no library fits): hand-rolled TDS prelogin and Login7 (the token layout depends on the
+  client's TDS version), log the login, answer `SELECT @@version`, refuse the SSPI path after capturing it.
+- **WinRM** (Haiku, from the spike's stand-in): HTTP 5985, `401` with `Negotiate` and `Basic`, an
+  unauthenticated `Identify` answered with 200, NTLM and Basic captured, always `401` after.
+- **SSH** (Haiku, asyncssh, from the spike's stand-in): banner from the preset, password and key attempts
+  logged, a login that is accepted and leaves the client with nothing to run.
 - Tests: each service against a recorded exchange from the Step 0 tools (a fixture replay, no containers);
   the framework with a fake clock and socket pair; the limits with a flood. A test that a handler never
   runs, writes outside its cap, or opens a file path the client chose.
@@ -223,7 +261,8 @@ and the attribution are Sonnet.
   `user.name`, `user.domain`, `file.name`, `file.hash.sha256` and `event.outcome` already in the
   catalog where they exist. A catalog test covers that the query bar, the autocomplete and the Sigma
   pipeline all read the new rows (they read one table).
-- `backend/app/ingest/lan_sim.py`: `LanSimNormalizer` implementing the `Normalizer` protocol, built with
+- `backend/app/ingest/lan_sim.py` (reads the daemon's log from `analysis_dir` **and** the report's
+  `network.tcp[]`, `dead_hosts` and capemon `connect` calls for the derived events, S8): `LanSimNormalizer` implementing the `Normalizer` protocol, built with
   `EventFactory`, attributed through `ProcessAttribution`/`endpoint_key` as `cape-network` does. Actions:
   `lan-login-attempt` (category `authentication`), `lan-share-access`, `lan-file-write`, and the derived
   `lan-sweep` and `lan-fan-out`. A missing or truncated log yields no events and a warning, never an
@@ -343,8 +382,23 @@ parallel agents. The frontend can start once Step 6 has produced the API client.
    next audit's scope include `lan-sim`? Recommended: yes to both, in the same branch (the spec's last open
    question). Needs your answer because it changes what "done" means.
 
+New from the spike, **not yet confirmed by the user** (work proceeds on the recommended default, and the
+presets and the SMB service are the only places either would change):
+
+9. **Known accounts instead of accept-any-login** (S5). Recommended: each host's preset lists well-known weak
+   accounts (`Administrator` / `Password1` style); the guest's own account is **not** added to the fake
+   hosts in v1, so no guest secret reaches the daemon. The cost: a sample that reuses the logged-on user's own
+   credentials fails the logon (as on a host that does not know them), though its NTLMv2 material is logged.
+   Adding the guest's own account is a later step and needs a secret-handling review first.
+10. **impacket and wmiexec** (S6). Recommended: use impacket's protocol classes (a modified Apache 1.1
+    licence, to list in `THIRD_PARTY.md` and `docs/licenses.md`), and accept that `wmiexec` (DCOM on 135) and
+    `sc.exe` (sealed RPC) get no working answer in v1.
+
 ## Spec edits this plan implies
 
+- Behavior details, from the spike: accounts with known passwords per SMB host; FQDN host names only; the
+  TTL of fake hosts is 128; `firewall.py` also drives iptables and two tables of ours (notrack, TTL);
+  sweeps are derived from CAPE flows because the daemon never sees a closed port.
 - Guest network: the container shares `cape`'s namespace (`network_mode`), not "attached to the guest
   network".
 - Firewall item: the change is in the input chain and the bridge table; forward and `RESERVED_NETWORKS`

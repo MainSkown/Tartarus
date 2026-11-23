@@ -1,0 +1,14 @@
+table ip tartarus_lanspike_raw
+delete table ip tartarus_lanspike_raw
+table ip tartarus_lanspike_raw {
+  set lan_pairs { type ipv4_addr . ipv4_addr; elements = { 192.168.150.10 . 192.168.150.200, 192.168.150.10 . 192.168.150.201 } }
+  set fake_hosts { type ipv4_addr; elements = { 192.168.150.200, 192.168.150.201 } }
+  chain pre {
+    type filter hook prerouting priority -300; policy accept;
+    iifname "tt-guest" ip saddr . ip daddr @lan_pairs counter notrack
+  }
+  chain out {
+    type filter hook output priority -300; policy accept;
+    oifname "tt-guest" ip saddr @fake_hosts counter notrack
+  }
+}
