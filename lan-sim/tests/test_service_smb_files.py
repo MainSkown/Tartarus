@@ -259,3 +259,15 @@ def test_a_write_in_flight_is_logged_when_the_connection_drops(world):
     [written] = world.records("file-write")
     assert written["size"] == 4
     assert written["sha256"] == hashlib.sha256(b"half").hexdigest()
+
+
+def test_a_closed_session_frees_its_files(tmp_path):
+    service = SmbService()
+    with SmbWorld(tmp_path, smb_implementation=service) as running:
+        put(running.client(), "C$", "left.bin", b"x")
+        assert service.has_state(running.key)
+    for _ in range(100):
+        if not service.has_state(running.key):
+            break
+        time.sleep(0.05)
+    assert not service.has_state(running.key)

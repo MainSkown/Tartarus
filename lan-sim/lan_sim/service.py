@@ -6,8 +6,8 @@ enforces the byte cap and the idle timeout on every read and write, so a service
 """
 
 import asyncio
-from dataclasses import dataclass
-from typing import Any, Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol, runtime_checkable
 
 from lan_session import HostSpec, ServiceSpec, SessionSpec
 from lan_sim.clock import Clock
@@ -44,6 +44,15 @@ class Service(Protocol):
         ...
 
 
+@runtime_checkable
+class SessionAwareService(Service, Protocol):
+    """A service that keeps state per session and wants to hear when a session is closed."""
+
+    async def session_closed(self, session_key: str) -> None:
+        """Called once after the session's connections have ended, before `closed` is written."""
+        ...
+
+
 @dataclass(eq=False)
 class Connection:
     reader: asyncio.StreamReader
@@ -58,6 +67,26 @@ class Connection:
     limits: Limits
     bytes_in: int = 0
     bytes_out: int = 0
+    _read_budget: int = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._read_budget = self.limits.max_bytes_read_per_connection
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "limits" and "limits" in self.__dict__:
+            raise AttributeError("a connection's limits are the daemon's; use raise_read_budget")
+        super().__setattr__(name, value)
+
+    def raise_read_budget(self, total_bytes: int) -> None:
+        """Raises this connection's total read budget; never lowers it, never passes the ceiling.
+
+        The only way a service changes what its connection may do: a service that has authenticated
+        its peer may need more than the pre-authentication default (SMB file writes).
+        """
+        ceiling = self.limits.max_raised_read_budget_per_connection
+        if total_bytes > ceiling:
+            raise ValueError(f"{total_bytes} bytes is over the ceiling of {ceiling}")
+        self._read_budget = max(self._read_budget, total_bytes)
 
     async def read(self, size: int) -> bytes:
         """Up to `size` bytes, or `b""` at the end of the stream; counts against the read cap."""
@@ -104,10 +133,9 @@ class Connection:
         self.bytes_out += len(data)
 
     def _remaining_read_budget(self) -> int:
-        remaining = self.limits.max_bytes_read_per_connection - self.bytes_in
+        remaining = self._read_budget - self.bytes_in
         if remaining <= 0:
-            cap = self.limits.max_bytes_read_per_connection
-            raise ReadCapExceeded(f"more than {cap} bytes read on one connection")
+            raise ReadCapExceeded(f"more than {self._read_budget} bytes read on one connection")
         return remaining
 
     async def _guarded(self, awaitable: Any) -> Any:

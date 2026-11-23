@@ -103,15 +103,17 @@ def test_the_service_table_is_capped():
     assert full.value.code == 8
 
 
-def test_state_is_kept_per_session_and_host_and_the_oldest_session_is_forgotten():
-    states = SmbStates(max_sessions=2)
+def test_state_is_kept_per_session_and_host_until_the_session_is_forgotten():
+    states = SmbStates()
     first = states.host("one", "fs01.corp.local")
     assert states.host("one", "fs01.corp.local") is first
     assert states.host("one", "fs02.corp.local") is not first
     assert states.host("one", "fs01.corp.local").budget is first.budget
-    states.host("two", "fs01.corp.local")
-    states.host("three", "fs01.corp.local")
+    other = states.host("two", "fs01.corp.local")
+    states.forget("one")
     assert states.host("one", "fs01.corp.local") is not first
+    assert states.host("two", "fs01.corp.local") is other
+    states.forget("never-seen")
 
 
 def test_every_session_gets_its_own_budget():

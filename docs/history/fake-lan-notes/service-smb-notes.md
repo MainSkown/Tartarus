@@ -39,3 +39,8 @@ Run: `cd lan-sim && uv run --with pytest pytest -q tests/test_service_smb*.py`; 
 
 ## Next
 - planner review of the diff; shared-module changes listed in the report (Connection.raise_read_budget, session-close hook, SCHEMA name).
+
+## Follow-up (framework gaps closed)
+- `Connection.raise_read_budget(total)` with ceiling `Limits.max_raised_read_budget_per_connection` (64 MiB), `Connection.limits` read-only; smb.py asks for the ceiling after a verified login.
+- `SessionAwareService.session_closed(key)` called by the daemon after listeners are released and before `closed` is written; smb.py frees the session's state; the 4-session retention is gone.
+- SCHEMA.md: file-write wording, `svcctl CreateService` detail format, one table of the SMB events.

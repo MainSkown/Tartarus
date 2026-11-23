@@ -77,6 +77,25 @@ class SlowService:
         await connection.write(b"done\n")
 
 
+class ClosingService:
+    """Records every `session_closed` call with the status the daemon had written by then."""
+
+    kind = "closing"
+
+    def __init__(self, layout=None, fail=False) -> None:
+        self.layout = layout
+        self.fail = fail
+        self.closed: list[tuple[str, object]] = []
+
+    async def serve(self, connection: Connection) -> None:
+        await connection.read(10)
+
+    async def session_closed(self, session_key: str) -> None:
+        self.closed.append((session_key, read_status(self.layout, session_key)))
+        if self.fail:
+            raise RuntimeError("cleanup went wrong")
+
+
 def host(address=HOST_1, kind="banner", port=None, fqdn="fs01.corp.local", extra=()):
     port = port or free_port(address)
     return HostSpec(fqdn, address, "Windows", (("admin", "pw"),), (ServiceSpec(kind, port), *extra))
@@ -318,6 +337,64 @@ async def test_closing_a_session_unbinds_it_and_ends_the_log_with_the_counters(w
     assert world.end("task-1")["counters"]["connections"] == 1
     assert world.log("task-1")[-1]["type"] == "session-end"
     assert world.daemon.listening_endpoints() == set()
+
+
+def closing_world(tmp_path, *, fail=False):
+    layout_root = tmp_path / "root" / "status"
+    layout_root.mkdir(parents=True, exist_ok=True)
+    first = ClosingService(Layout(tmp_path / "root"), fail=fail)
+    second = ClosingService(Layout(tmp_path / "root"))
+    second.kind = "closing-too"
+    plain = BannerService()
+    services = {"closing": first, "closing-too": second, "banner": plain}
+    return World(tmp_path, services=services), first, second
+
+
+def test_every_service_with_the_hook_hears_of_a_closed_session_once(tmp_path):
+    async def body():
+        world, first, second = closing_world(tmp_path)
+        await world.open(session())
+        await world.close("task-1")
+        await world.daemon.shutdown()
+        assert [key for key, _ in first.closed] == ["task-1"]
+        assert [key for key, _ in second.closed] == ["task-1"]
+
+    asyncio.run(body())
+
+
+def test_the_hook_runs_before_the_closed_status_is_written(tmp_path):
+    async def body():
+        world, first, _ = closing_world(tmp_path)
+        await world.open(session())
+        await world.close("task-1")
+        assert first.closed[0][1] == SessionStatus("listening")
+        assert world.status("task-1") == SessionStatus("closed")
+
+    asyncio.run(body())
+
+
+def test_a_failing_hook_is_logged_and_does_not_stop_the_close(tmp_path, caplog):
+    async def body():
+        world, _, second = closing_world(tmp_path, fail=True)
+        await world.open(session())
+        status = await world.close("task-1")
+        assert status == SessionStatus("closed")
+        assert [key for key, _ in second.closed] == ["task-1"]
+        assert world.daemon.listening_endpoints() == set()
+
+    asyncio.run(body())
+    assert "session_closed" in caplog.text
+    assert "cleanup went wrong" not in caplog.text
+
+
+def test_shutdown_tells_the_services_about_the_sessions_it_closes(tmp_path):
+    async def body():
+        world, first, _ = closing_world(tmp_path)
+        await world.open(session())
+        await world.daemon.shutdown()
+        assert [key for key, _ in first.closed] == ["task-1"]
+
+    asyncio.run(body())
 
 
 @scenario

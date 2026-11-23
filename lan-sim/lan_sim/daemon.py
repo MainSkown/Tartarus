@@ -29,7 +29,13 @@ from lan_session import (
 from lan_sim.clock import Clock, SystemClock
 from lan_sim.events import Endpoint
 from lan_sim.limits import Limits
-from lan_sim.service import Connection, FrameworkError, PeerClosed, Service
+from lan_sim.service import (
+    Connection,
+    FrameworkError,
+    PeerClosed,
+    Service,
+    SessionAwareService,
+)
 from lan_sim.session_log import (
     REFUSED_FOREIGN_HOST,
     REFUSED_PORT_NOT_SERVED,
@@ -302,9 +308,21 @@ class Daemon:
         self._unregister(active)
         await self._cancel_connections(active)
         await self._release_listeners(active)
+        await self._tell_services_session_closed(key)
         active.log.close()
         self._write_status(key, SessionStatus("closed"))
         self._logger.info("session %s closed", key)
+
+    async def _tell_services_session_closed(self, key: str) -> None:
+        for service in self._services.values():
+            if not isinstance(service, SessionAwareService):
+                continue
+            try:
+                await service.session_closed(key)
+            except Exception as error:  # noqa: BLE001 - a service's cleanup must not stop the close
+                self._logger.warning(
+                    "service %s failed in session_closed: %s", service.kind, type(error).__name__
+                )
 
     # --- serving ----------------------------------------------------------------------------------
 

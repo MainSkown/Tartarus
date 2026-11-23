@@ -15,7 +15,6 @@ from impacket import nt_errors
 from impacket.nmb import NetBIOSError
 from test_service_smb_support import HOST_ADDRESS, SmbWorld
 
-from lan_sim.services import smb as smb_module
 from lan_sim.services import smb_messages as messages
 from lan_sim.services.smb_signing import sign_message
 from lan_sim.services.smb_wire import (
@@ -265,8 +264,12 @@ def test_random_signed_requests_never_hang_or_break_the_service(world):
     assert errors == []
 
 
-def test_the_authenticated_read_budget_still_has_an_end(world, monkeypatch):
-    monkeypatch.setattr(smb_module, "AUTHENTICATED_READ_BUDGET", 2 * 1024 * 1024)
+def test_the_authenticated_read_budget_still_has_an_end(tmp_path):
+    with SmbWorld(tmp_path, max_raised_read_budget_per_connection=2 * 1024 * 1024) as world:
+        write_past_the_budget(world)
+
+
+def write_past_the_budget(world):
     smb = world.client()
     tree = smb.connectTree("C$")
     handle = smb.createFile(tree, "toobig.bin")

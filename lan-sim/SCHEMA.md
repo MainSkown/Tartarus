@@ -49,8 +49,10 @@ the client sent, or a key fingerprint, according to `mechanism`.
 
 ### `file-write`
 
-`share`, `path`, `size` (bytes the client sent), `sha256` (of those bytes), `truncated` (true if the
-client sent more than the daemon hashed). Nothing is stored.
+`share`, `path`, `size` (bytes the client sent to that file), `sha256` (of all of those bytes, in the
+order they arrived), `truncated` (true if the stored copy is incomplete: the file or the session cap
+was hit, so the daemon kept less than the client sent). The service keeps the stored copy in memory
+only, for later reads by the same session; the log never carries file content.
 
 ```json
 {"time":"2026-11-23T12:00:00.000Z","type":"file-write","host":"fs01.corp.local","service":"smb","src":{"ip":"192.168.150.10","port":50123},"dst":{"ip":"192.168.150.201","port":445},"share":"ADMIN$","path":"\\evil.exe","size":61440,"sha256":"abababababababababababababababababababababababababababababababab","truncated":false}
@@ -58,13 +60,13 @@ client sent more than the daemon hashed). Nothing is stored.
 
 ### `service-request`
 
-`name` and `detail`: a protocol request worth recording (an svcctl `CreateService`, say) with its
-argument. The framework also writes it for its own refusals: `name` is `read-cap-exceeded`,
-`idle-timeout`, `connection-too-long` (the connection lifetime cap) or `service-error` (a service raised;
-`detail` is the exception class only, never its message).
+`name` and `detail`: a protocol request worth recording with its argument. The framework also
+writes it for its own refusals: `name` is `read-cap-exceeded`, `idle-timeout`, `connection-too-long`
+(the connection lifetime cap) or `service-error` (a service raised; `detail` is the exception class
+only, never its message). The SMB service's own names are in the table below.
 
 ```json
-{"time":"2026-11-23T12:00:00.000Z","type":"service-request","host":"fs01.corp.local","service":"smb","src":{"ip":"192.168.150.10","port":50123},"dst":{"ip":"192.168.150.201","port":445},"name":"svcctl.CreateService","detail":"evil, C:\\Windows\\evil.exe"}
+{"time":"2026-11-23T12:00:00.000Z","type":"service-request","host":"fs01.corp.local","service":"smb","src":{"ip":"192.168.150.10","port":50123},"dst":{"ip":"192.168.150.201","port":445},"name":"svcctl CreateService","detail":"evil, C:\\Windows\\evil.exe"}
 ```
 
 ### `connection`
@@ -98,6 +100,32 @@ its own stdout log, not here.
 ```json
 {"time":"2026-11-23T12:05:00.000Z","type":"session-end","session":"task-17","log_truncated":false,"counters":{"connections":9803,"bytes_in":8123,"bytes_out":4410,"events_logged":204,"events_by_type":{"login-attempt":4903,"connection":4900},"events_aggregated":9800,"events_rate_limited":0,"events_hard_capped":0,"write_errors":0,"refused":{"host-not-in-session":1}}}
 ```
+
+## What the SMB service writes
+
+Everything the normaliser may rely on from `service: "smb"`. Paths are share-relative with a leading
+backslash (`\dir\file`; the share root is `\`). All strings are cleaned and capped as above.
+
+| `type` | `name` / `operation` | When | Fields |
+|---|---|---|---|
+| `login-attempt` | `mechanism` `ntlm` | every NTLM AUTHENTICATE: at SMB session setup, and again at an RPC bind that authenticates (connect level) | `user` and `domain` as the client wrote them, `secret` the NetNTLMv2 line in hashcat mode 5600 (`user::domain:challenge:proof:blob`; a NetNTLMv1 client gives the 5500 line, an anonymous one an empty string), `success` true only for a host account with the right password |
+| `share-access` | `tree-connect` | a tree connect to `IPC$`, `ADMIN$`, `C$` or a share the host lists | `share` the canonical name, `path` empty |
+| `share-access` | `tree-connect-refused` | a tree connect to any other share | `share` the name asked, `path` empty |
+| `share-access` | `create` | an open that created a file or directory | `share`, `path` |
+| `share-access` | `open` | an open of something that existed (also used for overwrite and supersede) | `share`, `path` |
+| `share-access` | `list` | the first directory listing on a handle | `share`, `path` of the directory |
+| `share-access` | `read` | the first read on a file handle | `share`, `path` |
+| `share-access` | `rename` | a rename accepted | `share`, `path` is `<old path> -> <new path>` |
+| `share-access` | `delete` | a delete requested (applied when the handle closes) | `share`, `path` |
+| `file-write` | | when a handle that was written to closes, or the connection ends with it open: one record per handle | `share`, `path`, `size`, `sha256`, `truncated` (see above) |
+| `service-request` | `svcctl CreateService` | CreateServiceW accepted | `detail` is `<service name>, <binary path>`: the two joined by a comma and one space, the name at most 256 characters, the whole detail cut to 1024 characters with a final ellipsis |
+| `service-request` | `svcctl StartService` | StartServiceW on a known service | `detail` as for CreateService, with the stored binary path (itself kept to 4096 characters) |
+| `service-request` | `svcctl DeleteService` | DeleteService on a known service | `detail` as for CreateService |
+| `service-request` | `svcctl bind` | an RPC bind that asks for authentication the service cannot give (packet integrity or privacy, which is what `sc.exe` sends) | `detail` is `authenticated bind refused: type <n>, level <n>`; the pipe name leads the name, so a refused bind on `srvsvc` is `srvsvc bind` |
+| `service-request` | `malformed-smb` | the connection ended because of bytes that are not SMB, NTLM or DCERPC | `detail` is the parser's reason |
+
+No service is ever started and no file ever reaches the host; `StartService` and the writes are
+records of what the client asked for.
 
 ## What reaches the log, in order
 

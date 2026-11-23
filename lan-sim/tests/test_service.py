@@ -137,6 +137,51 @@ def test_read_exactly_that_would_pass_the_cap_fails_before_reading():
     assert run(scenario()) == 0
 
 
+def test_a_service_can_raise_its_read_budget_up_to_the_ceiling():
+    async def scenario():
+        connection = make(b"x" * 100, max_bytes_read_per_connection=10)
+        connection.raise_read_budget(50)
+        data = await connection.read(100)
+        with pytest.raises(ReadCapExceeded):
+            await connection.read_exactly(51)
+        return len(data), connection.limits.max_bytes_read_per_connection
+
+    assert run(scenario()) == (50, 10)
+
+
+def test_raising_the_read_budget_never_lowers_it():
+    async def scenario():
+        connection = make(b"x" * 100, max_bytes_read_per_connection=10)
+        connection.raise_read_budget(5)
+        connection.raise_read_budget(8)
+        return len(await connection.read(100))
+
+    assert run(scenario()) == 10
+
+
+def test_the_read_budget_cannot_be_raised_past_the_ceiling():
+    async def scenario():
+        connection = make(b"", max_raised_read_budget_per_connection=1000)
+        connection.raise_read_budget(1000)
+        with pytest.raises(ValueError, match="ceiling"):
+            connection.raise_read_budget(1001)
+
+    run(scenario())
+
+
+def test_the_default_ceiling_is_64_mib():
+    assert Limits().max_raised_read_budget_per_connection == 64 * 1024 * 1024
+
+
+def test_a_service_cannot_replace_the_connections_limits():
+    async def scenario():
+        connection = make(b"")
+        with pytest.raises(AttributeError):
+            connection.limits = replace(connection.limits, max_bytes_read_per_connection=10**9)
+
+    run(scenario())
+
+
 def test_read_exactly_returns_the_bytes_and_counts_them():
     async def scenario():
         connection = make(b"abcdef")

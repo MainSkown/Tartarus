@@ -2,17 +2,14 @@
 
 A real file server keeps a dropped file for the next connection, and a malware that writes to ADMIN$
 on one connection and creates its service on another expects that. The state is memory only, bound
-by one `Budget` per session, and the oldest sessions are forgotten past `MAX_SESSIONS`.
+by one `Budget` per session, and `forget` frees it when the daemon says the session is closed.
 """
 
-from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from lan_sim.services.smb_services import ServiceTable
 from lan_sim.services.smb_store import Budget, VirtualShare, new_share
-
-MAX_SESSIONS = 4
 
 
 @dataclass
@@ -35,17 +32,18 @@ class _SessionState:
 
 
 class SmbStates:
-    def __init__(
-        self, max_sessions: int = MAX_SESSIONS, budget_factory: Callable[[], Budget] = Budget
-    ) -> None:
-        self._max_sessions = max_sessions
+    def __init__(self, budget_factory: Callable[[], Budget] = Budget) -> None:
         self._budget_factory = budget_factory
-        self._sessions: OrderedDict[str, _SessionState] = OrderedDict()
+        self._sessions: dict[str, _SessionState] = {}
 
     def host(self, session_key: str, fqdn: str) -> HostState:
-        session = self._sessions.get(session_key) or _SessionState(self._budget_factory())
-        self._sessions[session_key] = session
-        self._sessions.move_to_end(session_key)
-        while len(self._sessions) > self._max_sessions:
-            self._sessions.popitem(last=False)
+        session = self._sessions.get(session_key)
+        if session is None:
+            session = self._sessions[session_key] = _SessionState(self._budget_factory())
         return session.hosts.setdefault(fqdn, HostState(session.budget))
+
+    def forget(self, session_key: str) -> None:
+        self._sessions.pop(session_key, None)
+
+    def has_session(self, session_key: str) -> bool:
+        return session_key in self._sessions

@@ -29,6 +29,7 @@ class Limits:
 
     # What one connection may do
     max_bytes_read_per_connection: int = 64 * KIB
+    max_raised_read_budget_per_connection: int = 64 * MIB
     idle_timeout_seconds: float = 30.0
     max_connection_seconds: float = 300.0
 

@@ -10,7 +10,7 @@ client rejects a server that cannot sign. Nothing a client sends reaches the hos
 import hashlib
 import secrets
 import struct
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 from impacket import nt_errors, spnego
 
@@ -33,7 +33,7 @@ from lan_sim.services.smb_signing import (
 )
 from lan_sim.services.smb_srvsvc import STYPE_DISK, STYPE_HIDDEN_DISK, STYPE_HIDDEN_IPC, ShareEntry
 from lan_sim.services.smb_state import HostState, SmbStates
-from lan_sim.services.smb_store import MIB, SESSION_BYTE_CAP, filetime
+from lan_sim.services.smb_store import filetime
 from lan_sim.services.smb_types import RefusalError, Reply, Request, Session, Tree
 from lan_sim.services.smb_wire import (
     FLAG_RELATED,
@@ -58,10 +58,6 @@ MAX_CREDITS = 64
 MAX_SESSIONS_PER_CONNECTION = 8
 MAX_TREES_PER_SESSION = 16
 MAX_EXTRA_SHARES = 16
-# What a verified login may send on top of the framework's 64 KiB: the session's write cap plus
-# the protocol around it. The framework has no hook to raise its per-connection budget, so the
-# service replaces the connection's limits once, after a login that proved a password.
-AUTHENTICATED_READ_BUDGET = SESSION_BYTE_CAP + 16 * MIB
 
 SUPPORTED_DIALECTS = (DIALECT_3_1_1, DIALECT_3_0_2, DIALECT_3_0, DIALECT_2_1, DIALECT_2_0_2)
 WILDCARD_DIALECT = 0x02FF
@@ -372,11 +368,10 @@ class _Connection:
         exported = ntlm.exported_session_key(attempt, base_key)
         session.user = attempt.user
         session.signing_key = derive_signing_key(self.dialect, exported, session.preauth.value)
-        limits = self.connection.limits
-        if limits.max_bytes_read_per_connection < AUTHENTICATED_READ_BUDGET:
-            self.connection.limits = replace(
-                limits, max_bytes_read_per_connection=AUTHENTICATED_READ_BUDGET
-            )
+        # A verified login may send file writes: ask for the most the framework allows.
+        self.connection.raise_read_budget(
+            self.connection.limits.max_raised_read_budget_per_connection
+        )
 
     def _new_session_id(self) -> int:
         while True:
@@ -494,6 +489,13 @@ class SmbService:
             await _Connection(connection, state).run()
         except (SmbFormatError, RpcFormatError, ntlm.NtlmFormatError) as error:
             connection.log.service_request(name="malformed-smb", detail=str(error))
+
+    async def session_closed(self, session_key: str) -> None:
+        """Frees the session's files, services and budget."""
+        self._states.forget(session_key)
+
+    def has_state(self, session_key: str) -> bool:
+        return self._states.has_session(session_key)
 
 
 SERVICE = SmbService()
