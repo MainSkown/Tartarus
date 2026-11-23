@@ -1,11 +1,17 @@
 # Test and lint settings for the lan-sim daemon: the fake hosts of the simulated local network.
-# The framework is standard library only; protocol services add their own dependencies later.
+# The framework is standard library only; the shared NTLM layer and the protocol services add the rest.
 # It reuses the backend's ruff rules, like the cape project does.
 [project]
 name = "lan-sim"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "asyncssh==2.24.1",
+    "cryptography",
+    "impacket==0.13.1",
+    "ldap3==2.9.1",
+    "pyasn1",
+]
 
 [tool.ruff]
 extend = "../backend/pyproject.toml"

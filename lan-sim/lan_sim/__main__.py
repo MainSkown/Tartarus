@@ -12,14 +12,9 @@ from pathlib import Path
 from lan_session import DEFAULT_ROOT, Layout
 from lan_sim.daemon import DEFAULT_POLL_INTERVAL_S, Daemon
 from lan_sim.events import sanitize_text
-from lan_sim.service import Service
+from lan_sim.registry import build_registry
 
 MAX_LOG_MESSAGE_LENGTH = 500
-
-
-def build_registry() -> dict[str, Service]:
-    """The services the daemon can serve, by kind; each protocol adds one line here."""
-    return {}
 
 
 class JsonLineFormatter(logging.Formatter):

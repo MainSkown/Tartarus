@@ -16,14 +16,15 @@ from lan_session import (
     wait_for_status,
 )
 from lan_sim.__main__ import build_registry
+from lan_sim.registry import SERVICE_KINDS
 
 PROJECT = Path(__file__).resolve().parents[1]
 SHARED = PROJECT.parent / "cape" / "guest_engine"
 PASSWORD = "Sup3rSecret-Password1"
 
 
-def test_the_registry_is_empty_until_a_protocol_registers():
-    assert build_registry() == {}
+def test_the_registry_holds_only_kinds_the_control_service_can_ask_for():
+    assert set(build_registry()) <= set(SERVICE_KINDS)
 
 
 def test_a_session_of_an_unregistered_kind_fails_and_sigterm_stops_the_process_cleanly(tmp_path):
@@ -34,7 +35,7 @@ def test_a_session_of_an_unregistered_kind_fails_and_sigterm_stops_the_process_c
         "127.0.0.3",
         "Windows",
         (("Administrator", PASSWORD),),
-        (ServiceSpec("smb", 445),),
+        (ServiceSpec("gopher", 70),),
     )
     environment = {
         **os.environ,
@@ -58,7 +59,7 @@ def test_a_session_of_an_unregistered_kind_fails_and_sigterm_stops_the_process_c
         process.kill()
 
     assert status.state == "failed"
-    assert status.error == "no service registered for kind 'smb'"
+    assert status.error == "no service registered for kind 'gopher'"
     assert process.returncode == 0, errors
     lines = [json.loads(line) for line in output.splitlines()]
     assert lines
