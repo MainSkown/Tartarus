@@ -5,10 +5,12 @@ import json
 import pytest
 from fixtures.guest_samples import make_guest
 from test_control_http import load_script
-from test_guest_firewall import ROUTES, STARTED_XML, Nft
+from test_guest_firewall import ROUTES, STARTED_XML
+from test_lan_firewall import DC, GUEST_A, SESSION_A, FakeContainer
 from test_port_isolation import Bridge
 
 from guest_engine.firewall import PortLedger
+from guest_engine.lan_firewall import LanLedger
 from guest_engine.registry import Registry
 
 guest_firewall = load_script("guest-firewall")
@@ -17,7 +19,7 @@ ENVIRONMENT = {"GUEST_SUBNET": "192.168.150.0/24", "GUEST_GATEWAY_IP": "192.168.
 
 
 class Programs:
-    """The container's programs: `bridge` and `nft`, with the order they were called in."""
+    """The container's programs: `bridge`, and `nft`, `iptables` and `ip`, in the order called."""
 
     def __init__(self, nft, bridge):
         self.nft = nft
@@ -34,7 +36,7 @@ class Programs:
 def container(tmp_path):
     registry = Registry(tmp_path / "guests")
     registry.create(make_guest("lab1", "192.168.150.11"))
-    nft = Nft()
+    nft = FakeContainer()
     programs = Programs(nft, Bridge())
     paths = guest_firewall.Paths(
         state=tmp_path / "state",
@@ -159,3 +161,40 @@ def test_a_domain_with_no_port_on_the_guest_bridge_runs_no_bridge_command(contai
     assert run("hook", "lab1", "started", "begin", "-", environ={}, stdin=xml) == 0
 
     assert programs.bridge.commands == []
+
+
+# --- the fake local network's sessions ------------------------------------------------------------
+
+
+def test_the_hook_rebuilds_an_open_session_because_the_ledger_is_in_the_state_directory(container):
+    run, nft, paths, _ = container
+    run("init")
+    LanLedger(paths.state / "lan").record(SESSION_A)
+
+    assert run("hook", "lab1", "started", "begin", "-", environ={}, stdin=STARTED_XML) == 0
+
+    assert f"{GUEST_A} . {DC} . 445" in nft.rulesets[-1]
+    assert nft.chains["OUTPUT"] != []
+    assert DC in nft.routes
+
+
+def test_init_closes_every_session_a_dead_container_left_and_removes_what_it_added(container):
+    run, nft, paths, _ = container
+    run("init")
+    LanLedger(paths.state / "lan").record(SESSION_A)
+    run("hook", "lab1", "started", "begin", "-", environ={}, stdin=STARTED_XML)
+
+    assert run("init") == 0
+
+    assert LanLedger(paths.state / "lan").sessions() == []
+    assert nft.state() == ([], {"INPUT": [], "OUTPUT": []}, {})
+    assert "lan_tcp" not in nft.rulesets[-1]
+
+
+def test_a_failing_iptables_is_a_failure_the_caller_sees(container):
+    run, nft, _, _ = container
+    run("init")
+    nft.chains["OUTPUT"] = ["-j ACCEPT -m comment --comment tartarus-lan"]
+    nft.iptables_returncode = 1
+
+    assert run("init") == 1

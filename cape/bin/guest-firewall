@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 """Applies and maintains the guest firewall (guest_engine/firewall.py) inside the cape container.
 
-    guest-firewall init                              entrypoint: find the networks, bind no guest
+    guest-firewall init                              entrypoint: find the networks, bind no guest,
+                                                     close every fake LAN session
     guest-firewall hook DOMAIN EVENT SUBEVENT EXTRA  libvirt's qemu hook; the domain XML is on stdin
 
 `init` keeps the policy it found under /run so the hook, which libvirtd starts without the
@@ -33,6 +34,7 @@ from guest_engine.firewall import (  # noqa: E402
     ports_in,
     store_policy,
 )
+from guest_engine.lan_firewall import LanLedger  # noqa: E402
 from guest_engine.media import Runner, run_command  # noqa: E402
 from guest_engine.port_isolation import isolate_ports  # noqa: E402
 from guest_engine.registry import Registry  # noqa: E402
@@ -52,6 +54,10 @@ class Paths:
     @property
     def ports(self) -> Path:
         return self.state / "ports"
+
+    @property
+    def lan_sessions(self) -> Path:
+        return self.state / "lan"
 
 
 @dataclass(frozen=True)
@@ -76,6 +82,7 @@ def _firewall(policy: FirewallPolicy, container: Container) -> GuestFirewall:
     return GuestFirewall(
         policy=policy,
         ledger=PortLedger(paths.ports),
+        lan_ledger=LanLedger(paths.lan_sessions),
         registry=Registry(paths.registry),
         runner=container.runner,
         rules_file=paths.rules,

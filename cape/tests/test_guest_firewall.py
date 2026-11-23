@@ -581,3 +581,16 @@ def test_a_policy_stored_before_the_setting_existed_still_loads(tmp_path):
     )
 
     assert load_policy(tmp_path).blocked_addresses == ()
+
+
+# --- nothing changes while no fake LAN session exists --------------------------------------------
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_the_ruleset_with_guests_running_is_byte_for_byte_what_it_was_before_the_fake_lan():
+    assert rendered() == (FIXTURES / "guest_firewall_running.nft").read_text()
+
+
+def test_the_ruleset_with_no_guest_running_is_byte_for_byte_what_it_was_before_the_fake_lan():
+    assert rendered(ports=(), addresses={}) == (FIXTURES / "guest_firewall_idle.nft").read_text()

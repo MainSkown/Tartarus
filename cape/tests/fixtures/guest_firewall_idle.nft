@@ -1,0 +1,72 @@
+table inet tartarus_guest
+delete table inet tartarus_guest
+table inet tartarus_guest {
+    set unreachable {
+        type ipv4_addr
+        flags interval
+        auto-merge
+        elements = { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/3, 172.19.0.0/16, 172.18.0.0/16 }
+    }
+    set guest_addresses {
+        type ipv4_addr
+    }
+    chain input {
+        type filter hook input priority -10; policy accept;
+        iifname != "tt-guest" return
+        ct state established,related accept
+        ip daddr 192.168.150.1 tcp dport { 1, 7, 9, 13, 17, 19, 21, 25, 37, 53, 79, 80, 110, 113, 443, 465, 990, 995, 2042, 6667 } accept
+        ip daddr 192.168.150.1 udp dport { 1, 7, 9, 13, 17, 19, 37, 53, 67, 69, 123, 514 } accept
+        ip daddr 192.168.150.1 icmp type echo-request accept
+        ip daddr 255.255.255.255 udp dport 67 accept
+        counter drop
+    }
+    chain forward {
+        type filter hook forward priority -10; policy accept;
+        iifname != "tt-guest" return
+        ip saddr != @guest_addresses counter drop
+        oifname "tt-guest" counter drop
+        ip daddr @unreachable counter reject
+        meta nfproto ipv6 counter drop
+    }
+}
+table bridge tartarus_guest
+delete table bridge tartarus_guest
+table bridge tartarus_guest {
+    set port_macs {
+        type ifname . ether_addr
+    }
+    set protected {
+        type ipv4_addr
+        elements = { 192.168.150.1 }
+    }
+    set bound {
+        type ifname . ether_addr . ipv4_addr
+    }
+    chain from_guest {
+        type filter hook prerouting priority -200; policy drop;
+        iifname . ether saddr @port_macs jump checked
+    }
+    chain checked {
+        ether type arp jump arp_from_guest
+        ether type ip jump ip_from_guest
+    }
+    chain arp_from_guest {
+        iifname . arp saddr ether != @port_macs counter drop
+        arp saddr ip 0.0.0.0 accept
+        arp saddr ip != 192.168.150.0/24 counter drop
+        arp saddr ip @protected iifname . ether saddr . arp saddr ip @bound accept
+        arp saddr ip @protected counter drop
+        accept
+    }
+    chain ip_from_guest {
+        ip saddr 0.0.0.0 udp sport 68 udp dport 67 accept
+        ip saddr 0.0.0.0 counter drop
+        ip saddr != 192.168.150.0/24 counter drop
+        ip saddr @protected iifname . ether saddr . ip saddr @bound accept
+        ip saddr @protected counter drop
+        accept
+    }
+    chain between_guests {
+        type filter hook forward priority -200; policy drop;
+    }
+}

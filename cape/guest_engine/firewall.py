@@ -19,6 +19,7 @@ them:
   `port_isolation.py`).
 """
 
+import contextlib
 import ipaddress
 import json
 import re
@@ -27,7 +28,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from guest_engine.lan_firewall import (
+    LanFragments,
+    LanLedger,
+    LanSession,
+    check_fits,
+    fragments_for,
+    reconcile,
+)
 from guest_engine.media import Runner
+from guest_engine.nft_text import checked_address, nft_chain, nft_set
 from guest_engine.profile import SLUG
 from guest_engine.registry import Registry, write_atomically
 
@@ -157,32 +167,6 @@ def _checked_port(port: GuestPort) -> GuestPort:
     return port
 
 
-def _checked_address(address: str) -> str:
-    try:
-        return str(ipaddress.IPv4Address(address))
-    except ValueError:
-        raise ValueError(f"not an IPv4 address: {address!r}") from None
-
-
-def nft_set(name: str, key_type: str, elements: Sequence[str], intervals: bool = False) -> str:
-    lines = [f"    set {name} {{", f"        type {key_type}"]
-    if intervals:
-        lines.extend(["        flags interval", "        auto-merge"])
-    if elements:
-        lines.append(f"        elements = {{ {', '.join(elements)} }}")
-    lines.append("    }")
-    return "\n".join(lines)
-
-
-def nft_chain(name: str, rules: Sequence[str], hook: str = "") -> str:
-    lines = [f"    chain {name} {{"]
-    if hook:
-        lines.append(f"        {hook}")
-    lines.extend(f"        {rule}" for rule in rules)
-    lines.append("    }")
-    return "\n".join(lines)
-
-
 def _port_list(ports: Sequence[int]) -> str:
     return ", ".join(str(port) for port in sorted(ports))
 
@@ -191,19 +175,22 @@ def _owned_addresses(
     ports: Sequence[GuestPort], addresses: Mapping[str, str]
 ) -> list[tuple[GuestPort, str]]:
     return [
-        (port, _checked_address(addresses[port.domain]))
+        (port, checked_address(addresses[port.domain]))
         for port in ports
         if port.domain in addresses
     ]
 
 
-def _inet_table(policy: FirewallPolicy, owned: Sequence[tuple[GuestPort, str]]) -> str:
+def _inet_table(
+    policy: FirewallPolicy, owned: Sequence[tuple[GuestPort, str]], lan: LanFragments
+) -> str:
     bridge, gateway = policy.bridge, policy.gateway
     guest_input = nft_chain(
         "input",
         [
             f'iifname != "{bridge}" return',
             "ct state established,related accept",
+            *lan.input_rules,
             f"ip daddr {gateway} tcp dport {{ {_port_list(GATEWAY_TCP_PORTS)} }} accept",
             f"ip daddr {gateway} udp dport {{ {_port_list(GATEWAY_UDP_PORTS)} }} accept",
             f"ip daddr {gateway} icmp type echo-request accept",
@@ -232,6 +219,7 @@ def _inet_table(policy: FirewallPolicy, owned: Sequence[tuple[GuestPort, str]]) 
             f"table inet {TABLE} {{",
             unreachable,
             guest_addresses,
+            *lan.inet_sets,
             guest_input,
             guest_forward,
             "}",
@@ -240,11 +228,14 @@ def _inet_table(policy: FirewallPolicy, owned: Sequence[tuple[GuestPort, str]]) 
 
 
 def _bridge_table(
-    policy: FirewallPolicy, ports: Sequence[GuestPort], owned: Sequence[tuple[GuestPort, str]]
+    policy: FirewallPolicy,
+    ports: Sequence[GuestPort],
+    owned: Sequence[tuple[GuestPort, str]],
+    lan: LanFragments,
 ) -> str:
     port_macs = [f'"{port.tap}" . {port.mac}' for port in ports]
     bound = [f'"{port.tap}" . {port.mac} . {address}' for port, address in owned]
-    protected = [_checked_address(policy.gateway), *(address for _, address in owned)]
+    protected = [checked_address(policy.gateway), *(address for _, address in owned)]
     subnet = policy.subnet
     from_guest = nft_chain(
         "from_guest",
@@ -258,6 +249,7 @@ def _bridge_table(
         "arp_from_guest",
         [
             "iifname . arp saddr ether != @port_macs counter drop",
+            *lan.arp_rules,
             "arp saddr ip 0.0.0.0 accept",
             f"arp saddr ip != {subnet} counter drop",
             "arp saddr ip @protected iifname . ether saddr . arp saddr ip @bound accept",
@@ -269,6 +261,7 @@ def _bridge_table(
         "ip_from_guest",
         [
             "ip saddr 0.0.0.0 udp sport 68 udp dport 67 accept",
+            *lan.ip_rules,
             "ip saddr 0.0.0.0 counter drop",
             f"ip saddr != {subnet} counter drop",
             "ip saddr @protected iifname . ether saddr . ip saddr @bound accept",
@@ -287,6 +280,7 @@ def _bridge_table(
             nft_set("port_macs", "ifname . ether_addr", port_macs),
             nft_set("protected", "ipv4_addr", protected),
             nft_set("bound", "ifname . ether_addr . ipv4_addr", bound),
+            *lan.bridge_sets,
             from_guest,
             checked,
             arp_from_guest,
@@ -298,18 +292,27 @@ def _bridge_table(
 
 
 def render_ruleset(
-    policy: FirewallPolicy, ports: Sequence[GuestPort], addresses: Mapping[str, str]
+    policy: FirewallPolicy,
+    ports: Sequence[GuestPort],
+    addresses: Mapping[str, str],
+    lan_sessions: Sequence[LanSession] = (),
 ) -> str:
     """The whole ruleset for the running `ports`; `addresses` maps a domain to its address.
 
-    Raises `ValueError` for a port, address or network that is not what its name says, because
-    every value lands in nft's input verbatim.
+    With no `lan_sessions` it is exactly the ruleset of a stack without the fake local network.
+
+    Raises `ValueError` for a port, address, network or session that is not what its name says,
+    because every value lands in nft's input verbatim.
     """
     checked = [_checked_port(port) for port in ports]
     for network in policy.unreachable:
         ipaddress.IPv4Network(network)
     owned = _owned_addresses(checked, addresses)
-    return _inet_table(policy, owned) + "\n" + _bridge_table(policy, checked, owned) + "\n"
+    lan = fragments_for(lan_sessions, policy.bridge, policy.subnet)
+    tables = [_inet_table(policy, owned, lan), _bridge_table(policy, checked, owned, lan)]
+    if lan.tables:
+        tables.append(lan.tables)
+    return "\n".join(tables) + "\n"
 
 
 class PortLedger:
@@ -396,26 +399,35 @@ def policy_for(
 
 
 class GuestFirewall:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - the one optional ledger is the fake LAN's
         self,
         policy: FirewallPolicy,
         ledger: PortLedger,
         registry: Registry,
         runner: Runner,
         rules_file: Path,
+        *,
+        lan_ledger: LanLedger | None = None,
     ) -> None:
         self._policy = policy
         self._ledger = ledger
         self._registry = registry
         self._runner = runner
         self._rules_file = rules_file
+        self._lan_ledger = lan_ledger
 
     def _registered_addresses(self) -> dict[str, str]:
         return {guest.name: guest.ip for guest in self._registry.list()}
 
+    def _lan_sessions(self) -> list[LanSession]:
+        return self._lan_ledger.sessions() if self._lan_ledger else []
+
     def initialise(self) -> None:
-        """Start from no bound port: no guest can be on the bridge when the container starts."""
+        """Start from no bound port and no LAN session: no guest can be on the bridge when the
+        container starts, and a session belongs to a daemon that died with the container."""
         self._ledger.clear()
+        if self._lan_ledger:
+            self._lan_ledger.clear()
         self.apply()
 
     def hook(self, domain: str, operation: str, domain_xml: str) -> None:
@@ -428,9 +440,39 @@ class GuestFirewall:
             return
         self.apply()
 
+    def open_lan_session(self, session: LanSession) -> None:
+        """Let `session.guest_address` reach its targets and nothing else of the fake block.
+
+        Raises `ValueError` for a session this policy cannot hold and `RuntimeError` when nft,
+        iptables or ip refuse it; in both cases nothing stays open.
+        """
+        if self._lan_ledger is None:
+            raise RuntimeError("this firewall has no ledger for LAN sessions")
+        check_fits(session, self._policy.subnet)
+        self._lan_ledger.record(session)
+        try:
+            self.apply()
+        except Exception:
+            self._lan_ledger.forget(session.key)
+            with contextlib.suppress(Exception):
+                self.apply()
+            raise
+
+    def close_lan_session(self, key: str) -> None:
+        """Forget the session and remove what only it needed; a session not open is no error."""
+        if self._lan_ledger is None:
+            raise RuntimeError("this firewall has no ledger for LAN sessions")
+        self._lan_ledger.forget(key)
+        self.apply()
+
     def apply(self) -> None:
-        ruleset = render_ruleset(self._policy, self._ledger.ports(), self._registered_addresses())
+        sessions = self._lan_sessions()
+        ruleset = render_ruleset(
+            self._policy, self._ledger.ports(), self._registered_addresses(), sessions
+        )
         write_atomically(self._rules_file, ruleset, mode=0o600)
         result = self._runner(["nft", "-f", str(self._rules_file)], NFT_TIMEOUT_S)
         if result.returncode != 0:
             raise RuntimeError(f"nft refused the guest firewall: {result.stderr.strip()}")
+        if self._lan_ledger is not None:
+            reconcile(self._runner, sessions, self._policy.subnet)
