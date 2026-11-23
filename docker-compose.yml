@@ -184,6 +184,8 @@ services:
       - imports:/imports:ro
       # The user's Windows ISOs, read-only: Windows Setup reads one as the guest's CD-ROM.
       - ./data/iso:/data/iso:ro
+      # Where the control service and the lan-sim daemon exchange fake LAN sessions (see lan-run below).
+      - lan-run:/run/lan-sim
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,6 +201,53 @@ services:
       tartarus-cape-db:
         aliases:
           - cape-db
+
+  # The fake hosts of the simulated local network. It shares cape's network namespace (the guest bridge
+  # exists only there), so it is a container of its own for the sake of its image, user and capabilities:
+  # it parses hostile input from a guest and must hold none of CAPE's secrets, devices or privileges.
+  # Recreating cape recreates the namespace; compose recreates this service with it.
+  lan-sim:
+    container_name: tartarus-lan-sim
+    image: tartarus-lan-sim:latest
+    build:
+      context: .
+      dockerfile: lan-sim/Dockerfile
+    restart: "no"
+    network_mode: "service:cape"
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    # Fake hosts listen on their well-known ports (22, 389, 445, ...).
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    # 512m: a flood of 10 000 SMB logins took 55 MiB, and the SMB service keeps the files a client writes
+    # in memory (up to 64 MiB per session, a few sessions at once), so 512m is about twice that. Swap is
+    # off so the limit is the limit.
+    mem_limit: 512m
+    memswap_limit: 512m
+    # Mostly asyncio; the SMB service runs one thread per RPC connection (at most 512 connections per
+    # session), so this leaves room for two sessions and no more.
+    pids_limit: 1024
+    volumes:
+      - lan-run:/run/lan-sim
+    depends_on:
+      cape:
+        condition: service_healthy
+    healthcheck:
+      # No curl in the image: the daemon touches its heartbeat file on every poll, so a file older than
+      # 5 s means a daemon that hangs. The path comes from the contract both containers share.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, time; from lan_session import Layout; sys.exit(time.time() - Layout().alive_file.stat().st_mtime >= 5)"
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 # Each network joins only the services that talk to each other, and the ones that carry data have no
 # route out (internal: true). Docker publishes a port only from a network with a route out, which is
@@ -243,3 +292,11 @@ volumes:
   sample-store:
   exports:
   imports:
+  # A tmpfs, so it is empty at every start of the containers that mount it: a session of a dead daemon
+  # must not survive it. Mounted by cape and lan-sim; the entrypoint of cape sets who owns what.
+  lan-run:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=64m,mode=0755

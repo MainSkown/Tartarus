@@ -62,6 +62,7 @@ Docker publishes their loopback ports; `make smoke` checks all of the above.
 | `frontend` | `tartarus-frontend` (built from `frontend/`; targets `dev-stage` = Vite dev server, `production-stage` = nginx) | Serves the Quasar PWA build and reverse-proxies `/api` and `/ws` to `backend:8000` | `127.0.0.1:8080` only (prod) |
 | `backend` | `tartarus-backend` (built from `backend/`; targets `dev` = uvicorn `--reload`, `prod`) | API, WebSocket, collector, ingester, rules, export, jobs, the client of the guest control service | nothing in prod (dev: `127.0.0.1:8000`) |
 | `cape` | `tartarus-cape` (built from the repo root: `cape/` and `guest/`) | CAPE + KVM/libvirt + rooter + Suricata + INetSim + guacd + the guest control service | nothing |
+| `lan-sim` | `tartarus-lan-sim` (built from the repo root: `lan-sim/` and one file of `cape/`) | The fake hosts of the simulated local network (SMB, RDP, LDAP, MSSQL, WinRM, SSH). Shares `cape`'s network namespace (`network_mode: "service:cape"`) because the guest bridge exists only there; runs as uid 10001 with only `NET_BIND_SERVICE`, a read-only filesystem, no secret and a 512 MB memory limit | nothing |
 | `opensearch` | `opensearchproject/opensearch:3.9.0` (single node, security plugin disabled, internal network only) | Event store | nothing |
 | `postgres` | `postgres:16` | Two databases: `tartarus` (Tartarus metadata) and `cape` (CAPE's task DB) | nothing |
 
@@ -99,13 +100,22 @@ touch CAPE's SQL task DB, and the final report is read from `report.json` (writt
   `images/` and `nvram/`, the registry of guests (`tartarus/guests/<name>/guest.json` and the builds'
   records), the download cache, and the single CAPE registration file (`tartarus/kvm.conf.d/guests.conf`). The
   registry is the one source of truth; the libvirt domains and the CAPE registration are derived from it.
+- **`lan-sim` and the cape namespace:** `lan-sim` lives in the network namespace of the `cape` container it started
+  with. Recreating `cape` alone (`docker compose up -d --force-recreate cape`) leaves `lan-sim` running in the
+  dead namespace, still healthy by its own heartbeat, so `GET /lan/health` would say ready while the fake hosts
+  are unreachable. Run `docker compose up -d` afterwards (no service name): it sees the changed namespace and
+  recreates `lan-sim`. `make up` does this.
+- **The `lan-run` volume** is a tmpfs mounted at `/run/lan-sim` in `cape` and `lan-sim`: the control service
+  and the daemon exchange sessions, status and logs there. It is empty at every start, so no session outlives
+  its containers. `sessions/` is root-owned and read-only for the daemon; `status/` (with the heartbeat file)
+  and `logs/` belong to the daemon (uid 10001).
 - **Host prerequisite for OpenSearch:** `vm.max_map_count ≥ 262144` (checked by the preflight
   script).
 - **Volumes:** Docker named volumes, which Compose prefixes with the project name:
   `tartarus_pg-data`, `tartarus_os-data`, `tartarus_cape-storage` (CAPE `storage/`; mounted
   read-write in `cape` and **read-only** in `backend`), `tartarus_guest-images` (qcow2 disks and
   snapshots, and the guest registry), `tartarus_sample-store`, `tartarus_exports` and
-  `tartarus_imports`. Only two folders on the host are bind-mounted: `./data/iso` (read-only in `cape`,
+  `tartarus_imports` (plus `lan-run`, a tmpfs that keeps nothing). Only two folders on the host are bind-mounted: `./data/iso` (read-only in `cape`,
   where the user drops installation media) and `./rules/sigma` (the Sigma rules, read-only in `backend`).
 - **Only the frontend (nginx) is reachable from the host**, and only on `127.0.0.1`. The backend,
   guacd, libvirtd, CAPE apiv2,

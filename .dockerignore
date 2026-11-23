@@ -1,10 +1,15 @@
-# The cape image is built from the repo root (it copies cape/ and guest/); nothing else belongs in
-# its build context, and data/ alone is several GB of ISOs.
+# The cape and lan-sim images are built from the repo root (the first copies cape/ and guest/, the second
+# lan-sim/ and one file of cape/); nothing else belongs in their build context, and data/ alone is
+# several GB of ISOs.
 *
 !cape
 !guest
+!lan-sim
 **/__pycache__
 **/*.pyc
 cape/tests
 **/.pytest_cache
 **/.ruff_cache
+lan-sim/tests
+lan-sim/.venv
+cape/.venv

@@ -144,7 +144,7 @@ def _parse_preset(data: object, file: Path, subnet: str) -> Preset:
     return preset
 
 
-def _fqdn_problem(name: str) -> str | None:
+def fqdn_problem(name: str) -> str | None:
     if "." not in name:
         return "must have at least two labels (INetSim's dns_static refuses a single-label name)"
     if name != name.lower():
@@ -157,7 +157,7 @@ def _fqdn_problem(name: str) -> str | None:
 
 
 def _check_fqdn(reader: _Reader, key: str, name: str) -> None:
-    if name and (problem := _fqdn_problem(name)):
+    if name and (problem := fqdn_problem(name)):
         reader.fail(key, problem)
 
 

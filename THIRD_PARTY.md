@@ -23,6 +23,7 @@ a container image or a guest disk image. The sections below say what changes if 
 | **Emerging Threats Open rules** | Per rule: GPL-2.0 for sids 1 to 3464 and 100000000 to 100000908; BSD-3-Clause for sids 2000000 to 2799999 (verified from `rules/LICENSE` in the ruleset archive) | **No.** `suricata-update` downloads them into the `cape` image at build time, as a snapshot (nothing in the container runs the updater afterwards) | Nothing blocks use. Keep the rules' `LICENSE` if you pass the ruleset on; the Pro range (sids 2800000 to 2900000) is not in the Open feed |
 | **SigmaHQ rules** (61 files) | [Detection Rule License 1.1](rules/sigma/default/LICENSE.Detection.Rules.md) (DRL), permissive with attribution | **Yes, in the repo** under [rules/sigma/default](rules/sigma/default), copied unmodified at SigmaHQ commit `7d8b152a5fc062ebd309f62ae4d8276aca2786af` | Rules keep their `author` field and the DRL text sits beside them ([ATTRIBUTION.md](rules/sigma/default/ATTRIBUTION.md)). The DRL also says messages built from a rule match must keep the rule's author; see "DRL author retention" below |
 | **MITRE ATT&CK** data (v19.2) | MITRE ATT&CK Terms of Use: free license for research, development and commercial use, provided MITRE's copyright and license are reproduced in any copy | **Yes, in the repo**, as the derived table [backend/app/data/attack_techniques.json](backend/app/data/attack_techniques.json) | The notice in [Notices](#notices) must stay with the table. It had been missing; it is added here |
+| **impacket** 0.13.1 | Apache Software License 1.1 **as modified by Fortra** ("Apache" renamed "Impacket"): not the Apache License 2.0. Two clauses go beyond a plain permissive license: an acknowledgment in end-user documentation, and no use of the names "Impacket", "SecureAuth" and "Fortra" to endorse a derived product or in its name. Files of it carry other notices (pysmb, MIT, BSD) | **No.** Installed from PyPI into the `lan-sim` image on the user's machine (`uv sync --frozen`); `lan-sim`'s own code imports it directly, in the same process | License compatibility under review: the project is GPL-3.0-only and the FSF's license list is understood to class Apache 1.1 as GPL-incompatible (not re-checked for this entry). Nothing is published with it today. The facts and options are in [docs/history/fake-lan-notes/step5-notes.md](docs/history/fake-lan-notes/step5-notes.md) |
 | **Windows** (guest OS) | Microsoft's own license for the user's copy | **No.** The user supplies the ISO; Tartarus never bundles or downloads Windows | The user needs a valid Windows license and ISO. A built guest disk contains Windows and must not be shared |
 | **kevoreilly/community** repo and **capa rules** | `community`: **no license file** in the repository, a mix of authors and vendored binaries (unverified). capa-rules and capa signatures: Apache-2.0 | **No.** `utils/community.py -waf -cr` downloads both from their `master` branches while the `cape` image builds | They are unpinned and arrive as the day's `master`. Auditing is the user's job if they redistribute the image |
 | **QEMU, SeaBIOS, CAPEv2, INetSim, capemon** | GPL and LGPL (rows below) | **No**, built on the user's machine. QEMU and SeaBIOS are rebuilt with their anti-VM strings changed (`cape/build/kvm-config.sh`); the analyzer is patched by `cape/patches/` | Publishing a built `cape` image would be redistribution: you would owe the corresponding source for these (and the license texts), including the modified QEMU, SeaBIOS and analyzer |
@@ -86,6 +87,28 @@ fetched when the image or guest is built.
 | mingw-w64 (`gcc-mingw-w64-x86-64`) | Ubuntu 24.04 package | GPL-3.0-or-later compiler with the GCC Runtime Library Exception; mingw-w64 runtime LGPL-2.1-or-later, ZPL and public-domain parts | apt, in the final image to build the guest self-test's benign sample on request. Nothing it compiles ships | https://www.mingw-w64.org |
 | Ubuntu 24.04 base | `ubuntu:24.04@sha256:68ee2200...` | Many (each package its own; see `/usr/share/doc/*/copyright`) | Base image of all `cape` stages | https://ubuntu.com |
 | uv | 0.12, digest-pinned | MIT OR Apache-2.0 | Copied into the build stage only | https://github.com/astral-sh/uv |
+
+### The `lan-sim` image ([lan-sim/Dockerfile](lan-sim/Dockerfile))
+
+The fake hosts of the simulated local network. Two stages on `python:3.12-slim` (the backend's digest): the first
+installs the locked dependencies with uv, the second copies only the virtualenv, `lan-sim/lan_sim` and
+`cape/guest_engine/lan_session.py`. It runs as uid 10001 and holds no secret.
+
+| Component | Version or pin | License (SPDX) | How it is included | Source |
+|---|---|---|---|---|
+| Python 3.12 and Debian slim | `python:3.12-slim@sha256:a0f57064...` | PSF-2.0 (CPython); Debian packages each their own | Base of both stages | https://www.python.org |
+| uv | 0.12, digest-pinned | MIT OR Apache-2.0 | Copied into the build stage only; not in the final image | https://github.com/astral-sh/uv |
+| impacket | 0.13.1 | Apache Software License 1.1 as modified by Fortra, plus the notices of the files it lists; **license compatibility under review** (see "Things to know") | `uv sync --frozen --no-dev` from `lan-sim/uv.lock`; its protocol classes (NTLM, SPNEGO, SMB2 and DCE/RPC structures) are imported by `lan_sim`, which is not a fork of it | https://github.com/fortra/impacket |
+| asyncssh | 2.24.1 | EPL-2.0 OR GPL-2.0-or-later (the license file is the EPL-2.0; the source headers offer GPL-2.0-or-later as the secondary license) | Same | https://github.com/ronf/asyncssh |
+| ldap3 | 2.9.1 | LGPL-3.0-or-later (`LICENSE.txt` says "version 3 ... or (at your option) any later version") | Same; its `rfc4511` ASN.1 classes build the LDAP replies | https://github.com/cannatag/ldap3 |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | Same | https://github.com/pyca/cryptography |
+| pyasn1, pyasn1_modules | 0.6.5, 0.4.2 | BSD-2-Clause | Same | https://github.com/pyasn1/pyasn1 |
+| pycryptodomex | 3.24.2 | BSD-2-Clause and public domain (its `LICENSE.rst`) | Same (impacket's) | https://www.pycryptodome.org |
+| Transitive packages of impacket: flask, werkzeug, jinja2, markupsafe, itsdangerous, blinker, click, dnspython, ldapdomaindump, pyopenssl, cffi, pycparser, charset-normalizer, six, typing_extensions | per [docs/licenses.md](docs/licenses.md) | BSD-3-Clause, MIT, MIT-0, ISC, Apache-2.0, PSF-2.0 | Same; the image installs them although `lan_sim` imports none of the web ones | see [docs/licenses.md](docs/licenses.md) |
+
+22 packages in all; the per-package table is in [docs/licenses.md](docs/licenses.md#lan-sim-pypi). `ldap3` is LGPL-3.0
+and `asyncssh` offers GPL-2.0-or-later, both of which GPL-3.0-only code may use unmodified from PyPI, the way the
+backend uses pySigma (see "Review items" below).
 
 ### Other images
 
@@ -165,7 +188,7 @@ The guest self-test and the profile's PowerShell scripts are Tartarus's own code
 ## Review items from the dependency audit
 
 The earlier audit ([docs/history/m11-notes/C5-dependencies.md](docs/history/m11-notes/C5-dependencies.md),
-section 6) flagged four entries. Verdicts for a GPL-3.0-only project:
+section 6) flagged four entries; a fifth, impacket, came with `lan-sim`. Verdicts for a GPL-3.0-only project:
 
 | Entry | License | Verdict | Reasoning |
 |---|---|---|---|
@@ -173,8 +196,9 @@ section 6) flagged four entries. Verdicts for a GPL-3.0-only project:
 | **pyphen** 0.18.1 | GPL-2.0+ or LGPL-2.1+ or MPL-1.1 | **Compatible** | A tri-license is a choice. We take the GPL-2.0-or-later (or LGPL-2.1-or-later) option; "or later" allows combining with GPLv3 code. It is used by WeasyPrint for hyphenation in the PDF report |
 | **certifi** 2026.10.19 | MPL-2.0 | **Compatible** | MPL-2.0 section 3.3 allows combining with GPL-3.0 code (GPL is a listed Secondary License) unless the file carries an "Incompatible With Secondary Licenses" notice; certifi is an unmodified data bundle and we do not edit its files |
 | **lightningcss** 1.33.0 | MPL-2.0 | **Compatible, build-time only** | A CSS minifier used by Vite while building. It is not in the served bundle, MPL-2.0 is file-level copyleft, and its output is not a derivative of it |
+| **impacket** 0.13.1 | Apache Software License 1.1, modified by Fortra | **Under review** | Apache 1.1 is understood to be on the FSF's list of GPL-incompatible licenses (its acknowledgment and naming clauses are restrictions the GPL does not allow; not re-checked for this entry), and `lan-sim`'s GPL-3.0-only code imports impacket in the same process. Whether the `lan-sim` image is a combined work, and what to do if it is, is for the project owner: see [docs/history/fake-lan-notes/step5-notes.md](docs/history/fake-lan-notes/step5-notes.md) |
 
-The audit's first-line finding stands: no AGPL, SSPL, proprietary or unlicensed runtime dependency.
+The audit's first-line finding stands for the stack it covered: no AGPL, SSPL, proprietary or unlicensed runtime dependency. impacket, added later for `lan-sim`, is the one open entry above.
 `guacamole-common-js`, reported as `BSD*`, is Apache-2.0 (Apache-2.0 and GPL-3.0 are compatible one way:
 Apache-2.0 code may go into a GPL-3.0 work).
 

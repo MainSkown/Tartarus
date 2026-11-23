@@ -398,8 +398,21 @@ def test_the_layout_puts_each_file_kind_in_its_own_directory(tmp_path):
     assert layout.log_file("task-1") == tmp_path / "logs" / "task-1.jsonl"
 
 
-def test_the_daemons_heartbeat_file_is_directly_under_the_root(tmp_path):
-    assert Layout(tmp_path).alive_file == tmp_path / "alive"
+def test_the_daemons_heartbeat_file_is_in_a_directory_the_daemon_owns(tmp_path):
+    # sessions/ is root-owned and read-only for the daemon, and so is the root: the heartbeat can
+    # only be written where the daemon may create files, which is status/.
+    layout = Layout(tmp_path)
+
+    assert layout.alive_file == layout.status_dir / "alive"
+    assert layout.alive_file.parent not in (layout.root, layout.sessions_dir)
+
+
+def test_the_heartbeat_file_is_never_taken_for_a_session_status(tmp_path):
+    layout = Layout(tmp_path)
+    layout.make_directories()
+    layout.alive_file.touch()
+
+    assert lan_session.status_keys(layout) == []
 
 
 def test_the_default_root_is_run_lan_sim():

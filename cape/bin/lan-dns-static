@@ -1,0 +1,36 @@
+#!/usr/bin/python3
+"""Prints the `dns_static` lines for the LAN presets: for INetSim's config.
+
+Always exits 0: presets that cannot be loaded print nothing and say why on stderr, which is how
+INetSim starts without the lines (lan_dns.py). The presets and the subnet come from the environment
+the control service reads them from (GUEST_LAN_PRESETS_DIR, GUEST_SUBNET).
+"""
+
+import os
+import sys
+from collections.abc import Mapping
+
+# `python3 -I` does not put the script's directory on the path. The image lays guest_engine/ next
+# to the scripts; in the repository it sits one level up, beside bin/.
+SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+sys.path[:0] = [SCRIPT_DIRECTORY, os.path.dirname(SCRIPT_DIRECTORY)]
+
+from lan_dns import render  # noqa: E402
+
+from guest_engine.config import EngineConfig  # noqa: E402
+
+
+def main(environ: Mapping[str, str]) -> int:
+    config = EngineConfig.from_environment(environ)
+    sys.stdout.write(
+        render(
+            config.lan_presets_dir,
+            config.guest_subnet,
+            lambda message: sys.stderr.write(f"lan-dns-static: {message}\n"),
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(os.environ))

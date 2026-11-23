@@ -12,7 +12,10 @@ Scope: the **production** dependency tree only.
 - Frontend: `license-checker --production`, 120 packages. It also counts optional peers of the build
   tools (`vite`, `terser`, `lightningcss`, `typescript`); those run at build time and are not in the
   bundle the browser downloads.
-- The project's own packages (`tartarus-backend`, `tartarus-frontend`) are left out; both are GPL-3.0-only.
+- lan-sim: the 22 packages in `lan-sim/uv.lock` that `uv sync --frozen --no-dev` installs on Linux (the lock also
+  names `pyreadline3`, which `click` needs on Windows only). They are the `lan-sim` image's, installed by its
+  [Dockerfile](../lan-sim/Dockerfile); `asyncssh`, `cryptography`, `impacket`, `ldap3` and `pyasn1` are the project's direct dependencies, the rest come with them.
+- The project's own packages (`tartarus-backend`, `tartarus-frontend`, `lan-sim`) are left out; all are GPL-3.0-only.
 - Not packages, so not listed: the 7-Zip console build the `cape` image installs in the analyzer (7-Zip 26.03,
   LGPL-2.1-or-later, no RAR code). It is in the `cape` image table of [THIRD_PARTY.md](../THIRD_PARTY.md), with
   its pinned hash and a link to its [license text](https://www.7-zip.org/license.txt).
@@ -34,6 +37,15 @@ last command writes the two tables to `/tmp/tables.md` and prints the per-licens
   && uvx pip-licenses --python=/tmp/tartarus-license-venv/bin/python --from=mixed --with-urls \
        --format=json --output-file=/tmp/py-licenses.json)
 python3 -I render.py /tmp/npm-licenses.json /tmp/py-licenses.json /tmp/tables.md
+```
+
+The lan-sim table is made the same way from its own lock (`render.py` needs no change: it renders any
+`pip-licenses` JSON as a PyPI table):
+
+```bash
+(cd lan-sim && UV_PROJECT_ENVIRONMENT=/tmp/tartarus-lan-sim-license-venv uv sync --frozen --no-dev \
+  && uvx pip-licenses --python=/tmp/tartarus-lan-sim-license-venv/bin/python --from=mixed --with-urls \
+       --format=json --output-file=/tmp/lan-sim-licenses.json)
 ```
 
 <details>
@@ -179,6 +191,40 @@ print(summary(collections.Counter(family(r[1]) for r in npm_rows)))
 | websockets | 17.2 | BSD-3-Clause | https://github.com/python-websockets/websockets |
 | yarl | 1.25.1 | Apache-2.0 | https://github.com/aio-libs/yarl |
 | zopfli | 0.4.3 | Apache Software License | https://github.com/fonttools/py-zopfli |
+
+### lan-sim (PyPI)
+
+The `lan-sim` image ([lan-sim/Dockerfile](../lan-sim/Dockerfile)). Read from the installed distributions of the
+built image (`importlib.metadata`: the `License` and `License-Expression` fields and the license file inside each
+`dist-info`), not from memory. `impacket` is under a modified Apache Software License 1.1 and its fit with the
+project's GPL-3.0-only is under review: see [THIRD_PARTY.md](../THIRD_PARTY.md#the-lan-sim-image-lan-simdockerfile).
+`pycryptodomex` carries its own text for the public-domain and BSD-2-Clause parts; `asyncssh` is dual-licensed
+(its source headers offer GPL-2.0-or-later as the secondary license).
+
+| Package | Version | License (as the package declares it) | URL |
+|---|---|---|---|
+| asyncssh | 2.24.1 | EPL-2.0 OR GPL-2.0-or-later | https://github.com/ronf/asyncssh |
+| blinker | 1.9.0 | MIT License | https://github.com/pallets-eco/blinker/ |
+| cffi | 2.1.1 | MIT-0 | https://github.com/python-cffi/cffi |
+| charset-normalizer | 3.5.3 | MIT | https://github.com/jawah/charset_normalizer |
+| click | 8.5.1 | BSD-3-Clause | https://github.com/pallets/click/ |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | https://github.com/pyca/cryptography |
+| dnspython | 2.9.2 | ISC | https://www.dnspython.org |
+| flask | 3.1.3 | BSD-3-Clause | https://github.com/pallets/flask/ |
+| impacket | 0.13.1 | Apache modified (Apache Software License 1.1 as modified by Fortra; plus the notices of the files it lists) | https://github.com/fortra/impacket |
+| itsdangerous | 2.2.0 | BSD License | https://github.com/pallets/itsdangerous/ |
+| jinja2 | 3.1.6 | BSD License | https://github.com/pallets/jinja/ |
+| ldap3 | 2.9.1 | LGPL v3 (GNU Lesser General Public License v3, or any later version) | https://github.com/cannatag/ldap3 |
+| ldapdomaindump | 0.10.0 | MIT | https://github.com/dirkjanm/ldapdomaindump/ |
+| markupsafe | 3.0.4 | BSD-3-Clause | https://github.com/pallets/markupsafe/ |
+| pyasn1 | 0.6.5 | BSD-2-Clause | https://github.com/pyasn1/pyasn1 |
+| pyasn1_modules | 0.4.2 | BSD License | https://github.com/pyasn1/pyasn1-modules |
+| pycparser | 3.12 | BSD-3-Clause | https://github.com/eliben/pycparser |
+| pycryptodomex | 3.24.2 | BSD, Public Domain | https://www.pycryptodome.org |
+| pyopenssl | 26.4.0 | Apache License, Version 2.0 | https://github.com/pyca/pyopenssl |
+| six | 1.17.0 | MIT | https://github.com/benjaminp/six |
+| typing_extensions | 4.16.0 | PSF-2.0 | https://github.com/python/typing_extensions |
+| werkzeug | 3.1.9 | BSD-3-Clause | https://github.com/pallets/werkzeug/ |
 
 ### Frontend (npm)
 

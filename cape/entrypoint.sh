@@ -62,7 +62,15 @@ grant_qemu_user_kvm_access() {
 }
 
 render_inetsim_config() {
-    { cat /etc/inetsim/inetsim.conf; envsubst '${GUEST_GATEWAY_IP}' <"$TEMPLATES/inetsim.conf"; } >/etc/inetsim/tartarus.conf
+    local fake_host_names
+    # A dns_static line INetSim refuses stops all of its services, so a helper that fails outright
+    # leaves the fake hosts without names instead of INetSim without a start.
+    fake_host_names=$(python3 -I /usr/local/lib/tartarus/lan-dns-static) || fake_host_names=
+    {
+        cat /etc/inetsim/inetsim.conf
+        envsubst '${GUEST_GATEWAY_IP}' <"$TEMPLATES/inetsim.conf"
+        printf '%s' "$fake_host_names"
+    } >/etc/inetsim/tartarus.conf
 }
 
 render_cape_guest_network_overrides() {
@@ -85,6 +93,15 @@ make_network_sysctls_writable() {
 prepare_volumes() {
     mkdir -p /var/lib/libvirt/definitions /var/lib/libvirt/tartarus/kvm.conf.d
     install -d -o cape -g cape /opt/CAPEv2/storage /opt/CAPEv2/storage/analyses
+}
+
+# /run/lan-sim is the lan-run volume, shared with the lan-sim container (docker-compose.yml). That
+# container parses hostile input and runs as uid 10001: it may read the sessions this service
+# publishes but never write them, and it owns the two directories it writes.
+prepare_lan_sim_directory() {
+    install -d -m 0755 -o root -g root /run/lan-sim /run/lan-sim/sessions
+    install -d -m 0755 -o 10001 -g 10001 /run/lan-sim/status
+    install -d -m 0750 -o 10001 -g 10001 /run/lan-sim/logs
 }
 
 # Every CAPE process creates the schema on first connect; on an empty database they race and
@@ -141,6 +158,7 @@ render_inetsim_config
 render_cape_guest_network_overrides
 grant_qemu_user_kvm_access
 prepare_volumes
+prepare_lan_sim_directory
 migrate_cape_schema
 create_cape_schema
 

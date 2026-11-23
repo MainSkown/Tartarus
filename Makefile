@@ -41,8 +41,8 @@ lint: ## Run ruff, mypy, eslint and the TypeScript check
 	cd backend && uv run ruff check
 	cd backend && uv run ruff format --check
 	cd backend && uv run mypy app
-	cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/container-egress bin/machine-broker bin/machine_broker_logic.py bin/machine_broker_client.py bin/analysis_files.py bin/control_http.py bin/finish_logic.py bin/lan_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
-	cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/container-egress bin/machine-broker bin/machine_broker_logic.py bin/machine_broker_client.py bin/analysis_files.py bin/control_http.py bin/finish_logic.py bin/lan_logic.py bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
+	cd cape && uv run --no-project --with ruff ruff check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/container-egress bin/machine-broker bin/machine_broker_logic.py bin/machine_broker_client.py bin/analysis_files.py bin/control_http.py bin/finish_logic.py bin/lan_logic.py bin/lan_dns.py bin/lan-dns-static bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
+	cd cape && uv run --no-project --with ruff ruff format --check guest_engine auxiliary tests bin/guest-control bin/guest-firewall bin/container-egress bin/machine-broker bin/machine_broker_logic.py bin/machine_broker_client.py bin/analysis_files.py bin/control_http.py bin/finish_logic.py bin/lan_logic.py bin/lan_dns.py bin/lan-dns-static bin/memory_logic.py bin/volatility.py bin/symbols_logic.py bin/guest-symbols
 	cd frontend && npm run lint
 	cd frontend && npm run typecheck
 
