@@ -548,7 +548,7 @@ export type BodyAnalysesCreate = {
     /**
      * Options
      *
-     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's profile lists), `interactive` (a desktop to drive; the run then lasts the whole timeout), `memory_dump` (dump the guest's RAM and read it; needs free disk), `keep_memory_dump` (keep the dump afterwards; only with `memory_dump`) and `guest` (a ready guest; the default guest when omitted), `archive_password` and `archive_entry` (the file of the submitted zip to run; set together, the zip is unpacked in the guest and `package` becomes `zip`).
+     * JSON object: `route`, `timeout` (60 to 1200 seconds), `package` (one the guest's profile lists), `interactive` (a desktop to drive; the run then lasts the whole timeout), `memory_dump` (dump the guest's RAM and read it; needs free disk), `keep_memory_dump` (keep the dump afterwards; only with `memory_dump`), `lan_preset` (the id of a fake local network from `GET /lan-presets`; off when omitted, refused with the `internet` route) and `guest` (a ready guest; the default guest when omitted), `archive_password` and `archive_entry` (the file of the submitted zip to run; set together, the zip is unpacked in the guest and `package` becomes `zip`).
      */
     options?: string;
 };
@@ -1319,6 +1319,12 @@ export type FlowRow = {
      */
     destination_port: number | null;
     process: ProcessRef | null;
+    /**
+     * Simulated
+     *
+     * The flow went to a host of the fake local network.
+     */
+    simulated: boolean;
 };
 
 /**
@@ -1692,6 +1698,24 @@ export type HostRow = {
      * Related
      */
     related: Array<string>;
+    /**
+     * Simulated
+     *
+     * The address is a host of the fake local network.
+     */
+    simulated: boolean;
+    /**
+     * Lan Host
+     *
+     * Fully qualified name of that fake host.
+     */
+    lan_host: string | null;
+    /**
+     * Lan Role
+     *
+     * Role the preset gives that fake host, such as file-server.
+     */
+    lan_role: string | null;
 };
 
 /**
@@ -1919,6 +1943,258 @@ export type JobType = 'guest_build' | 'ingest' | 'reingest' | 'export_report' | 
 export type JsonValue = string | number | number | boolean | Array<JsonValue> | {
     [key: string]: JsonValue;
 } | null;
+
+/**
+ * LanCredential
+ *
+ * One (user, domain, mechanism) the sample tried on a host.
+ *
+ * `secret_as_sent` is the first secret the sample sent with it, exactly as sent: it is the
+ * sample's password or hash, never one of ours. `count` is the attempts logged one by one; a user
+ * only a flood aggregate named has 0, and the aggregate's first secret, which names no user, is
+ * an entry with an empty `user`.
+ */
+export type LanCredential = {
+    /**
+     * User
+     */
+    user: string;
+    /**
+     * Domain
+     */
+    domain: string;
+    /**
+     * Mechanism
+     */
+    mechanism: string;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Success
+     */
+    success: boolean;
+    /**
+     * Secret As Sent
+     */
+    secret_as_sent: string | null;
+};
+
+/**
+ * LanHost
+ */
+export type LanHost = {
+    /**
+     * Fqdn
+     */
+    fqdn: string;
+    /**
+     * Address
+     */
+    address: string;
+    /**
+     * Role
+     */
+    role: string;
+    /**
+     * Services
+     */
+    services: Array<LanService>;
+};
+
+/**
+ * LanHostSummary
+ */
+export type LanHostSummary = {
+    /**
+     * Fqdn
+     */
+    fqdn: string;
+    /**
+     * Address
+     */
+    address: string;
+    /**
+     * Role
+     */
+    role: string;
+    /**
+     * Services
+     */
+    services: Array<LanServiceUse>;
+    /**
+     * Credentials
+     */
+    credentials: Array<LanCredential>;
+    /**
+     * Credentials More
+     */
+    credentials_more?: number;
+    /**
+     * Files
+     */
+    files: Array<LanWrittenFile>;
+    /**
+     * Files More
+     */
+    files_more?: number;
+    /**
+     * First
+     */
+    first: string;
+    /**
+     * Last
+     */
+    last: string;
+};
+
+/**
+ * LanPreset
+ *
+ * A set of fake hosts an analysis can ask for; `GET /lan-presets` lists them.
+ */
+export type LanPreset = {
+    /**
+     * Id
+     *
+     * The id to put in an analysis's `lan_preset` option.
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Hosts
+     */
+    hosts: Array<LanHost>;
+};
+
+/**
+ * LanPresetRef
+ */
+export type LanPresetRef = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * LanService
+ */
+export type LanService = {
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Port
+     */
+    port: number;
+};
+
+/**
+ * LanServiceUse
+ *
+ * A service of a fake host the sample reached. `service` is None for a port the host does not
+ * serve (a scan that connected to a closed port); `port` is None for a flood aggregate whose
+ * service the preset does not list.
+ */
+export type LanServiceUse = {
+    /**
+     * Service
+     */
+    service: string | null;
+    /**
+     * Port
+     */
+    port: number | null;
+    /**
+     * Attempts
+     */
+    attempts: number;
+    /**
+     * First
+     */
+    first: string;
+    /**
+     * Last
+     */
+    last: string;
+};
+
+/**
+ * LanSummary
+ *
+ * `summary.lan`. Stored only when the analysis asked for a fake LAN; with no `hosts` the
+ * sample did nothing on it. `truncated` is the daemon's own word that it stopped logging.
+ */
+export type LanSummary = {
+    preset: LanPresetRef;
+    /**
+     * Hosts
+     */
+    hosts: Array<LanHostSummary>;
+    totals: LanTotals;
+    /**
+     * Truncated
+     */
+    truncated?: boolean;
+};
+
+/**
+ * LanTotals
+ */
+export type LanTotals = {
+    /**
+     * Hosts
+     */
+    hosts: number;
+    /**
+     * Attempts
+     */
+    attempts: number;
+    /**
+     * Credentials
+     */
+    credentials: number;
+    /**
+     * Files
+     */
+    files: number;
+};
+
+/**
+ * LanWrittenFile
+ */
+export type LanWrittenFile = {
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Share
+     */
+    share: string;
+    /**
+     * Size
+     */
+    size: number | null;
+    /**
+     * Sha256
+     */
+    sha256: string | null;
+};
 
 /**
  * Lane
@@ -2958,6 +3234,7 @@ export type ReportSummary = {
      */
     missing_exports?: Array<MissingExport>;
     memory?: MemorySummary | null;
+    lan?: LanSummary | null;
     /**
      * Warnings
      */
@@ -4017,6 +4294,33 @@ export type GuestsRetrySelftestResponses = {
 };
 
 export type GuestsRetrySelftestResponse = GuestsRetrySelftestResponses[keyof GuestsRetrySelftestResponses];
+
+export type LanPresetsListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/lan-presets';
+};
+
+export type LanPresetsListErrors = {
+    /**
+     * Default Response
+     */
+    default: ErrorEnvelope;
+};
+
+export type LanPresetsListError = LanPresetsListErrors[keyof LanPresetsListErrors];
+
+export type LanPresetsListResponses = {
+    /**
+     * Response Lan Presets List
+     *
+     * Successful Response
+     */
+    200: Array<LanPreset>;
+};
+
+export type LanPresetsListResponse = LanPresetsListResponses[keyof LanPresetsListResponses];
 
 export type AnalysesListData = {
     body?: never;
