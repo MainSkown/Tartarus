@@ -47,4 +47,8 @@ export default {
     inetsim: 'inetsim',
     inetsimTitle: 'answered by INetSim',
   },
+  lan: {
+    badge: 'FAKE LAN HOST',
+    badgeTitle: 'simulated by Tartarus on the fake local network',
+  },
 }

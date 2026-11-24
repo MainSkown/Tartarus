@@ -53,7 +53,7 @@ function longValues(): ViewMock {
     http: { items: [{ ...http, url: LONG_URL, host: LONG_DOMAIN, user_agent: LONG_AGENT }], total: 1 },
     flows: { items: [{ ...flow, process: { pid: 4242, name: 'a_process_with_an_extremely_long_image_name_indeed.exe' } }], total: 1 },
     hosts: {
-      items: [{ host: LONG_DOMAIN, kind: 'domain', count: 123456, related: Array.from({ length: 20 }, (_, i) => `related-host-${i}.example.org`) }],
+      items: [{ host: LONG_DOMAIN, kind: 'domain', count: 123456, related: Array.from({ length: 20 }, (_, i) => `related-host-${i}.example.org`), simulated: false, lan_host: null, lan_role: null }],
       total: 1,
     },
   })

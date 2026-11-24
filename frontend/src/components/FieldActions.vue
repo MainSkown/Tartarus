@@ -4,9 +4,10 @@ import CopyButton from '@/components/CopyButton.vue'
 import { t } from '@/i18n'
 import { useQueryStateStore } from '@/stores/query-state'
 
-const props = withDefaults(defineProps<{ field: string; value: string | number; filterable?: boolean }>(), {
-  filterable: true,
-})
+const props = withDefaults(
+  defineProps<{ field: string; value: string | number; filterable?: boolean; copyable?: boolean }>(),
+  { filterable: true, copyable: true },
+)
 const store = useQueryStateStore()
 
 const text = computed(() => String(props.value))
@@ -46,6 +47,7 @@ function filter(negate: boolean): void {
       />
     </button>
     <CopyButton
+      v-if="copyable"
       :text="text"
       :what="t('events.fields.valueNoun', { field })"
     />

@@ -290,3 +290,41 @@ describe('NetworkTab show events actions', () => {
     expect(actions(wrapper)).toEqual([['destination.ip: 192.168.150.1'], ['domain: evil.example.org']])
   })
 })
+
+describe('NetworkTab fake LAN', () => {
+  const FAKE_HOST = {
+    host: '192.168.150.20',
+    kind: 'ip',
+    count: 4,
+    related: [],
+    simulated: true,
+    lan_host: 'fileserver.corp.lan',
+    lan_role: 'file-server',
+  }
+
+  it('shows a simulated host by its FQDN, with the badge', async () => {
+    const view = networkView({ hosts: { items: [FAKE_HOST, { ...FAKE_HOST, host: '10.0.0.9', simulated: false, lan_host: null, lan_role: null }], total: 2 } })
+    const wrapper = await mountTab(view)
+    await openSubTab(wrapper, 'HOSTS')
+    expect(wrapper.findAll('.fake-lan-badge')).toHaveLength(1)
+    expect(wrapper.find('tbody .cell-value').text()).toBe('fileserver.corp.lan')
+    expect(wrapper.findAll('tbody tr').map((row) => row.find('.cell-value').text())).toEqual(['fileserver.corp.lan', '10.0.0.9'])
+  })
+
+  it('marks a simulated flow with the badge and leaves the other flows alone', async () => {
+    const real = networkView().flows.items[0]!
+    const view = networkView({ flows: { items: [{ ...real, simulated: true }, { ...real, event_id: 'flow-3', simulated: false }], total: 2 } })
+    const wrapper = await mountTab(view)
+    await openSubTab(wrapper, 'FLOWS')
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows[0]!.find('.fake-lan-badge').exists()).toBe(true)
+    expect(rows[1]!.find('.fake-lan-badge').exists()).toBe(false)
+  })
+
+  it('renders a view with no simulated host as before, with no badge', async () => {
+    const wrapper = await mountTab(networkView({ simulated: false }))
+    await openSubTab(wrapper, 'HOSTS')
+    expect(wrapper.find('.fake-lan-badge').exists()).toBe(false)
+    expect(bodyRows(wrapper)[0]!.slice(0, 2)).toEqual(['192.168.150.1', 'ip'])
+  })
+})

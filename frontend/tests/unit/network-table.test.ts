@@ -109,4 +109,65 @@ describe('NetworkTable', () => {
       expect(cell.find('button').exists()).toBe(false)
     })
   })
+
+  describe('fake LAN rows', () => {
+    beforeEach(() => query.reset())
+
+    const FAKE_HOST: NetworkTableRow = {
+      key: 'fake',
+      cells: ['fileserver.corp.lan', 10],
+      lan: { host: 'fileserver.corp.lan', role: 'file-server' },
+    }
+    const ORDINARY_HOST: NetworkTableRow = { key: 'plain', cells: ['10.0.0.5', 20] }
+    const FAKE_FLOW: NetworkTableRow = { key: 'flow', cells: ['tcp', 30], lan: {} }
+
+    it('puts the FAKE LAN HOST badge on a simulated host row and on no other row', () => {
+      const rows = mountTable({ rows: [FAKE_HOST, ORDINARY_HOST] }).findAll('tbody tr')
+      expect(rows[0]!.find('.fake-lan-badge').text()).toBe('FAKE LAN HOST')
+      expect(rows[1]!.find('.fake-lan-badge').exists()).toBe(false)
+    })
+
+    it('puts the same badge on a simulated flow row', () => {
+      expect(mountTable({ rows: [FAKE_FLOW] }).find('.fake-lan-badge').exists()).toBe(true)
+    })
+
+    it('shows the FQDN as the name and the role under it', () => {
+      const cell = mountTable({ rows: [FAKE_HOST] }).find('tbody td')
+      expect(cell.find('.cell-value').text()).toBe('fileserver.corp.lan')
+      expect(cell.find('.network-table__role').text()).toBe('file-server')
+    })
+
+    it('leaves out the role when the preset gives none', () => {
+      const row: NetworkTableRow = { key: 'x', cells: ['x.corp.lan', 1], lan: { host: 'x.corp.lan', role: null } }
+      expect(mountTable({ rows: [row] }).find('.network-table__role').exists()).toBe(false)
+    })
+
+    it('filters on by the simulated flag from the badge', async () => {
+      await mountTable({ rows: [FAKE_HOST] }).find('[aria-label="Filter on tartarus.lan.simulated: true"]').trigger('click')
+      expect(query.chips).toEqual([{ field: 'tartarus.lan.simulated', value: 'true', negate: false }])
+    })
+
+    it('filters out by the simulated flag from the badge', async () => {
+      await mountTable({ rows: [FAKE_HOST] }).find('[aria-label="Filter out tartarus.lan.simulated: true"]').trigger('click')
+      expect(query.chips).toEqual([{ field: 'tartarus.lan.simulated', value: 'true', negate: true }])
+    })
+
+    it('filters on the host name by its FQDN', async () => {
+      await mountTable({ rows: [FAKE_HOST] }).find('[aria-label="Filter on tartarus.lan.host: fileserver.corp.lan"]').trigger('click')
+      expect(query.chips).toEqual([{ field: 'tartarus.lan.host', value: 'fileserver.corp.lan', negate: false }])
+    })
+
+    it('filters out the host name by its FQDN', async () => {
+      await mountTable({ rows: [FAKE_HOST] }).find('[aria-label="Filter out tartarus.lan.host: fileserver.corp.lan"]').trigger('click')
+      expect(query.chips).toEqual([{ field: 'tartarus.lan.host', value: 'fileserver.corp.lan', negate: true }])
+    })
+
+    it('keeps a long FQDN in the truncating value span, as the other cells do', () => {
+      const longName = `${'very-long-label-'.repeat(8)}fileserver.corp.lan`
+      const row: NetworkTableRow = { key: 'long', cells: [longName, 1], lan: { host: longName, role: 'file-server' } }
+      const value = mountTable({ rows: [row] }).find('tbody td .cell-value')
+      expect(value.text()).toBe(longName)
+      expect(value.attributes('title')).toBe(longName)
+    })
+  })
 })

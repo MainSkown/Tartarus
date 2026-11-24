@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { viewsNetwork } from '@/api'
 import type { AnalysisRead, NetworkView } from '@/api'
-import NetworkTable, { type NetworkColumn, type NetworkTableRow } from '@/components/NetworkTable.vue'
+import NetworkTable, { type FakeLanInfo, type NetworkColumn, type NetworkTableRow } from '@/components/NetworkTable.vue'
 import TerminalEmpty from '@/components/TerminalEmpty.vue'
 import ViewState from '@/components/ViewState.vue'
 import { useAnalysisView } from '@/composables/use-analysis-view'
@@ -38,10 +38,11 @@ interface SubTabSpec<List extends ListName> {
   emptyNote?: string
   columns: ValueColumn<Item<List>>[]
   rowKey: (row: Item<List>) => string
+  fakeLan?: (row: Item<List>) => FakeLanInfo | undefined
 }
 
 function subTab<List extends ListName>(key: List, spec: SubTabSpec<List>): SubTab {
-  const { columns, rowKey, ...labels } = spec
+  const { columns, rowKey, fakeLan, ...labels } = spec
   return {
     key,
     ...labels,
@@ -53,6 +54,7 @@ function subTab<List extends ListName>(key: List, spec: SubTabSpec<List>): SubTa
         cells: columns.map((column) => column.value(row)),
         cellFilters: columns.map((column) => column.filters?.(row) ?? []),
         process: 'process' in row ? row.process : null,
+        lan: fakeLan?.(row),
       })),
   }
 }
@@ -119,6 +121,7 @@ function buildSubTabs(): SubTab[] {
         },
       ],
       rowKey: eventId,
+      fakeLan: (row) => (row.simulated ? {} : undefined),
     }),
     subTab('alerts', {
       label: t('network.subTab.alerts'),
@@ -135,12 +138,17 @@ function buildSubTabs(): SubTab[] {
       label: t('network.subTab.hosts'),
       emptyMessage: t('network.empty.hosts'),
       columns: [
-        { label: t('network.column.host'), value: (row) => row.host, filters: (row) => hostEntryFilters(row.kind, row.host) },
+        {
+          label: t('network.column.host'),
+          value: (row) => (row.simulated && row.lan_host ? row.lan_host : row.host),
+          filters: (row) => hostEntryFilters(row.kind, row.host),
+        },
         { label: t('network.column.kind'), value: (row) => row.kind },
         { label: t('network.column.count'), value: (row) => row.count, numeric: true },
         { label: t('network.column.related'), value: (row) => row.related.join(', ') || null },
       ],
       rowKey: (row) => row.host,
+      fakeLan: (row) => (row.simulated ? { host: row.lan_host, role: row.lan_role } : undefined),
     }),
   ]
 }

@@ -7,11 +7,19 @@ import { useQueryStateStore } from '@/stores/query-state'
 
 let store: ReturnType<typeof useQueryStateStore>
 
-function mountActions(value: string | number = 'cmd.exe', filterable?: boolean) {
+function mountActions(value: string | number = 'cmd.exe', filterable?: boolean, copyable?: boolean) {
   const pinia = createPinia()
   setActivePinia(pinia)
   store = useQueryStateStore()
-  return mount(FieldActions, { props: { field: 'process.name', value, ...(filterable === undefined ? {} : { filterable }) }, global: { plugins: [Quasar, pinia] } })
+  return mount(FieldActions, {
+    props: {
+      field: 'process.name',
+      value,
+      ...(filterable === undefined ? {} : { filterable }),
+      ...(copyable === undefined ? {} : { copyable }),
+    },
+    global: { plugins: [Quasar, pinia] },
+  })
 }
 
 beforeEach(() => {
@@ -24,6 +32,13 @@ describe('FieldActions', () => {
       .findAll('button')
       .map((button) => button.attributes('aria-label'))
     expect(labels).toEqual(['Filter on process.name: cmd.exe', 'Filter out process.name: cmd.exe', 'Copy process.name value'])
+  })
+
+  it('leaves out the copy button for a value that is not worth copying', () => {
+    const labels = mountActions('true', true, false)
+      .findAll('button')
+      .map((button) => button.attributes('aria-label'))
+    expect(labels).toEqual(['Filter on process.name: true', 'Filter out process.name: true'])
   })
 
   it('adds a chip that keeps the events with the value on filter on', async () => {

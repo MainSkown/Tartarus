@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ProcessRef } from '@/api'
+import FakeLanBadge from '@/components/FakeLanBadge.vue'
+import FieldActions from '@/components/FieldActions.vue'
 import FilterEventsButton from '@/components/FilterEventsButton.vue'
 import ProcessChip from '@/components/ProcessChip.vue'
 import { t } from '@/i18n'
@@ -10,12 +12,19 @@ export interface NetworkColumn {
   numeric?: boolean
 }
 
+/** Present on a row of the fake local network: a fake host carries its name and role, a simulated flow neither. */
+export interface FakeLanInfo {
+  host?: string | null
+  role?: string | null
+}
+
 export interface NetworkTableRow {
   key: string
   cells: (string | number | null)[]
   /** Per cell, what its "show events" button applies; an absent or empty entry means no button. */
   cellFilters?: EventsFilter[][]
   process?: ProcessRef | null
+  lan?: FakeLanInfo
 }
 
 defineProps<{
@@ -63,11 +72,21 @@ defineProps<{
               :key="column.label"
               :class="{ num: column.numeric }"
             >
+              <FakeLanBadge v-if="index === 0 && row.lan" />
               <span
                 class="cell-value"
                 :title="String(row.cells[index] ?? '–')"
               >{{ row.cells[index] ?? '–' }}</span>
+              <FieldActions
+                v-if="index === 0 && row.lan?.host"
+                field="tartarus.lan.host"
+                :value="row.lan.host"
+              />
               <FilterEventsButton :target="{ chips: row.cellFilters?.[index] ?? [] }" />
+              <span
+                v-if="index === 0 && row.lan?.role"
+                class="network-table__role text-gray"
+              >{{ row.lan.role }}</span>
             </td>
             <td v-if="withProcess">
               <FilterEventsButton
@@ -102,6 +121,11 @@ defineProps<{
   border: 1px solid var(--border-secondary);
   color: var(--blue-light);
   letter-spacing: 1px;
+}
+
+.network-table__role {
+  display: block;
+  font-size: 0.75rem;
 }
 
 .cell-value {

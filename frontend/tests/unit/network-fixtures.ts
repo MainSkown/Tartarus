@@ -62,6 +62,7 @@ export function networkView(overrides: Partial<NetworkView> = {}): NetworkView {
           destination_ip: '192.168.150.1',
           destination_port: 443,
           process: null,
+          simulated: false,
         },
         {
           event_id: 'flow-2',
@@ -72,6 +73,7 @@ export function networkView(overrides: Partial<NetworkView> = {}): NetworkView {
           destination_ip: null,
           destination_port: null,
           process: CMD,
+          simulated: false,
         },
       ],
       total: 214,
@@ -79,8 +81,8 @@ export function networkView(overrides: Partial<NetworkView> = {}): NetworkView {
     alerts: { items: [], total: 0 },
     hosts: {
       items: [
-        { host: '192.168.150.1', kind: 'ip', count: 210, related: ['www.msftconnecttest.com', 'evil.example.org'] },
-        { host: 'evil.example.org', kind: 'domain', count: 3, related: [] },
+        { host: '192.168.150.1', kind: 'ip', count: 210, related: ['www.msftconnecttest.com', 'evil.example.org'], simulated: false, lan_host: null, lan_role: null },
+        { host: 'evil.example.org', kind: 'domain', count: 3, related: [], simulated: false, lan_host: null, lan_role: null },
       ],
       total: 2,
     },
