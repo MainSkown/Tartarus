@@ -74,7 +74,7 @@ process. What Tartarus distributes today is source only (the Dockerfile fetches 
 published), so nothing of impacket is conveyed by the repository; the question becomes live if an image is ever published, or if one
 reads the combination as already problematic.
 Options:
-- A. Keep as is: source-only, users build locally, THIRD_PARTY.md says "license compatibility under review". Decide before any image is published.
+- A. Keep as is: source-only, users build locally, THIRD_PARTY.md says "license compatibility under review". Decide before any image is published. **2026-11-24: the owner decided GPL-3.0-only stays, which rules out C (relicense `lan-sim`); A is the status quo, and B, D or E must be settled before an image is published.**
 - B. Add a GPL-3.0 section 7 "additional permission" (an exception, like the OpenSSL one) to lan-sim's own files, allowing the combination with
   impacket. Only the copyright holder can do it, it is cheap, and impacket's own acknowledgment and naming clauses must still be met.
 - C. Relicense lan-sim's own code (and the one shared file `lan_session.py`, which is stdlib only) under a permissive license that fits Apache 1.1.

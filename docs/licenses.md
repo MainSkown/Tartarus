@@ -197,7 +197,7 @@ print(summary(collections.Counter(family(r[1]) for r in npm_rows)))
 The `lan-sim` image ([lan-sim/Dockerfile](../lan-sim/Dockerfile)). Read from the installed distributions of the
 built image (`importlib.metadata`: the `License` and `License-Expression` fields and the license file inside each
 `dist-info`), not from memory. `impacket` is under a modified Apache Software License 1.1 and its fit with the
-project's GPL-3.0-only is under review: see [THIRD_PARTY.md](../THIRD_PARTY.md#the-lan-sim-image-lan-simdockerfile).
+project's GPL-3.0-only is open, with the project's licence staying GPL-3.0-only and no `lan-sim` image to be published until it is resolved: see [THIRD_PARTY.md](../THIRD_PARTY.md#the-lan-sim-image-lan-simdockerfile).
 `pycryptodomex` carries its own text for the public-domain and BSD-2-Clause parts; `asyncssh` is dual-licensed
 (its source headers offer GPL-2.0-or-later as the secondary license).
 
