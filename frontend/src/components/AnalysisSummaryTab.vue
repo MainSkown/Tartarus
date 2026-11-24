@@ -5,6 +5,7 @@ import AnalysisWarnings from '@/components/AnalysisWarnings.vue'
 import DefenderVerdict from '@/components/DefenderVerdict.vue'
 import HiddenEventsNote from '@/components/HiddenEventsNote.vue'
 import LaneBars from '@/components/LaneBars.vue'
+import LateralMovementSection from '@/components/LateralMovementSection.vue'
 import MemoryStatus from '@/components/MemoryStatus.vue'
 import ScreenshotStrip from '@/components/ScreenshotStrip.vue'
 import SeverityBadge from '@/components/SeverityBadge.vue'
@@ -155,6 +156,13 @@ const duration = computed(() => (report.value.duration_s == null ? null : format
           :value="report.network?.tcp"
         />
       </div>
+
+      <template v-if="report.lan">
+        <h2 class="analysis-summary__heading text-mono">
+          {{ t('analysis.summary.lan.heading') }}
+        </h2>
+        <LateralMovementSection :lan="report.lan" />
+      </template>
 
       <template v-if="analysis.detected_families.length > 0">
         <h2 class="analysis-summary__heading text-mono">

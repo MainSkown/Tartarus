@@ -8,6 +8,7 @@ import {
   NO_DETECTIONS_SUMMARY,
 } from './analysis-fixtures'
 import { ARTIFACTS_VIEW } from './detections-fixtures'
+import { lanHost, lanSummary } from './lan-summary-fixtures'
 import type { AnalysisRead } from '@/api'
 
 vi.mock('@/api', () => ({ viewsArtifacts: vi.fn() }))
@@ -162,6 +163,33 @@ describe('AnalysisSummaryTab events by lane', () => {
     const wrapper = withLanes(undefined)
     expect(wrapper.find('.lane-bar').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('EVENTS BY LANE')
+  })
+})
+
+describe('AnalysisSummaryTab lateral movement', () => {
+  const withLan = (lan?: ReturnType<typeof lanSummary> | null) =>
+    mountTab(analysisWithStatus('done', { summary: { ...DETECTIONS_SUMMARY, lan } }))
+
+  it('has no lateral movement section when the fake network was off', () => {
+    for (const lan of [undefined, null]) {
+      const wrapper = withLan(lan)
+      expect(wrapper.text()).not.toContain('LATERAL MOVEMENT')
+      expect(wrapper.find('.lan-summary').exists()).toBe(false)
+    }
+  })
+
+  it('shows the section, after the network tiles, when the fake network was on', () => {
+    const wrapper = withLan(lanSummary({ hosts: [lanHost()] }))
+    expect(wrapper.text()).toContain('LATERAL MOVEMENT')
+    expect(wrapper.get('.lan-host h3').text()).toBe('fs01.corp.local')
+    const text = wrapper.text()
+    expect(text.indexOf('NETWORK')).toBeLessThan(text.indexOf('LATERAL MOVEMENT'))
+  })
+
+  it('shows the empty state under the heading when the sample did nothing on it', () => {
+    const wrapper = withLan(lanSummary({ hosts: [] }))
+    expect(wrapper.text()).toContain('LATERAL MOVEMENT')
+    expect(wrapper.text()).toContain('the sample did nothing on the fake local network')
   })
 })
 
