@@ -1,0 +1,27 @@
+title: Process Connects To A Fake LAN Host Over SSH
+id: 5c9289b6-7343-4c39-aba8-165456dbba4e
+status: experimental
+description: >-
+    A process that is not a system one connected to a host of the fake local network on port 22
+    (SSH: a login on the other machine). The host is simulated, so the connection reached nothing real. A flow that
+    no process can be named for is not matched, because the capture does not say who made it.
+author: Tartarus
+date: 2026-11-23
+tags:
+    - attack.lateral-movement
+    - attack.t1021.004
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection:
+        LanSimulated: true
+        DestinationPort: 22
+        Image|exists: true
+    filter_system:
+        Image|endswith: '\svchost.exe'
+    condition: selection and not filter_system
+falsepositives:
+    - A sample that only checks whether the port is open.
+    - A Windows service that connects because the sample asked it to; the filter only drops svchost.exe.
+level: low

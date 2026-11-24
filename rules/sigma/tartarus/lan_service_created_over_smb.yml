@@ -1,0 +1,24 @@
+title: Service Created On A Fake LAN Host Over SMB
+id: b67fe089-b2ca-4d5b-81e2-4112a6d3da97
+status: experimental
+description: >-
+    The sample asked the service control manager of a host of the fake local network to create a
+    service (svcctl CreateService). This is how PsExec and similar tools run a file they copied to
+    the host: the binary path in the request is what would have run.
+author: Tartarus
+date: 2026-11-23
+tags:
+    - attack.lateral-movement
+    - attack.execution
+    - attack.t1569.002
+    - attack.t1021.002
+logsource:
+    category: lan_service_request
+    product: windows
+detection:
+    selection:
+        RequestName: 'svcctl CreateService'
+    condition: selection
+falsepositives:
+    - Administration tools that install a service the way PsExec does.
+level: high

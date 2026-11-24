@@ -57,6 +57,13 @@ def never(_: Event) -> bool:
         ("dns-query", "dns_query"),
         ("create-remote-thread", "create_remote_thread"),
         ("inject-thread", "create_remote_thread"),
+        ("lan-login-attempt", "lan_authentication"),
+        ("lan-share-access", "lan_share_access"),
+        ("lan-file-write", "lan_file_write"),
+        ("lan-service-request", "lan_service_request"),
+        ("lan-sweep", "lan_sweep"),
+        ("lan-fan-out", "lan_fan_out"),
+        ("lan-credential-spray", "lan_credential_spray"),
     ],
 )
 def test_an_action_belongs_to_its_sigma_category(action: str, category: str) -> None:
@@ -78,6 +85,7 @@ def test_an_action_belongs_to_its_sigma_category(action: str, category: str) -> 
         "inject-apc",
         "signature-matched",
         "rule-matched",
+        "lan-aggregate",
         "",
         None,
         7,

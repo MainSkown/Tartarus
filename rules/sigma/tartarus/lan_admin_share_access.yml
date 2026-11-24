@@ -1,0 +1,25 @@
+title: Administrative Share Of A Fake LAN Host Accessed
+id: c3c54cee-48ae-46d0-8e5b-7577b96d4dc4
+status: experimental
+description: >-
+    The sample connected to ADMIN$, C$ or IPC$ on a host of the fake local network. These shares
+    are how tools such as PsExec reach a machine they hold credentials for. IPC$ is also what any
+    SMB session opens first, so on its own it is weaker evidence than ADMIN$ or C$.
+author: Tartarus
+date: 2026-11-23
+tags:
+    - attack.lateral-movement
+    - attack.t1021.002
+logsource:
+    category: lan_share_access
+    product: windows
+detection:
+    selection:
+        Share:
+            - 'ADMIN$'
+            - 'C$'
+            - 'IPC$'
+    condition: selection
+falsepositives:
+    - A sample that lists the shares of a host before it chooses one.
+level: medium

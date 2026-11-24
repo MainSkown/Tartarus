@@ -1,0 +1,23 @@
+title: Process Sweeps Fake LAN Hosts On One Port
+id: cac194e8-c276-42a6-a9a0-24e7738b0b2e
+status: experimental
+description: >-
+    One process connected to many hosts of the fake local network on the same port within seconds,
+    the way a scanner looks for machines that offer a service. Tartarus derives the event (the host
+    count and the window are in the ingest, app/ingest/lan_derived.py), so this rule fires on every
+    such event and holds no threshold of its own.
+author: Tartarus
+date: 2026-11-23
+tags:
+    - attack.discovery
+    - attack.t1046
+logsource:
+    category: lan_sweep
+    product: windows
+detection:
+    selection:
+        LanSimulated: true
+    condition: selection
+falsepositives:
+    - A sample that walks the address range of its subnet before it picks a target.
+level: medium

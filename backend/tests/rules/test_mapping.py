@@ -24,6 +24,53 @@ def leaves(node: object) -> list[ConditionFieldEqualsValueExpression]:
     return [leaf for arg in getattr(node, "args", []) for leaf in leaves(arg)]
 
 
+COMMON_LAN_NAMES = {
+    "LanSimulated": "tartarus.lan.simulated",
+    "LanHost": "tartarus.lan.host",
+    "LanRole": "tartarus.lan.role",
+    "LanService": "tartarus.lan.service",
+    "DestinationIp": "destination.ip",
+    "DestinationPort": "destination.port",
+    "SourceIp": "source.ip",
+    "SourcePort": "source.port",
+    "DestinationHostname": "destination.domain",
+    "Image": "process.executable",
+    "ProcessId": "process.pid",
+}
+DERIVED_LAN_NAMES = {
+    "LanSimulated": "tartarus.lan.simulated",
+    "LanService": "tartarus.lan.service",
+    "Count": "tartarus.lan.count",
+    "Image": "process.executable",
+    "ProcessId": "process.pid",
+}
+OWN_LAN_NAMES: dict[str, dict[str, str]] = {
+    "lan_authentication": {
+        "User": "user.name",
+        "Domain": "user.domain",
+        "Mechanism": "tartarus.lan.mechanism",
+    },
+    "lan_share_access": {
+        "Share": "tartarus.lan.share",
+        "Path": "file.path",
+        "RequestName": "tartarus.lan.request",
+    },
+    "lan_file_write": {"Share": "tartarus.lan.share", "Path": "file.path"},
+    "lan_service_request": {"RequestName": "tartarus.lan.request", "Detail": "tartarus.lan.detail"},
+    "lan_sweep": {"DestinationPort": "destination.port"},
+    "lan_fan_out": {},
+    "lan_credential_spray": {"User": "user.name"},
+}
+DERIVED_LAN_CATEGORIES = {"lan_sweep", "lan_fan_out", "lan_credential_spray"}
+LAN_CASES = [
+    (category, sigma_name, ecs_name)
+    for category, own in OWN_LAN_NAMES.items()
+    for sigma_name, ecs_name in {
+        **(DERIVED_LAN_NAMES if category in DERIVED_LAN_CATEGORIES else COMMON_LAN_NAMES),
+        **own,
+    }.items()
+]
+
 CASES = [
     ("process_creation", "Image", "process.executable"),
     ("process_creation", "CommandLine", "process.command_line"),
@@ -51,6 +98,9 @@ CASES = [
     ("create_remote_thread", "TargetImage", "tartarus.inject.target_executable"),
     ("create_remote_thread", "SourceProcessId", "process.pid"),
     ("create_remote_thread", "TargetProcessId", "tartarus.inject.target_pid"),
+    ("network_connection", "LanSimulated", "tartarus.lan.simulated"),
+    ("network_connection", "LanHost", "tartarus.lan.host"),
+    *LAN_CASES,
 ]
 
 
@@ -78,6 +128,17 @@ def test_every_mapping_target_is_in_the_field_catalog() -> None:
         ("create_remote_thread", "Image"),
         ("file_event", "QueryName"),
         ("dns_query", "Hashes"),
+        ("network_connection", "LanService"),
+        ("network_connection", "Share"),
+        ("lan_authentication", "Share"),
+        ("lan_authentication", "CommandLine"),
+        ("lan_share_access", "User"),
+        ("lan_file_write", "RequestName"),
+        ("lan_service_request", "Share"),
+        ("lan_sweep", "LanHost"),
+        ("lan_sweep", "DestinationIp"),
+        ("lan_fan_out", "DestinationPort"),
+        ("lan_credential_spray", "DestinationPort"),
     ],
 )
 def test_an_unmapped_field_is_invalid_and_named_not_passed_through(

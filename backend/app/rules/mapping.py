@@ -34,6 +34,32 @@ _NETWORK = {
     "SourceIp": "source.ip",
     "SourcePort": "source.port",
 }
+_LAN_HOST = {
+    "LanSimulated": "tartarus.lan.simulated",
+    "LanHost": "tartarus.lan.host",
+}
+# What every event of the fake hosts' own log carries: the host and the service asked for.
+_LAN_LOG = {
+    **_LAN_HOST,
+    "LanRole": "tartarus.lan.role",
+    "LanService": "tartarus.lan.service",
+    "Image": "process.executable",
+    "ProcessId": "process.pid",
+    "DestinationIp": "destination.ip",
+    "DestinationPort": "destination.port",
+    "DestinationHostname": "destination.domain",
+    "SourceIp": "source.ip",
+    "SourcePort": "source.port",
+}
+# A derived event stands for many hosts, so it names none of them: the count, and the process.
+_LAN_DERIVED = {
+    "LanSimulated": "tartarus.lan.simulated",
+    "LanService": "tartarus.lan.service",
+    "Count": "tartarus.lan.count",
+    "Image": "process.executable",
+    "ProcessId": "process.pid",
+}
+_LAN_SHARE = {**_LAN_LOG, "Share": "tartarus.lan.share", "Path": "file.path"}
 
 # One table per logsource category: a Sigma name can mean different things in different
 # categories, and a name a category does not list is not mapped there (no fallback field).
@@ -43,7 +69,7 @@ FIELD_MAPS: dict[str, Mapping[str, str]] = {
     "registry_set": _REGISTRY,
     "registry_add": _REGISTRY,
     "registry_delete": _REGISTRY,
-    "network_connection": _NETWORK,
+    "network_connection": {**_NETWORK, **_LAN_HOST},
     "dns_query": {**_PROCESS, "QueryName": "dns.question.name", "QueryResults": "dns.answers.data"},
     "create_remote_thread": {
         "SourceImage": "process.executable",
@@ -51,6 +77,22 @@ FIELD_MAPS: dict[str, Mapping[str, str]] = {
         "TargetImage": "tartarus.inject.target_executable",
         "TargetProcessId": "tartarus.inject.target_pid",
     },
+    "lan_authentication": {
+        **_LAN_LOG,
+        "User": "user.name",
+        "Domain": "user.domain",
+        "Mechanism": "tartarus.lan.mechanism",
+    },
+    "lan_share_access": {**_LAN_SHARE, "RequestName": "tartarus.lan.request"},
+    "lan_file_write": _LAN_SHARE,
+    "lan_service_request": {
+        **_LAN_LOG,
+        "RequestName": "tartarus.lan.request",
+        "Detail": "tartarus.lan.detail",
+    },
+    "lan_sweep": {**_LAN_DERIVED, "DestinationPort": "destination.port"},
+    "lan_fan_out": _LAN_DERIVED,
+    "lan_credential_spray": {**_LAN_DERIVED, "User": "user.name"},
 }
 
 # Sysmon names the registry operation in `EventType`; our events carry it in `event.action`.

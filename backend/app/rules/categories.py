@@ -8,12 +8,21 @@ SUPPORTED_CATEGORIES = frozenset(
         "network_connection",
         "dns_query",
         "create_remote_thread",
+        "lan_authentication",
+        "lan_share_access",
+        "lan_file_write",
+        "lan_service_request",
+        "lan_sweep",
+        "lan_fan_out",
+        "lan_credential_spray",
     }
 )
 SUPPORTED_PRODUCT = "windows"
 
 # docs/specs/data-model.md, "Sigma field mapping". Only a started remote thread is Sysmon's
 # CreateRemoteThread; a memory write, section map or APC is not one and must not feed those rules.
+# `lan-aggregate` has no category: it stands for events the daemon stopped logging, so no rule
+# can say what it did.
 ACTION_CATEGORIES = {
     "process-created": "process_creation",
     "file-created": "file_event",
@@ -25,6 +34,13 @@ ACTION_CATEGORIES = {
     "dns-query": "dns_query",
     "create-remote-thread": "create_remote_thread",
     "inject-thread": "create_remote_thread",
+    "lan-login-attempt": "lan_authentication",
+    "lan-share-access": "lan_share_access",
+    "lan-file-write": "lan_file_write",
+    "lan-service-request": "lan_service_request",
+    "lan-sweep": "lan_sweep",
+    "lan-fan-out": "lan_fan_out",
+    "lan-credential-spray": "lan_credential_spray",
 }
 
 

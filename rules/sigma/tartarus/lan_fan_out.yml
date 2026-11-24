@@ -1,0 +1,25 @@
+title: Process Contacts Many Fake LAN Hosts Over Several Services
+id: ac57ee12-015f-42e6-a2a8-aea144679062
+status: experimental
+description: >-
+    One process reached several hosts of the fake local network over more than one service (SMB and
+    RDP, say) within minutes: it is looking for a host it can move to, not scanning for one port.
+    Tartarus derives the event (the host count, the service count and the window are in the ingest,
+    app/ingest/lan_derived.py), so this rule fires on every such event and holds no threshold of
+    its own.
+author: Tartarus
+date: 2026-11-23
+tags:
+    - attack.lateral-movement
+    - attack.t1021
+    - attack.t1210
+logsource:
+    category: lan_fan_out
+    product: windows
+detection:
+    selection:
+        LanSimulated: true
+    condition: selection
+falsepositives:
+    - A sample that tries every service it knows on each host it finds.
+level: medium

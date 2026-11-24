@@ -1,0 +1,27 @@
+title: Process Connects To A Fake LAN Host Over MSSQL
+id: 7a2d5e44-c221-4c17-96a0-601539dc24d7
+status: experimental
+description: >-
+    A process that is not a system one connected to a host of the fake local network on port 1433
+    (MSSQL: a SQL Server instance, a common target for exploitation of a remote service). The host is simulated, so the connection reached nothing real. A flow that
+    no process can be named for is not matched, because the capture does not say who made it.
+author: Tartarus
+date: 2026-11-23
+tags:
+    - attack.lateral-movement
+    - attack.t1210
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection:
+        LanSimulated: true
+        DestinationPort: 1433
+        Image|exists: true
+    filter_system:
+        Image|endswith: '\svchost.exe'
+    condition: selection and not filter_system
+falsepositives:
+    - A sample that only checks whether the port is open.
+    - A Windows service that connects because the sample asked it to; the filter only drops svchost.exe.
+level: low

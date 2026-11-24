@@ -1,0 +1,30 @@
+title: Executable Written To An Administrative Share Of A Fake LAN Host
+id: e3ef143d-8244-498f-8749-c9f5a6cc5cf4
+status: experimental
+description: >-
+    The sample wrote a file ending in .exe, .dll, .bat or .ps1 to ADMIN$ or C$ on a host of the
+    fake local network. Copying a payload to an administrative share is the step before a remote
+    service or task runs it.
+author: Tartarus
+date: 2026-11-23
+tags:
+    - attack.lateral-movement
+    - attack.t1570
+    - attack.t1021.002
+logsource:
+    category: lan_file_write
+    product: windows
+detection:
+    selection:
+        Share:
+            - 'ADMIN$'
+            - 'C$'
+        Path|endswith:
+            - '.exe'
+            - '.dll'
+            - '.bat'
+            - '.ps1'
+    condition: selection
+falsepositives:
+    - A sample that copies itself to a host as a test, without meaning to run it.
+level: high
