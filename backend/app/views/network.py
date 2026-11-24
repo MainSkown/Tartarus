@@ -2,7 +2,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from app.ingest.attribution import Key, dns_key, endpoint_key, url_key
+from app.ingest.attribution import without_repeated_capemon_rows
 from app.schemas.views_events import (
     DnsRow,
     FlowRow,
@@ -31,35 +31,7 @@ from app.views.event_fields import (
 NETWORK_EVENT_CAP = 10_000
 DEFAULT_LIST_LIMIT = 500
 MAX_LIST_LIMIT = 2000
-CALL_DERIVED_MODULE = "capemon"
 INETSIM_ROUTE = "inetsim"
-
-
-def _key_of(event: Source) -> Key | None:
-    action = text_at(event, "event", "action")
-    if action == "dns-query" and (name := text_at(event, "dns", "question", "name")):
-        return dns_key(name)
-    if action == "network-connection" and (address := text_at(event, "destination", "ip")):
-        return endpoint_key(address, int_at(event, "destination", "port"))
-    if action == "http-request" and (url := text_at(event, "url", "full")):
-        return url_key(url)
-    return None
-
-
-def _without_repeated_capemon_rows(events: Sequence[Source]) -> list[Source]:
-    """A call capemon saw and the pcap also holds is one row, the pcap's, which names the
-    process. A call only capemon saw (a blocked route leaves no traffic) stays.
-    """
-    in_pcap = {
-        key
-        for event in events
-        if text_at(event, "event", "module") != CALL_DERIVED_MODULE and (key := _key_of(event))
-    }
-    return [
-        event
-        for event in events
-        if text_at(event, "event", "module") != CALL_DERIVED_MODULE or _key_of(event) not in in_pcap
-    ]
 
 
 def _dns_row(event: Source) -> DnsRow | None:
@@ -184,7 +156,7 @@ def _listing[T](rows: list[T], limit: int) -> Listing[T]:
 
 def shape_network(events: Sequence[Source], *, simulated: bool, limit: int) -> NetworkView:
     """Rows in the order given (time), each list cut to `limit` with its full total."""
-    shown = _without_repeated_capemon_rows(events)
+    shown = without_repeated_capemon_rows(events)
     dns = _rows(shown, "dns-query", _dns_row)
     http = _rows(shown, "http-request", _http_row)
     flows = _rows(shown, "network-connection", _flow_row)

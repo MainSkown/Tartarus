@@ -19,8 +19,8 @@ from app.analyses.lan_models import (
     LanTotals,
     LanWrittenFile,
 )
+from app.ingest.attribution import NETWORK_CONNECTION, without_repeated_capemon_rows
 from app.ingest.cape_network import DATASET as CAPE_NETWORK_DATASET
-from app.ingest.cape_network import FLOW
 from app.ingest.lan_sim import (
     AGGREGATE,
     FILE_WRITE,
@@ -31,6 +31,7 @@ from app.ingest.lan_sim import (
 from app.ingest.lan_sim_log import SHA256, clean_text
 from app.ingest.protocol import LanHost
 from app.ingest.reading import dig, text_or_none, to_int
+from app.ingest.sysmon_mapping import DATASET as SYSMON_DATASET
 
 MAX_TEXT = 256
 MAX_PATH = 1024
@@ -41,6 +42,12 @@ MAX_CREDENTIALS_PER_HOST = 100
 EACH_IS_ONE_ATTEMPT = frozenset(
     shape.action for shape in (LOGIN_ATTEMPT, SHARE_ACCESS, SERVICE_REQUEST)
 )
+
+
+# The source that speaks for a connection when several saw it, best first; capemon's `connect`
+# has no source port to pair with, so it is only kept when no other source has the endpoint.
+CONNECTION_SOURCES = (CAPE_NETWORK_DATASET, SYSMON_DATASET)
+LAST_BY_ACTION: dict[object, int] = {AGGREGATE.action: 1, NETWORK_CONNECTION: 2}
 
 
 @dataclass
@@ -64,6 +71,7 @@ class _Host:
     first: datetime
     last: datetime
     services: dict[tuple[str | None, int | None], _Use] = field(default_factory=dict)
+    daemon_ports: set[int] = field(default_factory=set)
     credentials: dict[tuple[str, str, str], _Credential] = field(default_factory=dict)
     files: list[LanWrittenFile] = field(default_factory=list)
 
@@ -84,12 +92,19 @@ def lan_summary(
 ) -> LanSummary | None:
     """What the sample did on the fake LAN; None when the run had none (`lan_hosts` is empty).
 
-    `events` are the final ingest's: the `cape-network` flows flagged `tartarus.lan.simulated` and
-    the `lan-sim` log events; anything else (the derived sweeps, which restate contacts already
+    `events` are the final ingest's: the `network-connection` events flagged as simulated (the
+    pcap's flows, Sysmon's EID 3 and capemon's `connect`, whichever the run has) and the
+    `lan-sim` log events; anything else (the derived sweeps, which restate contacts already
     counted) is ignored. An attempt is one of: a login attempt, a share access, a service request
-    (each a logged event), a connection flow to the host (so a scan that only connected counts),
-    and, for a flood the daemon stopped logging, each event its `lan-aggregate` stands for. A file
+    (each a logged event), a connection to the host (so a scan that only connected counts), and,
+    for a flood the daemon stopped logging, each event its `lan-aggregate` stands for. A file
     write is not an attempt. A host is listed when any such event touched it.
+
+    A connection is counted once however many sources saw it. A pcap flow and a Sysmon event are
+    the same connection when destination and source port agree, and the pcap speaks for it; a
+    capemon connect (no source port) is dropped when another source has its destination, the
+    same rule as the network view. A connection to a host and port the daemon logged events on
+    is not counted either: those events are the attempts, and the connection is what carried them.
     """
     if not lan_hosts:
         return None
@@ -98,7 +113,6 @@ def lan_summary(
         host = hosts.get(address := dig(event, "destination", "ip"))
         if host is None:
             host = hosts[address] = _Host(lan_hosts[address], address, moment, moment)
-        host.touch(moment)
         _record(host, event, moment)
     listed = sorted(hosts.values(), key=lambda host: (host.first, host.address))
     return _summary(lan_hosts, listed, log_truncated)
@@ -107,15 +121,47 @@ def lan_summary(
 def _ordered(
     events: Iterable[Mapping[str, Any]], lan_hosts: Mapping[str, LanHost]
 ) -> list[tuple[Mapping[str, Any], datetime]]:
-    """The events of the fake LAN with their time, oldest first and the aggregates last, so a
-    credential logged one by one is not overtaken by one a flood only named.
+    """The events of the fake LAN with their time, oldest first. The aggregates come after the
+    logged events, so a credential logged one by one is not overtaken by one a flood only named,
+    and the connections last, so the ports the daemon logged on are known when they are counted.
     """
-    found = []
-    for event in events:
-        moment = _time_of(event)
-        if moment is not None and _is_lan_contact(event, lan_hosts):
-            found.append((event, moment))
-    return sorted(found, key=lambda pair: (_action(pair[0]) == AGGREGATE.action, pair[1]))
+    contacts = [event for event in events if _is_lan_contact(event, lan_hosts)]
+    timed = [(event, _time_of(event)) for event in _one_per_connection(contacts)]
+    found = [(event, moment) for event, moment in timed if moment is not None]
+    return sorted(found, key=lambda pair: (LAST_BY_ACTION.get(_action(pair[0]), 0), pair[1]))
+
+
+def _one_per_connection(events: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """`events` with each connection once: capemon's connect when another source has the
+    endpoint is dropped, and of the rest the best source of each (destination, destination port,
+    source port) stays. A connection with no source port is its own.
+    """
+    seen: set[tuple[object, ...]] = set()
+    kept = []
+    for event in sorted(without_repeated_capemon_rows(events), key=_source_rank):
+        key = _connection_of(event)
+        if key is not None:
+            if key in seen:
+                continue
+            seen.add(key)
+        kept.append(event)
+    return kept
+
+
+def _source_rank(event: Mapping[str, Any]) -> int:
+    dataset = dig(event, "event", "dataset")
+    return (
+        CONNECTION_SOURCES.index(dataset)
+        if dataset in CONNECTION_SOURCES
+        else len(CONNECTION_SOURCES)
+    )
+
+
+def _connection_of(event: Mapping[str, Any]) -> tuple[object, ...] | None:
+    source_port = dig(event, "source", "port")
+    if _action(event) != NETWORK_CONNECTION or source_port is None:
+        return None
+    return (dig(event, "destination", "ip"), dig(event, "destination", "port"), source_port)
 
 
 def _time_of(event: Mapping[str, Any]) -> datetime | None:
@@ -135,21 +181,28 @@ def _is_lan_contact(event: Mapping[str, Any], lan_hosts: Mapping[str, LanHost]) 
         return False
     if dig(event, "destination", "ip") not in lan_hosts:
         return False
-    action = _action(event)
-    if action == FLOW.action:
-        return bool(dig(event, "event", "dataset") == CAPE_NETWORK_DATASET)
-    return action in {*EACH_IS_ONE_ATTEMPT, AGGREGATE.action, FILE_WRITE.action}
+    return _action(event) in {
+        NETWORK_CONNECTION,
+        *EACH_IS_ONE_ATTEMPT,
+        AGGREGATE.action,
+        FILE_WRITE.action,
+    }
 
 
 def _record(host: _Host, event: Mapping[str, Any], moment: datetime) -> None:
     action = _action(event)
+    port = to_int(dig(event, "destination", "port"))
+    if action == NETWORK_CONNECTION and port in host.daemon_ports:
+        return
+    host.touch(moment)
     if action == FILE_WRITE.action:
         host.files.append(_written_file(event))
     elif action == AGGREGATE.action:
         _record_aggregate(host, event, moment)
     else:
-        port = to_int(dig(event, "destination", "port"))
         host.attempt(_service_of(host, event, port), port, 1, moment)
+        if action != NETWORK_CONNECTION and port is not None:
+            host.daemon_ports.add(port)
         if action == LOGIN_ATTEMPT.action:
             _record_login(host, event)
 
@@ -179,6 +232,8 @@ def _record_aggregate(host: _Host, event: Mapping[str, Any], moment: datetime) -
     port = next((port for port, kind in host.entry.services.items() if kind == service), None)
     count = to_int(dig(event, "tartarus", "lan", "count")) or 0
     host.attempt(service, port, count, moment)
+    if port is not None:
+        host.daemon_ports.add(port)
     users = _as_list(dig(event, "user", "name"))
     known = {user for user, _, _ in host.credentials}
     for user in (_text(name) for name in users):

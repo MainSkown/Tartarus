@@ -6,7 +6,10 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from app.analyses.summary import SEVERITY_ORDER, severity_from_cape
+from app.ingest.attribution import NETWORK_CONNECTION
+from app.ingest.lan_fields import lan_section
 from app.ingest.protocol import IngestContext
+from app.ingest.reading import dig
 
 LANES = ("process", "file", "registry", "network", "memory", "api")
 RESERVED_SECTIONS = ("@timestamp", "event")
@@ -205,7 +208,12 @@ class EventFactory:
         tartarus: Mapping[str, Any] | None = None,
         **sections: Any,
     ) -> dict[str, Any]:
-        """`tartarus` adds fields (`inject`, `detection`) beside the common `tartarus.*` ones."""
+        """`tartarus` adds fields (`inject`, `detection`) beside the common `tartarus.*` ones.
+
+        A `network-connection` to a fake host of the analysis's LAN is flagged here, whichever
+        source saw it (pcap flow, Sysmon, capemon), so no normaliser flags its own.
+        """
+        tartarus = self._flagged_if_on_fake_lan(shape, sections, tartarus)
         for name in RESERVED_SECTIONS:
             if name in sections:
                 raise ValueError(f"section {name!r} would overwrite a common field")
@@ -242,3 +250,11 @@ class EventFactory:
             "tartarus": common | dict(tartarus or {}),
             **sections,
         }
+
+    def _flagged_if_on_fake_lan(
+        self, shape: EventShape, sections: Mapping[str, Any], tartarus: Mapping[str, Any] | None
+    ) -> Mapping[str, Any] | None:
+        if shape.action != NETWORK_CONNECTION:
+            return tartarus
+        fake_host = self._context.lan_hosts.get(dig(sections, "destination", "ip"))
+        return tartarus if fake_host is None else {**(tartarus or {}), **lan_section(fake_host)}

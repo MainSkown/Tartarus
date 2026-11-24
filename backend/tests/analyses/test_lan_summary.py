@@ -126,10 +126,36 @@ def test_an_attempt_is_a_login_a_share_access_a_service_request_or_a_connection_
 ) -> None:
     records = [login(), share_access(), service_request(), file_write()]
 
+    summary = summarise(tmp_path, records, [tcp_flow(FILE_SERVER, 3389, 1)])
+
+    assert [(s.port, s.attempts) for s in summary.hosts[0].services] == [(445, 3), (3389, 1)]
+    assert summary.totals.attempts == 4
+
+
+def test_a_flow_to_a_port_the_daemon_logged_events_on_is_not_counted_again(tmp_path: Path) -> None:
+    records = [login(), share_access()]
+
     summary = summarise(tmp_path, records, [tcp_flow(FILE_SERVER, 445, 1)])
 
-    assert summary.hosts[0].services[0].attempts == 4
-    assert summary.totals.attempts == 4
+    assert summary.hosts[0].services[0].attempts == 2
+    assert summary.totals.attempts == 2
+
+
+def test_a_flow_is_still_counted_when_the_daemon_logged_on_another_host_or_port(
+    tmp_path: Path,
+) -> None:
+    records = [login(host="dc01.corp.local")]
+    flows = [tcp_flow(FILE_SERVER, 445, 1), tcp_flow(DOMAIN_CONTROLLER, 389, 2)]
+
+    summary = summarise(tmp_path, records, flows)
+
+    assert summary.totals.attempts == 3
+
+
+def test_a_flow_to_a_port_a_flood_was_counted_on_is_not_counted_again(tmp_path: Path) -> None:
+    summary = summarise(tmp_path, [aggregate(count=100)], [tcp_flow(FILE_SERVER, 445, 1)])
+
+    assert summary.totals.attempts == 100
 
 
 def test_a_scan_that_only_connected_counts_by_its_flows(tmp_path: Path) -> None:
@@ -339,3 +365,94 @@ def test_the_summary_survives_a_round_trip_through_json(tmp_path: Path) -> None:
     stored = json.loads(json.dumps(summary.model_dump(mode="json")))
 
     assert LanSummary.model_validate(stored) == summary
+
+
+# --- one connection seen by several sources is one attempt ---------------------------------------
+
+
+def connection(
+    dataset: str, address: str, port: int, source_port: int | None, seconds: float
+) -> Event:
+    """A flagged `network-connection` as the pcap (`cape.network`), Sysmon (`sysmon.evtx`) or
+    capemon (`capemon.derived`) builds it; capemon names no source port.
+    """
+    event: Event = {
+        "@timestamp": at(seconds).isoformat(),
+        "event": {
+            "id": f"{dataset}|{address}|{port}|{source_port}|{seconds}",
+            "action": "network-connection",
+            "dataset": dataset,
+            "module": dataset.split(".", maxsplit=1)[0],
+        },
+        "destination": {"ip": address, "port": port},
+        "tartarus": {"lan": {"simulated": True}},
+    }
+    if source_port is not None:
+        event["source"] = {"ip": "192.168.150.10", "port": source_port}
+    return event
+
+
+def pcap_row(address: str, port: int, source_port: int, seconds: float = 1) -> Event:
+    return connection("cape.network", address, port, source_port, seconds)
+
+
+def sysmon_row(address: str, port: int, source_port: int, seconds: float = 1) -> Event:
+    return connection("sysmon.evtx", address, port, source_port, seconds)
+
+
+def capemon_row(address: str, port: int, seconds: float = 1) -> Event:
+    return connection("capemon.derived", address, port, None, seconds)
+
+
+def attempts(events: list[Event]) -> int:
+    summary = lan_summary(events, LAN_HOSTS)
+    assert summary is not None
+    return summary.totals.attempts
+
+
+def test_the_same_connection_from_the_pcap_sysmon_and_capemon_is_one_attempt() -> None:
+    events = [
+        pcap_row(FILE_SERVER, 445, 50001),
+        sysmon_row(FILE_SERVER, 445, 50001),
+        capemon_row(FILE_SERVER, 445),
+    ]
+
+    assert attempts(events) == 1
+
+
+def test_a_connection_the_pcap_and_sysmon_both_saw_is_the_pcaps_whichever_comes_first() -> None:
+    events = [sysmon_row(FILE_SERVER, 445, 50001, seconds=1), pcap_row(FILE_SERVER, 445, 50001, 2)]
+
+    summary = lan_summary(events, LAN_HOSTS)
+
+    assert summary is not None
+    [use] = summary.hosts[0].services
+    assert (use.attempts, use.first) == (1, at(2))
+
+
+def test_connections_from_two_source_ports_are_two_attempts() -> None:
+    events = [sysmon_row(FILE_SERVER, 3389, 50001), sysmon_row(FILE_SERVER, 3389, 50002)]
+
+    assert attempts(events) == 2
+
+
+def test_a_capemon_connect_is_dropped_when_another_source_has_the_same_endpoint() -> None:
+    events = [sysmon_row(FILE_SERVER, 3389, 50001), capemon_row(FILE_SERVER, 3389)]
+
+    assert attempts(events) == 1
+
+
+def test_connects_only_capemon_saw_are_each_an_attempt() -> None:
+    events = [capemon_row(FILE_SERVER, 3389, 1), capemon_row(FILE_SERVER, 3389, 2)]
+
+    assert attempts(events) == 2
+
+
+def test_a_capemon_connect_to_another_port_is_not_covered_by_a_flow() -> None:
+    events = [sysmon_row(FILE_SERVER, 445, 50001), capemon_row(FILE_SERVER, 3389)]
+
+    assert attempts(events) == 2
+
+
+def test_a_connection_flagged_for_an_address_outside_the_preset_is_not_a_lan_attempt() -> None:
+    assert attempts([sysmon_row("192.168.150.1", 445, 50001)]) == 0

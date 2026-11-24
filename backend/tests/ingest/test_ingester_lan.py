@@ -143,7 +143,7 @@ async def test_the_result_carries_the_lan_summary_of_the_events_it_indexed(tmp_p
     assert lan is not None
     [host] = lan.hosts
     assert host.address == FILE_SERVER
-    assert [(s.service, s.port, s.attempts) for s in host.services] == [("smb", 445, 2)]
+    assert [(s.service, s.port, s.attempts) for s in host.services] == [("smb", 445, 1)]
     assert [c.user for c in host.credentials] == ["Administrator"]
     assert len(host.files) == 1
     assert lan.truncated is True

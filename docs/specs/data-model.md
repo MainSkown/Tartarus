@@ -134,7 +134,7 @@ Fake local network (analyses run with a `lan_preset`; every field is on events o
 
 | Field | Type | Notes |
 |---|---|---|
-| `tartarus.lan.simulated` | boolean | `true` on every event that involves a fake host: the `cape-network` flows to it and every `lan-sim` event. Alias `lan` |
+| `tartarus.lan.simulated` | boolean | `true` on every event that involves a fake host: every `network-connection` to it, whichever source saw it (the `cape-network` flow, Sysmon EID 3, capemon's `connect`), and every `lan-sim` event. Alias `lan` |
 | `tartarus.lan.host` | keyword | The fake host's FQDN (`fs01.corp.local`); not on derived events, which name their hosts in `related.hosts` |
 | `tartarus.lan.role` | keyword | The role the preset gives the host (`domain-controller`, `file-server`, ...); absent when the preset does not list the address |
 | `tartarus.lan.service` | keyword | `smb`, `rdp`, `winrm`, `ssh`, `ldap` or `mssql`; a list on a fan-out |
@@ -559,8 +559,8 @@ a skipped line moves no other id. No event has `process.command_line`: no proces
 
 - **Attribution.** As `cape-network`: `process.*` only when exactly one process has a capemon `connect` to the
   event's `(destination ip, port)`, listed in `related.events`. No `connect`, or two processes, no process.
-- **Flows are not repeated.** The flows to fake hosts are `cape-network`'s rows (same count with and
-  without the log), flagged with `tartarus.lan.simulated`, `.host`, `.role`, `.preset`; `lan-sim` events
+- **Flows are not repeated.** The flows to fake hosts are the connection events the other sources already produce
+  (`cape-network`'s flows, Sysmon's, capemon's; same count with and without the log), flagged with `tartarus.lan.simulated`, `.host`, `.role`, `.preset`; `lan-sim` events
   enrich them and are not rows of the Network tab.
 - **Derived events** (the Sigma matcher is single-event): `lan-sweep` (one process, >= 5 distinct fake hosts on
   one port within 30 s), `lan-fan-out` (one process, >= 4 hosts over >= 2 services within 5 min) and
@@ -643,7 +643,7 @@ is in `app/rules/mapping.py`; a name a category does not list is not mapped ther
 
 | Category | Sigma field names |
 |---|---|
-| `network_connection` | the Sysmon names above, and `LanSimulated` (`tartarus.lan.simulated`), `LanHost` (`tartarus.lan.host`): only the flows to a fake host carry them, so a rule on `LanSimulated: true` ignores the capemon-derived connection |
+| `network_connection` | the Sysmon names above, and `LanSimulated` (`tartarus.lan.simulated`), `LanHost` (`tartarus.lan.host`): every connection to a fake host carries them, whether the pcap, Sysmon or capemon saw it (`EventFactory` flags them in one place); a Sysmon and a capemon event of one connection share a process entity id, so the rule raises one alert for both |
 | `lan_authentication` | `User` (`user.name`), `Domain` (`user.domain`), `Mechanism` (`tartarus.lan.mechanism`), and the common ones below |
 | `lan_share_access` | `Share` (`tartarus.lan.share`), `Path` (`file.path`, share-relative), `RequestName` (`tartarus.lan.request`, the operation), and the common ones |
 | `lan_file_write` | `Share`, `Path`, and the common ones (its own category: a `share-access` write to the same file would match a rule meant for the stored copy) |

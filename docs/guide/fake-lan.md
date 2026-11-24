@@ -83,8 +83,9 @@ Ports are the services' usual ones: 445 (SMB), 3389 (RDP), 5985 (WinRM), 22 (SSH
 - **Network tab.** A hosts list entry marked **FAKE LAN HOST** for each fake host the sample reached,
   and the flows to those hosts. The badge has a filter action, so you can keep only, or hide, the
   traffic to the fake network.
-- **Summary, LATERAL MOVEMENT.** Per fake host: the services the sample touched, the number of attempts,
-  when the first and the last attempt happened, the credentials it tried and the files it wrote. The
+- **Summary, LATERAL MOVEMENT.** Per fake host: the services the sample touched, the number of attempts (a
+  connection counts once, however many of CAPE's sources saw it; a login on a port counts for that login, not
+  again for its connection), when the first and the last attempt happened, the credentials it tried and the files it wrote. The
   section shows only when the fake network was on. When the sample did nothing on it, the section says so.
 - **Events.** Login attempts, share accesses, file writes and service requests appear in the **network**
   lane. Sweeps and fan-outs (one process reaching many hosts) and credential spraying (one user name tried

@@ -1,14 +1,15 @@
 """Which process did a network record come from, when the capemon events say so exactly."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.ingest.reading import to_int
+from app.ingest.reading import dig, to_int
 
 DNS_QUERY = "dns-query"
 NETWORK_CONNECTION = "network-connection"
 HTTP_REQUEST = "http-request"
+CAPEMON_MODULE = "capemon"
 
 Key = tuple[str, ...]
 
@@ -31,19 +32,33 @@ def url_key(url: str) -> Key:
     return (HTTP_REQUEST, url)
 
 
-def _key_of(event: Mapping[str, Any]) -> Key | None:
-    action = event["event"]["action"]
-    if action == DNS_QUERY:
-        name = event.get("dns", {}).get("question", {}).get("name")
+def key_of(event: Mapping[str, Any]) -> Key | None:
+    """What a network event is about, by the key a capemon event and a pcap row would share."""
+    action = dig(event, "event", "action")
+    if action == DNS_QUERY and isinstance(name := dig(event, "dns", "question", "name"), str):
         return dns_key(name) if name else None
-    if action == NETWORK_CONNECTION:
-        destination = event.get("destination", {})
-        address = destination.get("ip")
-        return endpoint_key(address, to_int(destination.get("port"))) if address else None
-    if action == HTTP_REQUEST:
-        url = event.get("url", {}).get("full")
+    if action == NETWORK_CONNECTION and isinstance(address := dig(event, "destination", "ip"), str):
+        return endpoint_key(address, to_int(dig(event, "destination", "port")))
+    if action == HTTP_REQUEST and isinstance(url := dig(event, "url", "full"), str):
         return url_key(url) if url else None
     return None
+
+
+def without_repeated_capemon_rows[E: Mapping[str, Any]](events: Sequence[E]) -> list[E]:
+    """A call capemon saw and another source (the pcap, Sysmon) also holds is one row, the
+    other's, which names the process. A call only capemon saw (a blocked route leaves no traffic)
+    stays.
+    """
+    elsewhere = {
+        key
+        for event in events
+        if dig(event, "event", "module") != CAPEMON_MODULE and (key := key_of(event))
+    }
+    return [
+        event
+        for event in events
+        if dig(event, "event", "module") != CAPEMON_MODULE or key_of(event) not in elsewhere
+    ]
 
 
 class ProcessAttribution:
@@ -52,7 +67,7 @@ class ProcessAttribution:
     def __init__(self, capemon_events: Iterable[Mapping[str, Any]]) -> None:
         self._by_key: dict[Key, list[Mapping[str, Any]]] = {}
         for event in capemon_events:
-            key = _key_of(event) if "process" in event else None
+            key = key_of(event) if "process" in event else None
             if key is not None:
                 self._by_key.setdefault(key, []).append(event)
 

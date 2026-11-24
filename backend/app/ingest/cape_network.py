@@ -8,7 +8,6 @@ from app.ingest.attribution import Key, ProcessAttribution, dns_key, endpoint_ke
 from app.ingest.capemon import CapemonNormalizer
 from app.ingest.clock import epoch_to_datetime
 from app.ingest.ecs import EventFactory, EventShape, SourceRecord
-from app.ingest.lan_fields import lan_section
 from app.ingest.protocol import IngestContext
 from app.ingest.reading import mapping_list, section, text_or_none, to_int
 
@@ -35,7 +34,6 @@ class _Candidate:
     sections: dict[str, Any]
     attribution_key: Key | None = None
     related: dict[str, Any] = field(default_factory=dict)
-    tartarus: dict[str, Any] = field(default_factory=dict)
 
 
 class CapeNetworkNormalizer:
@@ -75,7 +73,6 @@ def _build(
         candidate.shape,
         candidate.record,
         candidate.summary,
-        tartarus=candidate.tartarus or None,
         **sections,
     )
 
@@ -156,14 +153,8 @@ def _flow_candidate(
     sections: dict[str, Any] = {"destination": destination, "network": {"transport": transport}}
     if source:
         sections["source"] = source
-    fake_host = context.lan_hosts.get(destination_ip)
     return _Candidate(
-        FLOW,
-        record,
-        summary,
-        sections,
-        endpoint_key(destination_ip, destination_port),
-        tartarus={} if fake_host is None else lan_section(fake_host),
+        FLOW, record, summary, sections, endpoint_key(destination_ip, destination_port)
     )
 
 
