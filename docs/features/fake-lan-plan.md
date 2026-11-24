@@ -117,6 +117,8 @@ Delete the throwaway container, the uploaded tools and any memory dumps afterwar
 
 ### Step 1: preset format and loader
 
+**Status: done.** Format, address block and validator (`619e7ff`, `ba5db63`, `73d2ce7`): the three presets validate, and overlap, duplicate names and out-of-block offsets fail in tests.
+
 **Tier:** Sonnet (it fixes the format three components read), with the format already decided by Step 0.
 
 - `guest/lan-presets/<id>.json`, declarative, next to `guest/profiles`: `id`, `name`, `description`,
@@ -131,6 +133,8 @@ Delete the throwaway container, the uploaded tools and any memory dumps afterwar
   block each fail with a precise message.
 
 ### Step 2: firewall and addresses
+
+**Status: done.** Session sets in the input and bridge tables, `notrack`, TTL 128 and the iptables accepts (`2029c8d`); a compromised daemon gets no outbound connection (`5ac7c51`).
 
 **Tier:** extreme (Sonnet, with the notes file). The delegation table lists guest network isolation rules
 under extreme.
@@ -160,6 +164,8 @@ module keeps one job):
 
 ### Step 3: control service endpoints
 
+**Status: done.** `GET /lan-presets`, `GET /lan/health`, `GET` and `POST /lan/sessions`, `DELETE /lan/sessions/{key}` (`4b46493`).
+
 **Tier:** Sonnet. Builds on Steps 1 and 2; the endpoint shapes follow `control_http.py`.
 
 On `guest-control` (authenticated, only on `tartarus-control`):
@@ -178,6 +184,8 @@ On `guest-control` (authenticated, only on `tartarus-control`):
   what both need if the daemon channel ends up needing it (extract on the third use, not the second).
 
 ### Step 4: the `lan-sim` daemon
+
+**Status: done.** Framework and services: `80555e6` (framework), `52b7196` (NTLM), `ae1c475` (LDAP), `3fdb0d9` (RDP), `72bd407` (SSH), `7ee3564` (WinRM), `421437e` (MSSQL), `d101fdb` (SMB), `b71f042` (read budget and session close).
 
 **Tier:** the framework is Sonnet (it handles hostile input), and so is each protocol that parses a binary
 format. Protocols that Step 0 shows to be a library call or a fixed reply go to Haiku with the spec the
@@ -217,6 +225,8 @@ project with its own tests):
 
 ### Step 5: compose service, image and supervision
 
+**Status: done.** `1b355d8` (compose service, `dns_static` for the fake names); `5ac7c51` (the daemon's uid may open no connection, and a stale namespace shows in the health answer). Step 5b notes: [fake-lan-notes/step5b-notes.md](../history/fake-lan-notes/step5b-notes.md).
+
 **Tier:** Sonnet (isolation-relevant, so rounded up from Haiku).
 
 - `docker-compose.yml`: `lan-sim` with `network_mode: "service:cape"`, `cap_drop: [ALL]` plus
@@ -232,6 +242,8 @@ project with its own tests):
   one listed, and an image test that it runs as non-root.
 
 ### Step 6: backend options and run orchestration
+
+**Status: done.** `ae45c34`: the session opens before submit, a failed open ends the analysis as `FAILED`, and every ending closes the session.
 
 **Tier:** Sonnet.
 
@@ -251,6 +263,8 @@ project with its own tests):
   CAPE refuses, session closed; cancel, restart and failure each close.
 
 ### Step 7: normaliser, fields, network view
+
+**Status: done.** `ff8d5bf`: the `lan-sim` source, the derived events, the fields and the Network flags.
 
 **Tier:** the mapping table is Haiku once Step 0 fixes the log format; the normaliser, the derived events
 and the attribution are Sonnet.
@@ -277,6 +291,8 @@ and the attribution are Sonnet.
 
 ### Step 8: Sigma rules and ATT&CK
 
+**Status: done.** `d552ac4`: the categories and eleven rules in `rules/sigma/tartarus/`.
+
 **Tier:** categories and mapping are Sonnet (judgment in the Sigma field mapping); the rule files are
 Haiku (a clear template in `rules/sigma/tartarus/`).
 
@@ -295,6 +311,8 @@ Haiku (a clear template in `rules/sigma/tartarus/`).
 
 ### Step 9: summary and report
 
+**Status: done.** `99e71f0`: `summary.lan` and the Lateral movement section in the report.
+
 **Tier:** summary aggregation Sonnet; the HTML/PDF section Haiku, following an existing section.
 
 - `summary.lan` computed at final ingest: preset, and per fake host the services touched, attempts, first
@@ -307,6 +325,8 @@ Haiku (a clear template in `rules/sigma/tartarus/`).
   renders each of the three states.
 
 ### Step 10: frontend
+
+**Status: done.** `d710145` (API client), `daff86c` (Network badge and filter), `a375905` (Summary section), `51d5386` (submit switch and picker).
 
 **Tier:** the composable and the badge are Haiku; the dialog fields and the Summary section are Sonnet.
 
@@ -322,6 +342,8 @@ Haiku (a clear template in `rules/sigma/tartarus/`).
 
 ### Step 11: visual review
 
+**Status: done.** Approved by the user on 2026-11-24.
+
 Done by me, per rule 4, one Artifact per screen:
 
 1. Submit dialog fields: off; on with the picker; presets loading, error and none; disabled for `internet`;
@@ -334,6 +356,8 @@ Done by me, per rule 4, one Artifact per screen:
 I check every screenshot myself first, publish, and answer comments on the same Artifact URL.
 
 ### Step 12: proofs
+
+**Status: in progress.** The LAN section of `scripts/verify-isolation.sh` and `scripts/lib/e2e-lan.sh` are not in the tree yet. The isolation run is being prepared in [fake-lan-notes/step12a-notes.md](../history/fake-lan-notes/step12a-notes.md).
 
 **Tier:** the isolation script is Sonnet (it is the proof of the guarantee); the e2e is Sonnet because it
 drives a real guest; docs are Haiku.

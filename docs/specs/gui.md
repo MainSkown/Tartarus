@@ -111,6 +111,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
   - `INTERNET` shows an inline amber warning: "Sample will reach the real internet from this
     host's public IP."
   - `VPN`, `WIREGUARD` and `SOCKS5` appear only if configured.
+- **Simulate local network** is a switch of its own, off by default, below the route. On, it shows a picker of the presets from `GET /api/lan-presets`, a group titled "Local network presets" with each preset's hosts counted by role. The switch is disabled on the `INTERNET` route, with the reason beside it ("Not available with the internet route: pick another route to simulate a local network."). Submitting waits while the presets load, and the field says so ("The local network presets could not be loaded") when they cannot be read. [Feature](../features/fake-lan.md).
 - Timeout: 60–1200 s.
 - **Guest:** a select of every guest, each as its name, its badges (`DEFENDER ON`) and the OS its profile
   names. A guest that is not ready is listed but cannot be chosen, with its state as the reason. It starts
@@ -239,6 +240,7 @@ The query-bar state (query plus chips) and the selected process are kept in the 
 - **Detected families and extracted configs**, as key/value in code blocks.
 - **Top detections**: the top 10, each linking to its detail.
 - **Mini ATT&CK**: the tactics row with counts.
+- **Lateral movement**, shown only when the fake local network was on: the preset's name, totals of hosts, attempts, credentials and files, a note when the daemon's log was cut short, and one entry per fake host with its services, attempts, first and last times, credentials and written files. With no contact it reads "the sample did nothing on the fake local network".
 - **Screenshots strip**: a thumbnail carousel, click for a lightbox.
 - **Sample static info**: type, size, hashes, imphash, signer, sections (for PEs) and strings
   (collapsible).
@@ -288,7 +290,7 @@ Sub-tabs:
 - **Flows:** 5-tuple, bytes, packets, process.
 - **Alerts:** Suricata.
 
-Every row has a process column and `filter on` actions. The `⇩ PCAP` button downloads the
+Every row has a process column and `filter on` actions. A host of the fake local network carries a **FAKE LAN HOST** badge in the hosts list, with `filter on` and `filter out` actions on `tartarus.lan.simulated`. The `⇩ PCAP` button downloads the
 PCAP. When INetSim answered, the row is marked `inetsim`.
 
 ### ARTIFACTS tab

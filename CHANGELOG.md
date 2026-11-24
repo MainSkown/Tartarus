@@ -9,6 +9,21 @@ milestone was built is in [docs/history](docs/history/README.md).
 
 ### Added
 
+- A simulated local network for an analysis, off by default. The Submit dialog's **SIMULATE LOCAL NETWORK** switch
+  picks a preset (small office, flat home LAN or domain with servers): fake hosts on the guest's own network that
+  answer SMB, RDP, WinRM, SSH, LDAP and MSSQL. Every connection, login attempt, share access, file write and service
+  request is logged, and nothing the sample sends is run. The guest reaches only the chosen preset's hosts and ports,
+  and the switch is refused with the `internet` route. Presets are JSON files in `guest/lan-presets/`; see
+  [adding a preset](docs/contributing/adding-a-lan-preset.md).
+- Lateral movement in the results: a **FAKE LAN HOST** badge and filter in the Network tab, a Lateral movement section
+  in the Summary and in the HTML and PDF reports, `summary.lan` in the analysis summary, derived sweep, fan-out and
+  credential-spray events, and eleven Sigma rules tagged to ATT&CK (T1021, T1210, T1570, T1569.002, T1110.003 and T1046).
+- `GET /api/lan-presets` lists the presets, and `POST /api/analyses` takes `lan_preset` in its options.
+- Known limits of the fake local network: no `wmiexec` and no `sc.exe` against the fake hosts; single-label names do
+  not resolve; NetBIOS and LLMNR are not answered; the fake hosts share one MAC address and answer with TTL 128; the
+  events are read at the final ingest only, so they are not in the live feed. `make verify-isolation` does not yet
+  prove the isolation of the fake network on a real guest.
+
 - Submission of a password-protected zip from the Submit dialog: the archive password (prefilled with
   `infected`), a pick of the file to run from the zip's list, and the zip unpacked inside the guest
   only. `POST /api/analyses/archive-members` lists a zip's files without extracting them, and
@@ -29,6 +44,9 @@ milestone was built is in [docs/history](docs/history/README.md).
 
 ### Security
 
+- The fake local network's container, `lan-sim`, shares the `cape` network namespace with no capability beyond binding a
+  low port, a read-only root filesystem, no secret and no connection of its own on any route. The
+  [accepted risks](docs/security.md#accepted-risks) list what a compromised daemon could still do.
 - The content security policy no longer allows inline `<style>` elements: `style-src` is `'self'` and only
   `style` attributes stay allowed (`style-src-attr`). The one inline element the app made, Cytoscape's
   container rule in the process graph, is now a stylesheet of its own. A browser test records policy

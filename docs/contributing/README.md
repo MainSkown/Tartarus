@@ -14,6 +14,7 @@ Then the page for your task:
 - [Adding a guest profile](adding-a-guest-profile.md): support for another operating system.
 - [Adding an event source](adding-an-event-source.md): a normaliser for a new source of events, and the fields it fills.
 - [Adding a message key](adding-a-message-key.md): a new string in the GUI.
+- [Adding a fake local network preset](adding-a-lan-preset.md): a set of fake hosts for the simulated local network, as a JSON file.
 
 The threat model and the accepted risks are in [security](../security.md). Read it before you add a
 route, a mount or a secret.

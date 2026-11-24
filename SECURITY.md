@@ -18,6 +18,9 @@ You can expect an answer within a week. A fix ships as a patch release with a no
 ## What counts
 
 - A guest reaching the host, another guest, the compose services or the LAN on a route where it should not.
+- A guest reaching anything but the fake hosts of its chosen preset through the fake local network, or a fake host
+  reaching the host, the control service, CAPE or another guest. The fake hosts are the `lan-sim` container
+  ([the feature](docs/features/fake-lan.md)).
 - Hostile analysis data (a report, a pcap, a memory image, a file or process name) crashing the backend, running code, or running script in the browser.
 - A web page the analyst visits driving the app, or the guest desktop, across origins.
 - Secrets leaking into logs, images or process lists.

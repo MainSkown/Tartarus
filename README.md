@@ -12,6 +12,8 @@ detections.
 ## What you can do
 
 - **Submit** a sample from the browser, and queue analyses on several guests at once.
+- **Simulate a local network** (off by default): fake Windows and Linux hosts on the guest's network, with
+  the sample's attempts on them in the Network tab, the Summary, the Sigma alerts and the report.
 - **Watch it live:** a live event stream and process tree while the run is in progress, and an
   interactive desktop of the guest in the browser.
 - **Explore the result:** process tree, events, timeline, network and artifacts, linked by a

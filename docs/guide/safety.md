@@ -12,10 +12,11 @@ Each analysis runs in a guest VM. The guest sits on a private network inside the
 | `DROP` | Same as `NONE`: no outside traffic. | Same as `NONE`. |
 | `INETSIM` (default) | A fake internet. INetSim on the gateway answers DNS and common network services, so the sample sees replies. | The real internet, your network, other guests, Tartarus services. |
 | `INTERNET` | The real internet, through this machine's public IP. | Your local and private networks, Docker networks, other guests, Tartarus services. |
+| `INETSIM`, `NONE` or `DROP`, with the fake local network on | The fake hosts of the chosen preset, on their ports, and what the route allows | Your network, other guests, the real internet, Tartarus services, and any address the preset does not list. |
 
 On every route, the rules that the security review checked hold:
 
-- a guest reaches only its gateway, not your LAN, not the host's private networks and not the Tartarus containers (OpenSearch, PostgreSQL, the backend and the guest control service);
+- a guest reaches only its gateway (and, with the fake local network on, its preset's fake hosts), not your LAN, not the host's private networks and not the Tartarus containers (OpenSearch, PostgreSQL, the backend and the guest control service);
 - a guest cannot reach another guest;
 - a guest cannot use an address it made up to get around these rules.
 
@@ -35,6 +36,17 @@ Use a separate network or a VPN for the machine before you run live malware on t
 If this machine has a public IPv4 address, or your router answers on its WAN address, list those addresses in `GUEST_BLOCKED_ADDRESSES` in `.env` (comma separated, addresses or networks). Tartarus already blocks private and local ranges, but a guest on this route could otherwise reach services on this machine through its public address. A value that is not an IPv4 address or network, or that overlaps the guest subnet, stops the cape container from starting.
 
 Keep the default route, `INETSIM`, unless you have a reason to pick another. The default is set in **Settings**.
+
+## The fake local network
+
+The fake local network is off by default. When you switch it on, the sample also reaches the fake hosts of the
+preset you chose ([the guide](fake-lan.md)). It changes what the guest can reach in these ways only:
+
+- The guest reaches its preset's fake hosts, on the ports they serve, and its gateway. It reaches no other address
+  of the fake network, so a scan of the whole subnet finds only the fake hosts of that preset.
+- Other guests, your network and the Tartarus containers stay unreachable, as on every route. The `INTERNET` route
+  is refused with the fake network on.
+- The fake hosts are not machines. They answer, log every attempt and never run what the sample sends.
 
 ## What a guest is not
 
@@ -56,6 +68,12 @@ The security review fixed what it could. These risks remain by design. The full 
 - **There is no login.** The app listens on `127.0.0.1`, over plain HTTP. Any user on this machine can open it.
 - **The Guest VM page shows the guest's password** so you can log into the guest desktop.
 - **The `INTERNET` route reaches the internet.** That is its purpose.
+- **The fake-host daemon parses what the sample sends.** It runs in its own container with no capability beyond
+  binding a low port, a read-only root and no secret, and it may open no connection. If it were compromised it could
+  answer the sample falsely and forge its own log, but not reach CAPE, the control service or the host.
+- **The fake hosts share one MAC address and answer with TTL 128, and they offer well-known accounts.** A sample can
+  tell them from real machines, and it can log in with a preset's password. Windows needs that password to sign its
+  file-sharing traffic, so the accounts are weak on purpose.
 
 ## Practical advice
 

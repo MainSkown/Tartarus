@@ -15,6 +15,7 @@ Read [safety](safety.md) before you run anything. Tartarus runs live malware.
 | [Backup and disk](backup-and-disk.md) | Disk is filling up, or you want to keep your data. |
 | [Troubleshooting](troubleshooting.md) | Something failed, or the page does not load. |
 | [Safety](safety.md) | You want to know what a sample can reach. |
+| [Fake local network](fake-lan.md) | You want a sample to find fake hosts on a simulated local network, and to see what it tries on them. |
 
 ## More
 
