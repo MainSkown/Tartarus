@@ -28,13 +28,37 @@
 # Applying the firewall binds no port, so both guests are powered off for it and one is started again; that
 # is why this part runs only when the script started both guests itself, and only where the internet
 # answers. The firewall is applied as configured again afterwards, also when the script is interrupted.
+#
+# Then the fake local network (docs/features/fake-lan.md). Every check above also probes every service of every
+# preset, on the control service's own list of presets: with no session they are as silent as before. The LAN
+# section then opens a session through the control service with the backend's own client
+# (scripts/lib/lan-session.py), as the backend does before an analysis: one for the first guest (small-office),
+# then one for the second (flat-home), and proves on the routes raw, none and inetsim (not internet: the backend
+# refuses it with a preset) that
+#   - a guest reaches every (host, port) of its preset and gets the fake service's own first answer (SSH banner,
+#     WinRM 401, SMB2 negotiate reply, LDAP rootDSE, RDP connection confirm, MSSQL prelogin reply), answers ping
+#     with TTL 128 and resolves ARP for the preset's hosts, and nothing else of the catalogue above;
+#   - a port the preset does not serve on one of its hosts, and every host of another preset, neither answers
+#     nor refuses (a RST would mean the firewall let the packet reach the kernel) and has no ARP entry;
+#   - a guest with no session reaches none of the fake hosts, and two guests with sessions for different presets
+#     reach exactly their own and never each other;
+#   - the tricks above still fail with sessions open, and so does taking a fake address as its own (the guest
+#     switches duplicate address detection off): nothing sent from there gets through;
+#   - after the sessions are closed every probe is back to its no-session result and the cape container's
+#     firewall state (both tartarus_guest tables, iptables rules of tartarus-lan, routes of protocol 77, listening
+#     sockets) is what it was before the first session, packet counters aside.
+# Sessions are closed, and the guests powered off, also when the script is interrupted.
 # Exit 0 when all hold, 1 otherwise, 2 on bad usage.
 #
-# The negative proof, that the check can fail: while the guests run,
+# The negative proof, that the check can fail: with ISOLATION_NEGATIVE_PROOF=1 the LAN section deletes both
+# tartarus_guest tables right after each session opens (opening a session applies the whole ruleset again, so
+# deleting them beforehand would be undone):
+#   ISOLATION_NEGATIVE_PROOF=1 scripts/verify-isolation.sh GUEST_A GUEST_B
+# It must exit 1 naming what the guests now reach. The sessions die with the firewall's next `init`, which
+# the script runs when it ends (and which restores the tables); by hand, while the guests run,
 #   docker compose exec -T cape nft delete table inet tartarus_guest
 #   docker compose exec -T cape nft delete table bridge tartarus_guest
-# and run the script again: it must exit 1 naming what the guests now reach. Restart cape (or run
-# `docker compose exec -T cape python3 -I /usr/local/lib/tartarus/guest-firewall init`) to restore them.
+# and `docker compose exec -T cape python3 -I /usr/local/lib/tartarus/guest-firewall init` restores them.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -54,6 +78,17 @@ INTERNET_ADDRESS=1.1.1.1
 INTERNET_CONTROL_ADDRESS=1.0.0.1
 APPLY_FIREWALL=(python3 -I /usr/local/lib/tartarus/guest-firewall init)
 GUEST_NETMASK=255.255.255.0
+BACKEND_IMAGE=tartarus-backend:latest
+LAN_SESSION_SCRIPT=$REPO/scripts/lib/lan-session.py
+LAN_ROUTES=(raw none inetsim)
+LAN_PRESET_A=${ISOLATION_LAN_PRESET_A:-small-office}
+LAN_PRESET_B=${ISOLATION_LAN_PRESET_B:-flat-home}
+LAN_KEY_PREFIX=isolation-$$
+NEGATIVE_PROOF=${ISOLATION_NEGATIVE_PROOF:-}
+# A port no preset serves, to see whether a firewall opens a whole fake host or only its services.
+LAN_CLOSED_PORT=8080
+FAKE_HOST_TTL_MARKER='TTL=128'
+DEFAULT_DAD_TRANSMITS=3
 
 failed=0
 ok()   { printf '[ OK ] %s\n' "$1"; }
@@ -80,12 +115,21 @@ ADDED_NEIGHBORS=()
 CANARY_PID=""
 CANARY_DIR=""
 TEST_ADDRESS_BLOCKED=""
+LAN_SERVICES=""
+LAN_SESSIONS=()
+LAN_SEQUENCE=0
+FIREWALL_BASELINE=""
+DAD_SWITCHED_OFF=()
+TABLES_DELETED=""
 
 cleanup() {
     local entry
     for entry in "${OPEN_ROUTES[@]}"; do close_route ${entry}; done
     for entry in "${ADDED_NEIGHBORS[@]}"; do remove_neighbor ${entry}; done
     for entry in "${ADDED_ADDRESSES[@]}"; do remove_address ${entry}; done
+    for entry in "${DAD_SWITCHED_OFF[@]}"; do set_duplicate_detection "$entry" "$DEFAULT_DAD_TRANSMITS"; done
+    for entry in "${LAN_SESSIONS[@]}"; do lan_control close "$entry" >/dev/null 2>&1; done
+    [[ -z $TABLES_DELETED ]] || apply_firewall_as_configured
     [[ -z $CANARY_PID ]] || kill "$CANARY_PID" 2>/dev/null
     [[ -z $CANARY_DIR ]] || rm -rf "$CANARY_DIR"
     for entry in "${STARTED[@]}"; do virsh_cape destroy "$entry" >/dev/null 2>&1; done
@@ -136,14 +180,32 @@ payload_for() {
         get) printf 'GET / HTTP/1.0\r\nHost: probe\r\n\r\n' | base64 -w0 ;;
         postgres) printf '\x00\x00\x00\x23\x00\x03\x00\x00user\x00probe\x00database\x00probe\x00\x00' | base64 -w0 ;;
         guacd) printf '6.select,3.vnc;' | base64 -w0 ;;
+        winrm) printf 'POST /wsman HTTP/1.1\r\nHost: probe\r\nContent-Length: 0\r\nConnection: close\r\n\r\n' | base64 -w0 ;;
+        smb) smb2_negotiate | base64 -w0 ;;
+        ldap) printf '\x30\x25\x02\x01\x01\x63\x20\x04\x00\x0a\x01\x00\x0a\x01\x00\x02\x01\x00\x02\x01\x00\x01\x01\x00\x87\x0bobjectClass\x30\x00' | base64 -w0 ;;
+        rdp) printf '\x03\x00\x00\x13\x0e\xe0\x00\x00\x00\x00\x00\x01\x00\x08\x00\x03\x00\x00\x00' | base64 -w0 ;;
+        mssql) printf '\x12\x01\x00\x1a\x00\x00\x01\x00\x00\x00\x0b\x00\x06\x01\x00\x11\x00\x01\xff\x0e\x00\x0c\x53\x00\x00\x00' | base64 -w0 ;;
     esac
+}
+
+# An SMB2 NEGOTIATE offering dialect 2.1 behind a NetBIOS header: 64 bytes of header, 36 of body, one dialect.
+smb2_negotiate() {
+    printf '\x00\x00\x00\x66\xfeSMB\x40\x00'
+    head -c 8 /dev/zero
+    printf '\x01\x00'
+    head -c 48 /dev/zero
+    printf '\x24\x00\x01\x00\x01\x00\x00\x00\x00\x00\x00\x00'
+    head -c 24 /dev/zero
+    printf '\x10\x02'
 }
 
 # name;target;port;payload kind;marker (extended regex);scenarios in which the target is reachable
 # A scenario is a route (raw none inetsim internet), `invented` (a guest sending from an address of its own
 # invention), `claimed` (a guest that took the other guest's address, which is then its own: it reaches
-# itself) or `blocked` (the internet route with $INTERNET_ADDRESS in GUEST_BLOCKED_ADDRESSES). The gateway services are the only thing a guest reaches whatever it does: they run on the
-# address it is given, and INetSim's DNS and HTTP are what the inetsim route is for.
+# itself), `blocked` (the internet route with $INTERNET_ADDRESS in GUEST_BLOCKED_ADDRESSES), `fakeown` (a guest
+# that took an address of the fake LAN as its own: nothing is reachable) or `preset-<id>` (a session for that
+# preset is open, on top of the route). The gateway services are the only thing a guest reaches whatever it
+# does: they run on the address it is given, and INetSim's DNS and HTTP are what the inetsim route is for.
 catalogue() { # other-guest-address
     cat <<EOF
 gateway-dns;$GATEWAY_IP;53;;;raw inetsim internet invented
@@ -162,6 +224,41 @@ internet-control;$INTERNET_CONTROL_ADDRESS;80;get;HTTP/1\.[01] (301|400|403);int
 other-guest-agent;$1;8000;get;CAPE Agent;claimed
 other-guest-ping;$1;icmp;;;claimed
 EOF
+    lan_catalogue
+}
+
+# What a fake service answers first, as `payload kind;marker`: the daemon's own greeting, which neither
+# INetSim (it accepts anything and says HELLO) nor a bare connect can fake.
+lan_probe_kind() { # service-kind
+    case $1 in
+        ssh) echo ';SSH-2\.0-OpenSSH_' ;;
+        winrm) echo 'winrm;(?s)HTTP/1\.[01] 401.*WWW-Authenticate' ;;
+        smb) echo 'smb;^\x00[\s\S]{3}\xfeSMB' ;;
+        ldap) echo 'ldap;namingContexts' ;;
+        rdp) echo 'rdp;^\x03\x00\x00[\s\S]\x0e\xd0' ;;
+        mssql) echo 'mssql;^\x04\x01' ;;
+        *) return 1 ;;
+    esac
+}
+
+# Every service and host of every preset, reachable only in the scenario `preset-<id>`: the service's own
+# answer, whether anything answers on that port at all, and per host a port no preset serves, ping, a ping
+# that must come back with a Windows host's TTL, and an ARP entry. Names are lan-<last octet>-<what>.
+lan_catalogue() {
+    local preset address port kind octet payload marker hosts=" "
+    while IFS=';' read -r preset address port kind; do
+        [[ -n $address ]] || continue
+        octet=${address##*.}
+        IFS=';' read -r payload marker <<<"$(lan_probe_kind "$kind")"
+        printf 'lan-%s-%s;%s;%s;%s;%s;preset-%s\n' "$octet" "$port" "$address" "$port" "$payload" "$marker" "$preset"
+        printf 'lan-%s-%s-answers;%s;any:%s;;;preset-%s\n' "$octet" "$port" "$address" "$port" "$preset"
+        [[ $hosts != *" $address "* ]] || continue
+        hosts+="$address "
+        printf 'lan-%s-closed;%s;any:%s;;;\n' "$octet" "$address" "$LAN_CLOSED_PORT"
+        printf 'lan-%s-ping;%s;icmp;;;preset-%s\n' "$octet" "$address" "$preset"
+        printf 'lan-%s-ttl;%s;icmp;;%s;preset-%s\n' "$octet" "$address" "$FAKE_HOST_TTL_MARKER" "$preset"
+        printf 'lan-%s-arp;%s;arp;;;preset-%s\n' "$octet" "$address" "$preset"
+    done <<<"$LAN_SERVICES"
 }
 
 SKIPPED=" "
@@ -186,7 +283,7 @@ answers_outside_a_guest() { # name target port payload-kind marker
 skip_what_nothing_reaches() {
     local name target port payload marker _
     while IFS=';' read -r name target port payload marker _; do
-        case $name in gateway-* | other-guest-*) continue ;; esac
+        case $name in gateway-* | other-guest-* | lan-*) continue ;; esac
         if [[ -z $target ]]; then info "$name has no address here: not probed"; SKIPPED+="$name "
         elif ! answers_outside_a_guest "$name" "$target" "$port" "$payload" "$marker"; then
             info "$name does not answer outside a guest either: not probed from the guests"
@@ -331,6 +428,14 @@ reach() { # probe-output probe-name -> yes, no, or nothing when the probe did no
     sed -n "s|^REACH $2 ||p" <<<"$1" | head -n1
 }
 
+# A scenario may be several words (a route and the preset a session was opened for): a probe is wanted when
+# its list holds any of them.
+scenario_allows() { # scenarios-of-the-probe scenario-words
+    local word
+    for word in $2; do [[ " $1 " == *" $word "* ]] && return 0; done
+    return 1
+}
+
 # Compares what the probe reported with what the scenario allows; prints every probe that differs.
 verdict() { # probe-output scenario other-guest-address names...
     local output=$1 scenario=$2 other=$3 name target port payload marker scenarios answer wanted joined
@@ -341,7 +446,7 @@ verdict() { # probe-output scenario other-guest-address names...
         [[ -n $target ]] && ! is_skipped "$name" || continue
         (($# == 0)) || [[ " $* " == *" $name "* ]] || continue
         answer=$(reach "$output" "$name")
-        [[ " $scenarios " == *" $scenario "* ]] && wanted=yes || wanted=no
+        scenario_allows "$scenarios" "$scenario" && wanted=yes || wanted=no
         count=$((count + 1))
         [[ $answer == "$wanted" ]] || problems+=("$name -> ${answer:-no report}, expected $wanted")
     done < <(catalogue "$other")
@@ -351,11 +456,11 @@ verdict() { # probe-output scenario other-guest-address names...
     return 1
 }
 
-verify_route() { # label ip other-ip route
-    local label=$1 ip=$2 other_ip=$3 route=$4 output
+verify_route() { # label ip other-ip route [scenario words of a session]
+    local label=$1 ip=$2 other_ip=$3 route=$4 session=${5:-} output
     open_route "$ip" "$route"
     output=$(probe_from "$ip" "$other_ip" "")
-    check "$label on route $route: every probe answers as expected" verdict "$output" "$route" "$other_ip"
+    check "$label on route $route: every probe answers as expected" verdict "$output" "$route${session:+ $session}" "$other_ip"
     close_route "$ip" "$route"
 }
 
@@ -383,27 +488,162 @@ verify_claimed_address() { # label ip other-label other-ip
     remove_address "$ip" "$other_ip"
 }
 
-verify_hairpin() { # from-label from-ip to-label to-ip route
+verify_hairpin() { # from-description from-ip to-label to-ip route
     local from=$1 from_ip=$2 to=$3 to_ip=$4 route=$5 output
     output=$(probe_from "$from_ip" "$to_ip" "" other-guest-agent other-guest-ping)
     check "$from to $to through the gateway on route $route: every probe answers as expected" \
         verdict "$output" hairpin "$to_ip" other-guest-agent other-guest-ping
 }
 
-verify_hairpins() { # a a-ip b b-ip
-    local route
+verify_hairpins() { # a a-ip b b-ip [a-description b-description]
+    local route a_description=${5:-$1} b_description=${6:-$3}
     for route in raw internet; do
         open_route "$2" "$route"
         open_route "$4" "$route"
         add_neighbor "$2" "$4"
         add_neighbor "$4" "$2"
-        verify_hairpin "$1" "$2" "$3" "$4" "$route"
-        verify_hairpin "$3" "$4" "$1" "$2" "$route"
+        verify_hairpin "$a_description" "$2" "$3" "$4" "$route"
+        verify_hairpin "$b_description" "$4" "$1" "$2" "$route"
         remove_neighbor "$4" "$2"
         remove_neighbor "$2" "$4"
         close_route "$4" "$route"
         close_route "$2" "$route"
     done
+}
+
+# --- the fake LAN -----------------------------------------------------------------------------------
+
+# The backend's own client, in a throwaway container of its image on the control network with the working
+# tree's backend/app over the image's copy: the request is the one the backend sends, whatever the image is.
+lan_control() { # health | presets | list | open key guest preset | close key
+    docker run --rm -i --network tartarus-control -e GUEST_CONTROL_URL=http://cape-control:8002 -e GUEST_CONTROL_TOKEN \
+        -v "$REPO/backend/app:/app/app:ro" -w /app --entrypoint "" "$BACKEND_IMAGE" python - "$@" <"$LAN_SESSION_SCRIPT"
+}
+
+# Fails the run when the fake LAN cannot be probed, and reads the presets every check is built from.
+discover_fake_lan() {
+    local state held kinds kind
+    state=$(lan_control health 2>&1)
+    [[ $state == ready ]] || { fail "setup: the fake LAN is not ready (${state//$'\n'/; })"; return 1; }
+    held=$(lan_control list 2>&1 | paste -sd, -)
+    [[ -z $held ]] || { fail "setup: a LAN session is open already (${held//,/, })"; return 1; }
+    LAN_SERVICES=$(lan_control presets 2>&1)
+    [[ -n $LAN_SERVICES ]] || { fail "setup: the control service lists no LAN preset"; return 1; }
+    kinds=$(cut -d';' -f4 <<<"$LAN_SERVICES" | sort -u)
+    for kind in $kinds; do
+        lan_probe_kind "$kind" >/dev/null || { fail "setup: the probe knows no first request for the fake $kind service"; return 1; }
+    done
+}
+
+preset_address() { # preset -> the first host's address
+    awk -F';' -v preset="$1" '$1 == preset {print $2; exit}' <<<"$LAN_SERVICES"
+}
+
+open_lan_session() { # guest-label preset
+    LAN_SEQUENCE=$((LAN_SEQUENCE + 1))
+    local key=$LAN_KEY_PREFIX-$LAN_SEQUENCE
+    LAN_SESSIONS+=("$key")
+    check "a LAN session for $1 ($2) is opened through the control service" lan_control open "$key" "$1" "$2" || return 1
+    [[ -z $NEGATIVE_PROOF ]] || delete_guest_tables
+}
+
+close_lan_sessions() {
+    local key
+    for key in "${LAN_SESSIONS[@]}"; do
+        check "the LAN session $key is closed" lan_control close "$key" || return 1
+    done
+    LAN_SESSIONS=()
+}
+
+# The negative proof: what the guest firewall would be without its tables. Opening a session applies the
+# whole ruleset again, so every session is followed by this.
+delete_guest_tables() {
+    TABLES_DELETED=yes
+    in_cape nft delete table inet tartarus_guest
+    in_cape nft delete table bridge tartarus_guest
+}
+
+# Everything a session adds to the cape container's network state and must take away again. Packet
+# counters are stripped: they count what the probes sent.
+cape_firewall_state() {
+    in_cape sh -c '{
+        nft list table inet tartarus_guest 2>&1
+        nft list table bridge tartarus_guest 2>&1
+        nft list tables | sort
+        iptables-save | grep tartarus-lan
+        ip -4 route show table local proto 77
+        ss -ltnH | awk "{print \$4}" | sort
+    } | sed -E "s/counter packets [0-9]+ bytes [0-9]+/counter/"; true'
+}
+
+firewall_state_is_the_baseline() {
+    local now
+    now=$(cape_firewall_state)
+    [[ $now == "$FIREWALL_BASELINE" ]] && return 0
+    diff <(echo "$FIREWALL_BASELINE") <(echo "$now") | grep '^[<>]' | head -n 10
+    return 1
+}
+
+set_duplicate_detection() { # guest-ip transmits
+    guest_output "$1" "netsh interface ipv4 set interface name=$(adapter_of "$1") dadtransmits=$2" >/dev/null
+}
+
+# A hostile guest may take an address of the fake LAN as its own, with duplicate address detection off so the
+# fake host's ARP answer does not stop it; whatever it sends from there must be dropped, the gateway's
+# services included.
+verify_fake_address() { # label ip other-ip fake-address
+    local label=$1 ip=$2 other_ip=$3 fake=$4 output
+    DAD_SWITCHED_OFF+=("$ip")
+    set_duplicate_detection "$ip" 0
+    if add_address "$ip" "$fake"; then
+        open_route "$ip" internet
+        # What the guest sends to the address it took never leaves it: its own stack answers (its SMB service,
+        # a refusal from a closed port, ping), so those probes judge the guest, not the firewall.
+        names=$(catalogue "$other_ip" | awk -F';' -v taken="$fake" '$2 != "" && $2 != taken {print $1}')
+        output=$(probe_from "$ip" "$other_ip" "$fake" $names)
+        check "$label taking the fake address $fake as its own: every probe answers as expected" \
+            verdict "$output" fakeown "$other_ip" $names
+        close_route "$ip" internet
+    fi
+    remove_address "$ip" "$fake"
+    set_duplicate_detection "$ip" "$DEFAULT_DAD_TRANSMITS"
+    DAD_SWITCHED_OFF=()
+}
+
+verify_lan_routes() { # a-label a-ip a-scenario b-label b-ip b-scenario
+    local route
+    for route in "${LAN_ROUTES[@]}"; do
+        verify_route "$1" "$2" "$5" "$route" "$3"
+        verify_route "$4" "$5" "$2" "$route" "$6"
+    done
+}
+
+verify_lan() { # a a-ip b b-ip
+    local a=$1 a_ip=$2 b=$3 b_ip=$4
+    local a_held="$a with a $LAN_PRESET_A LAN session" b_held="$b with a $LAN_PRESET_B LAN session"
+    info "the LAN section skips the internet route: the backend refuses it together with a preset"
+    [[ -z $NEGATIVE_PROOF ]] || info "negative proof: every LAN session is followed by deleting the two tartarus_guest tables, so this run must fail"
+    FIREWALL_BASELINE=$(cape_firewall_state)
+
+    open_lan_session "$a" "$LAN_PRESET_A" || return
+    verify_lan_routes "$a_held" "$a_ip" "preset-$LAN_PRESET_A" "$b with no LAN session of its own" "$b_ip" ""
+
+    open_lan_session "$b" "$LAN_PRESET_B" || return
+    verify_lan_routes "$a with a $LAN_PRESET_A session beside a guest with a $LAN_PRESET_B session" "$a_ip" "preset-$LAN_PRESET_A" \
+        "$b with a $LAN_PRESET_B session beside a guest with a $LAN_PRESET_A session" "$b_ip" "preset-$LAN_PRESET_B"
+
+    verify_invented_address "$a_held" "$a_ip" "$b_ip"
+    verify_invented_address "$b_held" "$b_ip" "$a_ip"
+    verify_claimed_address "$a_held" "$a_ip" "$b" "$b_ip"
+    verify_claimed_address "$b_held" "$b_ip" "$a" "$a_ip"
+    verify_hairpins "$a" "$a_ip" "$b" "$b_ip" "$a_held" "$b_held"
+    verify_fake_address "$a_held" "$a_ip" "$b_ip" "$(preset_address "$LAN_PRESET_A")"
+    verify_fake_address "$a_held" "$a_ip" "$b_ip" "$(preset_address "$LAN_PRESET_B")"
+
+    close_lan_sessions || return
+    check "the firewall state of the cape container after the sessions closed is the one from before the first session" \
+        firewall_state_is_the_baseline
+    verify_lan_routes "$a after its LAN session closed" "$a_ip" "" "$b after its LAN session closed" "$b_ip" ""
 }
 
 # --- GUEST_BLOCKED_ADDRESSES ------------------------------------------------------------------------------
@@ -451,12 +691,15 @@ verify_blocked_setting() { # a a-ip b b-ip
 main() {
     local a=$1 b=$2 a_ip b_ip route
     trap cleanup EXIT
+    trap 'exit 130' INT TERM
     compose up -d --wait cape >/dev/null 2>&1 || { fail "setup: cape unhealthy"; exit 1; }
     export CAPE_API_TOKEN=${CAPE_API_TOKEN:-$(in_cape printenv CAPE_API_TOKEN)}
     discover_gateway
     a_ip=$(guest_address "$a")
     b_ip=$(guest_address "$b")
     [[ -n $a_ip && -n $b_ip ]] || { fail "setup: CAPE does not list both '$a' and '$b' (ready guests?)"; exit 1; }
+    export GUEST_CONTROL_TOKEN=${GUEST_CONTROL_TOKEN:-$(in_cape printenv GUEST_CONTROL_TOKEN)}
+    discover_fake_lan || exit 1
 
     # Recorded here, not inside start_guest: `check` runs it in a subshell, where STARTED would be lost.
     is_running "$a" || STARTED+=("$a")
@@ -468,6 +711,7 @@ main() {
     discover_targets
     start_host_canary
     skip_what_nothing_reaches
+    info "the fake LAN's $(grep -c . <<<"$LAN_SERVICES") services are probed in every check below, and are silent without a session"
 
     for route in "${ROUTES[@]}"; do
         verify_route "$a" "$a_ip" "$b_ip" "$route"
@@ -478,6 +722,7 @@ main() {
     verify_claimed_address "$a" "$a_ip" "$b" "$b_ip"
     verify_claimed_address "$b" "$b_ip" "$a" "$a_ip"
     verify_hairpins "$a" "$a_ip" "$b" "$b_ip"
+    verify_lan "$a" "$a_ip" "$b" "$b_ip"
     verify_blocked_setting "$a" "$a_ip" "$b" "$b_ip"
 }
 

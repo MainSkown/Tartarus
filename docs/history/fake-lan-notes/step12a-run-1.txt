@@ -1,0 +1,63 @@
+scripts/verify-isolation.sh ${GUESTS:?GUESTS="labelA labelB"}
+[ OK ] win starts and its agent answers at 192.168.150.10:8000
+[ OK ] w10 starts and its agent answers at 192.168.150.11:8000
+[ OK ] the probe is stored on win and w10
+[INFO] opensearch does not answer outside a guest either: not probed from the guests
+[INFO] the fake LAN's 42 services are probed in every check below, and are silent without a session
+[ OK ] win on route raw: every probe answers as expected (166 probes)
+[ OK ] w10 on route raw: every probe answers as expected (166 probes)
+[ OK ] win on route none: every probe answers as expected (166 probes)
+[ OK ] w10 on route none: every probe answers as expected (166 probes)
+[ OK ] win on route inetsim: every probe answers as expected (166 probes)
+[ OK ] w10 on route inetsim: every probe answers as expected (166 probes)
+[ OK ] win on route internet: every probe answers as expected (166 probes)
+[ OK ] w10 on route internet: every probe answers as expected (166 probes)
+[ OK ] win from an address of its own invention: every probe answers as expected (166 probes)
+[ OK ] w10 from an address of its own invention: every probe answers as expected (166 probes)
+[ OK ] win claiming the address of w10: every probe answers as expected (166 probes)
+[ OK ] w10 claiming the address of win: every probe answers as expected (166 probes)
+[ OK ] win to w10 through the gateway on route raw: every probe answers as expected (2 probes)
+[ OK ] w10 to win through the gateway on route raw: every probe answers as expected (2 probes)
+[ OK ] win to w10 through the gateway on route internet: every probe answers as expected (2 probes)
+[ OK ] w10 to win through the gateway on route internet: every probe answers as expected (2 probes)
+[INFO] the LAN section skips the internet route: the backend refuses it together with a preset
+[ OK ] a LAN session for win (small-office) is opened through the control service (opened isolation-1469989-1)
+[ OK ] win with a small-office LAN session on route raw: every probe answers as expected (166 probes)
+[ OK ] w10 with no LAN session of its own on route raw: every probe answers as expected (166 probes)
+[ OK ] win with a small-office LAN session on route none: every probe answers as expected (166 probes)
+[ OK ] w10 with no LAN session of its own on route none: every probe answers as expected (166 probes)
+[ OK ] win with a small-office LAN session on route inetsim: every probe answers as expected (166 probes)
+[ OK ] w10 with no LAN session of its own on route inetsim: every probe answers as expected (166 probes)
+[ OK ] a LAN session for w10 (flat-home) is opened through the control service (opened isolation-1469989-2)
+[ OK ] win with a small-office session beside a guest with a flat-home session on route raw: every probe answers as expected (166 probes)
+[ OK ] w10 with a flat-home session beside a guest with a small-office session on route raw: every probe answers as expected (166 probes)
+[ OK ] win with a small-office session beside a guest with a flat-home session on route none: every probe answers as expected (166 probes)
+[ OK ] w10 with a flat-home session beside a guest with a small-office session on route none: every probe answers as expected (166 probes)
+[ OK ] win with a small-office session beside a guest with a flat-home session on route inetsim: every probe answers as expected (166 probes)
+[ OK ] w10 with a flat-home session beside a guest with a small-office session on route inetsim: every probe answers as expected (166 probes)
+[ OK ] win with a small-office LAN session from an address of its own invention: every probe answers as expected (166 probes)
+[ OK ] w10 with a flat-home LAN session from an address of its own invention: every probe answers as expected (166 probes)
+[ OK ] win with a small-office LAN session claiming the address of w10: every probe answers as expected (166 probes)
+[ OK ] w10 with a flat-home LAN session claiming the address of win: every probe answers as expected (166 probes)
+[ OK ] win with a small-office LAN session to w10 through the gateway on route raw: every probe answers as expected (2 probes)
+[ OK ] w10 with a flat-home LAN session to win through the gateway on route raw: every probe answers as expected (2 probes)
+[ OK ] win with a small-office LAN session to w10 through the gateway on route internet: every probe answers as expected (2 probes)
+[ OK ] w10 with a flat-home LAN session to win through the gateway on route internet: every probe answers as expected (2 probes)
+[FAIL] win with a small-office LAN session taking the fake address 192.168.150.200 as its own: every probe answers as expected (lan-200-445 -> yes, expected no; lan-200-445-answers -> yes, expected no; lan-200-closed -> yes, expected no; lan-200-ping -> yes, expected no; lan-200-ttl -> yes, expected no; lan-200-389-answers -> yes, expected no; lan-200-3389-answers -> yes, expected no; lan-200-5985-answers -> yes, expected no)
+[FAIL] win with a small-office LAN session taking the fake address 192.168.150.216 as its own: every probe answers as expected (lan-216-445 -> yes, expected no; lan-216-445-answers -> yes, expected no; lan-216-closed -> yes, expected no; lan-216-ping -> yes, expected no; lan-216-ttl -> yes, expected no; lan-216-22-answers -> yes, expected no)
+[ OK ] the LAN session isolation-1469989-1 is closed (closed isolation-1469989-1 (log copied: False))
+[ OK ] the LAN session isolation-1469989-2 is closed (closed isolation-1469989-2 (log copied: False))
+[ OK ] the firewall state of the cape container after the sessions closed is the one from before the first session
+[ OK ] win after its LAN session closed on route raw: every probe answers as expected (166 probes)
+[ OK ] w10 after its LAN session closed on route raw: every probe answers as expected (166 probes)
+[ OK ] win after its LAN session closed on route none: every probe answers as expected (166 probes)
+[ OK ] w10 after its LAN session closed on route none: every probe answers as expected (166 probes)
+[ OK ] win after its LAN session closed on route inetsim: every probe answers as expected (166 probes)
+[ OK ] w10 after its LAN session closed on route inetsim: every probe answers as expected (166 probes)
+[ OK ] the guest firewall is applied with 1.1.1.1 in GUEST_BLOCKED_ADDRESSES
+[ OK ] win starts again and its agent answers at 192.168.150.10:8000
+[ OK ] the probe is stored on win again
+[ OK ] win on route internet with 1.1.1.1 in GUEST_BLOCKED_ADDRESSES: every probe answers as expected (2 probes)
+[ OK ] the guest firewall is applied as configured again
+make: *** [Makefile:79: verify-isolation] Błąd 1
+exit=2

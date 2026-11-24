@@ -4,6 +4,9 @@
 # address, a neighbour entry pointing at the gateway) the script has set up on a guest, and answers that
 # guest's probe from a list of the probes it lets through, so the verdicts are exercised without libvirt.
 # fixture allow-<scenario> holds the names a guest reaches in that scenario; anything else answers `no`.
+# The fake LAN is modelled the same way: a guest holding a session (the stub records `open` and `close`) reaches
+# the hosts and ports of its preset (fixture `presets`) and nothing else; extra-<ip> and deny-<ip> add or take
+# away names for one guest, and deleting the two tartarus_guest tables opens everything.
 set -uo pipefail
 
 VERIFY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/verify-isolation.sh"
@@ -32,11 +35,48 @@ echo "$args" >>"$STUB_DIR/calls"
 
 guest_json() { printf '{"message": "ok", "stdout": "%s"}' "$1"; }
 
+guest_ip_of() { case $1 in lab1) echo "$A_IP" ;; lab5) echo "$B_IP" ;; esac; }
+
+# What a correct firewall lets a guest holding a session for `preset` reach: the services of its hosts, and
+# ping and ARP for them; never a port the preset does not list.
+fake_name_allowed() { # name preset
+    local name=$1 preset=$2 octet what
+    IFS=- read -r _ octet what _ <<<"$name"
+    case $what in
+        closed) return 1 ;;
+        ping | ttl | arp) grep -q "^$preset;192.168.150.$octet;" "$f/presets" ;;
+        *) grep -q "^$preset;192.168.150.$octet;$what;" "$f/presets" ;;
+    esac
+}
+
+is_route() { [[ $1 == raw || $1 == none || $1 == inetsim || $1 == internet ]]; }
+
+file_words() { [[ -r $1 ]] && echo "$(<"$1")" || true; }
+
+# The words of the files are read once per probe run, not once per name.
+load_run_state() { # from scenario
+    DENIED=" $(file_words "$f/deny-$1" | tr '\n' ' ') "
+    EXTRA=" $(file_words "$f/extra-$1" | tr '\n' ' ') "
+    ALLOWED=" $(file_words "$f/allow-$2" | tr '\n' ' ') "
+    SESSION_PRESET=$(file_words "$f/session-$1")
+    [[ -e $f/tables-deleted ]] && TABLES_GONE=yes || TABLES_GONE=""
+}
+
+reaches() { # scenario name
+    local scenario=$1 name=$2
+    [[ -n $TABLES_GONE ]] && return 0
+    [[ $DENIED == *" $name "* ]] && return 1
+    [[ $EXTRA == *" $name "* || $ALLOWED == *" $name "* ]] && return 0
+    [[ -n $SESSION_PRESET && $name == lan-* ]] && is_route "$scenario" && fake_name_allowed "$name" "$SESSION_PRESET"
+}
+
 scenario_of() { # from-ip spec-file
     local from=$1 spec=$2 source
     source=$(awk -F'\t' '$6 != "" {print $6; exit}' "$spec")
     if [[ -n $source ]]; then
-        [[ $source == "$A_IP" || $source == "$B_IP" ]] && echo impersonating || echo alternate
+        if [[ $source == "$A_IP" || $source == "$B_IP" ]]; then echo impersonating
+        elif grep -q ";$source;" "$f/presets"; then echo fakeown
+        else echo alternate; fi
     elif [[ -e $f/neighbor-$from ]]; then echo hairpin
     elif [[ $(cat "$f/route-$from" 2>/dev/null) == internet && ,$(cat "$f/blocked" 2>/dev/null), == *,1.1.1.1,* ]]; then echo blocked
     else cat "$f/route-$from" 2>/dev/null || echo raw
@@ -47,19 +87,44 @@ answer_probe() { # from-ip
     local from=$1 spec="$STUB_DIR/spec" scenario text="" name
     [[ -e $f/unfinished-$from ]] && { echo '{}'; return; }
     scenario=$(scenario_of "$from" "$spec")
+    load_run_state "$from" "$scenario"
     while IFS=$'\t' read -r name _; do
         [[ -n $name ]] || continue
-        if tr ' ' '\n' <"$f/allow-$scenario" 2>/dev/null | grep -qx -- "$name"; then text+="REACH $name yes\\r\\n"; else text+="REACH $name no\\r\\n"; fi
+        if reaches "$scenario" "$name"; then text+="REACH $name yes\\r\\n"; else text+="REACH $name no\\r\\n"; fi
     done <"$spec"
     guest_json "${text}DONE\\r\\n"
 }
 
 case "$args" in
     *"printenv CAPE_API_TOKEN"*) echo test-token ;;
+    *"printenv GUEST_CONTROL_TOKEN"*) echo test-control-token ;;
     *"printenv GUEST_SUBNET"*) ;;
+    *"tartarus-backend:latest python - "*)
+        words=${args#*python - }; read -r verb key guest preset <<<"$words"
+        case $verb in
+            health) cat "$f/lan-health" 2>/dev/null || echo ready ;;
+            presets) cat "$f/presets" ;;
+            list) for held in "$f"/session-key-*; do [[ -e $held ]] && { held=${held##*/session-key-}; echo "$held"; }; done; exit 0 ;;
+            open)
+                [[ -e $f/lan-open-refuses ]] && { echo "the fake hosts cannot start" >&2; exit 1; }
+                ip=$(guest_ip_of "$guest")
+                echo "$preset" >"$f/session-$ip"; echo "$ip" >"$f/session-key-$key"
+                rm -f "$f/tables-deleted"; echo "opened $key" ;;
+            close)
+                read -r ip <"$f/session-key-$key" 2>/dev/null
+                if [[ -e $f/leak-on-close ]]; then echo residue >"$f/state-residue"; else rm -f "$f/session-$ip"; fi
+                rm -f "$f/session-key-$key"; echo "closed $key" ;;
+        esac ;;
+    *"nft list table inet tartarus_guest"*)
+        cat "$f/cape-state"
+        [[ -e $f/tables-deleted ]] && echo "(the tables are missing)"
+        compgen -G "$f/session-key-*" >/dev/null && echo "iptables -A OUTPUT tartarus-lan"
+        cat "$f/state-residue" 2>/dev/null; exit 0 ;;
+    *"nft delete table "*) : >"$f/tables-deleted"; exit 0 ;;
     *"printenv GUEST_BLOCKED_ADDRESSES"*) cat "$f/configured-blocked" 2>/dev/null ;;
     *"guest-firewall init"*)
         [[ -e $f/firewall-refuses ]] && exit 1
+        rm -f "$f/tables-deleted"
         if [[ $args == *"-e GUEST_BLOCKED_ADDRESSES="* ]]; then
             setting=${args#*-e GUEST_BLOCKED_ADDRESSES=}; echo "${setting%% *}" >"$f/blocked"
         else rm -f "$f/blocked"; fi ;;
@@ -117,6 +182,11 @@ healthy_fixtures() {
     fixture allow-alternate "$GATEWAY_ONLY"
     fixture allow-impersonating "other-guest-agent other-guest-ping"
     fixture allow-hairpin ""
+    fixture presets "small-office;192.168.150.200;445;smb
+small-office;192.168.150.201;22;ssh
+flat-home;192.168.150.216;445;smb
+flat-home;192.168.150.217;3389;rdp"
+    fixture cape-state "table inet tartarus_guest { baseline }"
     fixture addr-tartarus-backend-tartarus-internal 172.19.0.3
     fixture addr-tartarus-postgres-tartarus-cape-db 172.20.0.2
     fixture addr-tartarus-opensearch-tartarus-search 172.22.0.2
@@ -383,6 +453,248 @@ test_a_guest_that_was_running_before_is_not_cut_off_to_probe_the_blocked_setting
     run_verify lab1 lab5
     expect_status 0 && expect_line "[INFO] GUEST_BLOCKED_ADDRESSES is not probed: a guest was running before" &&
         [[ $(calls_matching "guest-firewall init") -eq 0 ]]
+}
+
+# --- the fake LAN -----------------------------------------------------------------------------------
+
+LAN_OPEN='python - open isolation-[0-9a-z-]* lab1 small-office'
+
+test_fails_when_a_fake_host_answers_a_guest_that_has_no_session() {
+    fixture allow-raw "$GATEWAY_ONLY lan-200-445"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] lab1 on route raw: every probe answers as expected (lan-200-445 -> yes, expected no"
+}
+
+test_fails_when_a_fake_address_is_resolved_for_a_guest_that_has_no_session() {
+    fixture allow-none "gateway-resultserver lan-216-arp"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] lab1 on route none: every probe answers as expected (lan-216-arp -> yes, expected no"
+}
+
+test_the_presets_the_control_service_lists_are_what_the_fake_probes_are_built_from() {
+    fixture presets "small-office;192.168.150.200;445;smb
+small-office;192.168.150.200;389;ldap"
+    fixture allow-raw "$GATEWAY_ONLY lan-200-389 lan-200-389-answers"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "lan-200-389 -> yes, expected no; lan-200-389-answers -> yes, expected no"
+}
+
+test_a_guest_with_a_session_reaches_every_service_of_its_preset_on_the_routes_with_no_internet() {
+    run_verify lab1 lab5
+    expect_status 0 && expect_no_failure || return 1
+    local route
+    for route in raw none inetsim; do
+        expect_line "[ OK ] lab1 with a small-office LAN session on route $route: every probe answers as expected" || return 1
+    done
+    expect_line "[INFO] the LAN section skips the internet route" || return 1
+    [[ $OUTPUT != *"lab1 with a small-office LAN session on route internet"* ]] || { echo "  the internet route was tried with a session"; return 1; }
+}
+
+test_the_session_is_opened_with_a_key_for_the_guest_and_the_preset_through_the_control_service() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    [[ $(calls_matching "$LAN_OPEN") -ge 1 ]] || { echo "  no session was opened for lab1"; grep "python - open" "$STUB_DIR/calls"; return 1; }
+    grep -q 'tartarus-backend:latest python - open isolation-[0-9a-z-]* lab5 flat-home' "$STUB_DIR/calls" ||
+        { echo "  no session was opened for lab5"; return 1; }
+    grep -q -- '-e GUEST_CONTROL_TOKEN ' "$STUB_DIR/calls" && ! grep -q 'test-control-token' "$STUB_DIR/calls" ||
+        { echo "  the token must be passed by name, never on the command line"; return 1; }
+}
+
+test_a_guest_without_a_session_is_probed_beside_one_that_has_one() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    local route
+    for route in raw none inetsim; do
+        expect_line "[ OK ] lab5 with no LAN session of its own on route $route: every probe answers as expected" || return 1
+    done
+}
+
+test_fails_when_a_guest_with_a_session_loses_a_service_of_its_preset() {
+    fixture deny-$A_IP "lan-200-445"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] lab1 with a small-office LAN session on route raw: every probe answers as expected (lan-200-445 -> no, expected yes"
+}
+
+test_fails_when_a_guest_with_a_session_loses_ping_with_the_ttl_of_a_windows_host() {
+    fixture deny-$A_IP "lan-201-ttl"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "lan-201-ttl -> no, expected yes"
+}
+
+test_fails_when_a_session_lets_a_guest_reach_a_host_of_another_preset() {
+    fixture extra-$A_IP "lan-216-445"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] lab1 with a small-office LAN session on route none: every probe answers as expected (lan-216-445 -> yes, expected no"
+}
+
+test_fails_when_a_session_lets_a_guest_answer_on_a_port_the_preset_does_not_list() {
+    fixture extra-$A_IP "lan-200-closed lan-200-3389-answers"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "lan-200-closed -> yes, expected no"
+}
+
+test_fails_when_a_session_lets_a_guest_reach_anything_a_guest_must_never_reach() {
+    fixture extra-$A_IP "cape-web backend postgres opensearch docker-host lan-host internet guest-control guacd other-guest-agent"
+    run_verify lab1 lab5
+    expect_status 1 &&
+        expect_line "[FAIL] lab1 with a small-office LAN session on route inetsim: every probe answers as expected (cape-web -> yes, expected no" &&
+        expect_line "other-guest-agent -> yes, expected no"
+}
+
+test_fails_when_the_guest_without_a_session_reaches_the_fake_hosts_of_the_other() {
+    fixture extra-$B_IP "lan-200-445"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] lab5 with no LAN session of its own on route raw: every probe answers as expected (lan-200-445 -> yes, expected no"
+}
+
+test_two_guests_with_sessions_for_different_presets_reach_exactly_their_own_hosts() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    local route
+    for route in raw none inetsim; do
+        expect_line "[ OK ] lab1 with a small-office session beside a guest with a flat-home session on route $route: every probe answers as expected" &&
+            expect_line "[ OK ] lab5 with a flat-home session beside a guest with a small-office session on route $route: every probe answers as expected" || return 1
+    done
+}
+
+test_fails_when_a_guest_reaches_the_hosts_of_the_preset_of_the_other_one() {
+    fixture extra-$B_IP "lan-200-445"
+    run_verify lab1 lab5
+    expect_status 1 &&
+        expect_line "[FAIL] lab5 with a flat-home session beside a guest with a small-office session on route raw: every probe answers as expected (lan-200-445 -> yes, expected no"
+}
+
+test_the_tricks_are_repeated_with_a_session_open() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    expect_line "[ OK ] lab1 with a small-office LAN session from an address of its own invention: every probe answers as expected" &&
+        expect_line "[ OK ] lab1 with a small-office LAN session claiming the address of lab5: every probe answers as expected" &&
+        expect_line "[ OK ] lab1 with a small-office LAN session to lab5 through the gateway on route raw: every probe answers as expected" &&
+        expect_line "[ OK ] lab5 with a flat-home LAN session to lab1 through the gateway on route internet: every probe answers as expected"
+}
+
+test_fails_when_a_session_lets_an_invented_address_reach_a_fake_host() {
+    fixture extra-$A_IP "lan-200-445"
+    fixture allow-alternate "$GATEWAY_ONLY lan-200-445"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] lab1 with a small-office LAN session from an address of its own invention: every probe answers as expected (lan-200-445 -> yes, expected no"
+}
+
+test_a_guest_that_takes_a_fake_address_as_its_own_sends_nothing_from_it() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    expect_line "[ OK ] lab1 with a small-office LAN session taking the fake address 192.168.150.200 as its own: every probe answers as expected" &&
+        expect_line "[ OK ] lab1 with a small-office LAN session taking the fake address 192.168.150.216 as its own: every probe answers as expected" || return 1
+    grep -q 'netsh interface ipv4 set interface name=Ethernet dadtransmits=0' "$STUB_DIR/calls" &&
+        grep -q 'netsh interface ipv4 set interface name=Ethernet dadtransmits=3' "$STUB_DIR/calls" ||
+        { echo "  duplicate address detection was not switched off and on again"; return 1; }
+}
+
+test_fails_when_a_fake_address_taken_as_its_own_still_reaches_the_gateway() {
+    fixture allow-fakeown "gateway-http"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "taking the fake address 192.168.150.200 as its own: every probe answers as expected (gateway-http -> yes, expected no"
+}
+
+test_the_guest_answering_for_the_fake_address_it_took_is_not_a_leak() {
+    fixture allow-fakeown "lan-200-445 lan-200-445-answers lan-200-closed lan-200-ping lan-200-ttl"
+    run_verify lab1 lab5
+    expect_line "[ OK ] lab1 with a small-office LAN session taking the fake address 192.168.150.200 as its own: every probe answers as expected" &&
+        expect_line "[FAIL] lab1 with a small-office LAN session taking the fake address 192.168.150.216 as its own: every probe answers as expected (lan-200-445 -> yes"
+}
+
+test_fails_when_a_fake_address_taken_as_its_own_reaches_another_fake_host() {
+    fixture allow-fakeown "lan-201-22"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "taking the fake address 192.168.150.200 as its own: every probe answers as expected (lan-201-22 -> yes, expected no"
+}
+
+test_every_session_is_closed_when_the_section_is_over() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    compgen -G "$STUB_DIR/f/session-*" >/dev/null && { echo "  a session was left open"; return 1; }
+    [[ $(calls_matching 'python - open') -eq $(calls_matching 'python - close') ]] || { echo "  opened and closed differ"; return 1; }
+}
+
+test_every_session_is_closed_when_a_check_fails() {
+    fixture extra-$A_IP "cape-web"
+    run_verify lab1 lab5
+    expect_status 1 || return 1
+    compgen -G "$STUB_DIR/f/session-*" >/dev/null && { echo "  a session was left open"; return 1; }
+    return 0
+}
+
+test_the_probes_are_back_to_the_no_session_result_when_the_sessions_are_closed() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    local route
+    for route in raw none inetsim; do
+        expect_line "[ OK ] lab1 after its LAN session closed on route $route: every probe answers as expected" &&
+            expect_line "[ OK ] lab5 after its LAN session closed on route $route: every probe answers as expected" || return 1
+    done
+}
+
+test_fails_when_a_closed_session_still_lets_the_guest_reach_its_fake_hosts() {
+    : >"$STUB_DIR/f/leak-on-close"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] lab1 after its LAN session closed on route raw: every probe answers as expected (lan-200-445 -> yes, expected no"
+}
+
+test_the_firewall_state_in_the_cape_container_is_compared_with_the_one_before_the_first_session() {
+    run_verify lab1 lab5
+    expect_status 0 && expect_line "[ OK ] the firewall state of the cape container after the sessions closed is the one from before the first"
+}
+
+test_fails_when_closing_the_sessions_leaves_something_in_the_firewall() {
+    : >"$STUB_DIR/f/leak-on-close"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] the firewall state of the cape container after the sessions closed is the one from before the first"
+}
+
+test_the_state_that_is_compared_has_no_packet_counters() {
+    run_verify lab1 lab5
+    expect_status 0 || return 1
+    grep -q "sed.*counter packets" "$STUB_DIR/calls" || { echo "  counters would make every comparison fail"; return 1; }
+}
+
+test_fails_when_the_control_service_refuses_a_session() {
+    : >"$STUB_DIR/f/lan-open-refuses"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] a LAN session for lab1 (small-office) is opened through the control service (the fake hosts cannot start)"
+}
+
+test_fails_when_the_fake_lan_is_not_ready() {
+    fixture lan-health "the fake-host daemon is not running"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] setup: the fake LAN is not ready (the fake-host daemon is not running)"
+}
+
+test_fails_when_a_session_was_left_open_before_the_run() {
+    echo x >"$STUB_DIR/f/session-key-isolation-old"
+    run_verify lab1 lab5
+    expect_status 1 && expect_line "[FAIL] setup: a LAN session is open already (isolation-old)"
+}
+
+test_the_tables_are_not_touched_unless_the_negative_proof_is_asked_for() {
+    run_verify lab1 lab5
+    expect_status 0 && [[ $(calls_matching "nft delete table") -eq 0 ]]
+}
+
+test_the_negative_proof_deletes_both_tables_after_a_session_opens_and_the_run_fails() {
+    ISOLATION_NEGATIVE_PROOF=1 run_verify lab1 lab5
+    expect_status 1 || return 1
+    grep -q 'exec -T cape nft delete table inet tartarus_guest' "$STUB_DIR/calls" &&
+        grep -q 'exec -T cape nft delete table bridge tartarus_guest' "$STUB_DIR/calls" || { echo "  the tables were not deleted"; return 1; }
+    expect_line "[INFO] negative proof" &&
+        expect_line "[FAIL] lab1 with a small-office LAN session on route raw: every probe answers as expected (" &&
+        expect_line "lan-200-445 -> yes, expected no" || return 1
+    [[ ! -e $STUB_DIR/f/tables-deleted ]] || { echo "  the tables were not restored"; return 1; }
+}
+
+test_the_negative_proof_deletes_the_tables_again_after_the_next_session_restored_them() {
+    ISOLATION_NEGATIVE_PROOF=1 run_verify lab1 lab5
+    expect_status 1 || return 1
+    [[ $(calls_matching "nft delete table inet tartarus_guest") -ge 2 ]] || { echo "  only one session was broken"; return 1; }
 }
 
 # --- setup, teardown ------------------------------------------------------------------------------
