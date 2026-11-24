@@ -7,6 +7,16 @@ from typing import Any
 NON_ASCII = re.compile(r"[^\x00-\x7f]")
 
 
+def dig(source: Mapping[str, Any], *path: str) -> Any:
+    """The value at `path` in nested mappings; None as soon as a step is not one."""
+    value: Any = source
+    for step in path:
+        if not isinstance(value, Mapping):
+            return None
+        value = value.get(step)
+    return value
+
+
 def to_int(value: object) -> int | None:
     if isinstance(value, bool):
         return None

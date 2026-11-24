@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.analyses.deadline import MAX_RUN_S, initial_deadline
 from app.analyses.defender import DefenderVerdict
 from app.analyses.guest_choice import recorded_guest
-from app.analyses.lan_sessions import LanSessions, LanStartError
+from app.analyses.lan_models import LanSummary, empty_lan_summary
+from app.analyses.lan_sessions import LanSessions, LanStartError, lan_preset_of
 from app.analyses.memory import MemorySummary
 from app.analyses.memory_import import MemoryImport, MemoryImportFailedError, is_memory_image_import
 from app.analyses.memory_step import MemoryStep
@@ -640,6 +641,7 @@ class Runner:
             )
             return
         memory = await self._memory.release(analysis, task_id, memory)
+        indexed = replace(indexed, lan=_lan_summary_of(analysis, indexed))
         outcome = replace(outcome, summary=_with_warnings(outcome.summary, lan_warnings))
         await self._finish_done(session, analysis_id, outcome, indexed, memory)
 
@@ -665,6 +667,7 @@ class Runner:
                 "defender": _dumped(indexed.defender),
                 "hidden_events": indexed.hidden_events,
                 **({} if memory is None else {"memory": memory.model_dump(mode="json")}),
+                **({} if indexed.lan is None else {"lan": indexed.lan.model_dump(mode="json")}),
             },
             event_count=indexed.event_count,
         )
@@ -771,6 +774,16 @@ def _with_entry_sha256(summary: dict[str, Any], sha256: str | None) -> dict[str,
     if sha256 is None:
         return summary
     return {**summary, "sample": {**summary.get("sample", {}), "entry_sha256": sha256}}
+
+
+def _lan_summary_of(analysis: Analysis, indexed: IngestResult) -> LanSummary | None:
+    """The ingest's, or for a preset whose hosts could not be looked up an empty one: the analysis
+    still asked for the fake LAN, so its section shows (with the lookup warning beside it).
+    """
+    preset = lan_preset_of(analysis)
+    if indexed.lan is None and preset is not None:
+        return empty_lan_summary(preset)
+    return indexed.lan
 
 
 def _with_warnings(summary: dict[str, Any], warnings: Sequence[str]) -> dict[str, Any]:

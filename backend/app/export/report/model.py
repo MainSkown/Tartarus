@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.analyses.lan_models import LanSummary
 from app.db.models.analysis import AnalysisStatus, Severity
 from app.export.inputs import TargetType
 from app.export.report.key_events import EventFacts, KeyEvents
@@ -131,6 +132,8 @@ class NoteGroup(ReportModelBase):
 
 
 class ReportModel(ReportModelBase):
+    """`lateral_movement` is None when the analysis did not ask for the fake LAN: no section."""
+
     header: ReportHeader
     score: float | None
     max_severity: Severity | None
@@ -142,6 +145,7 @@ class ReportModel(ReportModelBase):
     key_events: KeyEvents
     detections: tuple[ReportDetectionGroup, ...]
     network: NetworkSection
+    lateral_movement: LanSummary | None
     iocs: tuple[IocGroup, ...]
     screenshots: tuple[ReportScreenshot, ...]
     notes: tuple[NoteGroup, ...]

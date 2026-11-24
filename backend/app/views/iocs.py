@@ -4,12 +4,12 @@ from datetime import datetime
 from typing import Any
 
 from app.db.models import Analysis
-from app.ingest.reading import section
+from app.ingest.reading import dig, section
 from app.schemas.views_events import ProcessRef
 from app.schemas.views_findings import Ioc, IocsView, IocType
 from app.search.index import EventIndex
 from app.views.artifacts import AnalysisFiles
-from app.views.event_fields import TIME_ORDER, Source, dig, hits_of, process_ref, text_at
+from app.views.event_fields import TIME_ORDER, Source, hits_of, process_ref, text_at
 
 # The guest and its gateway; every flow touches them, so they say nothing about the sample.
 SANDBOX_NETWORK = "192.168.150.0/24"

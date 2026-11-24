@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.ingest.ecs import LANES, base_name
+from app.ingest.reading import dig
 from app.schemas.views_events import (
     ApiCount,
     LoadedModule,
@@ -20,7 +21,6 @@ from app.views.event_fields import (
     TIME_ORDER,
     WITHOUT_RAW,
     Source,
-    dig,
     event_id,
     event_time,
     hits_of,

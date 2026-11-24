@@ -575,6 +575,39 @@ a skipped line moves no other id. No event has `process.command_line`: no proces
   (distinct hosts), `related.hosts` (FQDNs), `related.ip`, `related.events` (the contacts' events, at most 50),
   the process when attributable, `destination.port` (sweep) or `user.name` (spray), and the time of its first contact.
 
+**`summary.lan`** (`app/analyses/lan_summary.py`, shape in `lan_models.py`) is built once, by the final ingest, from the
+events it just built (the flagged `cape-network` flows and the `lan-sim` log events; the derived sweeps restate contacts
+and are not read). It is absent from the stored summary of a run that did not ask for a preset, so its section is hidden.
+With a preset it is always there: `hosts: []` when the sample did nothing on the LAN, and also (with the lookup warning in
+`summary.warnings`) when the preset's hosts could not be looked up.
+
+```json
+{"preset": {"id": "small-office", "name": "Small office"},
+ "hosts": [{"fqdn": "fs01.corp.local", "address": "192.168.150.201", "role": "file-server",
+            "services": [{"service": "smb", "port": 445, "attempts": 5,
+                          "first": "2026-11-23T12:00:20Z", "last": "2026-11-23T12:00:40Z"}],
+            "credentials": [{"user": "Administrator", "domain": "CORP", "mechanism": "ntlm",
+                             "count": 3, "success": true, "secret_as_sent": "Winter2026!"}],
+            "credentials_more": 0,
+            "files": [{"path": "\\evil.exe", "share": "ADMIN$", "size": 61440, "sha256": "ab..."}],
+            "files_more": 0, "first": "2026-11-23T12:00:20Z", "last": "2026-11-23T12:00:40Z"}],
+ "totals": {"hosts": 1, "attempts": 5, "credentials": 1, "files": 1}, "truncated": false}
+```
+
+- A host is listed when any such event touched it, ordered by first contact. A service is a (name, port) of it; `service`
+  is `null` for a port the host does not serve (a scan that connected to a closed port), `port` is `null` for a flood
+  aggregate whose service the preset does not list.
+- **An attempt** is a `lan-login-attempt`, a `lan-share-access`, a `lan-service-request`, or a connection flow (a flagged
+  `cape-network` row) to the host and port, plus, for a `lan-aggregate`, each event it stands for (`tartarus.lan.count`).
+  A `lan-file-write` is not an attempt. One contact can be both a flow and a logged event, and counts as both.
+- A credential is a distinct (user, domain, mechanism); `count` is the logged attempts, `success` whether any succeeded,
+  `secret_as_sent` the first secret the sample sent with it: the sample's, not ours. An aggregate adds each user it names
+  (count 0) unless that user is already there, and its first secret as an entry with an empty `user`.
+- Files are the `lan-file-write` events in time order, 100 per host; `files_more` and `credentials_more` count the rest
+  (credentials are capped at 100 per host too). `totals` count everything, listed or not.
+- `truncated` is the daemon's `log_truncated` of its `session-end` record, for the whole session. Every string is cleaned and
+  cut again (256 characters, 1024 for a path) whatever the normaliser did.
+
 Fields this source adds to the catalog: `tartarus.lan.{simulated, host, role, service, preset, share, count,
 mechanism, credential, request, detail}`.
 
@@ -595,6 +628,37 @@ Sigma rules are converted with pySigma's **ECS Windows pipeline**, so `Image` â†
 | `image-loaded` | `image_load` |
 | `create-remote-thread` / `inject-thread` | `create_remote_thread` |
 | `process-access` | `process_access` |
+| `lan-login-attempt` | `lan_authentication` |
+| `lan-share-access` | `lan_share_access` |
+| `lan-file-write` | `lan_file_write` |
+| `lan-service-request` | `lan_service_request` |
+| `lan-sweep` / `lan-fan-out` / `lan-credential-spray` | `lan_sweep` / `lan_fan_out` / `lan_credential_spray` |
+
+`lan-aggregate` has no category: it stands for events the daemon stopped logging, so no rule can say
+what it did. The `lan_*` categories are Tartarus's own (Sigma defines none for a fake host's log); a
+rule uses `product: windows` like any other, because it describes what a Windows guest did. A derived
+event has a category of its own because its fields differ (a sweep has a port, a spray a user name, a
+fan-out neither) and a rule that named no action would otherwise match all three. Each category's table
+is in `app/rules/mapping.py`; a name a category does not list is not mapped there:
+
+| Category | Sigma field names |
+|---|---|
+| `network_connection` | the Sysmon names above, and `LanSimulated` (`tartarus.lan.simulated`), `LanHost` (`tartarus.lan.host`): only the flows to a fake host carry them, so a rule on `LanSimulated: true` ignores the capemon-derived connection |
+| `lan_authentication` | `User` (`user.name`), `Domain` (`user.domain`), `Mechanism` (`tartarus.lan.mechanism`), and the common ones below |
+| `lan_share_access` | `Share` (`tartarus.lan.share`), `Path` (`file.path`, share-relative), `RequestName` (`tartarus.lan.request`, the operation), and the common ones |
+| `lan_file_write` | `Share`, `Path`, and the common ones (its own category: a `share-access` write to the same file would match a rule meant for the stored copy) |
+| `lan_service_request` | `RequestName` (`tartarus.lan.request`), `Detail` (`tartarus.lan.detail`), and the common ones |
+| `lan_sweep` | `DestinationPort` (`destination.port`) and the derived ones below |
+| `lan_fan_out` | the derived ones |
+| `lan_credential_spray` | `User` (`user.name`) and the derived ones |
+
+Common names of the log's categories: `LanSimulated`, `LanHost`, `LanRole`, `LanService`, `Image`
+(`process.executable`, when one process could be attributed), `ProcessId`, `DestinationIp`/`Port`/`Hostname`,
+`SourceIp`/`Port`. Derived names: `LanSimulated`, `LanService`, `Count` (`tartarus.lan.count`, distinct
+hosts), `Image`, `ProcessId`; a derived event names no host. No event carries `CommandLine`, so it is not
+mapped. `tartarus.lan.credential` is not mapped either: a rule has no business matching on a secret.
+The rules of this feature are in `rules/sigma/tartarus/` (`lan_*.yml`, see its README); a derived event's
+rule holds no threshold, which stays in `app/ingest/lan_derived.py`.
 
 A Sigma alert's `event.id` is derived from the analysis, the rule and the triggering event
 (`related.events[0]`), so the live collector and the final ingest give the same alert the same

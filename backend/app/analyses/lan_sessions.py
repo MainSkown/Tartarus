@@ -102,6 +102,7 @@ class LanSessions:
                 host.role,
                 preset.id,
                 {service.port: service.kind for service in host.services},
+                preset.name,
             )
             for host in preset.hosts
         }, []

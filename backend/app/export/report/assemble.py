@@ -119,6 +119,7 @@ def build_report_model(inputs: ReportInputs, include: ReportInclude) -> ReportMo
         key_events=key_events,
         detections=_detection_groups(inputs.detections, citations),
         network=_network(inputs.network),
+        lateral_movement=summary.lan,
         iocs=_ioc_groups(inputs.iocs, include),
         screenshots=_screenshots(inputs.screenshots) if include.screenshots else (),
         notes=_note_groups(inputs) if include.notes else (),

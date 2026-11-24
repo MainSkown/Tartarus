@@ -87,6 +87,68 @@ def make_analysis(**changes: Any) -> Analysis:
     return Analysis(**{**fields, **changes})
 
 
+FILE_SERVER_SHA256 = "0123456789abcdef" * 4
+FAKE_HOST = "fs01.corp.local"
+
+
+def make_lan_section(**changes: Any) -> dict[str, Any]:
+    """`summary.lan` as it is stored: one fake file server the sample logged in to and wrote to."""
+    host = {
+        "fqdn": FAKE_HOST,
+        "address": "192.168.150.201",
+        "role": "file-server",
+        "services": [
+            {"service": "smb", "port": 445, "attempts": 5, "first": at(20), "last": at(40)}
+        ],
+        "credentials": [
+            {
+                "user": "Administrator",
+                "domain": "CORP",
+                "mechanism": "ntlm",
+                "count": 3,
+                "success": True,
+                "secret_as_sent": "Winter2026!",
+            }
+        ],
+        "credentials_more": 0,
+        "files": [
+            {"path": "\\evil.exe", "share": "ADMIN$", "size": 61440, "sha256": FILE_SERVER_SHA256}
+        ],
+        "files_more": 0,
+        "first": at(20),
+        "last": at(40),
+    }
+    section = {
+        "preset": {"id": "small-office", "name": "Small office"},
+        "hosts": [host],
+        "totals": {"hosts": 1, "attempts": 5, "credentials": 1, "files": 1},
+        "truncated": False,
+    }
+    return {**section, **changes}
+
+
+def make_lan_analysis(lan: dict[str, Any] | None = None, **changes: Any) -> Analysis:
+    """An analysis that asked for the fake LAN; its summary has the section `lan` or the default."""
+    section = make_lan_section() if lan is None else lan
+    return make_analysis(summary={**SUMMARY, "lan": section}, **changes)
+
+
+def make_fake_host_network() -> NetworkView:
+    network = make_network()
+    fake = HostRow(
+        host="192.168.150.201",
+        kind="ip",
+        count=5,
+        related=[FAKE_HOST],
+        simulated=True,
+        lan_host=FAKE_HOST,
+        lan_role="file-server",
+    )
+    return network.model_copy(
+        update={"hosts": Listing(items=[*network.hosts.items, fake], total=2)}
+    )
+
+
 ARCHIVE_NAME = "invoice.zip"
 ARCHIVE_ENTRY = "bin/invoice.exe"
 ARCHIVE_PASSWORD = "Tartarus-Canary-7f3a"  # noqa: S105 -- a distinctive marker, not a credential

@@ -10,12 +10,14 @@ class LanHost:
     """A host of the analysis's fake local network, as its preset names it.
 
     `services` maps a port to the kind of service the host serves there (`445` to `smb`).
+    `preset` is the preset's id and `preset_name` the name it is shown under; empty when unknown.
     """
 
     fqdn: str
     role: str
     preset: str
     services: Mapping[int, str] = field(default_factory=dict, hash=False)
+    preset_name: str = ""
 
 
 @dataclass(frozen=True)

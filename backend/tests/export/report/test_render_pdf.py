@@ -12,7 +12,14 @@ from app.export.report.assemble import build_report_model
 from app.export.report.model import ReportInclude, ReportModel
 from app.export.report.render import render_pdf, render_pdf_off_loop
 from app.schemas.views_events import ProcessTree
-from tests.export.report.fixtures import SAMPLE_NAME, facts, make_inputs, process
+from tests.export.report.fixtures import (
+    SAMPLE_NAME,
+    facts,
+    make_inputs,
+    make_lan_analysis,
+    make_lan_section,
+    process,
+)
 from tests.export.report.support import SCRIPT, hostile_model
 
 pytest.importorskip(
@@ -223,3 +230,32 @@ def test_the_print_stylesheet_uses_nothing_weasyprint_has_to_ignore(
         render_pdf(model_of())
 
     assert [record.getMessage() for record in caplog.records] == []
+
+
+def test_the_pdf_has_the_lateral_movement_section_only_when_the_run_had_the_fake_lan() -> None:
+    on = text_of(read(render_pdf(model_of(analysis=make_lan_analysis()))))
+    off = text_of(read(render_pdf(model_of())))
+
+    assert "Lateral movement" in on
+    assert "fs01.corp.local" in on
+    assert "Lateral movement" not in off
+
+
+def test_the_pdf_says_no_lateral_movement_was_observed_for_an_empty_section() -> None:
+    empty = make_lan_section(
+        hosts=[], totals={"hosts": 0, "attempts": 0, "credentials": 0, "files": 0}
+    )
+
+    text = text_of(read(render_pdf(model_of(analysis=make_lan_analysis(empty)))))
+
+    assert "No lateral movement observed." in text
+
+
+def test_hostile_credentials_and_paths_print_as_text() -> None:
+    lan = make_lan_section()
+    lan["hosts"][0]["credentials"][0]["user"] = SCRIPT
+    lan["hosts"][0]["files"][0]["path"] = f"\\{SCRIPT}"
+
+    text = text_of(read(render_pdf(model_of(analysis=make_lan_analysis(lan)))))
+
+    assert SCRIPT in text

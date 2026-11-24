@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from app.analyses.defender import DefenderVerdict
 from app.analyses.entry_hash import entry_sha256
+from app.analyses.lan_summary import lan_summary
 from app.analyses.ports import IngestFailedError, IngestResult, ReportUnreadableError
 from app.analyses.summary import SEVERITY_ORDER, load_report, process_count_of
 from app.db.models.analysis import Severity
@@ -157,10 +158,14 @@ class ReportIngester:
         lane_counts: Counter[str] = Counter()
         alert_severities: set[int] = set()
         sysmon_starts: list[dict[str, Any]] = []
+        lan_events: list[dict[str, Any]] = []
         events = self._numbered(
-            _noting_sysmon_starts(
-                self._with_detections(normalizers, report, context),
-                sysmon_starts if archive_entry is not None else None,
+            _noting_lan_events(
+                _noting_sysmon_starts(
+                    self._with_detections(normalizers, report, context),
+                    sysmon_starts if archive_entry is not None else None,
+                ),
+                lan_events if context.lan_hosts else None,
             ),
             lane_counts,
             alert_severities,
@@ -176,6 +181,9 @@ class ReportIngester:
             max_alert_severity=_severity_of_level(max(alert_severities, default=None)),
             entry_sha256=(
                 None if archive_entry is None else entry_sha256(sysmon_starts, archive_entry)
+            ),
+            lan=lan_summary(
+                lan_events, context.lan_hosts, log_truncated=_log_truncated(normalizers)
             ),
         )
 
@@ -234,6 +242,12 @@ def _hidden_events(normalizers: Iterable[Normalizer]) -> dict[str, int]:
     return {} if sysmon is None else dict(sysmon.dropped)
 
 
+def _log_truncated(normalizers: Iterable[Normalizer]) -> bool:
+    lan_sim = _first_of(normalizers, LanSimNormalizer)
+    session_end = None if lan_sim is None else lan_sim.session_end
+    return session_end is not None and session_end.log_truncated
+
+
 def _remembering(
     events: Iterable[dict[str, Any]], matchable: list[dict[str, Any]]
 ) -> Iterator[dict[str, Any]]:
@@ -249,6 +263,15 @@ def _noting_sysmon_starts(
     for event in events:
         if starts is not None and _is_sysmon_process_start(event):
             starts.append(event)
+        yield event
+
+
+def _noting_lan_events(
+    events: Iterable[dict[str, Any]], noted: list[dict[str, Any]] | None
+) -> Iterator[dict[str, Any]]:
+    for event in events:
+        if noted is not None and event.get("tartarus", {}).get("lan", {}).get("simulated"):
+            noted.append(event)
         yield event
 
 

@@ -17,6 +17,7 @@ from tests.ingest.lan_sim_cases import (
     context_of,
     file_write,
     login,
+    session_end,
     write_log,
 )
 
@@ -119,3 +120,47 @@ def test_capemon_is_untouched_by_the_fake_hosts() -> None:
     assert list(CapemonNormalizer().normalise(report, context_of(None))) == list(
         CapemonNormalizer().normalise(report, context_of(None, {}))
     )
+
+
+async def summarised(report_path: Path, **options: Any) -> Any:
+    return await ReportIngester(FakeIndex()).ingest(ANALYSIS_ID, report_path, **options)
+
+
+async def test_a_run_without_the_fake_lan_has_no_lan_summary(tmp_path: Path) -> None:
+    report_path = analysis_with_flows_to_the_fake_host(tmp_path)
+    write_log(tmp_path, [login()])
+
+    assert (await summarised(report_path)).lan is None
+    assert (await summarised(report_path, lan_hosts={})).lan is None
+
+
+async def test_the_result_carries_the_lan_summary_of_the_events_it_indexed(tmp_path: Path) -> None:
+    report_path = analysis_with_flows_to_the_fake_host(tmp_path)
+    write_log(tmp_path, [login(), file_write(), session_end(log_truncated=True)])
+
+    lan = (await summarised(report_path, lan_hosts=LAN_HOSTS)).lan
+
+    assert lan is not None
+    [host] = lan.hosts
+    assert host.address == FILE_SERVER
+    assert [(s.service, s.port, s.attempts) for s in host.services] == [("smb", 445, 2)]
+    assert [c.user for c in host.credentials] == ["Administrator"]
+    assert len(host.files) == 1
+    assert lan.truncated is True
+
+
+async def test_a_run_whose_log_is_missing_still_summarises_the_flows(tmp_path: Path) -> None:
+    report_path = analysis_with_flows_to_the_fake_host(tmp_path)
+
+    lan = (await summarised(report_path, lan_hosts=LAN_HOSTS)).lan
+
+    assert lan is not None
+    assert [h.fqdn for h in lan.hosts] == ["fs01.corp.local"]
+    assert lan.truncated is False
+
+
+async def test_a_run_on_the_lan_that_did_nothing_has_a_summary_without_hosts() -> None:
+    lan = (await summarised(FULL_REPORT, lan_hosts=LAN_HOSTS)).lan
+
+    assert lan is not None
+    assert lan.hosts == []

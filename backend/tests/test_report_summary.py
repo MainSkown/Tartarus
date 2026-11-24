@@ -284,3 +284,10 @@ def test_a_marker_that_is_not_the_expected_shape_is_ignored_rather_than_failing_
 
 def test_a_summary_stored_before_the_marker_existed_still_validates() -> None:
     assert ReportSummary.model_validate({"process_count": 2}).missing_exports == []
+
+
+def test_the_summary_read_from_a_report_has_no_lan_key_because_the_ingest_adds_it() -> None:
+    stored = read_report(TRIMMED_REPORT).summary
+
+    assert "lan" not in stored
+    assert ReportSummary.model_validate(stored).lan is None

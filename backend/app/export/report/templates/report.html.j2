@@ -7,6 +7,9 @@
 {%- macro more(count, noun) -%}
 {{ count }} more {{ noun }}{{ "" if count == 1 else "s" }}
 {%- endmacro -%}
+{%- macro short_hash(value) -%}
+{%- if value -%}<abbr class="mono" title="{{ value }}">{{ value[:12] }}&hellip;</abbr>{%- endif -%}
+{%- endmacro -%}
 {%- macro shown_of(listing, noun) -%}
 {%- if listing.total > listing.items|length -%}
 <p class="meta">Showing the first {{ listing.items|length }} of {{ listing.total }} {{ noun }}.</p>
@@ -193,7 +196,7 @@
 <thead><tr><th>Host</th><th>Kind</th><th>Events</th><th>Related</th></tr></thead>
 <tbody>
 {%- for row in model.network.hosts.items %}
-<tr><td class="mono">{{ row.host }}</td><td>{{ row.kind }}</td><td>{{ row.count }}</td><td class="mono">{{ row.related|join(", ") }}</td></tr>
+<tr><td class="mono">{{ row.host }}{% if row.simulated %} <span class="tag">fake LAN host</span>{% endif %}</td><td>{{ row.kind }}</td><td>{{ row.count }}</td><td class="mono">{{ row.related|join(", ") }}</td></tr>
 {%- endfor %}
 </tbody></table></div>
 {{ shown_of(model.network.hosts, "hosts") }}
@@ -214,6 +217,57 @@
 <p class="empty">No flows.</p>
 {%- endif %}
 </section>
+
+{% if model.lateral_movement -%}
+<section id="lateral-movement">
+{#- Kept with its section, so a report of a run without the fake LAN is the report it always was. #}
+<style>
+.t-lan-services th:nth-child(1) { width: 22%; } .t-lan-services th:nth-child(2), .t-lan-services th:nth-child(3) { width: 12%; }
+.t-lan-credentials th:nth-child(4), .t-lan-credentials th:nth-child(5) { width: 11%; } .t-lan-credentials th:nth-child(6) { width: 28%; }
+.t-lan-files th:nth-child(1) { width: 50%; } .t-lan-files th:nth-child(3) { width: 12%; } .t-lan-files th:nth-child(4) { width: 20%; }
+abbr { text-decoration: none; cursor: help; }
+</style>
+<h2>Lateral movement</h2>
+<p class="meta">Contacts with the simulated local network ({{ model.lateral_movement.preset.name }}). Hosts touched: {{ model.lateral_movement.totals.hosts }}, attempts: {{ model.lateral_movement.totals.attempts }}, credentials: {{ model.lateral_movement.totals.credentials }}, files written: {{ model.lateral_movement.totals.files }}. Credentials and file names are what the sample sent; none of them is Tartarus'.</p>
+{%- if model.lateral_movement.truncated %}
+<p class="meta">The log of the simulated hosts was cut at its limit, so the figures below are a lower bound.</p>
+{%- endif %}
+{%- for host in model.lateral_movement.hosts %}
+<h3>{{ host.fqdn }} <span class="meta">{{ host.address }} &middot; {{ host.role }} &middot; {{ host.first|clock }} to {{ host.last|clock }}</span></h3>
+{%- if host.services %}
+<div class="table-wrap"><table class="t-lan-services">
+<thead><tr><th>Service</th><th>Port</th><th>Attempts</th><th>First</th><th>Last</th></tr></thead>
+<tbody>
+{%- for service in host.services %}
+<tr><td>{{ service.service or "no service" }}</td><td>{{ service.port if service.port is not none else "" }}</td><td>{{ service.attempts }}</td><td class="mono nowrap">{{ service.first|clock }}</td><td class="mono nowrap">{{ service.last|clock }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{%- endif %}
+{%- if host.credentials %}
+<div class="table-wrap"><table class="t-lan-credentials">
+<thead><tr><th>User</th><th>Domain</th><th>Mechanism</th><th>Attempts</th><th>Succeeded</th><th>Secret as sent</th></tr></thead>
+<tbody>
+{%- for credential in host.credentials %}
+<tr><td class="mono">{{ credential.user or "unknown" }}</td><td class="mono">{{ credential.domain }}</td><td>{{ credential.mechanism }}</td><td>{{ credential.count }}</td><td>{{ "yes" if credential.success else "no" }}</td><td class="mono">{{ credential.secret_as_sent or "" }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{%- if host.credentials_more %}<p class="meta">{{ more(host.credentials_more, "credential") }} not listed.</p>{% endif %}
+{%- endif %}
+{%- if host.files %}
+<div class="table-wrap"><table class="t-lan-files">
+<thead><tr><th>File written</th><th>Share</th><th>Size</th><th>SHA-256</th></tr></thead>
+<tbody>
+{%- for file in host.files %}
+<tr><td class="mono">{{ file.path }}</td><td class="mono">{{ file.share }}</td><td>{{ file.size if file.size is not none else "" }}</td><td>{{ short_hash(file.sha256) }}</td></tr>
+{%- endfor %}
+</tbody></table></div>
+{%- if host.files_more %}<p class="meta">{{ more(host.files_more, "file") }} not listed.</p>{% endif %}
+{%- endif %}
+{%- else %}
+<p class="empty">No lateral movement observed.</p>
+{%- endfor %}
+</section>
+{%- endif %}
 
 <section id="iocs">
 <h2>Indicators of compromise</h2>

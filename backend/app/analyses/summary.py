@@ -4,6 +4,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.analyses.defender import DefenderVerdict
+from app.analyses.lan_models import LanSummary
 from app.analyses.memory import MemorySummary
 from app.analyses.missing_exports import MissingExport, export_warnings, read_missing_exports
 from app.analyses.ports import ReportOutcome, ReportUnreadableError
@@ -58,6 +59,7 @@ class ReportSummary(BaseModel):
     hidden_events: dict[str, int] = {}
     missing_exports: list[MissingExport] = []
     memory: MemorySummary | None = None
+    lan: LanSummary | None = None
     warnings: list[str] = []
 
 
@@ -70,7 +72,11 @@ def read_report(path: Path) -> ReportOutcome:
             (item.severity for item in signatures), key=SEVERITY_ORDER.index, default=None
         ),
         detected_families=_families(report.get("detections")),
-        summary=_summarise(report, signatures, analysis_dir_of(path)).model_dump(mode="json"),
+        # `lan` is the final ingest's to add, only for a run that asked for the fake LAN; a run
+        # that did not keeps the summary it always had.
+        summary=_summarise(report, signatures, analysis_dir_of(path)).model_dump(
+            mode="json", exclude={"lan"}
+        ),
     )
 
 

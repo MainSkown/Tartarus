@@ -1,9 +1,9 @@
 from collections.abc import Sequence
 
+from app.ingest.reading import dig
 from app.schemas.events_api import Event, EventDestination, EventProcess, JsonValue
 from app.views.event_fields import (
     Source,
-    dig,
     event_id,
     event_time,
     int_at,

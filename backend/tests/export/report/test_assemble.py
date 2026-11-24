@@ -23,6 +23,7 @@ from tests.export.report.fixtures import (
     ARCHIVE_NAME,
     ARCHIVE_PASSWORD,
     ENTRY_SHA256,
+    FAKE_HOST,
     JPEG_BYTES,
     PNG_BYTES,
     SAMPLE_NAME,
@@ -31,6 +32,7 @@ from tests.export.report.fixtures import (
     make_analysis,
     make_archive_analysis,
     make_inputs,
+    make_lan_analysis,
     make_network,
 )
 
@@ -396,3 +398,14 @@ def test_an_analysis_with_no_events_in_any_pool_still_lists_its_alerts() -> None
         KeyEventReason.ALERT,
         KeyEventReason.CITED,
     }
+
+
+def test_a_run_without_the_fake_lan_has_no_lateral_movement_in_the_model() -> None:
+    assert build_report_model(make_inputs(), ReportInclude()).lateral_movement is None
+
+
+def test_the_lateral_movement_of_the_summary_is_carried_into_the_model() -> None:
+    model = build_report_model(make_inputs(analysis=make_lan_analysis()), ReportInclude())
+
+    assert model.lateral_movement is not None
+    assert model.lateral_movement.hosts[0].fqdn == FAKE_HOST

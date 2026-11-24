@@ -6,22 +6,13 @@ from typing import Any
 
 from app.analyses.summary import SEVERITY_ORDER
 from app.db.models.analysis import Severity
-from app.ingest.reading import text_or_none, to_int
+from app.ingest.reading import dig, text_or_none, to_int
 from app.schemas.views_events import ProcessRef
 
 type Source = Mapping[str, Any]
 
 TIME_ORDER: list[dict[str, str]] = [{"@timestamp": "asc"}, {"event.sequence": "asc"}]
 WITHOUT_RAW = {"excludes": ["tartarus.raw"]}
-
-
-def dig(source: Source, *path: str) -> Any:
-    value: Any = source
-    for step in path:
-        if not isinstance(value, Mapping):
-            return None
-        value = value.get(step)
-    return value
 
 
 def text_at(source: Source, *path: str) -> str | None:

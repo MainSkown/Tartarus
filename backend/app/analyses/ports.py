@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from app.analyses.defender import DefenderVerdict
+from app.analyses.lan_models import LanSummary
 from app.analyses.lan_sessions import LanControl
 from app.db.models.analysis import Severity
 from app.guest.schemas import Guest, GuestProfile, MemoryAnalysis, MissingSymbols
@@ -55,6 +56,7 @@ class IngestResult:
     there was no Sysmon file. `max_alert_severity` is the highest severity among the indexed
     detections (alert events), None when there are none. `entry_sha256` is the hash of the file
     a zip analysis ran, None unless it was asked for and a Sysmon process-created event gives it.
+    `lan` is what the sample did on the fake local network, None unless the ingest had its hosts.
     """
 
     event_count: int
@@ -63,6 +65,7 @@ class IngestResult:
     hidden_events: dict[str, int] = field(default_factory=dict)
     max_alert_severity: Severity | None = None
     entry_sha256: str | None = None
+    lan: LanSummary | None = None
 
 
 class EventIngester(Protocol):

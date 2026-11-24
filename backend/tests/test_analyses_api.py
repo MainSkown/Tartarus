@@ -837,6 +837,64 @@ async def test_the_memory_summary_is_served_on_read_and_list(harness: Harness) -
     assert listed["summary"]["memory"] == memory
 
 
+A_LAN_SECTION = {
+    "preset": {"id": "small-office", "name": "Small office"},
+    "hosts": [
+        {
+            "fqdn": "fs01.corp.local",
+            "address": "192.168.150.201",
+            "role": "file-server",
+            "services": [
+                {
+                    "service": "smb",
+                    "port": 445,
+                    "attempts": 3,
+                    "first": "2026-11-23T12:00:01Z",
+                    "last": "2026-11-23T12:00:05Z",
+                }
+            ],
+            "credentials": [
+                {
+                    "user": "Administrator",
+                    "domain": "CORP",
+                    "mechanism": "ntlm",
+                    "count": 2,
+                    "success": True,
+                    "secret_as_sent": "Password1",
+                }
+            ],
+            "credentials_more": 0,
+            "files": [{"path": "\\evil.exe", "share": "ADMIN$", "size": 10, "sha256": "ab" * 32}],
+            "files_more": 0,
+            "first": "2026-11-23T12:00:01Z",
+            "last": "2026-11-23T12:00:05Z",
+        }
+    ],
+    "totals": {"hosts": 1, "attempts": 3, "credentials": 1, "files": 1},
+    "truncated": False,
+}
+
+
+async def test_the_lan_summary_is_served_on_read_and_list(harness: Harness) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], summary={"lan": A_LAN_SECTION})
+
+    read = (await harness.client.get(f"/api/analyses/{created['id']}")).json()
+    listed = (await harness.client.get("/api/analyses")).json()["items"][0]
+
+    assert read["summary"]["lan"] == A_LAN_SECTION
+    assert listed["summary"]["lan"] == A_LAN_SECTION
+
+
+async def test_a_summary_of_a_run_without_the_fake_lan_serves_a_null_lan(harness: Harness) -> None:
+    created = (await harness.upload()).json()
+    await harness.set_state(created["id"], summary={"process_count": 2})
+
+    read = (await harness.client.get(f"/api/analyses/{created['id']}")).json()
+
+    assert read["summary"]["lan"] is None
+
+
 async def test_a_submission_reports_its_place_in_the_queue(harness: Harness) -> None:
     first = (await harness.upload(name="a.exe", options=SAME_GUEST)).json()
     second = (await harness.upload(content=OTHER_CONTENT, name="b.exe", options=SAME_GUEST)).json()
@@ -1571,6 +1629,9 @@ def test_the_openapi_schema_describes_the_summary_and_the_upload() -> None:
     assert "lane_counts" in schemas["ReportSummary"]["properties"]
     assert {"defender", "hidden_events", "warnings"} <= set(schemas["ReportSummary"]["properties"])
     assert {"DefenderVerdict", "DefenderThreat"} <= set(schemas)
+    assert "lan" in schemas["ReportSummary"]["properties"]
+    assert {"LanSummary", "LanHostSummary", "LanServiceUse", "LanCredential"} <= set(schemas)
+    assert "secret_as_sent" in schemas["LanCredential"]["properties"]
     assert set(schemas["Body_analyses_create"]["properties"]) == {"file", "options"}
 
 

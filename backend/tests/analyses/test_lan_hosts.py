@@ -3,6 +3,7 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.analyses.lan_models import LanPresetRef, LanSummary, LanTotals
 from app.analyses.lan_sessions import LanSessions
 from app.analyses.ports import IngestResult, ReportOutcome
 from app.analyses.runner import Runner
@@ -22,7 +23,12 @@ type Factory = async_sessionmaker[AsyncSession]
 PRESET = "small-office"
 WITH_LAN = {**OPTIONS, "lan_preset": PRESET}
 OUTCOME = ReportOutcome(score=1.0, max_severity=None, detected_families=[], summary={})
-DOMAIN_CONTROLLER = LanHost("dc01.corp.example", "domain-controller", PRESET, {445: "smb"})
+DOMAIN_CONTROLLER = LanHost(
+    "dc01.corp.example", "domain-controller", PRESET, {445: "smb"}, "Small office"
+)
+NAMED_FILE_SERVER = LanHost(
+    "fs01.corp.example", "file-server", PRESET, {445: "smb", 3389: "rdp"}, "Small office"
+)
 
 
 class FakeAnalysis:
@@ -67,11 +73,7 @@ async def test_the_hosts_of_the_preset_are_keyed_by_address_with_their_services_
     hosts, warnings = await LanSessions(guests).hosts_of(asked_for(PRESET))  # type: ignore[arg-type]
 
     assert warnings == []
-    assert hosts == {
-        "192.168.150.201": LanHost(
-            "fs01.corp.example", "file-server", PRESET, {445: "smb", 3389: "rdp"}
-        )
-    }
+    assert hosts == {"192.168.150.201": NAMED_FILE_SERVER}
 
 
 async def test_a_preset_the_control_service_no_longer_offers_gives_no_hosts_and_a_warning(
@@ -190,3 +192,57 @@ async def test_a_lookup_warning_is_added_to_the_warnings_the_report_already_has(
     assert done.summary is not None
     assert done.summary["warnings"][0] == "no sysmon"
     assert len(done.summary["warnings"]) == 2
+
+
+A_LAN_SUMMARY = LanSummary(
+    preset=LanPresetRef(id=PRESET, name="Small office"),
+    hosts=[],
+    totals=LanTotals(hosts=0, attempts=0, credentials=0, files=0),
+)
+
+
+async def test_the_lan_summary_of_the_ingest_is_stored_with_the_analysis(
+    runner: Runner,
+    session_factory: Factory,
+    cape: FakeCape,
+    reports: FakeReports,
+    ingester: FakeIngester,
+) -> None:
+    ingester.result = IngestResult(3, {"network": 3}, lan=A_LAN_SUMMARY)
+
+    analysis_id = await run_to_the_end(runner, session_factory, cape, reports, WITH_LAN)
+
+    done = await load(session_factory, analysis_id)
+    assert done.summary is not None
+    assert done.summary["lan"] == A_LAN_SUMMARY.model_dump(mode="json")
+
+
+async def test_an_analysis_without_a_preset_stores_no_lan_key(
+    runner: Runner,
+    session_factory: Factory,
+    cape: FakeCape,
+    reports: FakeReports,
+    ingester: FakeIngester,
+) -> None:
+    analysis_id = await run_to_the_end(runner, session_factory, cape, reports, OPTIONS)
+
+    done = await load(session_factory, analysis_id)
+    assert done.summary is not None
+    assert "lan" not in done.summary
+
+
+async def test_a_preset_whose_hosts_could_not_be_looked_up_stores_an_empty_lan_section(
+    runner: Runner,
+    session_factory: Factory,
+    cape: FakeCape,
+    reports: FakeReports,
+    guests: ScriptedGuestControl,
+) -> None:
+    guests.error_by_call["lan_presets"] = GuestControlUnreachable("lan_presets", "ReadTimeout")
+
+    analysis_id = await run_to_the_end(runner, session_factory, cape, reports, WITH_LAN)
+
+    done = await load(session_factory, analysis_id)
+    assert done.summary is not None
+    assert done.summary["lan"]["preset"] == {"id": PRESET, "name": PRESET}
+    assert done.summary["lan"]["hosts"] == []

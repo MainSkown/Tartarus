@@ -13,11 +13,15 @@ from tests.export.report.fixtures import (
     ARCHIVE_NAME,
     ARCHIVE_PASSWORD,
     ENTRY_SHA256,
+    FILE_SERVER_SHA256,
     SAMPLE_NAME,
     SAMPLE_SHA256,
     make_analysis,
     make_archive_analysis,
+    make_fake_host_network,
     make_inputs,
+    make_lan_analysis,
+    make_lan_section,
     make_network,
     process,
 )
@@ -320,3 +324,115 @@ def test_the_print_fonts_are_named() -> None:
 def test_an_unknown_variant_is_refused() -> None:
     with pytest.raises(ValueError, match="not a valid ReportVariant"):
         render_document(model_of(), "docx")  # type: ignore[arg-type]
+
+
+# --- the Lateral movement section --------------------------------------------------------------
+
+
+def lan_page(lan: dict | None = None, **changes: object) -> Page:
+    return Page(html_of(analysis=make_lan_analysis(lan), **changes))
+
+
+def test_a_run_without_the_fake_lan_has_no_lateral_movement_section_and_no_fake_labels() -> None:
+    html = html_of()
+
+    assert "lateral-movement" not in Page(html).ids
+    assert "Lateral movement" not in html
+    assert "fake LAN" not in html
+    assert "t-lan" not in html
+    assert "<abbr" not in html
+
+
+def test_the_lateral_movement_section_follows_the_network_section() -> None:
+    page = lan_page()
+
+    network = page.ids.index("network")
+    assert page.ids[network + 1] == "lateral-movement"
+
+
+def test_the_section_lists_per_fake_host_its_services_credentials_and_files() -> None:
+    text = lan_page().text
+
+    for expected in [
+        "Lateral movement",
+        "Small office",
+        "fs01.corp.local",
+        "192.168.150.201",
+        "file-server",
+        "smb",
+        "445",
+        "Administrator",
+        "CORP",
+        "ntlm",
+        "Winter2026!",
+        "\\evil.exe",
+        "ADMIN$",
+        "61440",
+    ]:
+        assert expected in text
+
+
+def test_the_credential_secret_is_labelled_as_the_samples_not_ours() -> None:
+    html = html_of(analysis=make_lan_analysis())
+
+    assert "Secret as sent" in html
+
+
+def test_a_hash_is_shortened_with_the_full_value_in_its_title() -> None:
+    page = lan_page()
+
+    [(_, _, full)] = [a for a in page.attributes if a[0] == "abbr" and a[1] == "title"]
+    assert full == FILE_SERVER_SHA256
+    assert FILE_SERVER_SHA256 not in page.text
+    assert FILE_SERVER_SHA256[:12] in page.text
+
+
+def test_a_truncated_daemon_log_is_noted() -> None:
+    assert "was cut at its limit" in lan_page(make_lan_section(truncated=True)).text
+    assert "was cut at its limit" not in lan_page().text
+
+
+def test_files_and_credentials_beyond_the_caps_are_counted() -> None:
+    lan = make_lan_section()
+    lan["hosts"][0].update(files_more=7, credentials_more=3)
+
+    text = lan_page(lan).text
+
+    assert "7 more files" in text
+    assert "3 more credentials" in text
+
+
+def test_a_run_that_did_nothing_on_the_lan_says_no_lateral_movement_was_observed() -> None:
+    empty = make_lan_section(
+        hosts=[], totals={"hosts": 0, "attempts": 0, "credentials": 0, "files": 0}
+    )
+
+    page = lan_page(empty)
+
+    assert "lateral-movement" in page.ids
+    assert "No lateral movement observed." in page.text
+
+
+def test_a_fake_host_in_the_hosts_table_is_labelled() -> None:
+    text = lan_page(network=make_fake_host_network()).text
+
+    assert "fake LAN host" in text
+    assert text.count("fake LAN host") == 1
+
+
+def hostile_lan() -> dict:
+    lan = make_lan_section()
+    lan["hosts"][0]["credentials"][0].update(user=SCRIPT, secret_as_sent=BREAKOUT)
+    lan["hosts"][0]["files"][0]["path"] = f"\\{SCRIPT}"
+    return lan
+
+
+def test_hostile_credentials_and_paths_are_escaped() -> None:
+    html = html_of(analysis=make_lan_analysis(hostile_lan()))
+    page = Page(html)
+
+    assert SCRIPT not in html
+    assert BREAKOUT not in html
+    assert "script" not in page.tags
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert page.text.count(SCRIPT) == 2
