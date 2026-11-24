@@ -17,7 +17,7 @@ FROM dependencies AS build-stage
 COPY . .
 RUN npm run build
 
-FROM nginx:1.31.8-alpine3.24@sha256:1ef7ca94d7879df82421428ce13bd1eaa412404953859cf7a5b6512c25e67a60 AS production-stage
+FROM nginx:1.31.9-alpine3.24@sha256:fb4658584bd9a916ffb6f6e365f97c25cfdb2923801f551ea08356e695f14ff7 AS production-stage
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build-stage /app/dist/pwa /usr/share/nginx/html
 RUN nginx -t
