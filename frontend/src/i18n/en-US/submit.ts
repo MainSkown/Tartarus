@@ -67,12 +67,28 @@ export default {
     },
     packageLocked: 'A zip is unpacked in the guest, so it always runs as a zip.',
   },
+  lan: {
+    label: 'SIMULATE LOCAL NETWORK',
+    off: 'The guest sees the gateway and nothing else on its network.',
+    on: 'Fake hosts answer on the guest network and log every attempt. None of them runs what the sample sends.',
+    routeRefused: 'Not available with the internet route: pick another route to simulate a local network.',
+    preset: {
+      group: 'Local network presets',
+      hosts: 'no hosts | {count} host: {roles} | {count} hosts: {roles}',
+      role: '{role} ×{count}',
+      none: 'no local network presets',
+    },
+  },
   blocked: {
     chooseSample: 'Choose a sample to analyse',
     archiveLoading: 'Reading the archive…',
     archiveUnreadable: 'The archive could not be read',
     archivePassword: 'Enter the password that opens the archive',
     archiveEntry: 'Choose the file to run from the archive',
+    lanLoading: 'Reading the local network presets…',
+    lanUnavailable: 'The local network presets could not be loaded',
+    lanNone: 'No local network preset is available',
+    lanPreset: 'Choose a local network preset',
   },
   error: {
     unreachable: 'Could not reach the backend.',

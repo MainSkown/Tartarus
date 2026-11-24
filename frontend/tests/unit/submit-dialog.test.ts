@@ -4,7 +4,7 @@ import { Notify, Quasar, QBtn, QInput, QSelect, QToggle } from 'quasar'
 import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AnalysisCreated, ArchiveMemberRead, ErrorEnvelope, Guest, GuestProfile, SystemHealth } from '@/api'
+import type { AnalysisCreated, ArchiveMemberRead, ErrorEnvelope, Guest, GuestProfile, LanPreset, SystemHealth } from '@/api'
 import { failed, succeeded } from './annotation-fixtures'
 import { isQuietFailure } from '@/services/quiet-statuses'
 import { BUILT_ROUTES } from '@/services/routes'
@@ -26,6 +26,7 @@ vi.mock('@/api', () => ({
   settingsRead: vi.fn(),
   guestsList: vi.fn(),
   guestsProfiles: vi.fn(),
+  lanPresetsList: vi.fn(),
   systemHealth: vi.fn().mockResolvedValue({ data: undefined }),
 }))
 
@@ -39,7 +40,7 @@ vi.mock('@/services/ws', () => ({
   }),
 }))
 
-const { analysesArchiveMembers, analysesCreate, guestsList, guestsProfiles, settingsRead } = await import('@/api')
+const { analysesArchiveMembers, analysesCreate, guestsList, guestsProfiles, lanPresetsList, settingsRead } = await import('@/api')
 const SubmitDialog = (await import('@/components/SubmitDialog.vue')).default
 const { useSystemStore } = await import('@/stores/system')
 
@@ -108,7 +109,7 @@ function listResult(guests: Guest[]) {
 }
 
 function interactiveSwitch(wrapper: VueWrapper) {
-  return wrapper.findComponent(QToggle)
+  return wrapper.findAllComponents(QToggle).find((toggle) => toggle.props('label') === 'INTERACTIVE DESKTOP')!
 }
 
 function storedSettings(settings: Record<string, unknown>) {
@@ -1046,6 +1047,112 @@ describe('SubmitDialog', () => {
         expect(wrapper.findAll<HTMLInputElement>('input[name="archive-entry"]').some((radio) => radio.element.checked)).toBe(false)
         expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
       })
+    })
+  })
+
+  describe('simulate local network', () => {
+    const OFFICE: LanPreset = { id: 'small-office', name: 'Small office', description: 'Six hosts', hosts: [] }
+    const HOME: LanPreset = { id: 'flat-home', name: 'Flat home LAN', description: 'Four hosts', hosts: [] }
+
+    function presetsResult(presets: LanPreset[]) {
+      return { data: presets, error: undefined } as unknown as Awaited<ReturnType<typeof lanPresetsList>>
+    }
+
+    const lanSwitch = (wrapper: VueWrapper) =>
+      wrapper.findAllComponents(QToggle).find((toggle) => toggle.props('label') === 'SIMULATE LOCAL NETWORK')!
+
+    async function switchLanOn(wrapper: VueWrapper) {
+      lanSwitch(wrapper).vm.$emit('update:modelValue', true)
+      await flushPromises()
+    }
+
+    const presetRadio = (wrapper: VueWrapper, id: string) => wrapper.find(`input[name="lan-preset"][value="${id}"]`)
+
+    it('is off by default: nothing is asked of the backend and no preset is sent', async () => {
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await submit(wrapper)
+
+      expect(lanPresetsList).not.toHaveBeenCalled()
+      expect(lanSwitch(wrapper).props('modelValue')).toBe(false)
+      expect(sentOptions()).not.toHaveProperty('lan_preset')
+    })
+
+    it('blocks submit until a preset is chosen, then sends it', async () => {
+      vi.mocked(lanPresetsList).mockResolvedValue(presetsResult([OFFICE, HOME]))
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await switchLanOn(wrapper)
+      expect(wrapper.find('.submit-btn').attributes('disabled')).toBeDefined()
+      expect(wrapper.find('.submit-reason').text()).toBe('Choose a local network preset')
+
+      await presetRadio(wrapper, 'flat-home').setValue(true)
+      expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
+      await submit(wrapper)
+
+      expect(sentOptions().lan_preset).toBe('flat-home')
+    })
+
+    it('sends the only preset there is without a choice', async () => {
+      vi.mocked(lanPresetsList).mockResolvedValue(presetsResult([OFFICE]))
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await switchLanOn(wrapper)
+      await submit(wrapper)
+
+      expect(sentOptions().lan_preset).toBe('small-office')
+    })
+
+    it('blocks submit while the presets cannot be loaded, and again lets it through after a retry', async () => {
+      vi.mocked(lanPresetsList)
+        .mockResolvedValueOnce(failed('down', 502) as unknown as Awaited<ReturnType<typeof lanPresetsList>>)
+        .mockResolvedValueOnce(presetsResult([OFFICE]))
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+
+      await switchLanOn(wrapper)
+      expect(wrapper.find('.submit-reason').text()).toBe('The local network presets could not be loaded')
+
+      await wrapper.find('.retry-btn').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('.submit-btn').attributes('disabled')).toBeUndefined()
+    })
+
+    it('turns itself off, and sends nothing, when the route changes to internet', async () => {
+      vi.mocked(lanPresetsList).mockResolvedValue(presetsResult([OFFICE]))
+      vi.mocked(analysesCreate).mockResolvedValue(created())
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      await switchLanOn(wrapper)
+
+      await wrapper.find('#route-internet').setValue(true)
+      await flushPromises()
+
+      expect(lanSwitch(wrapper).props('modelValue')).toBe(false)
+      expect(lanSwitch(wrapper).props('disable')).toBe(true)
+      await submit(wrapper)
+      expect(sentOptions()).not.toHaveProperty('lan_preset')
+    })
+
+    it('shows the backend refusal of the preset under the picker', async () => {
+      vi.mocked(lanPresetsList).mockResolvedValue(presetsResult([OFFICE]))
+      vi.mocked(analysesCreate).mockResolvedValue(
+        failedValidation([{ location: ['body', 'options', 'lan_preset'], message: 'Unknown local network preset' }]),
+      )
+      const { wrapper } = await mountDialog()
+      await chooseFile(wrapper)
+      await switchLanOn(wrapper)
+
+      await submit(wrapper)
+
+      expect(wrapper.find('.preset-error').text()).toBe('Unknown local network preset')
     })
   })
 

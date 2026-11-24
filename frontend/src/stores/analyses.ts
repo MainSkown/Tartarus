@@ -20,6 +20,7 @@ export interface SubmitOptions {
   memory_dump?: boolean
   keep_memory_dump?: boolean
   guest?: string
+  lan_preset?: string
   package?: string
   archive_password?: string
   archive_entry?: string

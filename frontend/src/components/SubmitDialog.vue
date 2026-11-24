@@ -8,8 +8,10 @@ import GuestOptionRow from '@/components/GuestOptionRow.vue'
 import ImportPane from '@/components/ImportPane.vue'
 import NumberInput from '@/components/NumberInput.vue'
 import SubmitArchiveFields from '@/components/SubmitArchiveFields.vue'
+import SubmitLanFields from '@/components/SubmitLanFields.vue'
 import { useArchiveMembers } from '@/composables/use-archive-members'
 import { useGuestChoice } from '@/composables/use-guest-choice'
+import { useLanChoice } from '@/composables/use-lan-choice'
 import { t } from '@/i18n'
 import { DEFAULT_ARCHIVE_PASSWORD, hasEncryptedMember } from '@/services/archive-file'
 import { sha256Hex } from '@/services/file-hash'
@@ -35,6 +37,7 @@ const FORM_FIELDS = [
   'guest',
   'package',
   'interactive',
+  'lan_preset',
   'archive_password',
   'archive_entry',
 ] as const
@@ -51,6 +54,7 @@ const guestBlockReason = useGuestBlockReason()
 const file = shallowRef<File>()
 const hash = ref<string>()
 const route = ref<Route>('inetsim')
+const lan = useLanChoice(route)
 const timeoutText = ref('180')
 const defaultGuestSetting = ref<string | null>()
 const guestChoice = useGuestChoice(defaultGuestSetting)
@@ -121,7 +125,7 @@ const blockReason = computed(
   () =>
     guestChoice.noGuestReason.value ??
     guestBlockReason.value ??
-    (file.value ? archiveBlockReason.value : t('submit.blocked.chooseSample')),
+    (file.value ? (archiveBlockReason.value ?? lan.blockReason.value) : t('submit.blocked.chooseSample')),
 )
 const canSubmit = computed(() => !blockReason.value && !timeoutError.value && !submitting.value)
 
@@ -145,6 +149,7 @@ const submitOptions = computed<SubmitOptions>(() => ({
   memory_dump: memoryDump.value,
   ...(keepMemoryDump.value ? { keep_memory_dump: true } : {}),
   ...guestChoice.optionPayload.value,
+  ...lan.optionPayload.value,
   ...archiveOptions.value,
 }))
 
@@ -436,6 +441,18 @@ onMounted(() => {
                 {{ fieldErrors.route }}
               </p>
             </div>
+
+            <SubmitLanFields
+              v-model:enabled="lan.enabled.value"
+              v-model:preset="lan.presetId.value"
+              :presets="lan.presets.presets.value"
+              :loading="lan.presets.loading.value"
+              :error="lan.presets.error.value"
+              :route-refused="lan.routeRefused.value"
+              :preset-error="fieldErrors.lan_preset"
+              :disable="submitting"
+              @retry="lan.presets.retry"
+            />
 
             <div class="form-field">
               <div class="option-row">
